@@ -11,7 +11,7 @@
 #
 # Detection: kubectl get pods -w streams new pods from the API server the
 # moment the VMI controller creates them — before kubelet, before containerd.
-# Freeze: pod-level cgroup freezer is atomically written (FROZEN/THAWED).
+# Freeze: the pod's cgroup.freeze is written (1 to freeze, 0 to thaw).
 #
 # Usage:
 #   ./hold-vmi-init.sh enc-pin-cherry1-390a4
@@ -19,7 +19,7 @@
 #
 # Override namespace: NS=other-namespace ./hold-vmi-init.sh <prefix>
 
-[ -d /sys/fs/cgroup/freezer ] || { echo "error: cgroup v1 freezer not mounted — this script requires cgroup v1" >&2; exit 1; }
+[ -f /sys/fs/cgroup/cgroup.controllers ] || { echo "error: cgroup v2 is not mounted at /sys/fs/cgroup" >&2; exit 1; }
 
 APP_PREFIX="${1:?Usage: $0 <app-prefix> [hold-seconds]}"
 HOLD_SECS="${2:-600}"
@@ -31,7 +31,7 @@ LAUNCHER_PREFIX="virt-launcher-${APP_PREFIX}"
 # ---------------------------------------------------------------------------
 
 SEEN_PODS=$(mktemp)      # pod names already dispatched (dedup across iterations)
-FROZEN_CGROUPS=$(mktemp) # cgroup freezer.state paths to thaw on exit
+FROZEN_CGROUPS=$(mktemp) # cgroup.freeze paths to thaw on exit
 WATCH_PIPE=$(mktemp -u)  # FIFO for kubectl watch output
 
 cleanup() {
@@ -87,12 +87,12 @@ get_pod_uid() {
         -o jsonpath='{.metadata.uid}' 2>/dev/null
 }
 
-# Polls for the pod-level freezer.state path up to 2 seconds.
+# Polls for the pod's own cgroup.freeze (not a container's) up to 2 seconds.
 find_cgroup() {
     local uid="$1" i=0 cgroup
     while [ "$i" -lt 20 ]; do
-        cgroup=$(find /sys/fs/cgroup/freezer/kubepods -name "freezer.state" \
-                 -path "*pod${uid}*" 2>/dev/null | sort | head -1)
+        cgroup=$(find /sys/fs/cgroup/kubepods -path "*/pod${uid}/cgroup.freeze" \
+                 2>/dev/null | head -1)
         [ -n "$cgroup" ] && echo "$cgroup" && return 0
         sleep 0.1
         i=$((i + 1))
@@ -102,7 +102,7 @@ find_cgroup() {
 
 freeze_pod() {
     local pod="$1" uid="$2" cgroup="$3"
-    echo FROZEN > "$cgroup" || { echo "$(date '+%H:%M:%S') ERROR: could not freeze $pod" >&2; return; }
+    echo 1 > "$cgroup" || { echo "$(date '+%H:%M:%S') ERROR: could not freeze $pod" >&2; return; }
     echo "$cgroup" >> "$FROZEN_CGROUPS"
     echo "$(date '+%H:%M:%S') Frozen:  $pod"
     echo "          UID:     $uid"
@@ -113,7 +113,7 @@ thaw_all() {
     [ ! -s "$FROZEN_CGROUPS" ] && return
     echo "Thawing all frozen pods..."
     while IFS= read -r cgroup; do
-        [ -f "$cgroup" ] && echo THAWED > "$cgroup" \
+        [ -f "$cgroup" ] && echo 0 > "$cgroup" \
             && echo "  Thawed: $cgroup"
     done < "$FROZEN_CGROUPS"
 }

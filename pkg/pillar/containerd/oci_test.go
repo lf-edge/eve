@@ -387,6 +387,7 @@ func TestOciSpec(t *testing.T) {
 		},
 	}
 	status := &types.DomainStatus{}
+	status.VmConfig.CPUs = []uint32{1, 3}
 	spec.UpdateFromDomain(conf, status)
 	spec.UpdateVifList(conf.VifList)
 	spec.UpdateFromVolume(tmpdir)
@@ -404,6 +405,7 @@ func TestOciSpec(t *testing.T) {
 	assert.NotNil(t, s.Linux.Resources.Devices)
 	assert.Equal(t, int64(1234*1024), *s.Linux.Resources.Memory.Limit)
 	assert.Equal(t, float64(4), float64(*s.Linux.Resources.CPU.Quota)/float64(*s.Linux.Resources.CPU.Period))
+	assert.Equal(t, "1,3", s.Linux.Resources.CPU.Cpus)
 	assert.Equal(t, tmpdir+"/rootfs", s.Root.Path)
 	assert.Equal(t, []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}, s.Process.Env)
 	assert.Equal(t, []string{"/bin/sh", "-c", "/runme.sh"}, s.Process.Args)

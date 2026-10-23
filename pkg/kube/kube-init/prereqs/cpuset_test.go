@@ -46,25 +46,24 @@ func TestCPUSetLoanRestoreIsSafeWhenNil(t *testing.T) {
 	empty.Restore()
 }
 
-// fakeCPUSetTree builds a cgroup-v1-shaped cpuset tree under a temp dir
-// and points cpusetRoot at it. Every group starts confined to "0", the
-// host mask is "0-7", mirroring an EVE device with eve_max_vcpus=1.
-func fakeCPUSetTree(t *testing.T, leaves ...string) string {
+// fakeCPUSetTree builds a cgroup-v2-shaped tree under a temp dir and points
+// cpusetRoot at it: the root offers "0-7" (cpuset.cpus.effective); the given
+// groups start with cpuset.cpus = mask ("" = inherits, as per-service leaves
+// do on v2).
+func fakeCPUSetTree(t *testing.T, groups map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
 	orig := cpusetRoot
 	cpusetRoot = root
 	t.Cleanup(func() { cpusetRoot = orig })
-
-	if err := os.WriteFile(filepath.Join(root, "cpuset.cpus"), []byte("0-7\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "cpuset.cpus.effective"), []byte("0-7\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	groups := append([]string{"eve", "eve/services"}, leaves...)
-	for _, cg := range groups {
+	for cg, mask := range groups {
 		if err := os.MkdirAll(filepath.Join(root, cg), 0755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(root, cg, "cpuset.cpus"), []byte("0\n"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(root, cg, "cpuset.cpus"), []byte(mask+"\n"), 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -80,68 +79,68 @@ func readMask(t *testing.T, root, cg string) string {
 	return strings.TrimSpace(string(b))
 }
 
-// Widening must reach every per-service leaf, not just kube:
-// 010-eve-cgroup writes eve_max_vcpus into each leaf individually, so
-// freeing the ancestors alone frees nothing and freeing only kube leaves
-// pillar — which fetches and verifies first-boot images — pinned.
-func TestWidenEVECPUsCoversEveryLeafAndRestores(t *testing.T) {
-	root := fakeCPUSetTree(t,
-		"eve/services/kube", "eve/services/pillar", "eve/services/vtpm")
-
+// 010-eve-cgroup confines /eve, /eve/services and /eve/containerd; the
+// service leaves inherit. Widening must open the three and leave the
+// inheriting leaves alone, and Restore must put the three back.
+func TestWidenEVECPUsCoversConfinedGroupsAndRestores(t *testing.T) {
+	root := fakeCPUSetTree(t, map[string]string{
+		"eve": "0", "eve/services": "0", "eve/containerd": "0",
+		"eve/services/kube": "", "eve/services/pillar": "",
+	})
 	loan := WidenEVECPUs()
 	if loan == nil {
 		t.Fatal("WidenEVECPUs returned nil on a confined tree")
 	}
-	for _, cg := range []string{
-		"eve", "eve/services",
-		"eve/services/kube", "eve/services/pillar", "eve/services/vtpm",
-	} {
+	for _, cg := range []string{"eve", "eve/services", "eve/containerd"} {
 		if got := readMask(t, root, cg); got != "0-7" {
 			t.Errorf("%s = %q after widen, want \"0-7\"", cg, got)
 		}
 	}
-	if got := KubeCPUCount(); got != 8 {
-		t.Errorf("KubeCPUCount while borrowed = %d, want 8", got)
+	for _, cg := range []string{"eve/services/kube", "eve/services/pillar"} {
+		if got := readMask(t, root, cg); got != "" {
+			t.Errorf("%s = %q, want \"\" (inherits)", cg, got)
+		}
 	}
-
 	loan.Restore()
-	for _, cg := range []string{
-		"eve", "eve/services",
-		"eve/services/kube", "eve/services/pillar", "eve/services/vtpm",
-	} {
+	for _, cg := range []string{"eve", "eve/services", "eve/containerd"} {
 		if got := readMask(t, root, cg); got != "0" {
 			t.Errorf("%s = %q after restore, want \"0\"", cg, got)
 		}
 	}
-	if got := KubeCPUCount(); got != 1 {
-		t.Errorf("KubeCPUCount after restore = %d, want 1", got)
+}
+
+// A leaf with a mask of its own is widened and restored like the groups.
+func TestWidenEVECPUsWidensAnExplicitLeaf(t *testing.T) {
+	root := fakeCPUSetTree(t, map[string]string{"eve": "0", "eve/services": "0", "eve/services/kube": "0"})
+	loan := WidenEVECPUs()
+	if loan == nil {
+		t.Fatal("WidenEVECPUs returned nil")
+	}
+	if got := readMask(t, root, "eve/services/kube"); got != "0-7" {
+		t.Errorf("kube = %q after widen, want \"0-7\"", got)
+	}
+	loan.Restore()
+	if got := readMask(t, root, "eve/services/kube"); got != "0" {
+		t.Errorf("kube = %q after restore, want \"0\"", got)
 	}
 }
 
-// containerd is confined like the services when 010-eve-cgroup gave it a
-// cpuset, and the user containerd unpacks every first-boot image, so it is
-// widened and restored with them.
-func TestWidenEVECPUsCoversContainerd(t *testing.T) {
-	root := fakeCPUSetTree(t, "eve/services/kube", "eve/containerd")
-
-	loan := WidenEVECPUs()
-	if loan == nil {
-		t.Fatal("WidenEVECPUs returned nil on a confined tree")
+// kube's own cpuset.cpus is empty on v2 (it inherits): its CPU count comes
+// from cpuset.cpus.effective.
+func TestKubeCPUCountReadsEffective(t *testing.T) {
+	root := fakeCPUSetTree(t, map[string]string{"eve/services/kube": ""})
+	if err := os.WriteFile(filepath.Join(root, "eve/services/kube/cpuset.cpus.effective"), []byte("0-3\n"), 0644); err != nil {
+		t.Fatal(err)
 	}
-	if got := readMask(t, root, "eve/containerd"); got != "0-7" {
-		t.Errorf("eve/containerd = %q after widen, want \"0-7\"", got)
-	}
-
-	loan.Restore()
-	if got := readMask(t, root, "eve/containerd"); got != "0" {
-		t.Errorf("eve/containerd = %q after restore, want \"0\"", got)
+	if got := KubeCPUCount(); got != 4 {
+		t.Errorf("KubeCPUCount() = %d, want 4", got)
 	}
 }
 
 // One unreadable leaf must not abandon its siblings — each is independent
 // once the ancestors are open.
 func TestWidenEVECPUsSkipsBadLeafButKeepsSiblings(t *testing.T) {
-	root := fakeCPUSetTree(t, "eve/services/kube", "eve/services/broken")
+	root := fakeCPUSetTree(t, map[string]string{"eve": "0", "eve/services": "0", "eve/services/kube": "0", "eve/services/broken": "0"})
 	// A directory where cpuset.cpus should be makes the leaf unreadable.
 	bad := filepath.Join(root, "eve/services/broken", "cpuset.cpus")
 	if err := os.Remove(bad); err != nil {
@@ -161,10 +160,10 @@ func TestWidenEVECPUsSkipsBadLeafButKeepsSiblings(t *testing.T) {
 	}
 }
 
-// An unwidenable ancestor aborts: cgroup v1 will not let a leaf exceed
-// its parent, so widening leaves underneath cannot work.
+// An unwidenable ancestor aborts: a leaf widened under an un-widened
+// parent would take effect only once the parent opens.
 func TestWidenEVECPUsAbortsOnBadAncestor(t *testing.T) {
-	root := fakeCPUSetTree(t, "eve/services/kube")
+	root := fakeCPUSetTree(t, map[string]string{"eve": "0", "eve/services": "0", "eve/services/kube": "0"})
 	bad := filepath.Join(root, "eve", "cpuset.cpus")
 	if err := os.Remove(bad); err != nil {
 		t.Fatal(err)

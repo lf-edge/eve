@@ -22,33 +22,25 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/qemudump"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/cgroup"
 )
 
-// cgroupUnlimited: memory.limit_in_bytes uses a near-max value for "no limit";
-// treat any absurdly large limit as unlimited so we fall back to system RAM.
-const cgroupUnlimited = uint64(1) << 62
-
-// cgroupMemBase is the v1 memory-cgroup root as seen in pillar's mounted host fs.
-const cgroupMemBase = "/hostfs/sys/fs/cgroup/memory/"
-
 // compressorAvailMem returns the memory available to the dump compressor: the
-// smallest headroom (limit-usage) across pillar's whole cgroup ancestry
-// (/eve, /eve/services, /eve/services/pillar) and system MemAvailable. The zstd
-// window is anonymous memory charged to pillar's cgroup, so it must fit the
-// tightest binding cgroup — a parent can be loose while a child is nearly full
-// (that OOM-killed zedbox). When a cgroup is unlimited, system RAM is the real
-// bound. Returns 0 (=> minimum window) if nothing can be determined.
+// smallest headroom (memory.max - memory.current) across pillar's cgroup
+// ancestry (/eve, /eve/services, /eve/services/pillar) and system MemAvailable.
+// The zstd window is anonymous memory charged to pillar's cgroup, so it must
+// fit the tightest binding cgroup: a parent can be loose while a child is
+// nearly full (that OOM-killed zedbox). An unlimited cgroup does not bind.
+// Returns 0 (=> minimum window) if a cgroup cannot be read: sizing the window
+// from system RAM could then exceed the cgroup limit and OOM-kill zedbox.
 func compressorAvailMem() uint64 {
-	// This reads cgroup-v1 memory accounting. On a non-v1 (v2/unified) host the
-	// v1 files are absent, so we cannot learn pillar's cgroup headroom; sizing the
-	// window from system RAM could then exceed the cgroup limit and OOM-kill
-	// zedbox. Floor to the minimum window instead until cgroup-v2 is supported.
-	if _, err := os.Stat(cgroupMemBase); err != nil {
-		return 0
-	}
 	avail := uint64(math.MaxUint64)
-	for _, g := range []string{"eve", "eve/services", "eve/services/pillar"} {
-		if h, ok := cgroupHeadroom(cgroupMemBase + g); ok && h < avail {
+	for _, g := range []string{types.EveCgroup, "eve/services", types.PillarCgroup} {
+		h, binding, err := cgroupHeadroom(g)
+		if err != nil {
+			return 0
+		}
+		if binding && h < avail {
 			avail = h
 		}
 	}
@@ -61,27 +53,24 @@ func compressorAvailMem() uint64 {
 	return avail
 }
 
-// cgroupHeadroom returns limit-usage for a v1 memory cgroup dir. ok is false if
-// the cgroup can't be read or is effectively unlimited (not a binding
-// constraint); a full cgroup returns (0, true).
-func cgroupHeadroom(dir string) (uint64, bool) {
-	limit, err1 := readUint64File(dir + "/memory.limit_in_bytes")
-	usage, err2 := readUint64File(dir + "/memory.usage_in_bytes")
-	if err1 != nil || err2 != nil || limit >= cgroupUnlimited {
-		return 0, false
+// cgroupHeadroom returns memory.max - memory.current of group. binding is
+// false when the group has no memory limit; a full group returns (0, true).
+func cgroupHeadroom(group string) (headroom uint64, binding bool, err error) {
+	limit, err := cgroup.ReadUint(group, "memory.max")
+	if err != nil {
+		return 0, false, err
+	}
+	if limit == cgroup.Unlimited {
+		return 0, false, nil
+	}
+	usage, err := cgroup.ReadUint(group, "memory.current")
+	if err != nil {
+		return 0, false, err
 	}
 	if usage >= limit {
-		return 0, true
+		return 0, true, nil
 	}
-	return limit - usage, true
-}
-
-func readUint64File(path string) (uint64, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return 0, err
-	}
-	return strconv.ParseUint(strings.TrimSpace(string(b)), 10, 64)
+	return limit - usage, true, nil
 }
 
 // sysMemAvailableBytes returns /proc/meminfo MemAvailable in bytes, or 0.

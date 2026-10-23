@@ -643,29 +643,43 @@ func LoadKernelModules() error {
 	return nil
 }
 
-// SetupCgroup ensures /etc/fstab carries the cgroup mount entry.
-// Idempotent: skipped when an entry containing
-// "cgroup /sys/fs/cgroup cgroup" is already present.
+// fstabPath is the fstab SetupCgroup edits; tests point it elsewhere.
+var fstabPath = "/etc/fstab"
+
+// SetupCgroup ensures /etc/fstab carries the cgroup v2 mount entry and no
+// cgroup v1 one.
 func SetupCgroup() error {
-	const fstabPath = "/etc/fstab"
-	const cgroupEntry = "cgroup /sys/fs/cgroup cgroup defaults 0 0"
+	const cgroupEntry = "cgroup2 /sys/fs/cgroup cgroup2 defaults 0 0"
 	data, err := os.ReadFile(fstabPath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read %s: %w", fstabPath, err)
 	}
-	if strings.Contains(string(data), "cgroup /sys/fs/cgroup cgroup") {
+	var lines []string
+	found := false
+	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 && fields[1] == "/sys/fs/cgroup" {
+			if fields[2] != "cgroup2" {
+				continue // the v1 entry
+			}
+			found = true
+		}
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	if !found {
+		lines = append(lines, cgroupEntry)
+	}
+	out := strings.Join(lines, "\n") + "\n"
+	if out == string(data) {
 		log.Printf("cgroup fstab entry already present")
 		return nil
 	}
-	f, err := os.OpenFile(fstabPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return fmt.Errorf("open %s for append: %w", fstabPath, err)
+	if err := os.WriteFile(fstabPath, []byte(out), 0644); err != nil {
+		return fmt.Errorf("write %s: %w", fstabPath, err)
 	}
-	defer func() { _ = f.Close() }()
-	if _, err := fmt.Fprintln(f, cgroupEntry); err != nil {
-		return fmt.Errorf("write cgroup entry: %w", err)
-	}
-	log.Printf("added cgroup mount entry to %s", fstabPath)
+	log.Printf("set the cgroup v2 mount entry in %s", fstabPath)
 	return nil
 }
 

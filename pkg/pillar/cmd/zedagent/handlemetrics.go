@@ -623,7 +623,7 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 			log.Errorf("GetEveMemoryLimitInBytes failed: %v", err)
 		} else {
 			ReportDeviceMetric.DeviceMemory.AllocatedEveMB =
-				uint32((allocatedEve + 1024*1024 - 1) / (1024 * 1024))
+				base.ClampToUint32(base.RoundUpToMbytes(allocatedEve))
 		}
 		ReportDeviceMetric.DeviceMemory.UsedEveMB = uint32(usedEveMB)
 

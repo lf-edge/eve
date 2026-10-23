@@ -16,7 +16,6 @@
 #include <syslog.h>
 #include <unistd.h>
 
-#include "cgroups.h"
 #include "config.h"
 
 #include "monitor.h"
@@ -115,9 +114,6 @@ int main(int argc, char *argv[]) {
             exit(EXIT_FAILURE);
         }
     }
-
-    // Move the process to the root cgroup
-    cgroup_move_process_to_root_memory(getpid());
 
     // Save the binary location, as the handler script is in the same directory
     // First, get the full path to the binary
