@@ -73,24 +73,29 @@ devices. ZFS does not automatically notify the NVMe controller of freed
 block ranges; without periodic TRIM the device's garbage-collection
 table grows and write amplification increases.
 
-EVE runs a rate-limited `zpool trim -r 1572864 persist` on a recurring
-cron schedule. ZFS applies the rate to each disk (leaf vdev), so each disk
-trims at up to 1.5 MiB/s and a pool of N disks at up to N times that. Each
-TRIM command is capped at 16 MiB by the `zfs_trim_extent_bytes_max` module
-parameter, which is set at boot. There is no boot-time trim:
-an unthrottled trim of the whole free space keeps the disk saturated for
-hours and stalls application I/O. A trim interrupted by a reboot resumes
-on its own; at startup zfsmanager suspends it and restarts it at this
-rate, so a trim started without a limit by an older EVE is throttled too.
+EVE runs a rate-limited `zpool trim -r <rate> persist` on a recurring
+cron schedule. ZFS applies the rate to each disk (leaf vdev), so with the
+default of 1.5 MiB/s each disk trims at up to 1.5 MiB/s and a pool of N
+disks at up to N times that. Each TRIM command is capped at 16 MiB by the
+`zfs_trim_extent_bytes_max` module parameter, which is set at boot.
+There is no boot-time trim: an unthrottled trim of the whole free space
+keeps the disk saturated for hours and stalls application I/O. A trim interrupted by a reboot resumes
+on its own; at startup, and whenever the rate is changed, zfsmanager
+suspends it and restarts it at the configured rate, so a trim started
+without a limit by an older EVE is throttled too.
 The restart keeps the trim's progress, but the start time shown by
 `zpool status -t persist` becomes the time of the last boot.
-The schedule is operator-configurable:
+The schedule and rate are operator-configurable:
 
 | Config key | Default | Effect |
 | --- | --- | --- |
 | `timer.zfs.pool.trim.cron` | `0 3 * * 6,0` | Sat/Sun at 03:00 |
+| `storage.zfs.pool.trim.rate.bytespersec` | `1572864` | 1.5 MiB/s per disk, about a week per TB of free space on the disk |
 
-Set to an empty string to disable the scheduled trim.
+Set the cron spec to an empty string to disable the scheduled trim.
+
+A pass over a 4 TB disk takes about a month at the default rate; raise the
+rate to finish sooner at the cost of more I/O latency while it runs.
 
 The trim starts only if the device is powered on at the scheduled minute;
 a missed slot is not caught up. Devices that are routinely off at 03:00 on

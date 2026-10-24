@@ -220,6 +220,7 @@ func TestNewConfigItemSpecMap(t *testing.T) {
 		VaultTrimMaxSecs,
 		VaultTrimCron,
 		ZFSPoolTrimCron,
+		ZFSPoolTrimRate,
 		Dom0DiskUsageMaxBytes,
 		StorageZfsReserved,
 		ForceFallbackCounter,
