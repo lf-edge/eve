@@ -58,11 +58,13 @@ type zfsContext struct {
 	zVolDeviceEvents       *base.LockedStringMap // stores device->zVolDeviceEvent mapping to check and publish
 	globalConfig           *types.ConfigItemValueMap
 	GCInitialized          bool
-	// trimMu guards trimStatus and the cached trimCron, which are read from
-	// the pool trim goroutine and written from the main/publisher goroutines.
+	// trimMu guards trimStatus and the cached trimCron and trimRate, which
+	// are read from the pool trim goroutine and written from the
+	// main/publisher goroutines.
 	trimMu     sync.Mutex
 	trimStatus types.PoolTrimStatus
 	trimCron   string
+	trimRate   uint32
 }
 
 // Run - an zfs run
