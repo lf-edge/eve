@@ -15,15 +15,16 @@
 package authn
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/cli/cli/config/configfile"
 	"github.com/docker/cli/cli/config/types"
 	"github.com/google/go-containerregistry/pkg/name"
-	"github.com/mitchellh/go-homedir"
 )
 
 // Resource represents a registry or repository that can be authenticated against.
@@ -44,6 +45,11 @@ type Keychain interface {
 	Resolve(Resource) (Authenticator, error)
 }
 
+// ContextKeychain is like Keychain, but allows for context to be passed in.
+type ContextKeychain interface {
+	ResolveContext(context.Context, Resource) (Authenticator, error)
+}
+
 // defaultKeychain implements Keychain with the semantics of the standard Docker
 // credential keychain.
 type defaultKeychain struct {
@@ -52,7 +58,7 @@ type defaultKeychain struct {
 
 var (
 	// DefaultKeychain implements Keychain by interpreting the docker config file.
-	DefaultKeychain Keychain = &defaultKeychain{}
+	DefaultKeychain = &defaultKeychain{}
 )
 
 const (
@@ -61,8 +67,23 @@ const (
 	DefaultAuthKey = "https://" + name.DefaultRegistry + "/v1/"
 )
 
-// Resolve implements Keychain.
+// Resolve calls ResolveContext with ctx if the given [Keychain] implements [ContextKeychain],
+// otherwise it calls Resolve with the given [Resource].
+func Resolve(ctx context.Context, keychain Keychain, target Resource) (Authenticator, error) {
+	if rctx, ok := keychain.(ContextKeychain); ok {
+		return rctx.ResolveContext(ctx, target)
+	}
+
+	return keychain.Resolve(target)
+}
+
+// ResolveContext implements ContextKeychain.
 func (dk *defaultKeychain) Resolve(target Resource) (Authenticator, error) {
+	return dk.ResolveContext(context.Background(), target)
+}
+
+// Resolve implements Keychain.
+func (dk *defaultKeychain) ResolveContext(_ context.Context, target Resource) (Authenticator, error) {
 	dk.mu.Lock()
 	defer dk.mu.Unlock()
 
@@ -73,7 +94,7 @@ func (dk *defaultKeychain) Resolve(target Resource) (Authenticator, error) {
 
 	// First, check $HOME/.docker/config.json
 	foundDockerConfig := false
-	home, err := homedir.Dir()
+	home, err := os.UserHomeDir()
 	if err == nil {
 		foundDockerConfig = fileExists(filepath.Join(home, ".docker/config.json"))
 	}
@@ -81,12 +102,20 @@ func (dk *defaultKeychain) Resolve(target Resource) (Authenticator, error) {
 	if !foundDockerConfig && os.Getenv("DOCKER_CONFIG") != "" {
 		foundDockerConfig = fileExists(filepath.Join(os.Getenv("DOCKER_CONFIG"), "config.json"))
 	}
+	configDir := os.Getenv("XDG_CONFIG_HOME")
+	if configDir == "" && home != "" {
+		configDir = filepath.Join(home, ".config")
+	}
+	podmanAuth := filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "containers/auth.json")
+	if (os.Getenv("XDG_RUNTIME_DIR") == "" || !fileExists(podmanAuth)) && configDir != "" {
+		podmanAuth = filepath.Join(configDir, "containers/auth.json")
+	}
 	// If either of those locations are found, load it using Docker's
 	// config.Load, which may fail if the config can't be parsed.
 	//
 	// If neither was found, look for Podman's auth at
-	// $XDG_RUNTIME_DIR/containers/auth.json and attempt to load it as a
-	// Docker config.
+	// $REGISTRY_AUTH_FILE or containers/auth.json under XDG runtime/config dirs
+	// and attempt to load it as a Docker config.
 	//
 	// If neither are found, fallback to Anonymous.
 	var cf *configfile.ConfigFile
@@ -95,16 +124,28 @@ func (dk *defaultKeychain) Resolve(target Resource) (Authenticator, error) {
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		f, err := os.Open(filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "containers/auth.json"))
+	} else if path := filepath.Clean(os.Getenv("REGISTRY_AUTH_FILE")); fileExists(path) {
+		f, err := os.Open(path)
 		if err != nil {
-			return Anonymous, nil
+			return nil, err
 		}
 		defer f.Close()
 		cf, err = config.LoadFromReader(f)
 		if err != nil {
 			return nil, err
 		}
+	} else if path := filepath.Clean(podmanAuth); fileExists(path) {
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		cf, err = config.LoadFromReader(f)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		return Anonymous, nil
 	}
 
 	// See:
@@ -167,6 +208,10 @@ func NewKeychainFromHelper(h Helper) Keychain { return wrapper{h} }
 type wrapper struct{ h Helper }
 
 func (w wrapper) Resolve(r Resource) (Authenticator, error) {
+	return w.ResolveContext(context.Background(), r)
+}
+
+func (w wrapper) ResolveContext(_ context.Context, r Resource) (Authenticator, error) {
 	u, p, err := w.h.Get(r.RegistryStr())
 	if err != nil {
 		return Anonymous, nil
@@ -177,4 +222,80 @@ func (w wrapper) Resolve(r Resource) (Authenticator, error) {
 		return FromConfig(AuthConfig{Username: u, IdentityToken: p}), nil
 	}
 	return FromConfig(AuthConfig{Username: u, Password: p}), nil
+}
+
+func RefreshingKeychain(inner Keychain, duration time.Duration) Keychain {
+	return &refreshingKeychain{
+		keychain: inner,
+		duration: duration,
+	}
+}
+
+type refreshingKeychain struct {
+	keychain Keychain
+	duration time.Duration
+	clock    func() time.Time
+}
+
+func (r *refreshingKeychain) Resolve(target Resource) (Authenticator, error) {
+	return r.ResolveContext(context.Background(), target)
+}
+
+func (r *refreshingKeychain) ResolveContext(ctx context.Context, target Resource) (Authenticator, error) {
+	last := time.Now()
+	auth, err := Resolve(ctx, r.keychain, target)
+	if err != nil || auth == Anonymous {
+		return auth, err
+	}
+	return &refreshing{
+		target:   target,
+		keychain: r.keychain,
+		last:     last,
+		cached:   auth,
+		duration: r.duration,
+		clock:    r.clock,
+	}, nil
+}
+
+type refreshing struct {
+	sync.Mutex
+	target   Resource
+	keychain Keychain
+
+	duration time.Duration
+
+	last   time.Time
+	cached Authenticator
+
+	// for testing
+	clock func() time.Time
+}
+
+func (r *refreshing) Authorization() (*AuthConfig, error) {
+	return r.AuthorizationContext(context.Background())
+}
+
+func (r *refreshing) AuthorizationContext(ctx context.Context) (*AuthConfig, error) {
+	r.Lock()
+	defer r.Unlock()
+	if r.cached == nil || r.expired() {
+		r.last = r.now()
+		auth, err := Resolve(ctx, r.keychain, r.target)
+		if err != nil {
+			return nil, err
+		}
+		r.cached = auth
+	}
+	return Authorization(ctx, r.cached)
+}
+
+func (r *refreshing) now() time.Time {
+	if r.clock == nil {
+		return time.Now()
+	}
+	return r.clock()
+}
+
+func (r *refreshing) expired() bool {
+	return r.now().Sub(r.last) > r.duration
 }
