@@ -245,6 +245,9 @@ func TestKvmToKRepartitionTopology(test *testing.T) {
 		evetest.BaseOSDatastoreHTTP, true, false, conversionUpgradeTimeout)
 	stopStates()
 	conversionOK = true
+	if withVolume {
+		defer recordPVCUpload(device)
+	}
 	evetest.Checkpoint("conversion-complete")
 
 	// Phase 7.
@@ -273,6 +276,10 @@ func TestKvmToKRepartitionTopology(test *testing.T) {
 			rebootAndReassertEVEK(t, device, appUUID)
 		}
 		return
+	}
+	if midUploadPowerCycleRequested() {
+		powerCycleMidUpload(t, device, dataVolUUID)
+		evetest.Checkpoint("mid-upload-power-cycled")
 	}
 	// Before EVE-K's storage imports the volume: this is the reading that
 	// survives an app that never comes back.
@@ -330,5 +337,6 @@ func topologyParameterDefinitions() []evetest.TestParameterDefinition {
 			},
 		},
 		rebootAfterConversionParameter(),
+		midUploadPowerCycleParameter(),
 	)
 }
