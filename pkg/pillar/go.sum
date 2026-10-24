@@ -481,8 +481,8 @@ github.com/lf-edge/eve-api/go v0.0.0-20260907084402-08ba01c79328 h1:YcNJqvAYlbzD
 github.com/lf-edge/eve-api/go v0.0.0-20260907084402-08ba01c79328/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
 github.com/lf-edge/eve-libs v0.0.0-20260928172040-a59ba20797d0 h1:u7tFrmeaqkuIc06IYWLY/cEqHFzplnYgQ9MERTolKaY=
 github.com/lf-edge/eve-libs v0.0.0-20260928172040-a59ba20797d0/go.mod h1:TXOpIgx9kwsunYgGcyTAAJvI+faOAd+PWk7p8mt0I8Y=
-github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d h1:tUBb9M6u42LXwHAYHyh22wJeUUQlTpDkXwRXalpRqbo=
-github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d/go.mod h1:Nn3juMJJ1G8dyHOebdZyS4jOB/fuxAd5fIajBaWjHr8=
+github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20261015084011-20eade920485 h1:UI1G5IeecS+6wwO9LVEwstKkgZ9y9WvdSvwS44Qed6M=
+github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20261015084011-20eade920485/go.mod h1:Vq745ozk94M81lIQlQIQv88kvgYAWvO7/5OnCrRiCQc=
 github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56 h1:LmFp0jbNSwPLuxJA+nQ+mMQrQ53ESkvHP4CVMqR0zrY=
 github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56/go.mod h1:Z1YRCAzPvFSjlmUGeVXQcMhGMajnD5hbcxob0ff/2tY=
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de h1:9TO3cAIGXtEhnIaL+V+BEER86oLrvS+kWobKpbJuye0=
