@@ -252,6 +252,9 @@ const (
 	// ZFSPoolTrimCron is the cron schedule for periodic zpool trim of the
 	// persist pool on EVE-k ZFS nodes. Empty string disables the timer.
 	ZFSPoolTrimCron GlobalSettingKey = "timer.zfs.pool.trim.cron"
+	// ZFSPoolTrimRate caps the average trim rate of each disk (leaf vdev) in
+	// the persist pool on EVE-k ZFS nodes, in bytes/s.
+	ZFSPoolTrimRate GlobalSettingKey = "storage.zfs.pool.trim.rate.bytespersec"
 	// LogRemainToSendMBytes Max gzip log files remain on device to be sent in Mbytes
 	LogRemainToSendMBytes GlobalSettingKey = "newlog.gzipfiles.ondisk.maxmegabytes"
 
@@ -1237,6 +1240,9 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	// VaultTrimCron / ZFSPoolTrimCron: weekends at 02:00 / 03:00 (staggered)
 	configItemSpecMap.AddStringItem(VaultTrimCron, "0 2 * * 6,0", cronValidator)
 	configItemSpecMap.AddStringItem(ZFSPoolTrimCron, "0 3 * * 6,0", cronValidator)
+	// ZFSPoolTrimRate: default 1.5 MiB/s per disk, one pass over 1 TB of free
+	// space on a disk in about a week
+	configItemSpecMap.AddIntItem(ZFSPoolTrimRate, 1536*1024, 64*1024, 0xFFFFFFFF)
 	// Dom0DiskUsageMaxBytes - Default is 2GB, min is 100MB
 	configItemSpecMap.AddIntItem(Dom0DiskUsageMaxBytes, 2*1024*1024*1024,
 		100*1024*1024, 0xFFFFFFFF)
