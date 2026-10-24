@@ -450,6 +450,18 @@ GOSOURCES_SOURCE=github.com/deitch/go-sources-and-licenses
 COMPARESOURCES=$(BUILDTOOLS_BIN)/compare-sbom-sources
 COMPARE_SOURCE=./tools/compare-sbom-sources
 
+SBOM_STAMP=$(BUILDTOOLS_BIN)/sbom-stamp
+# A commit's committer date is covered by its hash, so every clone of it
+# agrees; a dirty tree has no commit describing it and uses the build time.
+ifeq ($(REPO_DIRTY_TAG),)
+SOURCE_DATE_EPOCH ?= $(shell git log -1 --pretty=%ct 2>/dev/null || date -u +%s)
+else
+SOURCE_DATE_EPOCH ?= $(shell date -u +%s)
+endif
+SBOM_STAMP_CMD=SOURCE_DATE_EPOCH=$(SOURCE_DATE_EPOCH) $(SBOM_STAMP) -name eve -version $(FULL_VERSION) \
+	-download $(if $(REPO_DIRTY_TAG),NOASSERTION,git+https://github.com/lf-edge/eve.git@$(shell git rev-parse HEAD 2>/dev/null)) \
+	-purl pkg:docker/lfedge/eve@$(FULL_VERSION)
+
 # tool for scan docker package dependencies
 GET_DEPS_DIR=./tools/get-deps
 GET_DEPS=./tools/get-deps/get-deps
@@ -457,8 +469,9 @@ GET_DEPS=./tools/get-deps/get-deps
 DOCKERFILE_FROM_CHECKER_DIR=./tools/dockerfile-from-checker/
 DOCKERFILE_FROM_CHECKER=$(DOCKERFILE_FROM_CHECKER_DIR)/dockerfile-from-checker
 
-SYFT_VERSION:=v0.85.0
-SYFT_IMAGE:=docker.io/anchore/syft:$(SYFT_VERSION)
+# buildkit generates each package's SBoM attestation with this scanner; its
+# default, stable-1, floats and so changes the SBoM of a rebuilt release.
+SBOM_SCANNER:=docker/buildkit-syft-scanner:1.12.0@sha256:ae4f3b554449e7e25548e7d8ccc029d17357348e30c6e3df01b92bc93654d6a9
 
 # we use the following block to assign correct tag to the Docker registry artifact
 ifeq ($(LINUXKIT_PKG_TARGET),push)
@@ -713,7 +726,7 @@ $(UBOOT_IMG): PKG=u-boot
 $(BSP_IMX_PART): PKG=bsp-imx
 $(EFI_PART) $(BOOT_PART) $(INITRD_IMG) $(IPXE_IMG) $(BIOS_IMG) $(UBOOT_IMG) $(BSP_IMX_PART): $(LINUXKIT) | $(INSTALLER)
 	mkdir -p $(dir $@)
-	$(LINUXKIT) pkg build --pull $(LINUXKIT_OPTS) --platforms linux/$(ZARCH) pkg/$(PKG) # running linuxkit pkg build _without_ force ensures that we either pull it down or build it.
+	$(LINUXKIT) pkg build --pull $(LINUXKIT_OPTS) --sbom-scanner $(SBOM_SCANNER) --platforms linux/$(ZARCH) pkg/$(PKG) # running linuxkit pkg build _without_ force ensures that we either pull it down or build it.
 	cd $(dir $@) && $(LINUXKIT) cache export --platform linux/$(DOCKER_ARCH_TAG) --format filesystem --outfile - $(shell $(LINUXKIT) pkg show-tag pkg/$(PKG)) | tar xvf - $(notdir $@)
 	$(QUIET): $@: Succeeded
 
@@ -898,10 +911,10 @@ $(PERSIST_IMG): | $(INSTALLER)
 	dd if=/dev/zero bs=1048576 count=1 >> $@
 	$(QUIET): $@: Succeeded
 
-$(ROOTFS_TAR_BASE)-%.tar: images/out/rootfs-$(HV)-%.yml | $(INSTALLER)
+$(ROOTFS_TAR_BASE)-%.tar: images/out/rootfs-$(HV)-%.yml | $(INSTALLER) $(SBOM_STAMP)
 	$(QUIET): $@: Begin
 	echo "Building rootfs tarball $@ from $<"
-	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH)
+	./tools/makerootfs.sh tar $(UPDATE_TAR) -y $< -t $@ -d $(INSTALLER) -a $(ZARCH) -s "$(SBOM_STAMP_CMD)"
 	$(QUIET): $@: Succeeded
 ifdef KERNEL_IMAGE
 	# Consider this as a cry from the heart: enormous amount of time is
@@ -981,6 +994,11 @@ $(SOURCES_DIR):
 $(COLLECTED_SOURCES): $(ROOTFS_TARS) $(GOSOURCES)| $(INSTALLER) $(SOURCES_DIR)
 	$(QUIET): $@: Begin
 	bash tools/collect-sources.sh $< $(CURDIR) $@
+	$(QUIET): $@: Succeeded
+
+$(SBOM_STAMP): tools/sbom-stamp/*.go tools/sbom-stamp/go.mod | $(BUILDTOOLS_BIN)
+	$(QUIET): $@: Begin
+	cd tools/sbom-stamp && CGO_ENABLED=0 go build -o $@ .
 	$(QUIET): $@: Succeeded
 
 $(COMPARESOURCES):
@@ -1360,7 +1378,7 @@ eve-%: pkg/%/Dockerfile $(LINUXKIT) $(RESCAN_DEPS)
 	$(eval LINUXKIT_BUILD_PLATFORMS := --platforms $(subst $(space),$(comma),$(strip $(LINUXKIT_BUILD_PLATFORMS_LIST))))
 	$(eval PKG_FORCE_BUILD := $(if $(strip $(FORCE_BUILD)),$(FORCE_BUILD),$(if $(filter $*,$(FORCE_BUILD_PKGS)),--force,)))
 	$(eval LINUXKIT_PULL := $(if $(and $(filter $(PKGS_HOSTARCH),$*),$(filter-out $(HOSTARCH),$(ZARCH))),$(if $(PKG_FORCE_BUILD),,--pull),))
-	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(PKG_FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_PULL) $(LINUXKIT_BUILD_PLATFORMS)))
+	$(eval LINUXKIT_FLAGS := $(if $(filter manifest,$(LINUXKIT_PKG_TARGET)),,$(PKG_FORCE_BUILD) $(LINUXKIT_DOCKER_LOAD) $(LINUXKIT_PULL) $(LINUXKIT_BUILD_PLATFORMS) --sbom-scanner $(SBOM_SCANNER)))
 	$(QUIET)$(LINUXKIT) $(DASH_V) pkg $(LINUXKIT_PKG_TARGET) $(LINUXKIT_OPTS) $(LINUXKIT_EXTRA_BUILD_ARGS) $(LINUXKIT_FLAGS) --build-yml $(call get_pkg_build_yml,$*) pkg/$*
 	$(QUIET)if [ -n "$(PRUNE)" ]; then \
 		flock $(PARALLEL_BUILD_LOCK) docker image prune -f; \
