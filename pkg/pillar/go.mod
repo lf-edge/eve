@@ -34,7 +34,7 @@ require (
 	github.com/lf-edge/edge-containers v0.0.0-20260917202841-e36165e916c9
 	github.com/lf-edge/eve-api/go v0.0.0-20260907084402-08ba01c79328
 	github.com/lf-edge/eve-libs v0.0.0-20260928172040-a59ba20797d0
-	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20240315102754-0f6d1f182e0d
+	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20261015084011-20eade920485
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee
 	github.com/longhorn/longhorn-manager v1.9.1
