@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -19,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/types/monitorapi"
+	"github.com/lf-edge/eve/pkg/pillar/zboot"
 	"github.com/sirupsen/logrus"
 )
 
@@ -71,51 +71,29 @@ func (ctx *monitor) readServerFile() error {
 
 func (ctx *monitor) updateServerFile(newServer string) error {
 	var remountErr error
-	// 1. Find the CONFIG partition
-	findCmd := exec.Command("/sbin/findfs", "PARTLABEL=CONFIG")
-	deviceBytes, err := findCmd.Output()
-	if err != nil {
-		return fmt.Errorf("failed to find CONFIG partition: %v -- output was: `%s'", err, string(deviceBytes))
-	}
-	devicePath := strings.TrimRight(string(deviceBytes), "\n\r")
-
-	// 2. Create temp directory under /run
-	tempDir, err := os.MkdirTemp("/run", "config-mount-")
-	if err != nil {
-		return fmt.Errorf("failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	// 3. Mount the CONFIG partition as read-write
-	if err := syscall.Mount(devicePath,
-		tempDir, "vfat", 0, "iocharset=iso8859-1"); err != nil {
-		return fmt.Errorf("failed to mount CONFIG partition on device %v: %v", devicePath, err)
-	}
-	defer syscall.Unmount(tempDir, 0)
-
-	// 4. Write new server file
-	tempServerFile := filepath.Join(tempDir, filepath.Base(types.ServerFileName))
-	if err := os.WriteFile(tempServerFile, []byte(newServer), 0644); err != nil {
-		return fmt.Errorf("failed to write new server file: %v", err)
+	// 1. Write the new server file to the CONFIG partition on the boot disk
+	if err := zboot.WithConfigPartitionRW(func(mountDir string) error {
+		serverFile := filepath.Join(mountDir, filepath.Base(types.ServerFileName))
+		return os.WriteFile(serverFile, []byte(newServer), 0644)
+	}); err != nil {
+		return fmt.Errorf("failed to write new server file to CONFIG partition: %v", err)
 	}
 
-	// 5. Unmount temp directory (handled by defer)
-
-	// 6. remount /config as rw. this is a tmpfs
+	// 2. remount /config as rw. this is a tmpfs
 	if err := syscall.Mount("none", "/config", "tmpfs",
 		syscall.MS_REMOUNT, ""); err != nil {
 		return fmt.Errorf("failed to remount /config RW: %v", err)
 	}
 
 	defer func() {
-		// 7. remount /config as ro
+		// 4. remount /config as ro
 		if err := syscall.Mount("none", "/config", "tmpfs",
 			syscall.MS_REMOUNT|syscall.MS_RDONLY, ""); err != nil {
 			remountErr = fmt.Errorf("failed to remount /config RO: %v", err)
 		}
 	}()
 
-	// 6. Update shadow copy in /config
+	// 3. Update shadow copy in /config
 	if err := os.WriteFile(types.ServerFileName, []byte(newServer), 0644); err != nil {
 		return fmt.Errorf("failed to update shadow copy: %v", err)
 	}

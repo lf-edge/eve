@@ -43,19 +43,22 @@ or rewriting the GPT).
 ### CRITICAL: runtime `/config` is volatile — writes there do NOT persist
 
 At runtime `/config` is **not** the CONFIG partition. storage-init mounts the
-real `PARTLABEL=CONFIG` (vfat) read-only, copies it into a small **tmpfs (RAM)**
-mounted at `/config`, unmounts the partition, and remounts that tmpfs
-**read-only** (`pkg/storage-init/storage-init.sh`). So a write to `/config` at
+boot disk's CONFIG partition (vfat, found with `zboot partdev CONFIG`)
+read-only, copies it into a small **tmpfs (RAM)** mounted at `/config`,
+unmounts the partition, and remounts that tmpfs **read-only** (`pkg/storage-init/storage-init.sh`). So a write to `/config` at
 runtime lands in RAM, never reaches the partition, and is **lost on the next
 reboot** — exactly the reboot the shrink depends on.
 
 Therefore the backup, the shrink flag file, restore, and cleanup **must operate
 on the CONFIG partition mounted read-write directly** — not on runtime `/config`.
-The caller mounts it (find `PARTLABEL=CONFIG`, mount it read-write at a temp
-path, point `--backup-dir`/`--flag-file` there, write, sync, unmount), the way
-the `monitor` agent already does for its `findfs PARTLABEL=CONFIG` writes. Every
-default path of `backup`/`restore`/`cleanup` that mentions `/config/...` assumes
-this real-partition mount; pointing them at the runtime `/config` tmpfs would
+The caller mounts it with `zboot.WithConfigPartitionRW`, which finds the boot
+disk's CONFIG (`zboot partdev CONFIG`), mounts it read-write at a temp path and
+unmounts it after the caller has pointed `--backup-dir`/`--flag-file` there and
+written; the `monitor` agent writes the `server` file the same way. Never search
+all disks for `PARTLABEL=CONFIG`: a forgotten installer stick has a CONFIG
+partition too. Every default path of
+`backup`/`restore`/`cleanup` that mentions `/config/...` assumes this
+real-partition mount; pointing them at the runtime `/config` tmpfs would
 silently lose the shrink flag file and the device-identity backup. This is a
 correctness requirement, not an optimization.
 

@@ -11,7 +11,7 @@ ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findut
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:b4d0b9fe886ec5283e91da1ade3a47ed537bb47a
 
 FROM lfedge/eve-uefi:3475d12ba5fd96760b956f8ea5f71aeb64069ba6 AS uefi-build
-FROM lfedge/eve-dom0-ztools:8eb8801c25ca4d8e63a8a4a8235c127b47bbff7c  AS zfs
+FROM lfedge/eve-dom0-ztools:3f2a6d18deb205ce26268a3d830aede5311cc5fa  AS zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
 RUN while read -r x; do \
@@ -152,7 +152,7 @@ fi
 
 FROM lfedge/eve-fscrypt:71939e715234476c75aef9c438823a79ce5768de AS fscrypt
 FROM lfedge/eve-gpt-tools:656572e057abee206a4486caa6f9601c882cee5a AS gpttools
-FROM lfedge/eve-storage-resizer:8f70a7de0f633befac0a93bba74bc2794a7c0212 AS storage-resizer
+FROM lfedge/eve-storage-resizer:49316a8380b1a8c3da9207a359de700a9e85e6e1 AS storage-resizer
 
 # dhcpcd: Alpine 3.21+ ships a sufficiently up-to-date version (10.x with required IPv6 fixes).
 # No --platform means Docker BuildKit uses the target platform, giving us the correct binary arch.

@@ -286,6 +286,52 @@ func GetPartitionDevname(partName string) string {
 	return devName
 }
 
+// GetConfigPartitionDevname returns the CONFIG partition on the boot disk.
+// Never search all disks for it: a forgotten installer stick carries a CONFIG
+// partition of its own.
+func GetConfigPartitionDevname() (string, error) {
+	out, err := execWithRetry(nil, "zboot", "partdev", "CONFIG")
+	if err != nil {
+		return "", fmt.Errorf("zboot partdev CONFIG: %w", err)
+	}
+	devName := strings.TrimSpace(string(out))
+	if devName == "" {
+		return "", errors.New("no CONFIG partition on the boot disk")
+	}
+	return devName, nil
+}
+
+// WithConfigPartitionRW mounts the CONFIG partition of the boot disk read-write
+// at a temp dir under /run, calls fn with that dir, then unmounts. The runtime
+// /config is a read-only tmpfs RAM copy of the partition, so anything that has
+// to survive a reboot must be written here. Returns the lookup or mount error
+// (fn not run), or fn's error, or the unmount error.
+func WithConfigPartitionRW(fn func(mountDir string) error) error {
+	devicePath, err := GetConfigPartitionDevname()
+	if err != nil {
+		return err
+	}
+	mountDir, err := os.MkdirTemp("/run", "config-rw-")
+	if err != nil {
+		return fmt.Errorf("create temp mount dir: %w", err)
+	}
+	if err := zbootMount(devicePath, mountDir, "vfat", 0, "iocharset=iso8859-1"); err != nil {
+		_ = os.RemoveAll(mountDir) // never mounted, safe to remove
+		return fmt.Errorf("mount CONFIG partition %s: %w", devicePath, err)
+	}
+	fnErr := fn(mountDir)
+	// Only remove the mountpoint once it is actually unmounted; RemoveAll on a
+	// still-mounted dir would delete files on the CONFIG partition.
+	if umountErr := zbootUnmount(mountDir, false); umountErr != nil {
+		if fnErr != nil {
+			return fnErr
+		}
+		return fmt.Errorf("unmount CONFIG partition %s: %w", mountDir, umountErr)
+	}
+	_ = os.RemoveAll(mountDir)
+	return fnErr
+}
+
 // GetPartitionSizeInBytes get the partition size for partition partName
 func GetPartitionSizeInBytes(partName string) uint64 {
 	validatePartitionLabel(partName)

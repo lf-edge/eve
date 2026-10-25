@@ -13,10 +13,10 @@ package main
 // restored into /persist afterwards if missing or changed.
 //
 // IMPORTANT: the --backup-dir/--flag-file paths must point at the CONFIG
-// partition mounted READ-WRITE (find PARTLABEL=CONFIG, mount it rw, sync,
-// unmount). At runtime EVE's /config is a read-only tmpfs RAM copy of that
-// partition, so writes to the runtime /config land in RAM and are lost on the
-// very reboot the shrink depends on. The caller owns that mount (see
+// partition of the boot disk mounted READ-WRITE (find it with `zboot partdev
+// CONFIG`, mount it rw, sync, unmount). At runtime EVE's /config is a read-only
+// tmpfs RAM copy of that partition, so writes to the runtime /config land in RAM
+// and are lost on the very reboot the shrink depends on. The caller owns that mount (see
 // pkg/pillar/docs/diskconvert.md); these subcommands just read/write the paths
 // they are given.
 //

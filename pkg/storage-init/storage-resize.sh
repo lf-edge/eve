@@ -5,7 +5,7 @@
 #
 # Boot-disk repartition helpers, driving the storage-resizer binary.
 # Sourced by storage-init.sh (not executed standalone) and relies on CONFIGDIR,
-# PERSISTDIR and log() defined there.
+# PERSISTDIR, log() and config_partition() defined there.
 #
 # baseosmgr (online) decides the boot disk needs the larger ESP/IMGA/IMGB layout,
 # writes the /config/repartition-inprogress flag file (its value is the shrink
@@ -51,7 +51,7 @@ RESIZE_MAX_REBOOTS=12
 # reboot counter, flag/backup removal) must land on the partition. Returns
 # non-zero if the partition can't be found or mounted.
 _mount_config_rw() {
-    _cfgp=$(findfs PARTLABEL=CONFIG) || return 1
+    _cfgp=$(config_partition) || return 1
     [ -n "$_cfgp" ] || return 1
     mkdir -p "$1"
     mount -t vfat -o rw,iocharset=iso8859-1 "$_cfgp" "$1"
@@ -256,7 +256,7 @@ resync_inmem_config() {
 # leftover backup dir in the CONFIG copy).
 maybe_restore_after_persist() {
     [ -e "$CONFIGDIR/repartition-inprogress" ] || [ -e "$CONFIGDIR/backup-persist" ] || return 0
-    _cfgpart=$(findfs PARTLABEL=CONFIG) || _cfgpart=""
+    _cfgpart=$(config_partition) || _cfgpart=""
     if [ -z "$_cfgpart" ]; then
         log "storage-resizer: no CONFIG partition; cannot restore/cleanup"
         return 1
