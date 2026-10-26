@@ -334,6 +334,8 @@ func (s *Supervisor) startK3s() error {
 	// commit 2c417d5fe.
 	removeStaleFlannel()
 
+	pruneLegacyEvents()
+
 	// Ensure the host-local CNI plugin is on PATH. k3s v1.34+
 	// validates CNI plugins via exec.LookPath; without this
 	// /usr/bin shim the validation fails and k3s never reaches
