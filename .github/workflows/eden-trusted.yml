@@ -144,6 +144,7 @@ jobs:
       - name: Reset Eden Runner & Eden jobs statuses
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
         with:
+          retries: 3
           script: |
             const { owner, repo } = context.repo;
             const sha = process.env.PR_SHA;
@@ -275,6 +276,7 @@ jobs:
           RESULT: ${{ steps.check.outputs.result }}
           EDEN_IN_PR_STATUS_TITLE: ${{ needs.context.outputs.eden_in_pr_status_title }}
         with:
+          retries: 3
           script: |
             const { owner, repo } = context.repo;
             const map = { success:'success', failure:'failure', cancelled:'error' };
@@ -308,17 +310,18 @@ jobs:
           SHA: ${{ needs.context.outputs.pr_sha }}
           EDEN_PARENT_JOB_TITLE: ${{ needs.context.outputs.eden_parent_job_title }} for ${{ needs.context.outputs.pr_base_ref }}
         with:
+          retries: 3
           script: |
             const { owner, repo } = context.repo;
             const runId      = process.env.GITHUB_RUN_ID;
             const parentName = process.env.EDEN_PARENT_JOB_TITLE;
             const prefix     = `${parentName} / `;
 
-            const { data } = await github.rest.actions.listJobsForWorkflowRun({
-              owner, repo, run_id: runId, per_page: 100
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              owner, repo, run_id: runId, per_page: 50
             });
 
-            for (const job of data.jobs) {
+            for (const job of jobs) {
               // child jobs only
               if (!job.name.startsWith(prefix)) continue;
 
