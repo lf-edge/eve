@@ -87,12 +87,12 @@ verified() {
 }
 
 # Docker Hub's referrers listing can lag a push, so a signature or attestation
-# just made is re-checked for up to a minute; the last attempt's error goes to
-# stderr.
+# just made is re-checked every 5 s for up to five minutes; the last attempt's
+# error goes to stderr.
 until_visible() {
     local waited=0
     until "$@" > /dev/null 2>&1; do
-        if [ "$waited" -ge 60 ]; then
+        if [ "$waited" -ge 300 ]; then
             "$@" > /dev/null
             return
         fi
