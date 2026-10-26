@@ -657,6 +657,16 @@ func (m *DpcManager) processDHCPReacquireSignal(ctx context.Context, portLL stri
 		m.cancelDHCPReacquireTracker(portLL)
 		return
 	}
+	// The DHCP client may have already obtained a lease from the new VLAN.
+	// Releasing it again would only cause a temporary loss of connectivity.
+	portStatus := m.deviceNetStatus.LookupPortByLogicallabel(portLL)
+	if portStatus != nil && portStatus.IPv4Subnet != nil &&
+		!netutils.EqualIPNets(tracker.prevSubnet, portStatus.IPv4Subnet) {
+		m.Log.Noticef("PNAC: DHCP reacquire for port %q: subnet already changed "+
+			"from %v to %v, done", portLL, tracker.prevSubnet, portStatus.IPv4Subnet)
+		m.cancelDHCPReacquireTracker(portLL)
+		return
+	}
 	tracker.retriesDone++
 	tracker.awaitingAddrChange = true
 	m.dhcpReacquireCounters[portLL]++
