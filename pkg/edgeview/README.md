@@ -30,7 +30,7 @@ the 'Makefile' supports in pkg/edgeview directory:
 On edge-view client container, or `lfedge/eve-edgeview` with environment variable EDGEVIEW_CLIENT=1, use '-h' or '-help' to see all the options, and one can do help on specific command option to get detail on the command.
 
 ```console
-edge-view-query [ -token <session-token> ] [ -debug ] [ -inst <instance-id> ] <query string>
+edge-view-query [ -token <session-token> ] [ -debug ] [ -inst <instance-id> ] [ -wait <seconds> ] <query string>
  options:
   log/search-pattern [ -time start_time-end_time -json -type app|dev -line num ]
 
@@ -39,3 +39,6 @@ edge-view-query [ -token <session-token> ] [ -debug ] [ -inst <instance-id> ] <q
   [acl app arp connectivity flow if mdns nslookup ping route socket speed tcp tcpdump trace url wireless]
   [app configitem cat cp datastore download du hw lastreboot ls model newlog pci ps cipher top usb volume]
 ```
+
+By default the client gives up right away if the device is not connected to the dispatcher. Right after Edgeview is enabled the device
+can take a few minutes to connect; use `-wait <seconds>` to keep probing the dispatcher (every 10 seconds) until the device shows up.
