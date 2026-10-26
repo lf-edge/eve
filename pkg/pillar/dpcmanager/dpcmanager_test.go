@@ -1786,7 +1786,7 @@ func TestDeleteDPCMidVerification(test *testing.T) {
 	dpcManager.AddDPC(manualDPC)
 	t.Eventually(dpcKeyCb(0)).Should(Equal("manual"))
 	t.Eventually(testingInProgressCb()).Should(BeTrue())
-	t.Expect(getDPC(0).State).To(Equal(types.DPCStateIPDNSWait))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateIPDNSWait))
 	t.Consistently(testingInProgressCb(), 2*time.Second).Should(BeTrue())
 
 	// Revert the manual DPC (what the TUI's "revert" action does) while it
