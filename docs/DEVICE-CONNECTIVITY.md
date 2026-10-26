@@ -660,6 +660,8 @@ The full workflow from an unauthenticated device to an authenticated network por
    ([`pnac.dhcp.reacquire.max.retries`](CONFIG-PROPERTIES.md), default 4) is reached.
    Connectivity verification of a new network configuration waits for the first reacquire
    to finish, so that it is not run with a lease from the previous VLAN.
+   A retry is skipped when the DHCP client has already obtained a lease from another
+   subnet in the meantime, to avoid a needless loss of connectivity.
 
 ### Configuration
 

@@ -3840,3 +3840,46 @@ func TestPNACDHCPReacquirePNACRemoved(test *testing.T) {
 	t.Eventually(dhcpReacquireCounterCb("eth0"), 10*time.Second, 200*time.Millisecond).
 		Should(Equal(1))
 }
+
+// TestPNACDHCPReacquireSubnetAlreadyChanged verifies that the DHCP lease is not
+// released when the DHCP client has already moved to another subnet by the time
+// the first reacquire is scheduled to run.
+func TestPNACDHCPReacquireSubnetAlreadyChanged(test *testing.T) {
+	t := initTest(test)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	networkMonitor.AddOrUpdateInterface(eth0)
+
+	gcp := globalConfig()
+	gcp.SetGlobalValueInt(types.PnacDHCPReacquireMaxRetries, 3)
+	dpcManager.UpdateGCP(gcp)
+
+	aa := makeAA(selectedIntfs{eth0: true})
+	dpc := makeDPC("zedagent", time.Now(), selectedIntfs{eth0: true})
+	dpc.Ports[0].PNAC = types.PNACConfig{Enabled: true}
+	dpcManager.UpdateAA(aa)
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	networkMonitor.PublishPNACEvent(netmonitor.PNACEvent{
+		IfName:          "eth0",
+		IsAuthenticated: true,
+	})
+
+	// The VLAN transition completes on its own before the first retry.
+	// Give nim time to record the subnet in effect when the event was received.
+	time.Sleep(500 * time.Millisecond)
+	eth0New := mockEth0()
+	eth0New.IPAddrs = []*net.IPNet{ipAddress("10.0.0.5/16")}
+	eth0New.DHCP = netmonitor.DHCPInfo{
+		IPv4Subnet: ipSubnet("10.0.0.0/16"),
+	}
+	networkMonitor.AddOrUpdateInterface(eth0New)
+
+	// The first retry (after ~2s) is skipped.
+	t.Consistently(dhcpReacquireCounterCb("eth0"), 6*time.Second, 500*time.Millisecond).
+		Should(Equal(0))
+}
