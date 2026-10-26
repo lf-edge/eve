@@ -15,19 +15,7 @@ import (
 // and content tree usage
 // disk usage (latter used if there isn't enough)
 func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
-	var reservedAppDiskUsage uint64
-
-	pubContentTree := ctxPtr.pubContentTreeStatus
-	itemsContentTree := pubContentTree.GetAll()
-	for _, iterContentTreeStatusJSON := range itemsContentTree {
-		iterContentTreeStatus := iterContentTreeStatusJSON.(types.ContentTreeStatus)
-		if iterContentTreeStatus.State < types.LOADED {
-			log.Tracef("Content tree %s State %d < LOADED",
-				iterContentTreeStatus.Key(), iterContentTreeStatus.State)
-			continue
-		}
-		reservedAppDiskUsage += uint64(iterContentTreeStatus.CurrentSize)
-	}
+	reservedAppDiskUsage := reservedContentTreeDiskUsage(ctxPtr)
 
 	pubVolume := ctxPtr.pubVolumeStatus
 	itemsVolume := pubVolume.GetAll()
@@ -80,6 +68,39 @@ func getRemainingDiskSpace(ctxPtr *volumemgrContext) (uint64, error) {
 			allowedDeviceDiskSize-reservedAppDiskUsage)
 		return allowedDeviceDiskSize - reservedAppDiskUsage, nil
 	}
+}
+
+// reservedContentTreeDiskUsage returns the disk space used by the blobs of
+// all content trees in LOADED state or later. Blobs are keyed by sha256 and
+// stored once in the CAS even when several content trees reference them (e.g.
+// one content tree per app instance using the same image), so each blob is
+// counted only once instead of summing ContentTreeStatus.CurrentSize.
+func reservedContentTreeDiskUsage(ctxPtr *volumemgrContext) uint64 {
+	var reserved uint64
+	counted := make(map[string]struct{})
+
+	for _, iterContentTreeStatusJSON := range ctxPtr.pubContentTreeStatus.GetAll() {
+		iterContentTreeStatus := iterContentTreeStatusJSON.(types.ContentTreeStatus)
+		if iterContentTreeStatus.State < types.LOADED {
+			log.Tracef("Content tree %s State %d < LOADED",
+				iterContentTreeStatus.Key(), iterContentTreeStatus.State)
+			continue
+		}
+		for _, blobSha := range iterContentTreeStatus.Blobs {
+			if _, ok := counted[blobSha]; ok {
+				continue
+			}
+			counted[blobSha] = struct{}{}
+			blob := ctxPtr.LookupBlobStatus(blobSha)
+			if blob == nil {
+				log.Warnf("reservedContentTreeDiskUsage: content tree %s blob %s not found",
+					iterContentTreeStatus.Key(), blobSha)
+				continue
+			}
+			reserved += uint64(blob.CurrentSize)
+		}
+	}
+	return reserved
 }
 
 // Everything in /persist except these directories/datasets counts
