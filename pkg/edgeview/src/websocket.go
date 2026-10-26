@@ -32,6 +32,14 @@ const (
 	invalidIndex   = 2
 )
 
+// variables rather than constants, so that tests can shorten them
+var (
+	// TCP connect timeout, shared between all the dispatcher addresses
+	wssDialTimeout = 10 * time.Second
+	// timeout for the complete websocket dial, including wssDialTimeout
+	wssHandshakeTimeout = 20 * time.Second
+)
+
 var (
 	readP           *os.File
 	writeP          *os.File
@@ -218,8 +226,12 @@ func tlsDial(isServer bool, pIP string, pport int, src []net.IP, idx int) (*webs
 		log.Noticef("wss server cert appended to TLS")
 	}
 
+	// bound the whole dial (TCP connect, proxy CONNECT, TLS and websocket
+	// upgrade), so a source interface which silently drops packets does not
+	// hold up the walk through the other interfaces for minutes
 	dialer := &websocket.Dialer{
-		TLSClientConfig: tlsConfig,
+		TLSClientConfig:  tlsConfig,
+		HandshakeTimeout: wssHandshakeTimeout,
 	}
 	if pIP != "" && pport != 0 {
 		proxyURL, _ := url.Parse("http://" + pIP + ":" + strconv.Itoa(pport))
@@ -229,6 +241,7 @@ func tlsDial(isServer bool, pIP string, pport int, src []net.IP, idx int) (*webs
 		srcSelected := src[idx]
 		localAddr := &net.TCPAddr{IP: srcSelected}
 		netDialer := &net.Dialer{
+			Timeout:   wssDialTimeout,
 			LocalAddr: localAddr,
 			Resolver: &net.Resolver{
 				PreferGo: true,
