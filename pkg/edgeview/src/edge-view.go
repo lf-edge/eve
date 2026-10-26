@@ -57,6 +57,7 @@ const (
 	encMinVersion      = "0.8.8"               // for encryption operation, expect client to have newer version
 	verifyFailed       = "+++Verify failed+++"
 	keepaliveInterval  = 30 * time.Second // interval for sending websocket ping messages
+	probeRetryInterval = 10 * time.Second // interval between dispatcher probes while waiting for the device
 )
 
 type cmdOpt struct {
@@ -82,6 +83,7 @@ func main() {
 	ptoken := flag.String("token", "", "session token")
 	pDebug := flag.Bool("debug", false, "log more in debug")
 	pUser := flag.String("user", "", "user name info")
+	pWait := flag.Int("wait", 0, "seconds to wait for the device to connect to the dispatcher")
 	flag.Parse()
 
 	logger := evLogger(*pDebug)
@@ -134,6 +136,7 @@ func main() {
 	var jsonopt bool
 	typeopt := "all"
 	userinfo := *pUser
+	waitSec := *pWait
 	extraopt := 0
 	values := flag.Args()
 	var skiptype string
@@ -162,6 +165,8 @@ func main() {
 				extraopt = numline
 			case "token":
 				*ptoken = word
+			case "wait":
+				waitSec, _ = strconv.Atoi(word)
 			case "inst":
 			default:
 			}
@@ -188,6 +193,8 @@ func main() {
 			skiptype = "inst"
 		} else if strings.HasSuffix(word, "-user") {
 			skiptype = "user"
+		} else if strings.HasSuffix(word, "-wait") {
+			skiptype = "wait"
 		} else {
 			pqueryopt = word
 		}
@@ -322,31 +329,15 @@ func main() {
 	// determine whether it accepts the full 32-byte hash. Try the full hash
 	// first, fall back to the 16-byte form if probe indicates "no device".
 	if !runOnServer {
-		// probe full hash and inspect response body
-		_, probeBody := setupWebC(hostname, fullHash, urlWSS, runOnServer, true)
-		if strings.Contains(probeBody, serverConnectedMsg) {
-			tokenHash = fullHash
-		} else if strings.Contains(probeBody, noDeviceStr) {
-			// Could be no device or hash mismatch; try short hash
-			_, probeBody2 := setupWebC(hostname, shortHash, urlWSS, runOnServer, true)
-			if strings.Contains(probeBody2, serverConnectedMsg) {
-				tokenHash = shortHash
-			} else {
-				// neither form returned serverConnectedMsg; print dispatcher response and exit
-				if probeBody2 != "" {
-					fmt.Printf("probe response: %s\n", probeBody2)
-				} else {
-					fmt.Printf("probe response: %s\n", probeBody)
-				}
-				return
-			}
-		} else {
-			// probe returned something else (e.g., error text) - print and exit
-			if probeBody != "" {
-				fmt.Printf("probe response: %s\n", probeBody)
-			} else {
-				fmt.Printf("probe failed for full hash and no fallback available\n")
-			}
+		probe := func(hash string) string {
+			_, body := setupWebC(hostname, hash, urlWSS, runOnServer, true)
+			return body
+		}
+		var err error
+		tokenHash, err = probeTokenHash(probe, fullHash, shortHash,
+			time.Duration(waitSec)*time.Second, probeRetryInterval, intSignal)
+		if err != nil {
+			fmt.Printf("%v\n", err)
 			return
 		}
 	} else {
@@ -703,4 +694,47 @@ func setupRegexp() {
 
 	// Check for a dirname/filename. Allows dash, underscore, and dot
 	reDirPattern = regexp.MustCompile(`^[A-Za-z0-9\-_.]*$`)
+}
+
+// probeTokenHash asks the dispatcher which token hash form the device is
+// connected with: the full 32-byte hash first, then the 16-byte form used
+// by older EVE versions. A "no device online" answer for both forms means
+// the device is not connected to the dispatcher (yet); in that case the
+// probe pair is repeated every 'interval' until 'wait' has elapsed, or until
+// the user interrupts. A zero 'wait' gives up after the first probe pair.
+func probeTokenHash(probe func(hash string) string, fullHash, shortHash string,
+	wait, interval time.Duration, intSignal chan os.Signal) (string, error) {
+	deadline := time.Now().Add(wait)
+	for {
+		for _, hash := range []string{fullHash, shortHash} {
+			body := probe(hash)
+			if strings.Contains(body, serverConnectedMsg) {
+				return hash, nil
+			}
+			if body == "" {
+				return "", fmt.Errorf("could not reach the dispatcher")
+			}
+			if !strings.Contains(body, noDeviceStr) {
+				return "", fmt.Errorf("probe response: %s", body)
+			}
+		}
+
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			msg := "device is not connected to the dispatcher"
+			if wait > 0 {
+				msg += fmt.Sprintf(" after waiting %v", wait)
+			}
+			return "", fmt.Errorf("%s; if Edgeview was enabled recently, the device may "+
+				"still be connecting, try again later or use '-wait <seconds>'", msg)
+		}
+		sleep := min(interval, remaining)
+		fmt.Printf("device not connected to the dispatcher yet, retrying in %v (%v left)...\n",
+			sleep.Round(time.Second), remaining.Round(time.Second))
+		select {
+		case <-intSignal:
+			return "", fmt.Errorf("interrupted while waiting for the device")
+		case <-time.After(sleep):
+		}
+	}
 }

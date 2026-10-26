@@ -655,7 +655,7 @@ func humanTimeAgo(secDiff uint64) string {
 	}
 }
 
-var helpStr = `eve-edgeview [ -token <session-token> ] [ -inst <instance-id> ] <query command>
+var helpStr = `eve-edgeview [ -token <session-token> ] [ -inst <instance-id> ] [ -wait <seconds> ] <query command>
  query options:
 `
 
