@@ -2625,16 +2625,24 @@ func (dc *EdgeDeviceConfig) deleteContentTreeAndDeps(contentTreeID string) bool 
 func (dc *EdgeDeviceConfig) AddBlankVolume(
 	displayName string, sizeBytes uint64, clearText bool) uuid.UUID {
 	volumeUUID := dc.th.newUUID("blank volume")
+	dc.addBlankVolumeWithUUID(volumeUUID, displayName, sizeBytes, clearText, 0)
+	return volumeUUID
+}
+
+// addBlankVolumeWithUUID is AddBlankVolume with a caller-chosen UUID and
+// generation, so a cluster config can give every node the same volume.
+func (dc *EdgeDeviceConfig) addBlankVolumeWithUUID(volumeUUID uuid.UUID,
+	displayName string, sizeBytes uint64, clearText bool, generationCount int64) {
 	dc.Volumes = append(dc.Volumes, &eveconfig.Volume{
 		Uuid: volumeUUID.String(),
 		Origin: &eveconfig.VolumeContentOrigin{
 			Type: eveconfig.VolumeContentOriginType_VCOT_BLANK,
 		},
-		Maxsizebytes: int64(sizeBytes),
-		DisplayName:  displayName,
-		ClearText:    clearText,
+		Maxsizebytes:    int64(sizeBytes),
+		DisplayName:     displayName,
+		ClearText:       clearText,
+		GenerationCount: generationCount,
 	})
-	return volumeUUID
 }
 
 // AddVolume adds a standalone (app-unreferenced) VCOT_DOWNLOAD volume of the

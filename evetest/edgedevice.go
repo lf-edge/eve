@@ -2957,6 +2957,33 @@ func (d *EdgeDevice) ListAppVMIRS(
 	return names, nil
 }
 
+// KubectlListNames returns the name of every object of one resource type in
+// the EVE app namespace. An error means the device was unreachable, k3s was
+// down, or the output did not parse. A caller in Eventually must retry each of
+// these.
+func (d *EdgeDevice) KubectlListNames(resource string) ([]string, error) {
+	stdout, err := d.RunKubectl(
+		"-n "+EVEKubeAppNamespace+" get "+resource+" -o json", kubectlCommandTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("KubectlListNames: %w", err)
+	}
+	var list struct {
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &list); err != nil {
+		return nil, fmt.Errorf("KubectlListNames: parsing %s output: %w", resource, err)
+	}
+	names := make([]string, 0, len(list.Items))
+	for _, item := range list.Items {
+		names = append(names, item.Metadata.Name)
+	}
+	return names, nil
+}
+
 // GetClusterInfo returns the last recorded information about the Kubernetes
 // cluster, or nil if no such info message has been received yet.
 func (d *EdgeDevice) GetClusterInfo() *eveinfo.ZInfoKubeCluster {
@@ -3010,6 +3037,9 @@ func (d *EdgeDevice) WatchClusterInfo() (
 // necessarily the leader) or on a device already known to be the leader; for
 // a multi-node cluster where the leader isn't known in advance, use
 // EdgeCluster.WaitUntilNodesAreReady instead.
+//
+// It accepts the last report already received, which after a reboot can
+// predate it. See EdgeCluster.WaitForFreshNodesReady.
 func (d *EdgeDevice) WaitForClusterNodeIsReady(timeout time.Duration) {
 	d.th.log.Infof("Waiting for cluster node %q to become ready...", d.devName)
 

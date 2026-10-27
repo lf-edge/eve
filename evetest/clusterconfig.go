@@ -474,6 +474,56 @@ func (dc *EdgeDeviceConfig) setVolumeDesignatedNodeID(
 	}
 }
 
+// ClusterBlankVolumeConfig describes a standalone blank volume for
+// EdgeClusterConfig.AddBlankVolume.
+type ClusterBlankVolumeConfig struct {
+	DisplayName string
+	SizeBytes   uint64
+	// ClearText creates the volume outside the vault. See
+	// EdgeDeviceConfig.AddBlankVolume.
+	ClearText bool
+	// DesignatedNodeName sets the volume's designated node. Empty leaves it
+	// unset, so each node that gets the volume treats itself as its owner.
+	DesignatedNodeName string
+	// GenerationCount is the volume's generation. A controller raises it to
+	// rebuild a volume from scratch. A test can start a volume above zero to
+	// stand for one that was rebuilt, whose earlier generation is gone.
+	GenerationCount int64
+	// NodeNames lists the nodes whose config carries the volume. Empty means
+	// every node. A controller need not send a volume to every node of a
+	// cluster, and a test can use this to do the same.
+	NodeNames []string
+	// VolumeUUID is the volume's UUID. Zero generates one. A test sets it to
+	// create objects under the UUID before the volume is sent.
+	VolumeUUID uuid.UUID
+}
+
+// AddBlankVolume adds one standalone blank volume, under a single UUID, to
+// the configs of the selected cluster nodes, and returns that UUID.
+func (cc *EdgeClusterConfig) AddBlankVolume(config ClusterBlankVolumeConfig) uuid.UUID {
+	designatedNodeID := ""
+	if config.DesignatedNodeName != "" {
+		designatedNodeID = cc.resolveDesignatedNodeID(config.DesignatedNodeName)
+	}
+	nodeNames := config.NodeNames
+	if len(nodeNames) == 0 {
+		for _, node := range cc.nodes {
+			nodeNames = append(nodeNames, node.DevName)
+		}
+	}
+	volumeUUID := config.VolumeUUID
+	if volumeUUID == uuid.Nil {
+		volumeUUID = cc.th.newUUID("blank volume")
+	}
+	for _, name := range nodeNames {
+		dc := cc.GetDeviceConfig(name)
+		dc.addBlankVolumeWithUUID(volumeUUID, config.DisplayName,
+			config.SizeBytes, config.ClearText, config.GenerationCount)
+		dc.setVolumeDesignatedNodeID(volumeUUID.String(), designatedNodeID)
+	}
+	return volumeUUID
+}
+
 // AddApplication adds an application to all devices.
 // The same UUIDs (app, volume, content tree, datastore) are used across all devices.
 // DesignatedNodeName is resolved to the device UUID and set on the AppInstanceConfig,
