@@ -425,86 +425,6 @@ jobs:
           hv: k
           cache-artifact: linuxkit-cache-arm64-generic
 
-  # ════════════════════════════════════════════════════════════════════════
-  # riscv64 cross-build (different pattern: needs amd64 tools + QEMU)
-  # ════════════════════════════════════════════════════════════════════════
-
-  build-riscv64:
-    needs: pkgs-amd64-generic
-    runs-on: zededa-ubuntu-2204
-    timeout-minutes: 1440
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Starting Report
-        run: |
-          echo "Build target: mini-riscv64-generic (cross-build)"
-          df -h && free -m
-      - name: Clear repository
-        run: |
-          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
-          rm -fr ~/.linuxkit
-          docker system prune --all --force --volumes
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Login to Docker Hub
-        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
-        run: |
-          docker login
-      - name: Ensure packages for cross-arch build
-        run: |
-          APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
-          $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
-      - name: Download amd64 linuxkit cache
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
-        with:
-          name: linuxkit-cache-amd64-generic
-          path: ~/.linuxkit/cache
-      - name: Load amd64 tools into docker
-        run: |
-          make cache-export-docker-load-all
-          rm -rf ~/.linuxkit
-      - name: Build riscv64 packages
-        run: |
-          make V=1 PRUNE=1 PLATFORM=generic ZARCH=riscv64 HV=mini pkgs
-      - name: Set environment
-        env:
-          PR_ID: ${{ github.event.pull_request.number }}
-        run: |
-          COMMIT_ID=$(git describe --abbrev=8 --always)
-          echo "VERSION=0.0.0-pr$PR_ID-$COMMIT_ID" >> $GITHUB_ENV
-          echo "TAG=evebuild/pr:$PR_ID" >> $GITHUB_ENV
-      - name: Build EVE mini-riscv64-generic
-        run: |
-          make V=1 ROOTFS_VERSION="$VERSION" PLATFORM=generic HV=mini ZARCH=riscv64 eve
-      - name: Post build report
-        run: |
-          df -h && free -m
-          docker system df -v
-      - name: Export docker container
-        run: |
-          make cache-export ZARCH=riscv64 IMAGE=lfedge/eve:$VERSION-mini \
-            OUTFILE=eve-mini-riscv64-generic.tar IMAGE_NAME=$TAG-mini-riscv64
-      - name: Upload EVE mini-riscv64-generic
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
-        with:
-          name: eve-mini-riscv64-generic
-          path: eve-mini-riscv64-generic.tar
-      - name: Clean
-        if: ${{ always() }}
-        run: |
-          make clean
-          docker system prune -f -a --volumes
-          rm -rf ~/.linuxkit
-
   result:
     name: PR build result
     if: always()
@@ -523,7 +443,6 @@ jobs:
       - eve-arm64-kvm-nvidia-jp7
       - eve-arm64-k-nvidia-jp6
       - eve-arm64-k-nvidia-jp7
-      - build-riscv64
     runs-on: ubuntu-24.04
     steps:
       - name: Fail if any job failed or was cancelled
