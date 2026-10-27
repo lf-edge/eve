@@ -103,6 +103,11 @@ func TestNodeClusterResilienceSuite(test *testing.T) {
 			Test: TestDNIDandBackupDNID,
 		},
 		evetest.TestCase{
+			// Same device requirements and network model as
+			// TestDNIDandBackupDNID, and like it powers one node off.
+			Test: TestClusterPVCGCDeletesOnlyOrphans,
+		},
+		evetest.TestCase{
 			Test: TestVMAppPurgeDuringFailover,
 		},
 		evetest.TestCase{
