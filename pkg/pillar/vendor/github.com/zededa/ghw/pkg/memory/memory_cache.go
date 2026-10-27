@@ -122,6 +122,10 @@ type Cache struct {
 	// Type indicates what type of memory is stored in the cache. Can be
 	// instruction (executable bytecodes), data or both.
 	Type CacheType `json:"type"`
+	// ID is the kernel's identifier of this cache instance, unique among the
+	// caches of the same level and type, or -1 where the kernel does not
+	// number it (older kernels did not number device-tree caches).
+	ID int `json:"id"`
 	// SizeBytes indicates the size of the cache in bytes.
 	SizeBytes uint64 `json:"size_bytes"`
 	// The set of logical processors (hardware threads) that have access to

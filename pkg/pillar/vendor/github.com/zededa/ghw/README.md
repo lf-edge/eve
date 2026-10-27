@@ -80,6 +80,15 @@ information about the CPUs on the host system.
   the host system contains
 * `ghw.CPUInfo.Processors` is an array of `ghw.Processor` structs, one for each
   physical processor package contained in the host
+* `ghw.CPUInfo.LogicalProcessors` (Linux only) is an array of pointers to
+  `cpu.LogicalProcessor` structs, one for each online logical processor,
+  ascending by ID
+* `ghw.CPUInfo.OfflineLogicalProcessors` (Linux only) is an array of the IDs of
+  the logical processors that are present but offline (for example with SMT
+  turned off), ascending
+* `ghw.CPUInfo.Caches` (Linux only) is an array of pointers to
+  `ghw.MemoryCache` structs, one for each cache instance of the online logical
+  processors, with the logical processors sharing it
 
 Each `ghw.Processor` struct contains a number of fields:
 
@@ -101,7 +110,8 @@ A `ghw.ProcessorCore` has the following fields:
 * `ghw.ProcessorCore.ID` is the `uint32` identifier that the host gave this
   core. Note that this does *not* necessarily equate to a zero-based index of
   the core within a physical package. For example, the core IDs for an Intel Core
-  i7 are 0, 1, 2, 8, 9, and 10
+  i7 are 0, 1, 2, 8, 9, and 10. On Linux it is -1 where the core cannot be told,
+  and each such core holds a single logical processor
 * `ghw.ProcessorCore.TotalHardwareThreads` is the number of hardware threads
   associated with the core
 * `ghw.ProcessorCore.LogicalProcessors` is an array of ints representing the
@@ -109,6 +119,31 @@ A `ghw.ProcessorCore` has the following fields:
   sometimes called the "thread siblings". Logical processor IDs are the
   *zero-based* index of the processor on the host and are *not* related to the
   core ID.
+
+A `cpu.LogicalProcessor` (Linux only) describes one online logical processor
+(hardware thread) and where it sits in the host's topology. An ID that could
+not be read is -1, and a frequency the kernel does not report is 0:
+
+* `cpu.LogicalProcessor.ID` is the logical processor ID the kernel and CPU
+  affinities use
+* `cpu.LogicalProcessor.ProcessorID` is the physical package (socket) it
+  belongs to: the ID of its `ghw.Processor`
+* `cpu.LogicalProcessor.CoreID` is the physical core it runs on: the ID of its
+  `ghw.ProcessorCore`, unique within the package. Logical processors with the
+  same known `ProcessorID` and `CoreID` are SMT siblings
+* `cpu.LogicalProcessor.NodeID` is the NUMA node it belongs to; 0 on a kernel
+  without NUMA
+* `cpu.LogicalProcessor.CoreType` is the class of core it runs on, a
+  `cpu.CoreType`: `cpu.CoreTypePerformance` or `cpu.CoreTypeEfficiency` on a
+  heterogeneous part (Intel P- and E-cores, ARM big.LITTLE),
+  `cpu.CoreTypeUniform` on a homogeneous one, or `cpu.CoreTypeUnknown` where the
+  host does not tell. Intel hybrid parts list their cores under the `cpu_core`,
+  `cpu_atom` and `cpu_lowpower` PMUs; elsewhere each CPU's `cpu_capacity` ranks
+  it, the highest capacity being a performance core. The ranking sees only
+  online CPUs and ranks by capacity alone, so on a part with three classes of
+  core the middle one reads as efficiency
+* `cpu.LogicalProcessor.BaseFrequencyKHz` is its base (non-turbo) frequency
+* `cpu.LogicalProcessor.MaxFrequencyKHz` is its maximum (turbo) frequency
 
 ```go
 package main
@@ -458,6 +493,9 @@ Each `ghw.MemoryCache` struct contains the following fields:
   cache can contain
 * `ghw.MemoryCache.LogicalProcessors` is an array of integers representing the
   logical processors that use the cache
+* `ghw.MemoryCache.ID` (Linux only) is the kernel's identifier of this cache
+  instance, unique among the caches of the same level and type, or -1 where the
+  kernel does not number it (older kernels did not number device-tree caches)
 
 ```go
 package main
@@ -700,6 +738,10 @@ The `ghw.PCIDevice` struct has the following fields:
   information is not available. If the information is not available, this does
   not mean the device is not functioning, but rather that `ghw` was not able to
   retrieve driver information.
+* `ghw.PCIDevice.LocalCPUs` (Linux only) is an array of the logical processors
+  local to the device: those of the NUMA node its DMA and interrupts are local
+  to, or every CPU when the platform gives it no NUMA affinity. Nil when the
+  kernel does not report them.
 
 The `ghw.PCIAddress` (which is an alias for the `ghw.pci.address.Address`
 struct) contains the PCI address fields. It has a `ghw.PCIAddress.String()`

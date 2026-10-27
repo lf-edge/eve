@@ -10,9 +10,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,6 +22,7 @@ import (
 	"github.com/zededa/ghw/internal/log"
 	"github.com/zededa/ghw/pkg/linuxdt"
 	"github.com/zededa/ghw/pkg/linuxpath"
+	"github.com/zededa/ghw/pkg/memory"
 	"github.com/zededa/ghw/pkg/util"
 )
 
@@ -29,7 +32,9 @@ var (
 )
 
 func (i *Info) load(ctx context.Context) error {
-	i.Processors = processorsGet(ctx)
+	online, offline := logicalProcessorIDs(ctx)
+	procIDs, coreIDs := topologyOf(ctx, online)
+	i.Processors = processorsGet(ctx, online, procIDs, coreIDs)
 	var totCores uint32
 	var totThreads uint32
 	for _, p := range i.Processors {
@@ -40,23 +45,29 @@ func (i *Info) load(ctx context.Context) error {
 	i.TotalHardwareThreads = totThreads
 	// TODO(jaypipes): Remove TotalThreads before v1.0
 	i.TotalThreads = totThreads
+	ascending := slices.Clone(online)
+	slices.Sort(ascending)
+	i.LogicalProcessors = logicalProcessorsGet(ctx, ascending, procIDs, coreIDs)
+	i.OfflineLogicalProcessors = offline
+	caches, err := memory.Caches(ctx)
+	if err != nil {
+		log.Warn(ctx, "failed to read CPU caches: %s", err)
+	}
+	i.Caches = caches
 	return nil
 }
 
-func processorsGet(ctx context.Context) []*Processor {
+// logicalProcessorIDs returns the IDs of the online logical processors, in the
+// order /sys/devices/system/cpu lists them, and of the offline ones, ascending.
+func logicalProcessorIDs(ctx context.Context) (online, offline []int) {
 	paths := linuxpath.New(ctx)
-
-	lps := logicalProcessorsFromProcCPUInfo(ctx)
-	// keyed by processor ID (physical_package_id)
-	procs := map[int]*Processor{}
-
 	// /sys/devices/system/cpu pseudodir contains N number of pseudodirs with
 	// information about the logical processors on the host. These logical
 	// processor pseudodirs are of the pattern /sys/devices/system/cpu/cpu{N}
 	fnames, err := os.ReadDir(paths.SysDevicesSystemCPU)
 	if err != nil {
 		log.Warn(ctx, "failed to read /sys/devices/system/cpu: %s", err)
-		return []*Processor{}
+		return nil, nil
 	}
 	for _, fname := range fnames {
 		matches := regexForCpulCore.FindStringSubmatch(fname.Name())
@@ -73,13 +84,26 @@ func processorsGet(ctx context.Context) []*Processor {
 		onlineFilePath := filepath.Join(paths.SysDevicesSystemCPU, fmt.Sprintf("cpu%d", lpID), onlineFile)
 		if _, err := os.Stat(onlineFilePath); err == nil {
 			if util.SafeIntFromFile(ctx, onlineFilePath) == 0 {
+				offline = append(offline, lpID)
 				continue
 			}
 		} else if errors.Is(err, os.ErrNotExist) {
 			// Assume the CPU is online if the online state file doesn't exist
 			// (as is the case with older snapshots)
 		}
-		procID := processorIDFromLogicalProcessorID(ctx, lpID)
+		online = append(online, lpID)
+	}
+	sort.Ints(offline)
+	return online, offline
+}
+
+func processorsGet(ctx context.Context, onlineLPs []int, procIDs, coreIDs map[int]int) []*Processor {
+	lps := logicalProcessorsFromProcCPUInfo(ctx)
+	// keyed by processor ID (physical_package_id)
+	procs := map[int]*Processor{}
+
+	for _, lpID := range onlineLPs {
+		procID := procIDs[lpID]
 		proc, found := procs[procID]
 		if !found {
 			proc = &Processor{ID: procID}
@@ -138,8 +162,12 @@ func processorsGet(ctx context.Context) []*Processor {
 			procs[procID] = proc
 		}
 
-		coreID := coreIDFromLogicalProcessorID(ctx, lpID)
-		core := proc.CoreByID(coreID)
+		coreID := coreIDs[lpID]
+		var core *ProcessorCore
+		// An unknown core (-1) is not known to be shared: a core of its own.
+		if coreID != -1 {
+			core = proc.CoreByID(coreID)
+		}
 		if core == nil {
 			core = &ProcessorCore{
 				ID:                   coreID,
@@ -174,19 +202,6 @@ func processorsGet(ctx context.Context) []*Processor {
 	return res
 }
 
-// processorIDFromLogicalProcessorID returns the processor physical package ID
-// for the supplied logical processor ID
-func processorIDFromLogicalProcessorID(ctx context.Context, lpID int) int {
-	paths := linuxpath.New(ctx)
-	// Fetch CPU ID
-	path := filepath.Join(
-		paths.SysDevicesSystemCPU,
-		fmt.Sprintf("cpu%d", lpID),
-		"topology", "physical_package_id",
-	)
-	return util.SafeIntFromFile(ctx, path)
-}
-
 // coreIDFromLogicalProcessorID returns the core ID for the supplied logical
 // processor ID
 func coreIDFromLogicalProcessorID(ctx context.Context, lpID int) int {
@@ -200,38 +215,91 @@ func coreIDFromLogicalProcessorID(ctx context.Context, lpID int) int {
 	return util.SafeIntFromFile(ctx, path)
 }
 
+// topologyOf returns the physical package and the core ID of each of the given
+// logical processors, the core ID unique within its package. The kernel's
+// core_id is that on x86, but an ARM device tree numbers cores per cluster, so
+// core_id repeats within a package for cores that are not SMT siblings. Where
+// one core_id covers more than one set of siblings (thread_siblings_list) in a
+// package, every core of that package is numbered by the lowest logical
+// processor among its siblings instead, and a logical processor whose siblings
+// cannot be read gets -1.
+func topologyOf(ctx context.Context, lpIDs []int) (procIDs, coreIDs map[int]int) {
+	paths := linuxpath.New(ctx)
+	type key struct{ proc, core int }
+	procIDs = make(map[int]int, len(lpIDs))
+	coreIDs = make(map[int]int, len(lpIDs))
+	firstSibling := map[int]int{}
+	allMinusOne := len(lpIDs) > 0
+	for _, lpID := range lpIDs {
+		procIDs[lpID] = -1
+		pkgPath := filepath.Join(paths.SysDevicesSystemCPU, fmt.Sprintf("cpu%d", lpID),
+			"topology", "physical_package_id")
+		if pkg, err := util.ReadInt(pkgPath); err != nil {
+			log.Warn(ctx, "failed to read the package of logical processor %d: %s", lpID, err)
+			allMinusOne = false
+		} else {
+			procIDs[lpID] = pkg
+			allMinusOne = allMinusOne && pkg == -1
+		}
+		coreIDs[lpID] = coreIDFromLogicalProcessorID(ctx, lpID)
+		siblings, err := util.ReadCPUList(filepath.Join(paths.SysDevicesSystemCPU,
+			fmt.Sprintf("cpu%d", lpID), "topology", "thread_siblings_list"))
+		if err != nil || len(siblings) == 0 {
+			continue
+		}
+		firstSibling[lpID] = slices.Min(siblings)
+	}
+	// physical_package_id -1 from every CPU is the kernel saying it has no
+	// package information: one package. Next to CPUs with a real package it
+	// is unknown.
+	if allMinusOne {
+		for _, lpID := range lpIDs {
+			procIDs[lpID] = 0
+		}
+	}
+	// Clusters are found per package, so only once the package IDs are final.
+	siblingSets := map[key]map[int]struct{}{}
+	for lpID, first := range firstSibling {
+		k := key{procIDs[lpID], coreIDs[lpID]}
+		if siblingSets[k] == nil {
+			siblingSets[k] = map[int]struct{}{}
+		}
+		siblingSets[k][first] = struct{}{}
+	}
+	clustered := map[int]bool{}
+	for k, sets := range siblingSets {
+		if len(sets) > 1 {
+			clustered[k.proc] = true
+		}
+	}
+	for _, lpID := range lpIDs {
+		if !clustered[procIDs[lpID]] {
+			continue
+		}
+		if first, ok := firstSibling[lpID]; ok {
+			coreIDs[lpID] = first
+		} else {
+			coreIDs[lpID] = -1
+		}
+	}
+	return procIDs, coreIDs
+}
+
 func CoresForNode(ctx context.Context, nodeID int) ([]*ProcessorCore, error) {
 	// The /sys/devices/system/node/nodeX directory contains a subdirectory
-	// called 'cpuX' for each logical processor assigned to the node. Each of
-	// those subdirectories contains a topology subdirectory which has a
-	// core_id file that indicates the 0-based identifier of the physical core
-	// the logical processor (hardware thread) is on.
+	// called 'cpuX' for each logical processor assigned to the node. Cores are
+	// identified as for Info: see topologyOf.
 	paths := linuxpath.New(ctx)
 	path := filepath.Join(
 		paths.SysDevicesSystemNode,
 		fmt.Sprintf("node%d", nodeID),
 	)
-	cores := make([]*ProcessorCore, 0)
-
-	findCoreByID := func(coreID int) *ProcessorCore {
-		for _, c := range cores {
-			if c.ID == coreID {
-				return c
-			}
-		}
-
-		c := &ProcessorCore{
-			ID:                coreID,
-			LogicalProcessors: []int{},
-		}
-		cores = append(cores, c)
-		return c
-	}
 
 	files, err := os.ReadDir(path)
 	if err != nil {
 		return nil, err
 	}
+	var lpIDs []int
 	for _, file := range files {
 		filename := file.Name()
 		if !strings.HasPrefix(filename, "cpu") {
@@ -246,7 +314,7 @@ func CoresForNode(ctx context.Context, nodeID int) ([]*ProcessorCore, error) {
 		// Grab the logical processor ID by cutting the integer from the
 		// /sys/devices/system/node/nodeX/cpuX filename
 		cpuPath := filepath.Join(path, filename)
-		procID, err := strconv.Atoi(filename[3:])
+		lpID, err := strconv.Atoi(filename[3:])
 		if err != nil {
 			log.Warn(ctx,
 				"failed to determine procID from %s. Expected integer after 3rd char.",
@@ -263,13 +331,32 @@ func CoresForNode(ctx context.Context, nodeID int) ([]*ProcessorCore, error) {
 			// Assume the CPU is online if the online state file doesn't exist
 			// (as is the case with older snapshots)
 		}
-		coreIDPath := filepath.Join(cpuPath, "topology", "core_id")
-		coreID := util.SafeIntFromFile(ctx, coreIDPath)
-		core := findCoreByID(coreID)
-		core.LogicalProcessors = append(
-			core.LogicalProcessors,
-			procID,
-		)
+		lpIDs = append(lpIDs, lpID)
+	}
+
+	// A node can hold more than one package, so a core is a package and a
+	// core ID. Whether a package is clustered depends on all its CPUs, not
+	// only the node's, or the node's cores would be numbered unlike Info's.
+	online, _ := logicalProcessorIDs(ctx)
+	procIDs, coreIDs := topologyOf(ctx, online)
+	type key struct{ proc, core int }
+	byKey := map[key]*ProcessorCore{}
+	cores := make([]*ProcessorCore, 0)
+	for _, lpID := range lpIDs {
+		k := key{procIDs[lpID], coreIDs[lpID]}
+		core, ok := byKey[k]
+		if !ok {
+			core = &ProcessorCore{
+				ID:                k.core,
+				LogicalProcessors: []int{},
+			}
+			// As in Info, an unknown core is a core of its own.
+			if k.core != -1 {
+				byKey[k] = core
+			}
+			cores = append(cores, core)
+		}
+		core.LogicalProcessors = append(core.LogicalProcessors, lpID)
 	}
 
 	for _, c := range cores {
@@ -418,4 +505,141 @@ func logicalProcessorsFromProcCPUInfo(
 		}
 	}
 	return lps
+}
+
+// logicalProcessorsGet describes each of the given online logical processors.
+func logicalProcessorsGet(ctx context.Context, lpIDs []int, procIDs, coreIDs map[int]int) []*LogicalProcessor {
+	paths := linuxpath.New(ctx)
+	nodeOf := nodesOf(ctx)
+	types := coreTypesOf(ctx, lpIDs)
+	lps := make([]*LogicalProcessor, 0, len(lpIDs))
+	for _, id := range lpIDs {
+		dir := filepath.Join(paths.SysDevicesSystemCPU, fmt.Sprintf("cpu%d", id))
+		lp := &LogicalProcessor{
+			ID:          id,
+			ProcessorID: procIDs[id],
+			CoreID:      coreIDs[id],
+			NodeID:      -1,
+			CoreType:    types[id],
+		}
+		// A frequency the kernel does not report stays 0.
+		if khz, err := util.ReadInt(filepath.Join(dir, "cpufreq", "base_frequency")); err == nil && khz > 0 {
+			lp.BaseFrequencyKHz = uint64(khz)
+		}
+		if khz, err := util.ReadInt(filepath.Join(dir, "cpufreq", "cpuinfo_max_freq")); err == nil && khz > 0 {
+			lp.MaxFrequencyKHz = uint64(khz)
+		}
+		if nodeOf == nil {
+			lp.NodeID = 0
+		} else if node, ok := nodeOf[id]; ok {
+			lp.NodeID = node
+		}
+		lps = append(lps, lp)
+	}
+	return lps
+}
+
+// nodesOf maps each logical processor to its NUMA node, from the nodes'
+// cpulist files. It is nil when the kernel has no NUMA support (no node
+// directory); a logical processor no node lists is missing from the map.
+func nodesOf(ctx context.Context) map[int]int {
+	paths := linuxpath.New(ctx)
+	entries, err := os.ReadDir(paths.SysDevicesSystemNode)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			log.Warn(ctx, "failed to read %s: %s", paths.SysDevicesSystemNode, err)
+			return map[int]int{}
+		}
+		return nil
+	}
+	nodeOf := map[int]int{}
+	for _, entry := range entries {
+		node, err := strconv.Atoi(strings.TrimPrefix(entry.Name(), "node"))
+		if err != nil || !strings.HasPrefix(entry.Name(), "node") {
+			continue
+		}
+		cpus, err := util.ReadCPUList(filepath.Join(paths.SysDevicesSystemNode, entry.Name(), "cpulist"))
+		if err != nil {
+			log.Warn(ctx, "failed to read the CPUs of NUMA node %d: %s", node, err)
+			continue
+		}
+		for _, cpu := range cpus {
+			nodeOf[cpu] = node
+		}
+	}
+	return nodeOf
+}
+
+// coreTypesOf tells each logical processor's core type. Intel hybrid parts list
+// their performance cores under the cpu_core PMU and their efficiency cores
+// under cpu_atom and, for the low-power ones, cpu_lowpower. Elsewhere, ARM
+// big.LITTLE among them, cpu_capacity ranks the logical processors: the highest
+// capacity is a performance core, any lower an efficiency core, and one
+// capacity for all of them a homogeneous part (x86 reports 1024 for every CPU
+// of a homogeneous part since Linux 6.16). Before that, a homogeneous x86 part
+// is told by its single core PMU, /sys/devices/cpu. When none of these tells,
+// or only some CPUs report a capacity, the type is unknown, never guessed.
+//
+// The ranking sees only the online CPUs: with every big core offline, the
+// LITTLE ones read as performance or uniform. And it ranks by capacity alone,
+// so on a part with three classes of core (prime, big, LITTLE) the middle one
+// reads as efficiency.
+func coreTypesOf(ctx context.Context, lpIDs []int) map[int]CoreType {
+	paths := linuxpath.New(ctx)
+	devices := filepath.Join(paths.SysRoot, "devices")
+	types := map[int]CoreType{}
+
+	var hybrid bool
+	for pmu, coreType := range map[string]CoreType{
+		"cpu_core":     CoreTypePerformance,
+		"cpu_atom":     CoreTypeEfficiency,
+		"cpu_lowpower": CoreTypeEfficiency,
+	} {
+		cpus, err := util.ReadCPUList(filepath.Join(devices, pmu, "cpus"))
+		if err != nil {
+			continue
+		}
+		hybrid = true
+		for _, id := range cpus {
+			types[id] = coreType
+		}
+	}
+	if hybrid {
+		return types
+	}
+
+	capacities := map[int]int{}
+	for _, id := range lpIDs {
+		capacity, err := util.ReadInt(filepath.Join(paths.SysDevicesSystemCPU, fmt.Sprintf("cpu%d", id), "cpu_capacity"))
+		if err == nil {
+			capacities[id] = capacity
+		}
+	}
+	if len(capacities) > 0 && len(capacities) < len(lpIDs) {
+		return types
+	}
+	if len(capacities) > 0 {
+		lowest, highest := math.MaxInt, math.MinInt
+		for _, capacity := range capacities {
+			lowest, highest = min(lowest, capacity), max(highest, capacity)
+		}
+		for id, capacity := range capacities {
+			switch {
+			case lowest == highest:
+				types[id] = CoreTypeUniform
+			case capacity == highest:
+				types[id] = CoreTypePerformance
+			default:
+				types[id] = CoreTypeEfficiency
+			}
+		}
+		return types
+	}
+
+	if fi, err := os.Stat(filepath.Join(devices, "cpu")); err == nil && fi.IsDir() {
+		for _, id := range lpIDs {
+			types[id] = CoreTypeUniform
+		}
+	}
+	return types
 }
