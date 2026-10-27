@@ -1,6 +1,12 @@
 # NVIDIA's Jetson Xavier NX platform
 
-Currently EVE supports the following devices from NVIDIA's Jetson Xavier NX platform:
+> **Dropped:** the Jetson Xavier NX platform (`PLATFORM=nvidia-jp5`, JetPack 5)
+> is no longer supported. 17.10 is the last release that ships `nvidia-jp5`
+> images; later releases don't build, test or publish them. LTS branches that
+> already ship `nvidia-jp5` images keep doing so. The rest of this document
+> describes the platform as it was when it was supported.
+
+EVE supported the following devices from NVIDIA's Jetson Xavier NX platform:
 
 1. [Lenovo ThinkEdge SE70](#lenovo-thinkedge-se70)
 1. [Siemens SIMATIC IPC520A](#siemens-simatic-ipc520a)

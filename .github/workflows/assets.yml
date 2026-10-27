@@ -100,9 +100,6 @@ jobs:
         hv: ["kvm"]
         include:
           - arch: arm64
-            platform: "nvidia-jp5"
-            hv: "kvm"
-          - arch: arm64
             platform: "nvidia-jp6"
             hv: "kvm"
           - arch: arm64
@@ -113,9 +110,6 @@ jobs:
             hv: "k"
           - arch: arm64
             platform: "generic"
-            hv: "k"
-          - arch: arm64
-            platform: "nvidia-jp5"
             hv: "k"
           - arch: arm64
             platform: "nvidia-jp6"
