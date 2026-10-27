@@ -12,11 +12,9 @@
 // Everything generic - reading a file, listing a directory, testing for a path,
 // flushing caches, reaching the cluster's kubectl - is an EdgeDevice method in
 // the framework (evetest/edgedevice.go); this file only adds what is specific
-// to EVE's workload objects. Note the two error conventions that follow from
-// that: helpers backed by a framework method surface its error to Gomega,
-// because an error there is a transport failure, while a failed kubectl call is
-// reported as found=false, because "k3s is not up yet" is an expected transient
-// state a caller inside Eventually should retry on rather than fail.
+// to EVE's workload objects. A helper backed by a framework method surfaces
+// its error to Gomega, so a caller inside Eventually retries a transient
+// failure, such as k3s not being up yet.
 //
 // Split trigger: if a xen-specific reader is ever needed, break this into
 // kube- and local-domain helper files. Two backends sharing one file is
@@ -26,7 +24,6 @@
 package apps_test
 
 import (
-	"encoding/json"
 	"fmt"
 	"path"
 	"strconv"
@@ -50,44 +47,6 @@ const (
 	// assumption evetest.ReadAllPublications already makes for /run/<agent>.
 	kvmDomainStateDir = "/run/hypervisor/kvm"
 )
-
-// kubeItemList is the minimal shape needed from `kubectl get <resource> -o
-// json`: a name per item.
-type kubeItemList struct {
-	Items []struct {
-		Metadata struct {
-			Name string `json:"name"`
-		} `json:"metadata"`
-	} `json:"items"`
-}
-
-// kubectlListItems lists one Kubernetes resource type from the EVE app
-// namespace. found is false, with a warning logged, if the device is
-// unreachable, k3s is not up, or the output does not parse - all of which are
-// transient states a caller inside Eventually should retry rather than fail on.
-//
-// Reaching into Kubernetes at all is a deliberate exception to the framework
-// guideline "assert against the EVE API, not internal state" (README "Writing
-// Tests -> Guidelines"): there is no EVE-API-exposed signal for "how many
-// generations of this app's workload exist" - the cluster-status topic zedkube
-// publishes carries only the single name of the desired generation. Until that
-// gap is closed, this is the only vantage point from which a stale generation
-// surviving a purge is observable at all.
-func kubectlListItems(
-	dev *evetest.EdgeDevice, resource string) (list kubeItemList, found bool) {
-	stdout, err := dev.RunKubectl(
-		"-n "+evetest.EVEKubeAppNamespace+" get "+resource+" -o json", sshCmdTimeout)
-	if err != nil {
-		evetest.Logger().Warnf("kubectlListItems: %v", err)
-		return list, false
-	}
-	if err := json.Unmarshal([]byte(stdout), &list); err != nil {
-		evetest.Logger().Warnf(
-			"kubectlListItems: failed to parse kubectl %s output: %v", resource, err)
-		return list, false
-	}
-	return list, true
-}
 
 // listKVMDomainDirs returns the qemu per-domain state directories belonging to
 // appUUID, found by prefix on the domain name ("<uuid>.<version>.<appnum>", see
