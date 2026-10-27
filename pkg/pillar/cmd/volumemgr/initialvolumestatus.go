@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
@@ -72,7 +73,7 @@ func populateExistingVolumesFormatDatasets(_ *volumemgrContext, dataset string) 
 func populateExistingVolumesFormatPVC(_ *volumemgrContext) {
 
 	log.Functionf("populateExistingVolumesFormatPVC")
-	pvlist, err := kubeapi.GetPVCList(log)
+	pvlist, err := kubeapi.GetPVCList(log, kubeapi.KubeAPITimeout())
 	if err != nil {
 		log.Errorf("populateExistingVolumesFormatPVC: GetPVCList failed: %v", err)
 		return
@@ -124,6 +125,79 @@ func gcDatasets(ctx *volumemgrContext, dataset string) {
 	}
 	gcVolumes(ctx, locations)
 	log.Tracef("gcDatasets(%s) Done", dataset)
+}
+
+// getPVCList and destroyPVC are package-level vars, so a test can supply a
+// fixed PVC list and see what gcPVCs deletes without a Kubernetes API server.
+var getPVCList = kubeapi.GetPVCList
+
+// gcPVCListTimeout is short because gcPVCs runs on the main loop, and a
+// missed pass is retried on the next GC tick. See backupDNIDAPITimeout.
+const gcPVCListTimeout = 5 * time.Second
+
+var destroyPVC = func(ctx *volumemgrContext, vs *types.VolumeStatus) error {
+	_, err := volumehandlers.GetVolumeHandler(log, ctx, vs).DestroyVolume()
+	return err
+}
+
+// gcPVCs deletes the PVCs of volume generations this node has superseded.
+// kubevirt.go's sweepStaleGenerations deletes a stale generation's VMIRS and
+// pod but not its PVC. A purge that lands while the node is down leaves no
+// VolumeStatus for the old generation, so nothing else deletes that PVC.
+// Call only on EVE-k.
+func gcPVCs(ctx *volumemgrContext) {
+	names, err := getPVCList(log, gcPVCListTimeout)
+	if err != nil {
+		return // GetPVCList logs the error
+	}
+	for _, vs := range pvcsToReap(ctx, names) {
+		log.Noticef("gcPVCs: deleting PVC %s, superseded by a newer generation of volume %s",
+			vs.FileLocation, vs.VolumeID)
+		if err := destroyPVC(ctx, vs); err != nil {
+			log.Errorf("gcPVCs: destroyVolume '%s' failed: %v", vs.FileLocation, err)
+		}
+	}
+}
+
+// pvcsToReap returns the PVCs gcPVCs may delete. The PVC list is cluster-wide,
+// but a controller need not send every volume to every node, so a PVC this
+// node has no record of may be live elsewhere. A PVC qualifies only when:
+//   - this node's config holds the same volume at a newer generation,
+//   - no VolumeConfig or VolumeStatus here names the PVC's own generation,
+//   - and this node owns the volume or stands in for its designated node.
+func pvcsToReap(ctx *volumemgrContext, pvcNames []string) []*types.VolumeStatus {
+	newest := make(map[uuid.UUID]types.VolumeConfig)
+	for _, c := range ctx.subVolumeConfig.GetAll() {
+		vc := c.(types.VolumeConfig)
+		if cur, ok := newest[vc.VolumeID]; !ok || volumeGeneration(vc) > volumeGeneration(cur) {
+			newest[vc.VolumeID] = vc
+		}
+	}
+	var reap []*types.VolumeStatus
+	for _, name := range pvcNames {
+		vs, err := getVolumeStatusByPVC(name)
+		if err != nil {
+			log.Functionf("pvcsToReap: skipping PVC %s: %v", name, err)
+			continue
+		}
+		vc, known := newest[vs.VolumeID]
+		if !known || vs.GenerationCounter >= volumeGeneration(vc) {
+			continue
+		}
+		if ctx.LookupVolumeStatus(vs.Key()) != nil || ctx.LookupVolumeConfig(vs.Key()) != nil {
+			continue
+		}
+		if vc.IsReplicated && !isCurrentlyBackupDNIDForVolume(ctx, &vc) {
+			continue
+		}
+		reap = append(reap, vs)
+	}
+	return reap
+}
+
+// volumeGeneration is the generation a volume's key and PVC name carry.
+func volumeGeneration(vc types.VolumeConfig) int64 {
+	return vc.GenerationCounter + vc.LocalGenerationCounter
 }
 
 func gcVolumes(ctx *volumemgrContext, locations []string) {

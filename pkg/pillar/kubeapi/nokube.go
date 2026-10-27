@@ -33,8 +33,15 @@ func CleanupStaleVMIRs() (int, error) {
 	panic("CleanupStaleVMIRs is not built")
 }
 
+// KubeAPITimeout in this file is just stub for non EVE-k builds.
+//
+//revive:disable-next-line:exported
+func KubeAPITimeout() time.Duration {
+	return 0
+}
+
 // GetPVCList in this file is just stub for non EVE-k builds.
-func GetPVCList(*base.LogObject) ([]string, error) {
+func GetPVCList(*base.LogObject, time.Duration) ([]string, error) {
 	panic("GetPVCList is not built")
 }
 
