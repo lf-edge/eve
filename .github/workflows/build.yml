@@ -35,8 +35,6 @@ jobs:
             arch: arm64
           - os: zededa-ubuntu-2204
             arch: amd64
-          - os: zededa-ubuntu-2204
-            arch: riscv64
     steps:
       - name: Starting Report
         run: |
@@ -65,13 +63,6 @@ jobs:
         if: ${{ matrix.os == 'buildjet-4vcpu-ubuntu-2204-arm' || matrix.os == 'arm64-secure' }}
         run: |
           sudo apt install -y zstd
-      - name: ensure packages for cross-arch build
-        if: ${{ matrix.arch == 'riscv64' }}
-        run: |
-          APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
-          # the following weird statement is here to speed up the happy path
-          # if the default server is responding -- we can skip apt update
-          $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
       # The next step explicitly use actions/cache, rather than actions/cache/save at the end.
       # If we rerun a job without changing the sha, we should not have to rebuild anything.
       # Since the cache is keyed on the head sha, it will retrieve it.
@@ -102,9 +93,6 @@ jobs:
         hv: [xen, kvm]
         platform: ["generic"]
         include:
-          - arch: riscv64
-            hv: mini
-            platform: "generic"
           - arch: amd64
             hv: kvm
             platform: "rt"
@@ -131,32 +119,16 @@ jobs:
         run: | # Runners must provide default credentials
           docker login
 
-      # For riscv64, we cross-build on amd64 runners. We need amd64 tool images
-      # (mkconf, mkimage-raw-efi, etc.) in docker, but riscv64 packages in the cache.
-      # So: restore amd64 cache -> load tools -> clear -> restore riscv64 cache.
-      - name: load amd64 tool images for riscv64 cross-build
-        if: ${{ matrix.arch == 'riscv64' }}
-        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
-        with:
-          path: ~/.linuxkit/cache
-          key: linuxkit-amd64-${{ github.event.pull_request.head.sha }}
-          fail-on-cache-miss: true
-      - name: load amd64 tools into docker for riscv64 cross-build
-        if: ${{ matrix.arch == 'riscv64' }}
-        run: |
-          make cache-export-docker-load-all
-          rm -rf ~/.linuxkit
-      # Restore the target arch cache. For native builds (amd64, arm64),
-      # this cache also contains the tool images we need.
+      # Restore the target arch cache. It also contains the tool images we
+      # need.
       - name: update linuxkit cache for target arch
         uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}
           fail-on-cache-miss: true
-      # For native builds, load tool images from the target cache we just restored.
+      # Load tool images from the target cache we just restored.
       - name: load tool images into docker
-        if: ${{ matrix.arch != 'riscv64' }}
         run: |
           make cache-export-docker-load-all
       - name: set environment
