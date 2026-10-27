@@ -368,6 +368,17 @@ func (m *MockNetworkMonitor) WatchEvents(ctx context.Context, subName string) <-
 	return sub.events
 }
 
+// UndeliveredEvents returns the number of published events still queued
+// for subscribers, i.e. not yet received by them.
+func (m *MockNetworkMonitor) UndeliveredEvents() (count int) {
+	m.Lock()
+	defer m.Unlock()
+	for _, sub := range m.eventSubs {
+		count += len(sub.events)
+	}
+	return count
+}
+
 // This method is run with the monitor in the locked state.
 func (m *MockNetworkMonitor) publishEvent(ev Event) {
 	var activeSubs []subscriber
