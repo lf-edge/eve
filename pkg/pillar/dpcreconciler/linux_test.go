@@ -160,6 +160,17 @@ func itemCountWithType(itemType string) (count int) {
 	return count
 }
 
+// waitForNetEvents waits until the reconciler requests a reconciliation and
+// its watcher has received every simulated network event. A single mock update
+// publishes several events, the first of which triggers ResumeReconcile, and the
+// watcher picks randomly between a queued event and the pause request from
+// Reconcile. Once the queue is empty, Reconcile cannot pause the watcher before
+// it finishes processing the last event.
+func waitForNetEvents(t *GomegaWithT, status dpcrec.ReconcileStatus) {
+	t.Eventually(status.ResumeReconcile).Should(Receive())
+	t.Eventually(networkMonitor.UndeliveredEvents).Should(BeZero())
+}
+
 func TestReconcileWithEmptyArgs(test *testing.T) {
 	t := initTest(test)
 	ctx := reconciler.MockRun(context.Background())
@@ -303,7 +314,7 @@ func TestSingleEthInterface(test *testing.T) {
 		},
 	}
 	networkMonitor.UpdateRoutes(routes)
-	t.Eventually(status.ResumeReconcile).Should(Receive())
+	waitForNetEvents(t, status)
 
 	ctx = reconciler.MockRun(context.Background())
 	status = dpcReconciler.Reconcile(ctx, dpcrec.Args{GCP: *gcp, DPC: dpc, AA: aa})
@@ -329,7 +340,7 @@ func TestSingleEthInterface(test *testing.T) {
 	eth0.DNS = nil
 	networkMonitor.AddOrUpdateInterface(eth0)
 	networkMonitor.UpdateRoutes(nil)
-	t.Eventually(status.ResumeReconcile).Should(Receive())
+	waitForNetEvents(t, status)
 
 	ctx = reconciler.MockRun(context.Background())
 	status = dpcReconciler.Reconcile(ctx, dpcrec.Args{GCP: *gcp, DPC: dpc, AA: aa})
@@ -365,7 +376,7 @@ func TestSingleEthInterface(test *testing.T) {
 			},
 		},
 	}
-	t.Eventually(status.ResumeReconcile).Should(Receive())
+	waitForNetEvents(t, status)
 
 	ctx = reconciler.MockRun(context.Background())
 	status = dpcReconciler.Reconcile(ctx, dpcrec.Args{GCP: *gcp, DPC: dpc, AA: aa})
@@ -539,7 +550,7 @@ func TestMultipleEthsSameSubnet(test *testing.T) {
 		},
 	}
 	networkMonitor.UpdateRoutes(routes)
-	t.Eventually(status.ResumeReconcile).Should(Receive())
+	waitForNetEvents(t, status)
 
 	ctx = reconciler.MockRun(context.Background())
 	status = dpcReconciler.Reconcile(ctx, dpcrec.Args{GCP: *gcp, DPC: dpc, AA: aa})
@@ -1521,7 +1532,7 @@ func TestSingleEthInterfaceWithIPv6(test *testing.T) {
 		},
 	}
 	networkMonitor.UpdateRoutes(routes)
-	t.Eventually(status.ResumeReconcile).Should(Receive())
+	waitForNetEvents(t, status)
 
 	ctx = reconciler.MockRun(context.Background())
 	status = dpcReconciler.Reconcile(ctx, dpcrec.Args{GCP: *gcp, DPC: dpc, AA: aa})
@@ -1547,7 +1558,7 @@ func TestSingleEthInterfaceWithIPv6(test *testing.T) {
 	eth0.DNS = nil
 	networkMonitor.AddOrUpdateInterface(eth0)
 	networkMonitor.UpdateRoutes(nil)
-	t.Eventually(status.ResumeReconcile).Should(Receive())
+	waitForNetEvents(t, status)
 
 	ctx = reconciler.MockRun(context.Background())
 	status = dpcReconciler.Reconcile(ctx, dpcrec.Args{GCP: *gcp, DPC: dpc, AA: aa})
@@ -1583,7 +1594,7 @@ func TestSingleEthInterfaceWithIPv6(test *testing.T) {
 			},
 		},
 	}
-	t.Eventually(status.ResumeReconcile).Should(Receive())
+	waitForNetEvents(t, status)
 
 	ctx = reconciler.MockRun(context.Background())
 	status = dpcReconciler.Reconcile(ctx, dpcrec.Args{GCP: *gcp, DPC: dpc, AA: aa})
