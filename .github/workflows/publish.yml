@@ -46,6 +46,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    timeout-minutes: 1440
     steps:
       - name: Clear runner state
         run: |
@@ -462,6 +463,7 @@ jobs:
   coverage:
     if: github.event.repository.full_name == 'lf-edge/eve'
     runs-on: zededa-ubuntu-2204
+    timeout-minutes: 1440
     steps:
       - name: Clear repository
         run: |
