@@ -22,7 +22,8 @@ func trimSysPath(path string) string {
 }
 
 func extractPCIaddress(path string) string {
-	re := regexp.MustCompile(`\/?devices\/pci[\d:.]*\/(\d{4}:[a-f\d:\.]+)\/`)
+	// greedy prefix: take the PCI device closest to usbN, like ghw's FindPCIAddress
+	re := regexp.MustCompile(`.*\/([\da-f]{4}:[\da-f]{2}:[\da-f]{2}\.[\da-f])\/`)
 
 	relPath := trimSysPath(path)
 	matches := re.FindStringSubmatch(relPath)
