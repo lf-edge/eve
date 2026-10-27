@@ -35,6 +35,8 @@ func TestExtractPCIAddress(t *testing.T) {
 		{"/sys/devices/pci0000:00/0000:00:14.0/usb3/3-6/uevent", "0000:00:14.0"},
 		{"/sys/devices/pci0000:00/0000:00:14.0/usb3/3-3/3-3.1/uevent", "0000:00:14.0"},
 		{"/sys/devices/platform/soc@0/32f10108.usb/38200000.dwc3/xhci-hcd.1.auto/usb3/3-1/3-1.4/3-1.4:1.0/uevent", ""},
+		{"/sys/devices/pci0000:00/0000:00:02.1/0000:02:00.0/usb1/1-1/uevent", "0000:02:00.0"},
+		{"/sys/devices/pci0000:00/0000:00:11.0/dwc3.0.auto/xhci-hcd.0.auto/usb1/1-1/uevent", "0000:00:11.0"},
 	}
 
 	for _, test := range table {
