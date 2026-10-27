@@ -7,6 +7,7 @@ package pci
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -93,6 +94,20 @@ func getDeviceIommuGroup(paths *linuxpath.Paths, pciAddr *pciaddr.Address) strin
 		return ""
 	}
 	return filepath.Base(dest)
+}
+
+// getDeviceLocalCPUs reads the logical processors local to the device; nil
+// when the kernel does not report them.
+func getDeviceLocalCPUs(ctx context.Context, pciAddr *pciaddr.Address) []int {
+	paths := linuxpath.New(ctx)
+	cpus, err := util.ReadCPUList(filepath.Join(paths.SysBusPciDevices, pciAddr.String(), "local_cpulist"))
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			log.Warn(ctx, "failed to read the local CPUs of device %q: %v", pciAddr, err)
+		}
+		return nil
+	}
+	return cpus
 }
 
 func getDeviceModalias(paths *linuxpath.Paths, pciAddr *pciaddr.Address) string {
@@ -412,6 +427,7 @@ func (info *Info) getDevices(ctx context.Context) []*Device {
 		device.ParentAddress = getDeviceParentAddress(paths, pciAddr)
 		device.IOMMUGroup = getDeviceIommuGroup(paths, pciAddr)
 		device.Modalias = modalias
+		device.LocalCPUs = getDeviceLocalCPUs(ctx, pciAddr)
 		devs = append(devs, device)
 	}
 	linkDeviceTree(devs)

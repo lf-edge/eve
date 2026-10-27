@@ -45,6 +45,11 @@ type Device struct {
 	// Useful for callers that want to do custom vendor/device/class matching
 	// beyond what the pcidb lookup provides.
 	Modalias string `json:"modalias,omitempty"`
+	// LocalCPUs are the logical processors local to the device: those of the
+	// NUMA node its DMA and interrupts are local to, or every CPU when the
+	// platform gives it no NUMA affinity. Nil when the kernel does not report
+	// them.
+	LocalCPUs []int `json:"local_cpus,omitempty"`
 
 	// Parent is the resolved parent Device pointer for this device (the
 	// PCIe upstream port or root complex device). It is nil for root
@@ -75,6 +80,7 @@ type devMarshallable struct {
 	Interface     devIdent `json:"programming_interface"`
 	IOMMUGroup    string   `json:"iommu_group"`
 	Modalias      string   `json:"modalias,omitempty"`
+	LocalCPUs     []int    `json:"local_cpus,omitempty"`
 }
 
 // NOTE(jaypipes) Device has a custom JSON marshaller because we don't want
@@ -113,6 +119,7 @@ func (d *Device) MarshalJSON() ([]byte, error) {
 		},
 		IOMMUGroup: d.IOMMUGroup,
 		Modalias:   d.Modalias,
+		LocalCPUs:  d.LocalCPUs,
 	}
 	return json.Marshal(dm)
 }
