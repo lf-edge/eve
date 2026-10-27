@@ -238,8 +238,10 @@ func DeletePVC(pvcName string, log *base.LogObject) error {
 		log.Error(err)
 		return err
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
 	err = clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace).
-		Delete(context.Background(), pvcName, metav1.DeleteOptions{})
+		Delete(ctx, pvcName, metav1.DeleteOptions{})
 	if err != nil {
 		err = fmt.Errorf("failed to DeletePVC %s: %v", pvcName, err)
 		log.Error(err)
@@ -248,8 +250,9 @@ func DeletePVC(pvcName string, log *base.LogObject) error {
 	return nil
 }
 
-// GetPVCList : Get the list of all PVCs.
-func GetPVCList(log *base.LogObject) ([]string, error) {
+// GetPVCList : Get the list of all PVCs. timeout bounds the API call; a
+// caller on an agent's main loop should keep it well under the watchdog.
+func GetPVCList(log *base.LogObject, timeout time.Duration) ([]string, error) {
 	// Get the Kubernetes clientset
 	clientset, err := GetClientSet()
 	if err != nil {
@@ -257,8 +260,10 @@ func GetPVCList(log *base.LogObject) ([]string, error) {
 		log.Error(err)
 		return nil, err
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 	pvcs, err := clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace).
-		List(context.Background(), metav1.ListOptions{})
+		List(ctx, metav1.ListOptions{})
 	if err != nil {
 		err = fmt.Errorf("failed to get PVC list: %v", err)
 		log.Error(err)
