@@ -67,7 +67,7 @@ RUN SOURCE_DATE_EPOCH=$(cat /source-date-epoch) cargo build --release $VECTOR_FE
 RUN cargo sbom > sbom.spdx.json
 RUN cp "/app/target/$CARGO_BUILD_TARGET/release/vector" /app/target/
 
-FROM lfedge/eve-alpine:b4d0b9fe886ec5283e91da1ade3a47ed537bb47a AS runtime
+FROM lfedge/eve-alpine:5f1c625e658308db22e936e3e5498167ed7b9081 AS runtime
 ENV PKGS="inotify-tools"
 RUN eve-alpine-deploy.sh
 

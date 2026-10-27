@@ -8,7 +8,7 @@
 # root filesystem (over 9p under KVM) and starts the app. The image is an init image: it
 # puts /boot/runx-initrd into the host rootfs, next to /boot/kernel.
 
-FROM lfedge/eve-alpine:b4d0b9fe886ec5283e91da1ade3a47ed537bb47a AS build
+FROM lfedge/eve-alpine:5f1c625e658308db22e936e3e5498167ed7b9081 AS build
 ENV BUILD_PKGS="mkinitfs gcc musl-dev e2fsprogs chrony agetty"
 RUN eve-alpine-deploy.sh
 
