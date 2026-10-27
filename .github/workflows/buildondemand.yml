@@ -112,9 +112,6 @@ jobs:
             platform: "rt"
           - arch: arm64
             hv: kvm
-            platform: "nvidia-jp5"
-          - arch: arm64
-            hv: kvm
             platform: "nvidia-jp6"
           - arch: arm64
             hv: kvm

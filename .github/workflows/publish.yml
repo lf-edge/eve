@@ -270,19 +270,11 @@ jobs:
           # arm64 nvidia
           - arch: arm64
             hv: kvm
-            platform: "nvidia-jp5"
-            os: zededa-ubuntu-2204-arm64
-          - arch: arm64
-            hv: kvm
             platform: "nvidia-jp6"
             os: zededa-ubuntu-2204-arm64
           - arch: arm64
             hv: kvm
             platform: "nvidia-jp7"
-            os: zededa-ubuntu-2204-arm64
-          - arch: arm64
-            hv: k
-            platform: "nvidia-jp5"
             os: zededa-ubuntu-2204-arm64
           - arch: arm64
             hv: k

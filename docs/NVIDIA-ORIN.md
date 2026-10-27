@@ -92,6 +92,8 @@ Once the procedure is done, power off the board and disconnect the pin _FC REC_ 
 
 ### Running a live image on the Jetson Xavier NX developer kit
 
+> The Jetson Xavier NX (`nvidia-jp5`) is no longer supported; see [NVIDIA-NX.md](NVIDIA-NX.md).
+
 1. Make sure the bootloader is present in the QSPI EEPROM
 1. Build a live raw image `make ZARCH=arm64 HV=kvm PLATFORM=nvidia-jp5 live-raw` (Only KVM is supported)
 1. Flash the `dist/arm64/current/live.raw` live EVE image onto an SD Card [following these instructions](../README.md#3-flash-the-image-to-the-device)
