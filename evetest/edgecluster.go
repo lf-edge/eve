@@ -76,7 +76,24 @@ func (ec *EdgeCluster) ApplyConfig(clusterConfig *EdgeClusterConfig,
 // node publishes cluster info, so the function succeeds as soon as any
 // single device reports all nodes ready. It fails if the timeout expires
 // before that happens.
+//
+// It accepts the last report already received. After a node reboots, that
+// report can predate the reboot and still show the node Ready, so use
+// WaitForFreshNodesReady there.
 func (ec *EdgeCluster) WaitUntilNodesAreReady(timeout time.Duration) {
+	ec.waitUntilNodesAreReady(timeout, false)
+}
+
+// WaitForFreshNodesReady is WaitUntilNodesAreReady, except that it counts only
+// reports that arrive after the call. Use it after a node reboots or is
+// powered off and on. The leader's report can show a powered-off node Ready
+// until Kubernetes marks it NotReady, so call it only once an outage has
+// lasted that long.
+func (ec *EdgeCluster) WaitForFreshNodesReady(timeout time.Duration) {
+	ec.waitUntilNodesAreReady(timeout, true)
+}
+
+func (ec *EdgeCluster) waitUntilNodesAreReady(timeout time.Duration, freshOnly bool) {
 	if len(ec.devices) == 0 {
 		ec.th.t.Fatalf("WaitUntilNodesAreReady: no devices in cluster %q "+
 			"(call ApplyConfig first)", ec.clusterName)
@@ -101,7 +118,8 @@ func (ec *EdgeCluster) WaitUntilNodesAreReady(timeout time.Duration) {
 		// landing between the two calls can never be missed.
 		updates, stop := dev.WatchClusterInfo()
 		defer stop()
-		if info := dev.GetClusterInfo(); info != nil && allNodesReady(info, expectedNodes) {
+		if info := dev.GetClusterInfo(); !freshOnly && info != nil &&
+			allNodesReady(info, expectedNodes) {
 			ec.th.log.Infof("All cluster nodes already ready per device %q",
 				dev.devName)
 			closeOnce.Do(func() { close(doneCh) })

@@ -4,7 +4,6 @@
 package upgrade_test
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -14,7 +13,6 @@ import (
 
 	eveconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve-api/go/evecommon"
-	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
 	"github.com/lf-edge/eve/evetest/constants"
 	"github.com/lf-edge/eve/evetest/netmodels"
@@ -202,7 +200,7 @@ func TestThreeNodesUpgrade(test *testing.T) {
 		log.Infof("Upgrading %s to %q", devName[i], targetVersion)
 		device.UpgradeEVE(targetVersion, evetest.HypervisorKubevirt,
 			evetest.BaseOSDatastoreHTTP, true, false)
-		waitForFreshNodesReady(t, devName, 30*time.Minute)
+		cluster.WaitForFreshNodesReady(30 * time.Minute)
 		evetest.Checkpoint(fmt.Sprintf("node-%s-upgraded", devName[i]))
 	}
 
@@ -210,70 +208,6 @@ func TestThreeNodesUpgrade(test *testing.T) {
 	// refused while kubevirt's webhook is still starting has to wait out.
 	expectAppAnswers(15 * time.Minute)
 	evetest.Checkpoint("app-verified-post-upgrade")
-}
-
-// waitForFreshNodesReady waits until some node publishes cluster info in
-// which every node in devName is Ready and storage is healthy. Unlike
-// EdgeCluster.WaitUntilNodesAreReady it ignores the info already cached,
-// which after a node reboot can predate the reboot and still show it Ready.
-func waitForFreshNodesReady(t *WithT, devName [3]string, timeout time.Duration) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	ready := make(chan string, len(devName))
-	for _, name := range devName {
-		device := evetest.GetEdgeDevice(name)
-		updates, stop := device.WatchClusterInfo()
-		defer stop()
-		go func() {
-			for {
-				select {
-				case info, ok := <-updates:
-					if !ok {
-						return
-					}
-					if allClusterNodesReady(info, devName[:]) {
-						ready <- name
-						return
-					}
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-	}
-	select {
-	case name := <-ready:
-		evetest.Logger().Infof("All cluster nodes reported Ready by %s", name)
-	case <-ctx.Done():
-		t.Expect(ctx.Err()).ToNot(HaveOccurred(),
-			"no node reported all of %v Ready with healthy storage", devName)
-	}
-}
-
-// allClusterNodesReady reports whether info shows healthy storage and every
-// node in names Ready.
-func allClusterNodesReady(info *eveinfo.ZInfoKubeCluster, names []string) bool {
-	if info.GetStorage().GetHealth() != eveinfo.ServiceStatus_SERVICE_STATUS_HEALTHY {
-		return false
-	}
-	const readyCond = eveinfo.KubeNodeConditionType_KUBE_NODE_CONDITION_TYPE_READY
-	for _, name := range names {
-		nodeReady := false
-		for _, node := range info.GetNodes() {
-			if node.GetName() != name {
-				continue
-			}
-			for _, cond := range node.GetConditions() {
-				if cond.GetType() == readyCond {
-					nodeReady = cond.GetSet()
-				}
-			}
-		}
-		if !nodeReady {
-			return false
-		}
-	}
-	return true
 }
 
 // newThreeNodeClusterConfig returns the replicated-storage cluster config of
