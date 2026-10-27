@@ -245,7 +245,14 @@ see all flags, including VM shape (`--vm-memory`, `--vm-disk`, `--vm-cores`,
 `--storage`, `--import-storage`, `--lan-bridge`, `--lan-mac`) and registry credentials
 for its own docker pulls (`--docker-username`/`--docker-password`).
 
-Tear it down (unregisters the runner from GitHub, then destroys the VM):
+If you cannot get a PAT with Administration permission on the repository, someone who
+can administer it may instead generate a registration token (Settings > Actions >
+Runners > New self-hosted runner, or `POST /repos/<owner>/eve/actions/runners/registration-token`)
+and pass it with `--registration-token TOKEN` in place of `--gh-pat`. The token is valid
+for about an hour, so install the runner right after it is generated.
+
+Tear it down (unregisters the runner from GitHub, then destroys the VM; without
+`--gh-pat` the VM is destroyed but the runner must be removed from GitHub manually):
 
 ```sh
 ./gh-runner-installer.sh --destroy --name ci1 --gh-username <github-user> --gh-pat <pat>
