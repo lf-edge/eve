@@ -581,6 +581,7 @@ test: $(LINUXKIT) pkg/pillar | $(DIST)
 	cp pkg/pillar/results.xml $(DIST)/
 	make -C pkg/alpine/dnstest test
 	make -C pkg/debug test
+	make -C pkg/node-exporter test
 	make -C pkg/vtpm test
 	go test -C pkg/newlog/cmd/ -v -race
 	go test -C pkg/edgeview/src/ -v -race
