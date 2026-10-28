@@ -3,7 +3,7 @@ kernel:
   cmdline: "rootdelay=3"
 init:
   - linuxkit/init:v1.3.0
-  - linuxkit/runc:v1.3.0       # runc v3.3.0
+  - RUNC_TAG                   # runc v1.3.3 built from source, stripped
   - linuxkit/containerd:v1.3.0 # containerd v2.2.0
   # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
   - linuxkit/getty:v1.3.0
