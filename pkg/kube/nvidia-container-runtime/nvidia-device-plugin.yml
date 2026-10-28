@@ -42,18 +42,38 @@ spec:
       # See https://kubernetes.io/docs/tasks/administer-cluster/guaranteed-scheduling-critical-addon-pods/
       priorityClassName: "system-node-critical"
       containers:
-      - image: nvcr.io/nvidia/k8s-device-plugin:v0.18.0
+      - image: nvcr.io/nvidia/k8s-device-plugin:v0.20.0
         name: nvidia-device-plugin-ctr
-        env: []
+        env:
+        - name: NVIDIA_DRIVER_ROOT
+          value: /opt/vendor/nvidia/dist
+        - name: NVIDIA_DEV_ROOT
+          value: /
+        - name: DEVICE_DISCOVERY_STRATEGY
+          value: nvml
+        - name: NVIDIA_CTK_PATH
+          value: /opt/vendor/nvidia/bin/nvidia-ctk
+        - name: CONTAINER_DRIVER_ROOT
+          value: /opt/vendor/nvidia/dist
         securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: ["ALL"]
+          privileged: true
         volumeMounts:
         - name: kubelet-device-plugins-dir
           mountPath: /var/lib/kubelet/device-plugins
+        - name: nvidia-driver-root
+          mountPath: /opt/vendor/nvidia/dist
+          readOnly: true
+        - name: dev
+          mountPath: /dev
       volumes:
       - name: kubelet-device-plugins-dir
         hostPath:
           path: /var/lib/kubelet/device-plugins
           type: Directory
+      - name: nvidia-driver-root
+        hostPath:
+          path: /opt/vendor/nvidia/dist
+          type: Directory
+      - name: dev
+        hostPath:
+          path: /dev

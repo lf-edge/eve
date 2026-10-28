@@ -87,7 +87,7 @@ WORKDIR /
 RUN test -f /nvidia_linux.tbz2 && tar -xjf /nvidia_linux.tbz2 || true
 
 # Build nvidia-ctk
-ENV NVIDIA_CONTAINER_TOOLKIT_REV=v1.19.0
+ENV NVIDIA_CONTAINER_TOOLKIT_REV=v1.20.0
 ADD --keep-git-dir=true https://github.com/NVIDIA/nvidia-container-toolkit.git#${NVIDIA_CONTAINER_TOOLKIT_REV} /nvct
 
 WORKDIR /nvct
