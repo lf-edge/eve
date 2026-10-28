@@ -71,6 +71,15 @@ func TestScanFromSet(t *testing.T) {
 			fromSet: []string{"alpine:3.20", "ghcr.io/o:${LATER}"},
 		},
 		{
+			name: "escape ending a comment does not continue it",
+			dockerfile: "FROM alpine:3.20\n" +
+				"# RUN a && \\\n" +
+				"#     b\n" +
+				"\n" +
+				"FROM busybox\n",
+			fromSet: []string{"alpine:3.20", "busybox"},
+		},
+		{
 			name: "comment inside continuation skipped",
 			dockerfile: "FROM \\\n" +
 				"# swallow\n" +
