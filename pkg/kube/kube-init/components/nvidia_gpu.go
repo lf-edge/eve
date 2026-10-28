@@ -12,7 +12,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeclient"
@@ -24,7 +23,7 @@ import (
 // Inputs of ReconcileNvidiaGPU. var so tests can redirect.
 //
 //   - NvidiaPlatformFile is written by pkg/nvidia for the platform it was
-//     built for (nvidia-jp5, nvidia-jp6, nvidia-jp7, ai-generic). Its absence
+//     built for (nvidia-jp5, nvidia-jp6, nvidia-jp7, nvidia-gb, ai-generic). Its absence
 //     means the image has no NVIDIA userland.
 //   - NvidiaModuleDir exists while nvidia.ko is loaded.
 //   - NvidiaCDISpecDirs are where containerd looks for CDI specs: Jetson
@@ -37,16 +36,13 @@ var (
 	nvidiaManifestsSrc = manifestsSrc
 )
 
-// NvidiaGPUNodeLabel marks a node whose NVIDIA GPU is usable. Both device
-// plugin DaemonSets pkg/kube ships select on it with the value "true".
+// NvidiaGPUNodeLabel marks a node whose NVIDIA GPU is usable. The device
+// plugin DaemonSet pkg/kube ships selects on it with the value "true".
 const NvidiaGPUNodeLabel = "eve.lfedge.org/nvidia-gpu"
 
-// The device plugin manifests pkg/kube ships. The Jetson one's name is also
-// the auto-deploy file name, so a node only ever has one plugin DaemonSet.
-const (
-	nvidiaPluginManifestName     = "nvidia-device-plugin-18.0.yml"
-	nvidiaDGPUPluginManifestName = "nvidia-device-plugin-18.0-dgpu.yml"
-)
+// nvidiaPluginManifestName is the device plugin manifest pkg/kube ships for
+// every NVIDIA platform, and its name in the auto-deploy dir.
+const nvidiaPluginManifestName = "nvidia-device-plugin-18.0.yml"
 
 // nvidiaCDIKind is the CDI kind NVIDIA's GPU specs declare.
 const nvidiaCDIKind = "nvidia.com/gpu"
@@ -71,8 +67,8 @@ var nvidiaAPICallBudget = 10 * time.Second
 var nvidiaLabelCleared bool
 
 // ReconcileNvidiaGPU deploys the NVIDIA device plugin to the nodes that can
-// run it. On an image with an NVIDIA userland it stages the plugin manifest
-// for that platform; the DaemonSet selects nodes labelled
+// run it. On an image with an NVIDIA userland it stages the plugin manifest;
+// the DaemonSet selects nodes labelled
 // NvidiaGPUNodeLabel=true, and each node labels only itself, while nvidia.ko
 // is loaded and an NVIDIA CDI spec exists. Elsewhere the plugin pod could not
 // start, and a kube-system pod that never becomes Ready holds kube-init's
@@ -87,19 +83,14 @@ func ReconcileNvidiaGPU(ctx context.Context) error {
 
 // reconcileNvidiaGPU is the path-parameterised core of ReconcileNvidiaGPU.
 func reconcileNvidiaGPU(ctx context.Context, manifestsDstDir string) error {
-	data, err := os.ReadFile(NvidiaPlatformFile)
+	_, err := os.ReadFile(NvidiaPlatformFile)
 	if errors.Is(err, os.ErrNotExist) {
 		return clearStaleNvidiaLabel(ctx)
 	}
 	if err != nil {
 		return fmt.Errorf("read %s: %w", NvidiaPlatformFile, err)
 	}
-	platform := strings.TrimSpace(string(data))
-	name, ok := nvidiaPluginManifestFor(platform)
-	if !ok {
-		return fmt.Errorf("no NVIDIA device plugin manifest for platform %q", platform)
-	}
-	if err := stageNvidiaPluginManifest(filepath.Join(nvidiaManifestsSrc, name), manifestsDstDir); err != nil {
+	if err := stageNvidiaPluginManifest(filepath.Join(nvidiaManifestsSrc, nvidiaPluginManifestName), manifestsDstDir); err != nil {
 		return err
 	}
 	usable, err := nvidiaGPUUsable()
@@ -107,17 +98,6 @@ func reconcileNvidiaGPU(ctx context.Context, manifestsDstDir string) error {
 		return err
 	}
 	return reconcileNvidiaNodeLabel(ctx, usable)
-}
-
-// nvidiaPluginManifestFor names the manifest for a pkg/nvidia platform.
-func nvidiaPluginManifestFor(platform string) (string, bool) {
-	switch {
-	case strings.HasPrefix(platform, "nvidia-jp"):
-		return nvidiaPluginManifestName, true
-	case platform == "ai-generic":
-		return nvidiaDGPUPluginManifestName, true
-	}
-	return "", false
 }
 
 // clearStaleNvidiaLabel drops a label left by an earlier image with an
