@@ -460,8 +460,12 @@ jobs:
           docker system prune -f -a --volumes
           rm -rf ~/.linuxkit
 
+  # make test builds pillar and its dependencies, so wait for pkgs-amd64 to
+  # push them; otherwise a package change is rebuilt here from source. Run
+  # even if pkgs-amd64 failed, which may be after its push.
   coverage:
-    if: github.event.repository.full_name == 'lf-edge/eve'
+    if: ${{ !cancelled() && github.event.repository.full_name == 'lf-edge/eve' }}
+    needs: pkgs-amd64
     runs-on: zededa-ubuntu-2204
     timeout-minutes: 1440
     steps:
