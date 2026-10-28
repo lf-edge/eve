@@ -551,29 +551,63 @@ func PopulateKSI() (types.KubeStorageInfo, error) {
 	return ksi, nil
 }
 
-// lhVolHasHealthyReplicaWithoutNode returns true if a volume can support losing a replica on the provided node name
-// and still have an online replica
-func lhVolHasHealthyReplicaWithoutNode(log *base.LogObject, repList *lhv1beta2.ReplicaList, ignoreRepOnNode string) (hasHealthyReplica bool) {
-	var healthyReplicas []lhv1beta2.Replica
-	// filter list to replicas which are healthy
-	for _, lhReplica := range repList.Items {
-		if lhReplica.Spec.NodeID == ignoreRepOnNode {
-			log.Warnf("replica:%s Spec.NodeID:%s", lhReplica.ObjectMeta.Name, ignoreRepOnNode)
-			continue
-		}
-		if lhReplica.Status.OwnerID == ignoreRepOnNode {
-			log.Warnf("replica:%s Status.OwnerID:%s", lhReplica.ObjectMeta.Name, ignoreRepOnNode)
-			continue
-		}
-		if lhReplica.Spec.HealthyAt == "" {
-			log.Warnf("replica:%s Spec.HealthyAt empty", lhReplica.ObjectMeta.Name)
-			continue
-		}
-		healthyReplicas = append(healthyReplicas, lhReplica)
+// lhReplicaUnhealthyReason returns why a replica fails longhorn-manager's
+// isHealthyAndActiveReplica, or "" if it passes.
+func lhReplicaUnhealthyReason(r *lhv1beta2.Replica) string {
+	switch {
+	case r.Spec.HealthyAt == "":
+		return "HealthyAt empty"
+	case r.Spec.FailedAt != "":
+		return "FailedAt set"
+	case !r.Spec.Active:
+		return "inactive"
 	}
-	hasHealthyReplica = (len(healthyReplicas) > 0)
-	log.Warnf("replica healthyReplicaCount:%d hasHealthyReplica:%t", len(healthyReplicas), hasHealthyReplica)
-	return hasHealthyReplica
+	return ""
+}
+
+// lhReplicaUnsafeAsLastReason returns why a replica fails longhorn-manager's
+// isSafeAsLastReplica, or "" if it passes. A timestamp parse error is not safe.
+func lhReplicaUnsafeAsLastReason(r *lhv1beta2.Replica) string {
+	if reason := lhReplicaUnhealthyReason(r); reason != "" {
+		return reason
+	}
+	if r.Spec.LastFailedAt == "" {
+		return ""
+	}
+	lastHealthy, err := time.Parse(time.RFC3339, r.Spec.LastHealthyAt)
+	if err != nil {
+		return fmt.Sprintf("LastHealthyAt unparsable: %v", err)
+	}
+	lastFailed, err := time.Parse(time.RFC3339, r.Spec.LastFailedAt)
+	if err != nil {
+		return fmt.Sprintf("LastFailedAt unparsable: %v", err)
+	}
+	if !lastHealthy.After(lastFailed) {
+		return "LastFailedAt after LastHealthyAt"
+	}
+	return ""
+}
+
+// lhVolSurvivingReplicas returns the replicas in repList which are off failedNode
+// and safe to keep as the volume's last replica once failedNode's replicas are deleted.
+func lhVolSurvivingReplicas(log *base.LogObject, repList *lhv1beta2.ReplicaList, failedNode string) []lhv1beta2.Replica {
+	if repList == nil {
+		return nil
+	}
+	var survivors []lhv1beta2.Replica
+	for i := range repList.Items {
+		r := &repList.Items[i]
+		if r.Spec.NodeID == failedNode || r.Status.OwnerID == failedNode {
+			continue
+		}
+		if reason := lhReplicaUnsafeAsLastReason(r); reason != "" {
+			log.Noticef("lhVolSurvivingReplicas replica:%s nodeID:%s ownerID:%s rejected: %s",
+				r.ObjectMeta.Name, r.Spec.NodeID, r.Status.OwnerID, reason)
+			continue
+		}
+		survivors = append(survivors, *r)
+	}
+	return survivors
 }
 
 // LonghornReplicaList returns the replica for a given longhorn volume which is hosted on a given kubernetes node
@@ -596,6 +630,14 @@ func LonghornReplicaList(ownerNodeName string, longhornVolName string) (*lhv1bet
 		return nil, fmt.Errorf("LonghornReplicaList can't get versioned config: %v", err)
 	}
 
+	lhCtx, lhCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer lhCancel()
+	return lhReplicaListInner(lhCtx, lhClient.LonghornV1beta2().Replicas(longhornNamespace), ownerNodeName, longhornVolName)
+}
+
+// lhReplicaListInner lists replicas filtered by node and volume label, either may be empty.
+func lhReplicaListInner(ctx context.Context, lhReplicas lhReplicaLister,
+	ownerNodeName string, longhornVolName string) (*lhv1beta2.ReplicaList, error) {
 	labelSelectors := []string{}
 	if ownerNodeName != "" {
 		labelSelectors = append(labelSelectors, "longhornnode="+ownerNodeName)
@@ -603,9 +645,7 @@ func LonghornReplicaList(ownerNodeName string, longhornVolName string) (*lhv1bet
 	if longhornVolName != "" {
 		labelSelectors = append(labelSelectors, "longhornvolume="+longhornVolName)
 	}
-	lhCtx, lhCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
-	defer lhCancel()
-	replicas, err := lhClient.LonghornV1beta2().Replicas(longhornNamespace).List(lhCtx, metav1.ListOptions{
+	replicas, err := lhReplicas.List(ctx, metav1.ListOptions{
 		LabelSelector: strings.Join(labelSelectors, ","),
 	})
 	if err != nil {

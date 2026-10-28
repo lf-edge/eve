@@ -18,7 +18,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
-	lhv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -833,19 +833,19 @@ func TryFastDeleteVmi(log *base.LogObject, kvClientset kubecli.KubevirtClient, v
 		})
 }
 
-func getPodsLhVols(log *base.LogObject, pod *corev1.Pod) (lhVolNames []string) {
+func getPodsLhVols(pod *corev1.Pod, wdFunc func()) (lhVolNames []string, err error) {
 	if pod == nil {
-		return
+		return nil, fmt.Errorf("getPodsLhVols: nil pod")
 	}
 
 	config, err := GetKubeConfig()
 	if err != nil {
-		log.Errorf("GetVmiName: can't get kubeconfig %v", err)
+		return nil, fmt.Errorf("getPodsLhVols: can't get kubeconfig %v", err)
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		log.Errorf("GetVmiName: can't get clientset %v", err)
+		return nil, fmt.Errorf("getPodsLhVols: can't get clientset %v", err)
 	}
 
 	for _, vol := range pod.Spec.Volumes {
@@ -854,19 +854,79 @@ func getPodsLhVols(log *base.LogObject, pod *corev1.Pod) (lhVolNames []string) {
 		}
 		pvcName := vol.PersistentVolumeClaim.ClaimName
 
+		wdFunc()
 		pvcCtx, pvcCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
 		pvc, err := clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace).Get(pvcCtx, pvcName, metav1.GetOptions{})
 		pvcCancel()
 		if err != nil {
-			log.Errorf("DetachOldWorkload Can't get failed pod:%s PVC:%s err:%v", pod.ObjectMeta.Name, pvcName, err)
-			continue
+			return nil, fmt.Errorf("getPodsLhVols: can't get pod:%s PVC:%s err:%v", pod.ObjectMeta.Name, pvcName, err)
 		}
 		if pvc.ObjectMeta.Annotations["volume.kubernetes.io/storage-provisioner"] != "driver.longhorn.io" {
 			continue
 		}
 		lhVolNames = append(lhVolNames, pvc.Spec.VolumeName)
 	}
-	return lhVolNames
+	return lhVolNames, nil
+}
+
+// failoverVolSummary records how many replicas of a longhorn volume remain
+// after the failed node's replicas are deleted. desired is 0 when unknown.
+// failedNodeReplicas are the replicas to delete, from the same list the
+// decision was made on.
+type failoverVolSummary struct {
+	name               string
+	survivors          int
+	desired            int
+	failedNodeReplicas []string
+}
+
+// failoverStorageDecision is the result of evalFailoverStorage.
+// reason is set when proceed is false.
+type failoverStorageDecision struct {
+	proceed bool
+	reason  string
+	vols    []failoverVolSummary
+}
+
+// evalFailoverStorage decides whether every longhorn volume in lhVolNames keeps
+// at least one replica safe to run on after the replicas on failedNode are deleted.
+// Anything not proven safe, including any replica list error, does not proceed.
+// A volume get error only leaves desired unknown, it does not block.
+// An empty lhVolNames proceeds: the app has no longhorn storage to protect.
+func evalFailoverStorage(log *base.LogObject, lhVolNames []string, failedNode string,
+	lhReplicas lhReplicaLister, lhVols lhVolumeGetter, wdFunc func(),
+) failoverStorageDecision {
+	var vols []failoverVolSummary
+	for _, lhVolName := range lhVolNames {
+		wdFunc()
+		listCtx, listCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+		repList, err := lhReplicaListInner(listCtx, lhReplicas, "", lhVolName)
+		listCancel()
+		if err != nil {
+			return failoverStorageDecision{reason: fmt.Sprintf("vol:%s replica list failed: %v", lhVolName, err)}
+		}
+		survivors := lhVolSurvivingReplicas(log, repList, failedNode)
+		if len(survivors) == 0 {
+			return failoverStorageDecision{reason: fmt.Sprintf("vol:%s has no replica safe to keep off failedNode:%s", lhVolName, failedNode)}
+		}
+		summary := failoverVolSummary{name: lhVolName, survivors: len(survivors)}
+		for _, r := range repList.Items {
+			if r.Spec.NodeID == failedNode {
+				summary.failedNodeReplicas = append(summary.failedNodeReplicas, r.ObjectMeta.Name)
+			}
+		}
+		wdFunc()
+		getCtx, getCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+		lhVol, err := lhVols.Get(getCtx, lhVolName, metav1.GetOptions{})
+		getCancel()
+		if err != nil {
+			log.Warnf("evalFailoverStorage vol:%s can't get desired replica count: %v", lhVolName, err)
+		} else if lhVol != nil {
+			summary.desired = lhVol.Spec.NumberOfReplicas
+		}
+		vols = append(vols, summary)
+	}
+	return failoverStorageDecision{proceed: true, vols: vols}
 }
 
 // DetachOldWorkload is used when EVE detects a node is no longer reachable and was running a VM app instance
@@ -963,46 +1023,55 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 
 	// 4. Get all replicas on the failed node which are part of a longhorn volume backing a pvc claimed by the vmi
 	// We will need these references to fix volumeattachment and nodeId references.
-	lhVolNames := []string{}
-	if terminatingVlPod != nil {
-		lhVolNames = getPodsLhVols(log, terminatingVlPod)
+	// The caller saw a terminating pod; if it is gone now, retry on the next tick.
+	if terminatingVlPod == nil {
+		log.Errorf("Cluster failover of appDomainName:%s cannot continue: no virt-launcher pod on failedNode:%s",
+			appDomainName, failedNodeName)
+		return
 	}
-	var replicaNames []string
-	var allReps []*lhv1beta2.ReplicaList
-	var appHasStorageRedundancy = true
-	for _, lhVolName := range lhVolNames {
-		// First look at reps on the failed node
-		failedNodeLhVolReps, err := LonghornReplicaList(failedNodeName, lhVolName)
-		if err != nil {
-			log.Errorf("DetachOldWorkload Can't get failed replicas err:%v", err)
-			continue
-		}
-		allReps = append(allReps, failedNodeLhVolReps)
-		for _, replica := range failedNodeLhVolReps.Items {
-			replicaNames = append(replicaNames, replica.ObjectMeta.Name)
-		}
-
-		// Now look at all reps, can this vol sustain a failure?
-		lhVolAllReps, err := LonghornReplicaList("", lhVolName)
-		if err != nil {
-			log.Errorf("DetachOldWorkload Can't get failed replicas err:%v", err)
-			continue
-		}
-		volRedundant := lhVolHasHealthyReplicaWithoutNode(log, lhVolAllReps, failedNodeName)
-		if !volRedundant {
-			appHasStorageRedundancy = false
-			break
-		}
+	lhVolNames, err := getPodsLhVols(terminatingVlPod, wdFunc)
+	if err != nil {
+		log.Errorf("Cluster failover of appDomainName:%s cannot continue: %v", appDomainName, err)
+		return
 	}
+	lhClient, err := versioned.NewForConfig(config)
+	if err != nil {
+		log.Errorf("Cluster failover of appDomainName:%s cannot continue: can't get longhorn client: %v", appDomainName, err)
+		return
+	}
+	lhReplicas := lhClient.LonghornV1beta2().Replicas(longhornNamespace)
+	lhVols := lhClient.LonghornV1beta2().Volumes(longhornNamespace)
 
-	// This is the point of no return, make sure the volume has redundancy
-	// if the only fully built replica is on the failed node, just exit.
-	if !appHasStorageRedundancy {
-		log.Errorf("Cluster failover of appDomainName:%s cannot continue, storage not redundant", appDomainName)
+	// This is the point of no return, every volume must keep a replica which is safe
+	// to run on once the failed node's replicas are deleted.
+	storageDecision := evalFailoverStorage(log, lhVolNames, failedNodeName, lhReplicas, lhVols, wdFunc)
+	if !storageDecision.proceed {
+		log.Errorf("Cluster failover of appDomainName:%s cannot continue: %s", appDomainName, storageDecision.reason)
 		return
 	}
 
+	var replicaNames []string
+	for _, v := range storageDecision.vols {
+		replicaNames = append(replicaNames, v.failedNodeReplicas...)
+	}
+
 	// Log all actions before taking them
+	for _, v := range storageDecision.vols {
+		if v.desired == 0 {
+			log.Warnf("DetachOldWorkload redundancy reduced app:%s vol:%s failedNode:%s replicasRemaining:%d desired:unknown",
+				appDomainName, v.name, failedNodeName, v.survivors)
+			continue
+		}
+		if v.survivors >= v.desired {
+			continue
+		}
+		noRedundancy := ""
+		if v.survivors == 1 {
+			noRedundancy = " noRedundancyUntilRebuild:true"
+		}
+		log.Warnf("DetachOldWorkload redundancy reduced app:%s vol:%s failedNode:%s replicasRemaining:%d desired:%d%s",
+			appDomainName, v.name, failedNodeName, v.survivors, v.desired, noRedundancy)
+	}
 	detachLogRecipe := "DetachOldWorkload Cluster Detach volume from VM pod:%s vmi:%s failedNode:%s replicas:%s"
 	log.Noticef(detachLogRecipe, failedNodevLPodName, failedNodeVmiName, failedNodeName, strings.Join(replicaNames, ","))
 
@@ -1018,6 +1087,13 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 		if err := DetachUtilVmirsReplicaReset(log, vmiRsName); err != nil {
 			log.Errorf("DetachOldWorkload vmirs scale reset failed for %s: %v", vmiRsName, err)
 		}
+	}
+
+	// The steps above can take minutes, check again before any delete.
+	// Stopping here leaves the terminating pod, so the next tick retries.
+	if recheck := evalFailoverStorage(log, lhVolNames, failedNodeName, lhReplicas, lhVols, wdFunc); !recheck.proceed {
+		log.Errorf("Cluster failover of appDomainName:%s cannot continue on recheck: %s", appDomainName, recheck.reason)
+		return
 	}
 
 	// Delete virt-launcher pod on failed node
@@ -1045,12 +1121,10 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 	}
 
 	// Delete replica for PVC on failed node
-	for _, repList := range allReps {
-		for _, replica := range repList.Items {
-			log.Noticef("DetachOldWorkload Deleting replica:%s", replica.ObjectMeta.Name)
-			if err := longhornReplicaDelete(replica.ObjectMeta.Name); err != nil {
-				log.Errorf("DetachOldWorkload Can't delete failed replica:%s err:%v", replica.ObjectMeta.Name, err)
-			}
+	for _, replicaName := range replicaNames {
+		log.Noticef("DetachOldWorkload Deleting replica:%s", replicaName)
+		if err := longhornReplicaDelete(replicaName); err != nil {
+			log.Errorf("DetachOldWorkload Can't delete failed replica:%s err:%v", replicaName, err)
 		}
 	}
 
@@ -1072,8 +1146,10 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 		// First try to force delete all Volume Attachments
 		//
 		time.Sleep(time.Second * 1)
-		vaList, err := GetVolumeAttachmentFromHost(failedNodeName, log)
-		if len(vaList) == 0 {
+		vaList, err := GetVolumeAttachmentFromHost(failedNodeName, lhVolNames, log)
+		if err != nil {
+			log.Errorf("DetachOldWorkload can't list volumeattachments on node/%s err:%v", failedNodeName, err)
+		} else if len(vaList) == 0 {
 			log.Noticef("DetachOldWorkload node/%s volumeattachment list empty finally", failedNodeName)
 			break
 		}
@@ -1111,7 +1187,12 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 			newNodeName = vlPod.Spec.NodeName
 
 			// Get new ref to all its vols
-			lhVolNames = getPodsLhVols(log, &vlPod)
+			newPodLhVols, err := getPodsLhVols(&vlPod, wdFunc)
+			if err != nil {
+				log.Errorf("DetachOldWorkload: keeping previous volume list err:%v", err)
+				continue
+			}
+			lhVolNames = newPodLhVols
 		}
 
 		// Force set new scheduled node id to allow the volume to start on the new node
