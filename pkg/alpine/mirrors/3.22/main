@@ -416,6 +416,7 @@ librelp-dev
 libsasl
 libseccomp
 libseccomp-dev
+libseccomp-static
 libsmartcols
 libssh2
 libssl3
