@@ -102,12 +102,21 @@ until_visible() {
     [ "$waited" -eq 0 ] || echo "visible after ${waited}s: ${*: -1}"
 }
 
+# Rekor's transient 5xx errors can outlast cosign's own two attempts, so a
+# failed signing is retried every 30 s, five attempts in all. Each attempt
+# signs with new ephemeral keys, so an earlier attempt's Rekor entry goes unused.
 sign_digest() {
+    local tries=1
     if verified "$1"; then
         echo "already signed: $1"
         return
     fi
-    cosign sign --yes "$1"
+    until cosign sign --yes "$1"; do
+        [ "$tries" -lt 5 ] || die "cannot sign $1 after $tries attempts"
+        echo "signing $1 failed, retrying in 30 s"
+        sleep 30
+        tries=$((tries + 1))
+    done
     until_visible cosign_verify "$1" || die "new signature on $1 does not verify under the policy"
     echo "signed: $1"
 }
