@@ -5,7 +5,7 @@
 #   /EFI/BOOT/grub.cfg - Chainloads main bootloader
 #   /UsbInvocationScript.txt - Enables USB boot on Dell 3000 series
 #
-FROM lfedge/eve-alpine:5f1c625e658308db22e936e3e5498167ed7b9081 AS build
+FROM lfedge/eve-alpine:b1b51db20be9651c521bf5ba14eb5c6d7481eed7 AS build
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 ENV BUILD_PKGS="grep patch git make gcc linux-headers musl-dev autoconf automake pkgconfig kmod-dev util-linux-dev cryptsetup-dev lddtree libgcc mkinitfs"
 ENV PKGS="mtools dosfstools libarchive-tools sgdisk e2fsprogs util-linux squashfs-tools coreutils tar dmidecode \
