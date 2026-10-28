@@ -80,11 +80,7 @@ func Scan(r io.Reader) (*Result, error) {
 				continue
 			}
 		} else if isComment(l) || l == "" {
-			if cont {
-				// a line that is only the escape char
-				b.WriteString(l2)
-				inCont = true
-			}
+			// a trailing escape does not continue a comment line
 			continue
 		} else {
 			l2 = strings.TrimLeft(l2, " \t")
