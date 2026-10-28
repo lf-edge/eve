@@ -424,7 +424,11 @@ When zedkube detects a new pod scheduled on this node via `ENClusterAppStatus`, 
 
 ### 6. Verify PVC storage redundancy
 
-For each Longhorn volume attached to the application, EVE checks that at least one healthy replica exists on a node other than the failed node. If any volume lacks an off-node healthy replica, the failover is blocked and does not proceed. This is a hard gate.
+For each Longhorn volume attached to the application, EVE checks that at least one replica on a node other than the failed node is safe to keep as the volume's last replica. This follows Longhorn's own rule (`isSafeAsLastReplica`): `HealthyAt` is set, `FailedAt` is empty, the replica is active, and if `LastFailedAt` is set, `LastHealthyAt` is later. The last condition rejects a replica that failed and was brought back by auto-salvage, which can be a corrupted replica, until it has run read-write in an engine again.
+
+The check fails closed. If any volume has no such replica, or a replica list or PVC lookup fails, the failover does not proceed and the reason is logged with the volume name. zedkube retries on its next 10 second pass, so a short API outage only delays the failover. The control plane pod cleanup and VMIRs reset that follow can take minutes, so the check runs again after them, before the virt-launcher pod and the replicas are deleted. The replicas deleted are the ones on the failed node in the replica list the first check used.
+
+Before any replica is deleted, EVE logs a `redundancy reduced` warning for each volume that will be left with fewer replicas than `Spec.NumberOfReplicas`, adding `noRedundancyUntilRebuild:true` when only one replica is left.
 
 ### 7. Control plane pod cleanup on failed node
 
@@ -440,7 +444,7 @@ Longhorn `Replica` objects associated with the failed node for this application'
 
 ### 10. VolumeAttachment deletion
 
-EVE polls and force-deletes all `VolumeAttachment` objects referencing the failed node for this application. The loop retries until the VA list is empty. The new virt-launcher pod's PVC bind cannot complete while the old `VolumeAttachment` exists.
+EVE polls and force-deletes the `VolumeAttachment` objects on the failed node for this application's PVs. Attachments for other applications on the same node are left to their own failover, so each one goes through its own storage check first. The loop retries until this application's VA list is empty. The new virt-launcher pod's PVC bind cannot complete while the old `VolumeAttachment` exists.
 
 ### 11. Longhorn volume node assignment
 
