@@ -149,6 +149,16 @@ jobs:
           policy=(--certificate-oidc-issuer "$ISSUER" --certificate-identity "$IDENTITY"
                   --certificate-github-workflow-repository "$REPOSITORY")
           verified() { cosign verify "${policy[@]}" "$1" > /dev/null 2>&1; }
+          # Rekor's transient 5xx errors can outlast cosign's own two attempts.
+          retry() {
+            local tries=1
+            until "$@"; do
+              [ "$tries" -lt 5 ] || die "$1 $2 failed $tries times"
+              echo "$1 $2 failed, retrying in 30 s"
+              sleep 30
+              tries=$((tries + 1))
+            done
+          }
           # Docker Hub's referrers listing can lag a push by up to a minute.
           until_visible() {
             local waited=0
@@ -176,7 +186,7 @@ jobs:
             if verified "$ref"; then
               echo "already signed: $ref"
             else
-              cosign sign --yes "$ref"
+              retry cosign sign --yes "$ref"
               until_visible cosign verify "${policy[@]}" "$ref" || die "new signature on $ref does not verify"
               echo "signed: $ref"
             fi
@@ -187,14 +197,14 @@ jobs:
                 | select(.annotations["vnd.docker.reference.type"] != "attestation-manifest") | .digest'); do
               verified "${ref%@*}@$m" || die "$ref contains unsigned ${ref%@*}@$m"
             done
-            cosign sign --yes "$ref"
+            retry cosign sign --yes "$ref"
             until_visible cosign verify "${policy[@]}" "$ref" || die "new signature on $ref does not verify"
             echo "signed index: $ref"
           done
           find images -path '*/sbom/*.spdx.json' | while read -r sbom; do
             hex=$(basename "$sbom" .spdx.json)
             ref=$(printf '%s\n' "${refs[@]}" | grep -m1 "@sha256:$hex$") || die "$sbom names no image to sign"
-            cosign attest --yes --type spdxjson --predicate "$sbom" "$ref"
+            retry cosign attest --yes --type spdxjson --predicate "$sbom" "$ref"
             until_visible cosign verify-attestation --type spdxjson "${policy[@]}" "$ref" ||
               die "SBOM attestation on $ref does not verify"
             echo "attested SBOM: $ref"
@@ -202,12 +212,21 @@ jobs:
       - name: Sign blobs
         run: |
           set -euo pipefail
+          retry() {
+            local tries=1
+            until "$@"; do
+              [ "$tries" -lt 5 ] || { echo "::error::$1 $2 failed $tries times"; exit 1; }
+              echo "$1 $2 failed, retrying in 30 s"
+              sleep 30
+              tries=$((tries + 1))
+            done
+          }
           mkdir -p bundles
           [ -d blobs ] || exit 0
           find blobs -type f | while read -r f; do
             b="bundles/$(basename "$f").sigstore.json"
             [ ! -e "$b" ] || { echo "::error::duplicate blob name $(basename "$f")"; exit 1; }
-            cosign sign-blob --yes --bundle "$b" "$f"
+            retry cosign sign-blob --yes --bundle "$b" "$f"
             cosign verify-blob --bundle "$b" --certificate-oidc-issuer "$ISSUER" \
               --certificate-identity "$IDENTITY" --certificate-github-workflow-repository "$REPOSITORY" \
               --certificate-github-workflow-ref "$GITHUB_REF" "$f"
