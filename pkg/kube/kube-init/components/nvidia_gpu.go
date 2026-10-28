@@ -42,7 +42,11 @@ const NvidiaGPUNodeLabel = "eve.lfedge.org/nvidia-gpu"
 
 // nvidiaPluginManifestName is the device plugin manifest pkg/kube ships for
 // every NVIDIA platform, and its name in the auto-deploy dir.
-const nvidiaPluginManifestName = "nvidia-device-plugin-18.0.yml"
+const nvidiaPluginManifestName = "nvidia-device-plugin.yml"
+
+// nvidiaLegacyManifestGlob matches the versioned names older EVE versions
+// staged the manifest under.
+const nvidiaLegacyManifestGlob = "nvidia-device-plugin-*.yml"
 
 // nvidiaCDIKind is the CDI kind NVIDIA's GPU specs declare.
 const nvidiaCDIKind = "nvidia.com/gpu"
@@ -129,6 +133,23 @@ func stageNvidiaPluginManifest(src, manifestsDstDir string) error {
 	dst := filepath.Join(manifestsDstDir, nvidiaPluginManifestName)
 	if err := copyIfChanged(dst, data, 0o644); err != nil {
 		return fmt.Errorf("copy NVIDIA device plugin manifest: %w", err)
+	}
+	return removeLegacyNvidiaManifests(manifestsDstDir)
+}
+
+// removeLegacyNvidiaManifests drops manifests staged under a versioned name.
+// They declare the same DaemonSet, so k3s would keep re-applying the stale
+// one over the current one.
+func removeLegacyNvidiaManifests(manifestsDstDir string) error {
+	legacy, err := filepath.Glob(filepath.Join(manifestsDstDir, nvidiaLegacyManifestGlob))
+	if err != nil {
+		return fmt.Errorf("glob legacy NVIDIA manifests: %w", err)
+	}
+	for _, f := range legacy {
+		if err := os.Remove(f); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove legacy NVIDIA manifest: %w", err)
+		}
+		log.Printf("removed legacy NVIDIA manifest %s", f)
 	}
 	return nil
 }

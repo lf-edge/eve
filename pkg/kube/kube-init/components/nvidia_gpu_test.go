@@ -292,6 +292,28 @@ func TestReconcileNvidiaGPU_RewritesChangedManifest(t *testing.T) {
 	}
 }
 
+// Older EVE versions staged the manifest under a versioned name; left in
+// place, k3s would keep applying its stale DaemonSet.
+func TestReconcileNvidiaGPU_RemovesLegacyManifests(t *testing.T) {
+	f := redirectNvidiaGPU(t)
+	f.setPlatform(t, "nvidia-jp6")
+	legacy := []string{"nvidia-device-plugin-18.0.yml", "nvidia-device-plugin-18.0-dgpu.yml"}
+	for _, name := range legacy {
+		writeFile(t, filepath.Join(f.dst, name), "old")
+	}
+	if err := f.reconcile(t); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	for _, name := range legacy {
+		if _, err := os.Stat(filepath.Join(f.dst, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("legacy manifest %s still present (err=%v)", name, err)
+		}
+	}
+	if got, _ := f.staged(t); got != testNvidiaManifest {
+		t.Errorf("staged %q, want the NVIDIA manifest", got)
+	}
+}
+
 // The auto-deploy dir belongs to the k3s server; until it exists there is
 // nothing to stage into, and the next tick retries.
 func TestReconcileNvidiaGPU_WaitsForK3sManifestsDir(t *testing.T) {
