@@ -18,8 +18,9 @@
 # SDN uplink), installs Docker/make/git, and registers it as a GitHub Actions
 # self-hosted runner against "<gh-username>/eve" using a registration token
 # fetched from the GitHub API (--gh-pat) or supplied directly
-# (--registration-token). The VM is named "gh-runner-<name>" and the
-# runner's Linux user is named after --gh-username.
+# (--registration-token). The GitHub runner is named "<name>" and the VM is
+# named after it too, unless --vm-name says otherwise. The runner's Linux user
+# is named after --gh-username.
 
 set -eu
 
@@ -33,6 +34,7 @@ BROKER_ADDRESS=""
 # Runner label registered with GitHub. Defaults to the VM name (unique per
 # runner) if left empty; pass the same --gh-label across multiple runners so
 # a CI workflow can target "any free runner" via that shared label.
+VM_NAME=""
 GH_LABEL=""
 IMAGE_URL="https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
 VM_MEMORY="4096"
@@ -58,11 +60,12 @@ Usage: gh-runner-installer.sh --name NAME --gh-username USER \\
            (--gh-pat PAT | --registration-token TOKEN) --broker-address ADDR [flags]
        gh-runner-installer.sh --destroy --name NAME --gh-username USER [--gh-pat PAT]
 
-Creates (or destroys) a GitHub Actions self-hosted runner VM named
-"gh-runner-NAME" on this Proxmox VE host.
+Creates (or destroys) a GitHub Actions self-hosted runner VM on this Proxmox
+VE host.
 
 Required:
-  --name NAME               Runner name; the VM is named gh-runner-NAME.
+  --name NAME               GitHub runner name; also the VM name unless
+                             --vm-name is given.
   --gh-username USER        GitHub username. The repository is always
                              "USER/eve"; also used as the runner VM's Linux
                              username. Used to fetch a runner registration
@@ -85,8 +88,10 @@ Required:
                              (see evetest-broker-proxmox-installer.sh) --
                              fails if none is found.
 
-  --gh-label LABEL          GitHub Actions runner label. Default: gh-runner-NAME
-                             (the VM/runner name). Pass the same label on
+  --vm-name VM_NAME         Proxmox VM name. Default: NAME. Pass the same
+                             value with --destroy.
+  --gh-label LABEL          GitHub Actions runner label. Default: NAME
+                             (the runner name). Pass the same label on
                              multiple runners so a workflow's "runs-on" can
                              pick any free one of them.
 
@@ -125,6 +130,7 @@ while [ $# -gt 0 ]; do
         --gh-pat)             GH_PAT="$2"; shift 2 ;;
         --registration-token) GH_REGISTRATION_TOKEN="$2"; shift 2 ;;
         --broker-address)     BROKER_ADDRESS="$2"; shift 2 ;;
+        --vm-name)            VM_NAME="$2"; shift 2 ;;
         --gh-label)           GH_LABEL="$2"; shift 2 ;;
         --image-url)          IMAGE_URL="$2"; shift 2 ;;
         --vm-memory)          VM_MEMORY="$2"; shift 2 ;;
@@ -190,27 +196,30 @@ if [ -n "$DOCKER_USERNAME" ] || [ -n "$DOCKER_PASSWORD" ]; then
     fi
 fi
 
-VM_NAME="gh-runner-${RUNNER_NAME}"
-[ -n "$GH_LABEL" ] || GH_LABEL="$VM_NAME"
+[ -n "$VM_NAME" ] || VM_NAME="$RUNNER_NAME"
+case "$VM_NAME" in
+    evetest-broker|ev-*) die "VM name '$VM_NAME' is reserved for the evetest broker and its test VMs" ;;
+esac
+[ -n "$GH_LABEL" ] || GH_LABEL="$RUNNER_NAME"
 GH_REPO="${GH_USERNAME}/eve"
 CLOUDINIT_VOLID="${IMPORT_STORAGE}:snippets/gh-runner-${RUNNER_NAME}-cloudinit.yaml"
 CLOUDINIT_FILE="${SNIPPETS_DIR}/gh-runner-${RUNNER_NAME}-cloudinit.yaml"
 
 # unregister_runner removes the runner from GitHub using --gh-pat.
 unregister_runner() {
-    echo "Looking up runner '$VM_NAME' on ${GH_REPO}..."
+    echo "Looking up runner '$RUNNER_NAME' on ${GH_REPO}..."
     RUNNER_ID="$(curl -sf -H "Authorization: Bearer ${GH_PAT}" \
         "https://api.github.com/repos/${GH_REPO}/actions/runners" \
-        | jq -r --arg name "$VM_NAME" '.runners[]? | select(.name==$name) | .id' 2>/dev/null)" || RUNNER_ID=""
+        | jq -r --arg name "$RUNNER_NAME" '.runners[]? | select(.name==$name) | .id' 2>/dev/null)" || RUNNER_ID=""
     if [ -n "$RUNNER_ID" ]; then
-        echo "Unregistering GitHub runner '$VM_NAME' (id: $RUNNER_ID)..."
+        echo "Unregistering GitHub runner '$RUNNER_NAME' (id: $RUNNER_ID)..."
         HTTP_STATUS="$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
             -H "Authorization: Bearer ${GH_PAT}" \
             "https://api.github.com/repos/${GH_REPO}/actions/runners/${RUNNER_ID}")"
-        [ "$HTTP_STATUS" = "204" ] || die "failed to unregister runner '$VM_NAME' (HTTP $HTTP_STATUS)"
+        [ "$HTTP_STATUS" = "204" ] || die "failed to unregister runner '$RUNNER_NAME' (HTTP $HTTP_STATUS)"
         echo "Runner unregistered."
     else
-        echo "Runner '$VM_NAME' not found on GitHub (already gone or never registered)."
+        echo "Runner '$RUNNER_NAME' not found on GitHub (already gone or never registered)."
     fi
 }
 
@@ -220,7 +229,7 @@ unregister_runner() {
 # runner simply already being gone).
 destroy_all() {
     if [ -z "$GH_PAT" ]; then
-        echo "No --gh-pat given: leaving runner '$VM_NAME' registered on ${GH_REPO}; remove it there manually."
+        echo "No --gh-pat given: leaving runner '$RUNNER_NAME' registered on ${GH_REPO}; remove it there manually."
     else
         unregister_runner
     fi
@@ -378,7 +387,7 @@ runcmd:
       --url "https://github.com/${GH_REPO}" \
       --token "${GH_TOKEN}" \
       --labels "${GH_LABEL}" \
-      --name   "${VM_NAME}" \
+      --name   "${RUNNER_NAME}" \
       --unattended
     ./svc.sh install ${GH_USERNAME}
     ./svc.sh start
@@ -439,7 +448,7 @@ Runner VM ${VMID} (${VM_NAME}) is up at ${RUNNER_IP}.
   SSH: ssh ${GH_USERNAME}@${RUNNER_IP}   (key-only; see --ssh-pubkey)
 
 It will finish installing Docker and self-register as a GitHub Actions
-runner on ${GH_REPO} shortly (name: ${VM_NAME}, label: ${GH_LABEL}).
+runner on ${GH_REPO} shortly (name: ${RUNNER_NAME}, label: ${GH_LABEL}).
 EOF
 else
     cat <<EOF
