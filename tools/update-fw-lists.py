@@ -137,7 +137,7 @@ def make_values(arch, platform, hv, *exprs):
             if m:
                 raise Rejected(m.group(1))
         sys.exit(err or f'{" ".join(cmd)}: exit status {p.returncode}')
-    # The last lines: make may first regenerate pkg-deps.mk, and says so.
+    # The last lines: make may first regenerate its pkg-deps file, and says so.
     return [v.strip() for v in p.stdout.decode().splitlines()[-len(exprs):]]
 
 

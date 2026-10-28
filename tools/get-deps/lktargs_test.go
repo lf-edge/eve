@@ -24,7 +24,7 @@ func Test_lktBuildArgs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			buildArgs := lktBuildArgs(tt.ymlPath)
+			buildArgs := lktBuildArgs(tt.ymlPath, "amd64")
 			if got := buildArgs["PKG_IMAGE"]; got != tt.wantImage {
 				t.Errorf("lktBuildArgs() PKG_IMAGE = %q, want %q", got, tt.wantImage)
 			}

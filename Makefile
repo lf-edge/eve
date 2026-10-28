@@ -465,6 +465,8 @@ SBOM_STAMP_CMD=SOURCE_DATE_EPOCH=$(SOURCE_DATE_EPOCH) $(SBOM_STAMP) -name eve -v
 # tool for scan docker package dependencies
 GET_DEPS_DIR=./tools/get-deps
 GET_DEPS=./tools/get-deps/get-deps
+# Reachable Dockerfile stages, hence package deps, depend on both arches
+PKG_DEPS_MK=pkg-deps-$(HOSTARCH)-$(ZARCH).mk
 
 DOCKERFILE_FROM_CHECKER_DIR=./tools/dockerfile-from-checker/
 DOCKERFILE_FROM_CHECKER=$(DOCKERFILE_FROM_CHECKER_DIR)/dockerfile-from-checker
@@ -547,7 +549,7 @@ PKGS_HOSTARCH=alpine-base alpine cross-compilers $(PKGS_DOCKER_LOAD)
 # Skip for evetest-only invocations to avoid triggering unnecessary package builds.
 NON_TEST_GOALS := $(filter-out evetest evetest-%,$(MAKECMDGOALS))
 ifneq ($(or $(NON_TEST_GOALS),$(if $(MAKECMDGOALS),,no-goals)),)
--include pkg-deps.mk
+-include $(PKG_DEPS_MK)
 endif
 
 # Top-level targets
@@ -613,7 +615,7 @@ pillar-%: $(GOBUILDER) | $(DIST)
 	$(QUIET): $@: Succeeded
 
 clean:
-	rm -rf $(DIST) images/out pkg-deps.mk
+	rm -rf $(DIST) images/out pkg-deps*.mk
 
 $(DOCKERFILE_FROM_CHECKER): $(DOCKERFILE_FROM_CHECKER_DIR)/*.go $(DOCKERFILE_FROM_CHECKER_DIR)/go.*
 	make -C $(DOCKERFILE_FROM_CHECKER_DIR)
@@ -955,7 +957,7 @@ ifeq ($(ROOTFS_FORMAT),squash)
 endif
 	$(QUIET): $@: Succeeded
 
-$(GET_DEPS): tools/get-deps/*.go
+$(GET_DEPS): tools/get-deps/*.go tools/dockerfile-from-checker/dockerfilefrom/*.go
 	$(MAKE) -C $(GET_DEPS_DIR)
 
 sbom_info:
@@ -1458,8 +1460,9 @@ images/out/installer-%.yml.in: images/installer.yml.in $(RESCAN_DEPS) | images/o
 	$(info [INFO] Building $@ from $<)
 	$(QUIET)tools/compose-image-yml.sh -b $< -v "$(ROOTFS_VERSION)-$*-$(ZARCH)" -o $@ -h $(HV) -p $(PLATFORM) $(call find-modifiers-installer,$*)
 
-pkg-deps.mk: $(GET_DEPS)
-	$(QUIET)$(GET_DEPS) $(ROOTFS_GET_DEPS) -m $@
+$(PKG_DEPS_MK): $(GET_DEPS)
+	$(QUIET)$(GET_DEPS) $(ROOTFS_GET_DEPS) -arch $(ZARCH) -build-arch $(HOSTARCH) \
+		-hostarch-pkgs "$(PKGS_HOSTARCH)" -m $@
 
 $(ROOTFS_FULL_NAME)-kvm-adam-$(ZARCH).$(ROOTFS_FORMAT): fullname-rootfs $(SSH_KEY)
 fullname-rootfs: $(ROOTFS_FULL_NAME)-$(HV)-$(ZARCH).$(ROOTFS_FORMAT) current

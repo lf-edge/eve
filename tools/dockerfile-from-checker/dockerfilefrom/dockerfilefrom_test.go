@@ -169,6 +169,35 @@ func TestScanEmpty(t *testing.T) {
 	}
 }
 
+func TestScanStages(t *testing.T) {
+	dockerfile := "ARG IMG=alpine:3.20\n" +
+		"COPY --from=ignored / /\n" +
+		"FROM --platform=${BUILDPLATFORM} ${IMG} AS Build-Base\n" +
+		"RUN --mount=type=cache,target=/root/.cache \\\n" +
+		"    --mount=type=bind,from=tools,source=/x,target=/x make\n" +
+		"COPY --chown=0:0 --from=lfedge/eve-zfs:abc \\\n" +
+		"    /out /\n" +
+		"FROM build-base\n" +
+		"COPY --from=0 /a /a\n" +
+		"COPY /b --from=notaflag /b\n" +
+		"FROM scratch as final\n"
+	res, err := Scan(strings.NewReader(dockerfile))
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	want := []Stage{
+		{Name: "build-base", Base: "${IMG}", CopyFrom: []string{"tools", "lfedge/eve-zfs:abc"}},
+		{Base: "build-base", CopyFrom: []string{"0"}},
+		{Name: "final", Base: "scratch"},
+	}
+	if !reflect.DeepEqual(res.Stages, want) {
+		t.Fatalf("Stages = %+v, want %+v", res.Stages, want)
+	}
+	if got, want := res.FromSet, []string{"alpine:3.20", "build-base", "scratch"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("FromSet = %q, want %q", got, want)
+	}
+}
+
 func TestExpand(t *testing.T) {
 	lookup := func(name string) (string, bool) {
 		switch name {

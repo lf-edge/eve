@@ -32,6 +32,21 @@ type Result struct {
 	// replaces the previous default. ARGs declared after the first FROM
 	// (stage-level) are omitted.
 	Args map[string]string
+	// Stages holds one entry per FROM instruction, in order, with
+	// references left unexpanded so the caller can resolve them for the
+	// platform it builds.
+	Stages []Stage
+}
+
+// Stage is one build stage of a Dockerfile.
+type Stage struct {
+	// Name is the lower-cased `AS` name, or "" for an unnamed stage.
+	Name string
+	// Base is the FROM reference: an image or an earlier stage's name.
+	Base string
+	// CopyFrom holds the targets of `COPY --from=` and
+	// `RUN --mount=...,from=`: a stage name, a stage index or an image.
+	CopyFrom []string
 }
 
 // Scan reads a Dockerfile and returns its FROM base image references.
@@ -126,19 +141,63 @@ func Scan(r io.Reader) (*Result, error) {
 		if len(fields) == 0 {
 			continue
 		}
-		if strings.ToUpper(fields[0]) != "FROM" {
-			continue
-		}
-		for _, tok := range fields[1:] {
-			if strings.HasPrefix(tok, "--") {
+		switch strings.ToUpper(fields[0]) {
+		case "FROM":
+			args := nonFlags(fields[1:])
+			if len(args) == 0 {
 				continue
 			}
-			res.FromSet = append(res.FromSet, expandVar(tok, res.Args))
-			break
+			res.FromSet = append(res.FromSet, expandVar(args[0], res.Args))
+			st := Stage{Base: args[0]}
+			if len(args) == 3 && strings.EqualFold(args[1], "AS") {
+				st.Name = strings.ToLower(args[2])
+			}
+			res.Stages = append(res.Stages, st)
+		case "COPY", "RUN":
+			if len(res.Stages) == 0 {
+				continue
+			}
+			st := &res.Stages[len(res.Stages)-1]
+			st.CopyFrom = append(st.CopyFrom, fromFlags(fields[1:])...)
 		}
 	}
 
 	return res, nil
+}
+
+// nonFlags returns the leading instruction arguments after any `--flag`s.
+func nonFlags(fields []string) []string {
+	for i, tok := range fields {
+		if !strings.HasPrefix(tok, "--") {
+			return fields[i:]
+		}
+	}
+	return nil
+}
+
+// fromFlags returns the source of each `--from=X` and `--mount=...,from=X`
+// flag leading a COPY or RUN instruction.
+func fromFlags(fields []string) []string {
+	var out []string
+	for _, tok := range fields {
+		if !strings.HasPrefix(tok, "--") {
+			break
+		}
+		if v, ok := strings.CutPrefix(tok, "--from="); ok {
+			out = append(out, v)
+			continue
+		}
+		mount, ok := strings.CutPrefix(tok, "--mount=")
+		if !ok {
+			continue
+		}
+		for _, kv := range strings.Split(mount, ",") {
+			if v, ok := strings.CutPrefix(kv, "from="); ok {
+				out = append(out, v)
+			}
+		}
+	}
+	return out
 }
 
 // escapeDirective returns the escape character declared by a leading
