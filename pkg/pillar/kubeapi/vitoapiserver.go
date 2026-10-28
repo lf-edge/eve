@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ import (
 	lhv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -730,8 +732,9 @@ func GetVolumeAttachmentFromPV(volName string, nodeName string, log *base.LogObj
 	return "", "", nil
 }
 
-// GetVolumeAttachmentFromHost : Return volume attachments on node
-func GetVolumeAttachmentFromHost(nodeName string, log *base.LogObject) ([]string, error) {
+// GetVolumeAttachmentFromHost : Return volume attachments on node for the PVs in pvNames.
+// Other PVs on the node can belong to other apps, so they are left alone.
+func GetVolumeAttachmentFromHost(nodeName string, pvNames []string, log *base.LogObject) ([]string, error) {
 	// Get the Kubernetes clientset
 	vaList := []string{}
 
@@ -749,19 +752,25 @@ func GetVolumeAttachmentFromHost(nodeName string, log *base.LogObject) ([]string
 		return vaList, err
 	}
 
-	// Iterate through VolumeAttachments to find one that references the PV's CSI volume handle
-	for _, va := range volumeAttachments.Items {
+	return vaNamesForPVsOnNode(log, volumeAttachments.Items, nodeName, pvNames), nil
+}
+
+func vaNamesForPVsOnNode(log *base.LogObject, attachments []storagev1.VolumeAttachment, nodeName string, pvNames []string) []string {
+	vaList := []string{}
+	for _, va := range attachments {
 		if va.Spec.NodeName != nodeName {
 			continue
 		}
 		if va.Spec.Source.PersistentVolumeName == nil {
 			continue
 		}
+		if !slices.Contains(pvNames, *va.Spec.Source.PersistentVolumeName) {
+			continue
+		}
 		log.Noticef("VolumeAttachment found: %s (attached to node: %s)\n", va.Name, va.Spec.NodeName)
 		vaList = append(vaList, va.Name)
 	}
-
-	return vaList, nil
+	return vaList
 }
 
 // DeleteVolumeAttachment : Delete the volumeattachment of given name

@@ -11,11 +11,14 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // TestPVCRequestSize checks the sizes a claim is allowed to ask for. The
@@ -181,5 +184,40 @@ func TestControllerRestartPending(t *testing.T) {
 	}
 	if !ControllerRestartPending() {
 		t.Error("marker present but not reported as pending")
+	}
+}
+
+func TestVANamesForPVsOnNode(t *testing.T) {
+	va := func(name, node string, pv *string) storagev1.VolumeAttachment {
+		return storagev1.VolumeAttachment{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec: storagev1.VolumeAttachmentSpec{
+				NodeName: node,
+				Source:   storagev1.VolumeAttachmentSource{PersistentVolumeName: pv},
+			},
+		}
+	}
+	pv := func(s string) *string { return &s }
+	attachments := []storagev1.VolumeAttachment{
+		va("va-app", "failed", pv("pv-app")),
+		va("va-other-app", "failed", pv("pv-other")),
+		va("va-app-new-node", "new", pv("pv-app")),
+		va("va-inline", "failed", nil),
+	}
+	tests := []struct {
+		name    string
+		pvNames []string
+		want    []string
+	}{
+		{name: "only this app's PV on the failed node", pvNames: []string{"pv-app"}, want: []string{"va-app"}},
+		{name: "no PVs", want: []string{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := vaNamesForPVsOnNode(newTestLog(), attachments, "failed", tc.pvNames)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("vaNamesForPVsOnNode = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

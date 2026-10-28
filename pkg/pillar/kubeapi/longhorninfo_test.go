@@ -8,6 +8,7 @@ package kubeapi
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -917,6 +918,173 @@ func TestSetLonghornNodeDiskReservedInner(t *testing.T) {
 			}
 			if updateCalled != tc.wantUpdateCalled {
 				t.Errorf("updateCalled = %v, want %v", updateCalled, tc.wantUpdateCalled)
+			}
+		})
+	}
+}
+
+// -- failover replica safety --
+
+const (
+	tsEarly = "2026-01-01T00:00:00Z"
+	tsLate  = "2026-01-02T00:00:00Z"
+)
+
+// safeReplica returns a replica that is healthy, active and never failed.
+func safeReplica(name, node string) lhv1beta2.Replica {
+	return lhv1beta2.Replica{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: lhv1beta2.ReplicaSpec{
+			InstanceSpec:  lhv1beta2.InstanceSpec{NodeID: node},
+			HealthyAt:     tsEarly,
+			LastHealthyAt: tsEarly,
+			Active:        true,
+		},
+		Status: lhv1beta2.ReplicaStatus{
+			InstanceStatus: lhv1beta2.InstanceStatus{OwnerID: node},
+		},
+	}
+}
+
+func withReplica(r lhv1beta2.Replica, mod func(*lhv1beta2.Replica)) lhv1beta2.Replica {
+	mod(&r)
+	return r
+}
+
+func TestLhReplicaSafety(t *testing.T) {
+	tests := []struct {
+		name          string
+		rep           lhv1beta2.Replica
+		wantUnhealthy string
+		wantUnsafe    string
+	}{
+		{
+			name: "healthy active never failed",
+			rep:  safeReplica("r", "n2"),
+		},
+		{
+			name: "HealthyAt empty",
+			rep: withReplica(safeReplica("r", "n2"), func(r *lhv1beta2.Replica) {
+				r.Spec.HealthyAt = ""
+			}),
+			wantUnhealthy: "HealthyAt empty",
+			wantUnsafe:    "HealthyAt empty",
+		},
+		{
+			name: "FailedAt set while HealthyAt set",
+			rep: withReplica(safeReplica("r", "n2"), func(r *lhv1beta2.Replica) {
+				r.Spec.FailedAt = tsLate
+				r.Spec.LastFailedAt = tsLate
+			}),
+			wantUnhealthy: "FailedAt set",
+			wantUnsafe:    "FailedAt set",
+		},
+		{
+			name: "inactive",
+			rep: withReplica(safeReplica("r", "n2"), func(r *lhv1beta2.Replica) {
+				r.Spec.Active = false
+			}),
+			wantUnhealthy: "inactive",
+			wantUnsafe:    "inactive",
+		},
+		{
+			name: "LastFailedAt after LastHealthyAt",
+			rep: withReplica(safeReplica("r", "n2"), func(r *lhv1beta2.Replica) {
+				r.Spec.LastHealthyAt = tsEarly
+				r.Spec.LastFailedAt = tsLate
+			}),
+			wantUnsafe: "LastFailedAt after LastHealthyAt",
+		},
+		{
+			name: "LastFailedAt equal to LastHealthyAt",
+			rep: withReplica(safeReplica("r", "n2"), func(r *lhv1beta2.Replica) {
+				r.Spec.LastHealthyAt = tsEarly
+				r.Spec.LastFailedAt = tsEarly
+			}),
+			wantUnsafe: "LastFailedAt after LastHealthyAt",
+		},
+		{
+			name: "LastHealthyAt after LastFailedAt",
+			rep: withReplica(safeReplica("r", "n2"), func(r *lhv1beta2.Replica) {
+				r.Spec.LastHealthyAt = tsLate
+				r.Spec.LastFailedAt = tsEarly
+			}),
+		},
+		{
+			name: "malformed LastHealthyAt",
+			rep: withReplica(safeReplica("r", "n2"), func(r *lhv1beta2.Replica) {
+				r.Spec.LastHealthyAt = "not-a-time"
+				r.Spec.LastFailedAt = tsEarly
+			}),
+			wantUnsafe: "LastHealthyAt unparsable",
+		},
+		{
+			name: "malformed LastFailedAt",
+			rep: withReplica(safeReplica("r", "n2"), func(r *lhv1beta2.Replica) {
+				r.Spec.LastHealthyAt = tsLate
+				r.Spec.LastFailedAt = "not-a-time"
+			}),
+			wantUnsafe: "LastFailedAt unparsable",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := lhReplicaUnhealthyReason(&tc.rep); got != tc.wantUnhealthy {
+				t.Errorf("lhReplicaUnhealthyReason = %q, want %q", got, tc.wantUnhealthy)
+			}
+			got := lhReplicaUnsafeAsLastReason(&tc.rep)
+			if (got == "") != (tc.wantUnsafe == "") || !strings.HasPrefix(got, tc.wantUnsafe) {
+				t.Errorf("lhReplicaUnsafeAsLastReason = %q, want prefix %q", got, tc.wantUnsafe)
+			}
+		})
+	}
+}
+
+func TestLhVolSurvivingReplicas(t *testing.T) {
+	const failedNode = "n1"
+	onFailedBySpec := withReplica(safeReplica("spec-on-failed", "n2"), func(r *lhv1beta2.Replica) {
+		r.Spec.NodeID = failedNode
+	})
+	onFailedByOwner := withReplica(safeReplica("owner-on-failed", "n2"), func(r *lhv1beta2.Replica) {
+		r.Status.OwnerID = failedNode
+	})
+	failed := withReplica(safeReplica("failed", "n3"), func(r *lhv1beta2.Replica) {
+		r.Spec.FailedAt = tsLate
+	})
+
+	tests := []struct {
+		name      string
+		reps      *lhv1beta2.ReplicaList
+		wantNames []string
+	}{
+		{name: "nil list"},
+		{
+			name: "excluded by NodeID and OwnerID, unsafe survivor",
+			reps: &lhv1beta2.ReplicaList{Items: []lhv1beta2.Replica{onFailedBySpec, onFailedByOwner, failed}},
+		},
+		{
+			name:      "one survivor",
+			reps:      &lhv1beta2.ReplicaList{Items: []lhv1beta2.Replica{onFailedBySpec, safeReplica("r2", "n2")}},
+			wantNames: []string{"r2"},
+		},
+		{
+			name: "two survivors",
+			reps: &lhv1beta2.ReplicaList{Items: []lhv1beta2.Replica{
+				onFailedByOwner, safeReplica("r2", "n2"), failed, safeReplica("r3", "n3"),
+			}},
+			wantNames: []string{"r2", "r3"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := lhVolSurvivingReplicas(newTestLog(), tc.reps, failedNode)
+			if len(got) != len(tc.wantNames) {
+				t.Fatalf("got %d survivors, want %d", len(got), len(tc.wantNames))
+			}
+			for i := range got {
+				if got[i].ObjectMeta.Name != tc.wantNames[i] {
+					t.Errorf("survivor[%d] = %s, want %s", i, got[i].ObjectMeta.Name, tc.wantNames[i])
+				}
 			}
 		})
 	}
