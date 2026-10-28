@@ -6,7 +6,7 @@ EXECUTABLE=get-deps
 
 all: $(EXECUTABLE)
 
-$(EXECUTABLE): $(SOURCES) $(MODULES)
+$(EXECUTABLE): $(SOURCES) $(MODULES) ../dockerfile-from-checker/dockerfilefrom/*.go
 	go mod tidy
 	go mod vendor
 	CGO_ENABLED=0 go build -o $(EXECUTABLE) $(SOURCES)

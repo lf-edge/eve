@@ -8,7 +8,7 @@ build-tools/bin/
 images/out/
 .go/
 go.work*
-pkg-deps.mk
+pkg-deps*.mk
 tags
 tmp/
 mkdocs.yml

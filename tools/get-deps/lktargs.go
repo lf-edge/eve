@@ -73,7 +73,7 @@ func (dr *buildArgsDockerRunner) ContextSupportCheck() error {
 	return nil
 }
 
-func lktBuildArgs(ymlPath string) map[string]string {
+func lktBuildArgs(ymlPath, arch string) map[string]string {
 
 	ymlBuildFile := filepath.Base(ymlPath)
 
@@ -111,7 +111,7 @@ func lktBuildArgs(ymlPath string) map[string]string {
 	opts = append(opts, pkglib.WithBuildForce())
 
 	for _, pkg := range pkgs {
-		plats := []imagespec.Platform{{OS: TARGETOS, Architecture: TARGETARCH}}
+		plats := []imagespec.Platform{{OS: TARGETOS, Architecture: arch}}
 
 		var (
 			pkgPlats = make([]imagespec.Platform, len(plats))
