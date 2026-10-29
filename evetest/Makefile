@@ -330,10 +330,10 @@ ensure-evetest-image:
 		fi; \
 	fi
 
-# Same for the SDN image, which the broker needs. Skipped with a remote broker,
-# which pulls the image itself (and cannot use one built here).
+# Same for the SDN image, which the broker needs. It is needed locally even
+# with a remote broker: when the broker cannot pull the image (e.g. it is built
+# from an unmerged change), the harness pushes the local copy to it.
 ensure-sdn-image:
-ifndef EVETEST_BROKER_ADDRESS
 ifndef EVETEST_SDN_VERSION
 	@if ! docker image inspect $(SDN_IMAGE) >/dev/null 2>&1; then \
 		echo "Docker image $(SDN_IMAGE) not found locally, trying to pull..."; \
@@ -342,7 +342,6 @@ ifndef EVETEST_SDN_VERSION
 			$(MAKE) build-sdn-container; \
 		fi; \
 	fi
-endif
 endif
 
 # Internal target: invoked by proto inside the builder container.
