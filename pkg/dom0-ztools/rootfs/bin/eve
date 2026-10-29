@@ -5,6 +5,7 @@ CTR_UA_CMD="ctr --namespace eve-user-apps"
 KVM_RUN_DIR="/run/hypervisor/kvm"
 APP_CONFIG_DIR="/run/zedagent/AppInstanceConfig"
 APP_STATUS_DIR="/run/zedmanager/AppInstanceStatus"
+ZEDAGENT_STATUS_FILE="/run/zedagent/ZedAgentStatus/zedagent.json"
 
 # Locate jq: use the binary shipped inside the pillar onboot container.
 # The binary needs libonig from the same sysroot, so we set LD_LIBRARY_PATH.
@@ -24,7 +25,7 @@ Welcome to EVE!
             enter [service] [command (assumed sh)]
             exec [--fork] [service] command
             list
-            status
+            status                  Show control plane and service status summary
             start <service>
             pause <service>
             resume <service>
@@ -334,6 +335,59 @@ json_field() {
     jq -r ".$2 // empty" "$1" 2>/dev/null
 }
 
+# Print controller URL, onboarding state, management ports and last config fetch result.
+status_summary() {
+    _server=$(tr -d '[:space:]' 2>/dev/null < /config/server)
+    _uuid=$(tr -d '[:space:]' 2>/dev/null < /persist/status/uuid)
+    printf "Controller:   %s\n" "${_server:-not configured}"
+    if [ -z "$_uuid" ]; then
+        printf "Onboarded:    no\n"
+        _fetch="n/a (not onboarded)"
+    else
+        printf "Onboarded:    yes (uuid %s)\n" "$_uuid"
+        if [ ! -x "${_JQ_SYSROOT}/usr/bin/jq" ]; then
+            _fetch="unknown (error)"
+        else
+            _cgs=$(json_field "${ZEDAGENT_STATUS_FILE}" ConfigGetStatus)
+            case "$_cgs" in
+                1) _fetch="ok" ;;
+                2|3) _fetch="failed" ;;
+                4) _fetch="using saved config" ;;
+                *) _fetch="unknown" ;;
+            esac
+        fi
+    fi
+    # tty check must happen here: stdout is a pipe inside $(...)
+    _cg=""; _cr=""; _cd=""; _cx=""
+    _use_color=""
+    case "$TERM" in
+        xterm*|screen*|tmux*|rxvt*|linux|*color*) _use_color=1 ;;
+    esac
+    if [ -n "$_use_color" ] && [ -t 1 ] && [ -z "$NO_COLOR" ]; then
+        _cg=$(printf '\033[32m'); _cr=$(printf '\033[31m')
+        _cd=$(printf '\033[90m'); _cx=$(printf '\033[0m')
+    fi
+    printf "Mgmt ports:   %s\n" "$(mgmt_ports_line)"
+    printf "Config fetch: %s\n\n" "$_fetch"
+}
+
+# One-line summary of management ports and whether nim's last controller
+# connectivity test through each of them succeeded. Uses color vars _cg/_cr/_cd/_cx
+# (green/red/grey/reset) set by status_summary; empty means no color.
+mgmt_ports_line() {
+    _dns=/run/nim/DeviceNetworkStatus/global.json
+    [ -x "${_JQ_SYSROOT}/usr/bin/jq" ] || { echo "unknown (error)"; return; }
+    [ -f "$_dns" ] || { echo "unknown"; return; }
+    _line=$(jq -r --arg g "$_cg" --arg r "$_cr" --arg d "$_cd" --arg x "$_cx" '
+      def t: sub("\\.[0-9]+Z$"; "Z");
+      [.Ports[]? | select(.IsMgmt) | .IfName + " " +
+        (if (.Up | not) then $d + "(link down)" + $x
+         elif (.LastSucceeded | t) > (.LastFailed | t) then $g + "(reachable)" + $x
+         elif (.LastFailed | t) > (.LastSucceeded | t) then $r + "(unreachable)" + $x
+         else "(untested)" end)] | join(", ")' "$_dns" 2>/dev/null)
+    echo "${_line:-none}"
+}
+
 # Look up the DisplayName for a given app UUID from AppInstanceConfig.
 # Falls back to AppInstanceStatus under /run/zedmanager if needed.
 get_app_display_name() {
@@ -425,7 +479,10 @@ case "$1" in
           ;;
     list) ${CTR_CMD} c ls
           ;;
-  status) ${CTR_CMD} t ls
+  status) # run ctr first so its stderr warnings don't land mid-output
+          _tasks=$(${CTR_CMD} t ls)
+          status_summary
+          echo "$_tasks"
           ;;
    start) [ -z "$2" ] && help
           ${CTR_CMD} c ls -q | grep -q $2 && echo "ERROR: make sure to run: $0 destroy $2" && help
