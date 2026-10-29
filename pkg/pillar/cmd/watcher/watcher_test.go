@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
@@ -346,8 +347,15 @@ func TestGoroutinesMonitorLeak(t *testing.T) {
 	}
 }
 
-// Adjust stats slice size dynamically based on updated parameters
+// Adjust stats slice size dynamically based on updated parameters.
+// The stats slice fills at one sample per checkInterval, so it holds the
+// expected number of entries only on a fake clock; under -race on a loaded
+// host the real sleeps run long and the slice may never reach keepStatsFor.
 func TestGoroutinesMonitorUpdateParamsKeepStatsDecrease(t *testing.T) {
+	synctest.Test(t, testGoroutinesMonitorUpdateParamsKeepStatsDecrease)
+}
+
+func testGoroutinesMonitorUpdateParamsKeepStatsDecrease(t *testing.T) {
 	backupOut := logger.Out
 	backupLevel := logger.Level
 	// Create a pipe to capture log output
@@ -363,7 +371,8 @@ func TestGoroutinesMonitorUpdateParamsKeepStatsDecrease(t *testing.T) {
 	ctx := &watcherContext{}
 
 	// Define parameters
-	goroutinesThreshold := 100
+	// Samples above the threshold are not recorded; keep them all.
+	goroutinesThreshold := math.MaxInt32
 	checkInterval := 1 * time.Millisecond
 	checkStatsFor := 10 * time.Millisecond
 	keepStatsFor := 24 * 60 * time.Millisecond
@@ -373,8 +382,17 @@ func TestGoroutinesMonitorUpdateParamsKeepStatsDecrease(t *testing.T) {
 	ctx.GRLDParams.Set(goroutinesThreshold, checkInterval, checkStatsFor, keepStatsFor, cooldownPeriod)
 	ctx.GRLDParams.MakeStoppable()
 
-	go GoroutinesMonitor(ctx)
-	defer ctx.GRLDParams.Stop()
+	monitorDone := make(chan struct{})
+	go func() {
+		GoroutinesMonitor(ctx)
+		close(monitorDone)
+	}()
+	// The bubble's clock stops once this function returns, so wait for the
+	// monitor to exit here.
+	defer func() {
+		ctx.GRLDParams.Stop()
+		<-monitorDone
+	}()
 
 	// Wait until we fill the stats slice
 	time.Sleep(2 * keepStatsFor)
