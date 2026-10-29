@@ -49,6 +49,14 @@ The controller reports a precise reason on the app instance, e.g.
 `QEMU process crashed, core dump saved` or
 `guest VM crashed, guest core saved`.
 
+A guest that crashed is torn down once its core is captured and booted again
+after `timer.boot.retry` (10 minutes by default), the way a domain that failed
+to boot is, up to three times in a row; the app instance shows the crash with
+`will retry in 10m0s (boot retry 1 of 3)` meanwhile. A guest that keeps
+crashing then stays down, reported as `… please restart application instance`,
+until the application instance is restarted from the controller. The retries
+are forgotten once the guest has run for an hour.
+
 ## Scenario 1 — automatic capture (default)
 
 Nothing to configure. After a crash the dump appears under
