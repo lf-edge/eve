@@ -71,7 +71,7 @@ jobs:
             -e CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="" \
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w "/workspace/${{ matrix.crate }}" \
-            lfedge/eve-rust:1.93.1-1 \
+            lfedge/eve-rust:1.93.1-2 \
             cargo test --locked
 
   # Verify the committed generated contract (Rust + Go union codec) matches what

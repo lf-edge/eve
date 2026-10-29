@@ -1,7 +1,7 @@
 # Copyright (c) 2024-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-ARG RUST_VERSION=lfedge/eve-rust:1.93.1-1
+ARG RUST_VERSION=lfedge/eve-rust:1.93.1-2
 # RUST_VERSION carries an explicit tag by default
 # hadolint ignore=DL3006
 FROM --platform=$BUILDPLATFORM ${RUST_VERSION} AS toolchain-base
