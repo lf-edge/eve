@@ -31,6 +31,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"github.com/spf13/viper"
 	"github.com/vishvananda/netlink"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -441,50 +442,127 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 }
 
 // pushEVEImageToBroker streams a pre-built EVE container image to the broker
-// using a client-side streaming gRPC call.
-//
-// The function first sends image metadata to initiate the upload, then streams
-// the gzipped Docker image data in fixed-size chunks directly from the local
-// Docker daemon. The image data is produced lazily and streamed without loading
-// the entire image into memory.
+// (see pushDockerImageToBroker).
+func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
+	dockerImageName, err := utils.EVEDockerImageName(imageRef)
+	if err != nil {
+		th.t.Fatalf("invalid EVE image reference: %v", err)
+	}
+	th.pushDockerImageToBroker(dockerImageName, "EVE",
+		"If running against the current HEAD (EVETEST_EVE_VERSION not explicitly set), "+
+			"build the image first with: make eve",
+		func(ctx context.Context) (dockerImagePushStream, error) {
+			stream, err := th.brokerClient.PushEVEContainerImage(ctx)
+			if err != nil {
+				return dockerImagePushStream{}, err
+			}
+			return dockerImagePushStream{
+				sendRequest: func() error {
+					return stream.Send(&api.PushImageChunk{
+						Payload: &api.PushImageChunk_Request{
+							Request: &api.PushImageRequest{
+								ClientId: th.brokerClientID,
+								Image:    imageRef,
+							},
+						},
+					})
+				},
+				sendData: func(data []byte) error {
+					return stream.Send(&api.PushImageChunk{
+						Payload: &api.PushImageChunk_DataGzipChunk{DataGzipChunk: data},
+					})
+				},
+				closeAndRecv: stream.CloseAndRecv,
+			}, nil
+		})
+}
+
+// isMissingSDNImageErr tells whether err is the broker's SetupDevices failure
+// for an SDN container image that it has and cannot pull.
+func isMissingSDNImageErr(err error) bool {
+	if status.Code(err) != codes.FailedPrecondition {
+		return false
+	}
+	for _, detail := range status.Convert(err).Details() {
+		info, ok := detail.(*errdetails.ErrorInfo)
+		if ok && info.GetDomain() == constants.BrokerErrorDomain &&
+			info.GetReason() == constants.MissingSDNImageErrorReason {
+			return true
+		}
+	}
+	return false
+}
+
+// pushSDNImageToBroker streams the local SDN container image to the broker,
+// the same way pushEVEImageToBroker does for the EVE image.
+func (th *TestHarness) pushSDNImageToBroker(sdnConfig *api.SDNConfig) {
+	dockerImageName := fmt.Sprintf("%s:%s", sdnConfig.GetImageRepo(), sdnConfig.GetImageVersion())
+	th.pushDockerImageToBroker(dockerImageName, "SDN",
+		"Build the image first with: make build-sdn-container",
+		func(ctx context.Context) (dockerImagePushStream, error) {
+			stream, err := th.brokerClient.PushSDNContainerImage(ctx)
+			if err != nil {
+				return dockerImagePushStream{}, err
+			}
+			return dockerImagePushStream{
+				sendRequest: func() error {
+					return stream.Send(&api.PushSDNImageChunk{
+						Payload: &api.PushSDNImageChunk_Request{
+							Request: &api.PushSDNImageRequest{
+								ClientId:  th.brokerClientID,
+								SdnConfig: sdnConfig,
+							},
+						},
+					})
+				},
+				sendData: func(data []byte) error {
+					return stream.Send(&api.PushSDNImageChunk{
+						Payload: &api.PushSDNImageChunk_DataGzipChunk{DataGzipChunk: data},
+					})
+				},
+				closeAndRecv: stream.CloseAndRecv,
+			}, nil
+		})
+}
+
+// dockerImagePushStream abstracts the client-streaming RPC (EVE or SDN image)
+// over which a Docker image is uploaded to the broker.
+type dockerImagePushStream struct {
+	sendRequest  func() error
+	sendData     func(data []byte) error
+	closeAndRecv func() (*api.PushImageResponse, error)
+}
+
+// pushDockerImageToBroker streams a local Docker image to the broker over the
+// stream opened by open: first the metadata message, then the gzipped image
+// data (`docker save | gzip`) in fixed-size chunks, produced lazily from the
+// local Docker daemon. kind ("EVE" or "SDN") only labels the messages, and
+// notFoundHint is appended to the error reported for a missing local image.
 //
 // The upload is bounded by a timeout and relies on stream EOF to signal
 // completion. On success, the broker responds indicating whether the image
 // already existed or was newly uploaded. Any failure during streaming or upload
 // results in a fatal error.
-func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
+func (th *TestHarness) pushDockerImageToBroker(dockerImageName, kind, notFoundHint string,
+	open func(ctx context.Context) (dockerImagePushStream, error)) {
 	ctx, cancel := context.WithTimeout(th.ctx, brokerPushEVEImageTimeout)
 	defer cancel()
 
-	stream, err := th.brokerClient.PushEVEContainerImage(ctx)
+	stream, err := open(ctx)
 	if err != nil {
-		th.t.Fatalf("PushEVEContainerImage failed: %v", err)
+		th.t.Fatalf("Push of %s image failed: %v", kind, err)
 	}
 
 	// First message: metadata
-	err = stream.Send(&api.PushImageChunk{
-		Payload: &api.PushImageChunk_Request{
-			Request: &api.PushImageRequest{
-				ClientId: th.brokerClientID,
-				Image:    imageRef,
-			},
-		},
-	})
-	if err != nil {
+	if err = stream.sendRequest(); err != nil {
 		th.t.Fatalf("failed to send image metadata: %v", err)
-	}
-
-	dockerImageName, err := utils.EVEDockerImageName(imageRef)
-	if err != nil {
-		th.t.Fatalf("invalid EVE image reference: %v", err)
 	}
 
 	imageSize, err := utils.GetDockerImageSizeBytes(ctx, dockerImageName)
 	if err != nil {
 		if utils.IsErrDockerImageNotFound(err) {
-			th.t.Fatalf("EVE image %q is not available (neither locally nor on Docker Hub). "+
-				"If running against the current HEAD (EVETEST_EVE_VERSION not explicitly set), "+
-				"build the image first with: make eve", dockerImageName)
+			th.t.Fatalf("%s image %q is not available (neither locally nor on Docker Hub). %s",
+				kind, dockerImageName, notFoundHint)
 		}
 		th.t.Fatalf("failed to get docker image size: %v", err)
 	}
@@ -503,12 +581,7 @@ func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
 	for {
 		n, readErr := imageReader.Read(buf)
 		if n > 0 {
-			sendErr := stream.Send(&api.PushImageChunk{
-				Payload: &api.PushImageChunk_DataGzipChunk{
-					DataGzipChunk: buf[:n],
-				},
-			})
-			if sendErr != nil {
+			if sendErr := stream.sendData(buf[:n]); sendErr != nil {
 				// Server closed the stream early (e.g. image already exists
 				// or is being uploaded by another client). Break out and
 				// retrieve the server's response via CloseAndRecv.
@@ -518,8 +591,8 @@ func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
 			sentBytes += int64(n)
 			percent := sentBytes * 100 / imageSize
 			if percent >= nextLogPercent {
-				th.log.Infof("Pushing EVE image %q to broker: %d%% done",
-					dockerImageName, nextLogPercent)
+				th.log.Infof("Pushing %s image %q to broker: %d%% done",
+					kind, dockerImageName, nextLogPercent)
 				nextLogPercent += 10
 			}
 		}
@@ -531,19 +604,19 @@ func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
 		}
 	}
 
-	pushResp, err := stream.CloseAndRecv()
+	pushResp, err := stream.closeAndRecv()
 	if err != nil {
-		th.t.Fatalf("PushEVEContainerImage failed: %v", err)
+		th.t.Fatalf("Push of %s image failed: %v", kind, err)
 	}
 
 	if earlyClose && !pushResp.AlreadyExists {
-		th.t.Fatalf("Server closed image upload stream early " +
-			"but did not report image as already existing")
+		th.t.Fatalf("Server closed %s image upload stream early "+
+			"but did not report image as already existing", kind)
 	}
 	if pushResp.AlreadyExists {
-		th.log.Info("EVE container image already exists on broker.")
+		th.log.Infof("%s container image already exists on broker.", kind)
 	} else {
-		th.log.Info("EVE container image pushed successfully.")
+		th.log.Infof("%s container image pushed successfully.", kind)
 	}
 }
 
@@ -767,6 +840,14 @@ func (th *TestHarness) setupEVEDevices(
 	th.log.Debugf("Submitting request to setup devices: %s", setupReq)
 	setupResp, err := th.brokerClient.SetupDevices(ctx, setupReq)
 	cancel()
+	if isMissingSDNImageErr(err) {
+		th.log.Warn("Broker is missing SDN container image — pushing it now...")
+		th.pushSDNImageToBroker(setupReq.SdnConfig)
+
+		ctx, cancel = context.WithTimeout(th.ctx, setupTimeout)
+		setupResp, err = th.brokerClient.SetupDevices(ctx, setupReq)
+		cancel()
+	}
 	if err != nil {
 		th.t.Fatalf("Failed to setup devices %v: %v", devNames, err)
 	}
