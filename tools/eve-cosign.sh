@@ -10,23 +10,28 @@
 #       Run after a build: split the package platform manifests in the
 #       linuxkit cache into <outdir>/pulled (the registry already serves the
 #       digest) and <outdir>/built (built by this job), list the package tags
-#       holding a built manifest in <outdir>/built-tags, and verify the
-#       pulled manifests and, for the given architectures, the lfedge/eve-*
-#       bases of the built ones. A tag build must have built
+#       holding them in <outdir>/pulled-tags and <outdir>/built-tags, and
+#       verify the pulled manifests and, for the given architectures, the
+#       lfedge/eve-* bases of the built ones. A tag build must have built
 #       nothing but the packages every build rebuilds (FORCE_BUILD_PKGS in
-#       the Makefile), since it cannot sign. A re-run of a branch build lists the
-#       pulled manifests that do not verify in <outdir>/unsigned instead of
-#       failing, since an earlier attempt may have pushed them and failed
-#       before signing.
-#   eve-cosign.sh sign-built <outdir>
-#       Run after the push: sign <outdir>/built and <outdir>/unsigned, unless
-#       already signed. Does nothing on a tag build.
+#       the Makefile), since it cannot sign.
+#   eve-cosign.sh sign-pushed <outdir>...
+#       Run after the push: sign the <outdir>/built manifests the registry
+#       serves, unless already signed. Given the <outdir> of every attempt of
+#       a job, a re-run signs what an earlier attempt pushed and failed to
+#       sign. Does nothing on a tag build.
 #   eve-cosign.sh sign-indexes <file>
 #       Sign the package index each "<name>:<tag>" line of <file> names, once
 #       every platform manifest in it verifies.
 #   eve-cosign.sh sign-tags <name>:<tag>...
 #       Sign the platform manifests of each index the tags name, then the
 #       index; for images pushed outside publish.yml, such as eve-alpine-base.
+#   eve-cosign.sh audit <arch>... -- <outdir>...
+#       Verify every manifest and index the check-inputs <outdir>s list,
+#       built ones the registry serves only on a branch build, and the
+#       lfedge/eve-* bases of all their packages for the given architectures.
+#       Fails on any image without a valid signature, whatever
+#       EVE_COSIGN_ENFORCE says.
 #   eve-cosign.sh verify <file>
 #       Verify every "<name>@sha256:<hex>" line of <file>, <name> being the
 #       package repository name, e.g. eve-pillar.
@@ -171,9 +176,11 @@ classify() {
     : > "$out/pulled"
     : > "$out/built"
     : > "$out/built-tags"
+    : > "$out/pulled-tags"
     while read -r entry ref; do
         if docker buildx imagetools inspect --raw "$PKG_PREFIX/$entry" > /dev/null 2>&1; then
             echo "$entry" >> "$out/pulled"
+            echo "$ref" >> "$out/pulled-tags"
         else
             echo "$entry" >> "$out/built"
             echo "$ref" >> "$out/built-tags"
@@ -182,6 +189,7 @@ classify() {
     sort -u -o "$out/pulled" "$out/pulled"
     sort -u -o "$out/built" "$out/built"
     sort -u -o "$out/built-tags" "$out/built-tags"
+    sort -u -o "$out/pulled-tags" "$out/pulled-tags"
     echo "pulled: $(wc -l < "$out/pulled")  built here: $(wc -l < "$out/built")"
 }
 
@@ -197,27 +205,30 @@ report() {
     echo "::warning::$1 $what; EVE_COSIGN_ENFORCE is not true"
 }
 
-# verify_entries [<unsigned>]: verify each ref on stdin; with <unsigned>, list
-# the refs that do not verify there instead of counting them as failures.
-verify_entries() {
-    local unsigned="${1:-}" failed=0 ref
+# count_unverified: verify each ref on stdin and print the number that do not
+# verify.
+count_unverified() {
+    local failed=0 ref
     while read -r ref; do
         [ -n "$ref" ] || continue
         if verified "$ref"; then
-            echo "verified: $ref"
-        elif [ -n "$unsigned" ]; then
-            echo "unsigned, to be signed: $ref"
-            echo "${ref#"$SIG_PREFIX"/}" >> "$unsigned"
+            echo "verified: $ref" >&2
         else
-            echo "::warning::no valid signature for $ref"
+            echo "::warning::no valid signature for $ref" >&2
             failed=$((failed + 1))
         fi
     done
+    echo "$failed"
+}
+
+verify_entries() {
+    local failed
+    failed=$(count_unverified) || return 1
     report "$failed"
 }
 
 verify_pkgs() {
-    sed "s|^|$SIG_PREFIX/|" "$1" | verify_entries "${2:-}"
+    sed "s|^|$SIG_PREFIX/|" "$1" | verify_entries
 }
 
 # sign_index <name>:<tag>: sign the package index the tag names once each of
@@ -270,12 +281,12 @@ sign_tag() {
 # `FROM ${ARG}`. A tag must start with a lowercase letter or digit, which
 # leaves out Dockerfile.in placeholders such as XENTOOLS_TAG. A base the
 # registry does not serve is printed as its bare tag, which then fails
-# verification; bases listed in $1 themselves are skipped, since this job
-# built them and signs them after pushing. No match is not an error: a job
-# that pulled every package has no Dockerfile to scan.
+# verification; bases listed in $2 are skipped, since this job built them and
+# signs them after pushing. No match is not an error: a job that pulled every
+# package has no Dockerfile to scan.
 base_manifests() {
-    local list="$1" name ref arch index
-    shift
+    local list="$1" skip="$2" name ref arch index
+    shift 2
     sed 's/@.*//' "$list" | sort -u | while read -r name; do
         cat "$EVE/pkg/${name#eve-}"/Dockerfile{,.in} 2>/dev/null || true
     done |
@@ -284,7 +295,7 @@ base_manifests() {
     sed -E 's|.*lfedge/||' | sort -u |
     while read -r ref; do
         [[ "${ref%:*}" =~ $EXCLUDE ]] && continue
-        grep -q "^${ref%:*}@sha256:" "$list" && continue
+        grep -q "^${ref%:*}@sha256:" "$skip" && continue
         if ! index=$(docker buildx imagetools inspect --raw "$PKG_PREFIX/$ref" 2> /dev/null); then
             echo "$SIG_PREFIX/$ref"
             continue
@@ -305,16 +316,11 @@ check_inputs() {
     local out="$1" failed=0
     shift
     classify "$out"
-    : > "$out/unsigned"
+    verify_pkgs "$out/pulled" || failed=1
     if is_tag_build; then
-        verify_pkgs "$out/pulled" || failed=1
         require_reused "$out/built" || failed=1
-    elif [ "${GITHUB_RUN_ATTEMPT:-1}" -gt 1 ]; then
-        verify_pkgs "$out/pulled" "$out/unsigned" || failed=1
-    else
-        verify_pkgs "$out/pulled" || failed=1
     fi
-    base_manifests "$out/built" "$@" | verify_entries || failed=1
+    base_manifests "$out/built" "$out/built" "$@" | verify_entries || failed=1
     return "$failed"
 }
 
@@ -336,11 +342,62 @@ require_reused() {
     report "$n" "package(s) built by a tag build, which cannot sign them"
 }
 
-sign_pkgs() {
+# served <list>...: the entries of the lists that the registry serves; one it
+# does not serve was never pushed, as when a push failed and a re-run built
+# the package again.
+served() {
     local entry
     while read -r entry; do
-        if [ -n "$entry" ]; then sign_digest "$SIG_PREFIX/$entry"; fi
-    done < "$1"
+        [ -n "$entry" ] || continue
+        if docker buildx imagetools inspect --raw "$PKG_PREFIX/$entry" > /dev/null 2>&1; then
+            echo "$entry"
+        else
+            echo "not pushed: $entry" >&2
+        fi
+    done < <(sort -u "$@")
+}
+
+# sign_pushed <outdir>...: sign each manifest the <outdir>s list as built and
+# the registry serves.
+sign_pushed() {
+    local entry
+    while read -r entry; do
+        sign_digest "$SIG_PREFIX/$entry"
+    done < <(served "${@/%//built}")
+}
+
+# audit <arch>... -- <outdir>...: see the usage above.
+audit() {
+    local arches=() dir manifests tags tag ref failed
+    while [ $# -gt 0 ] && [ "$1" != -- ]; do
+        arches+=("$1")
+        shift
+    done
+    [ $# -gt 1 ] || die "usage: audit <arch>... -- <outdir>..."
+    shift
+    manifests=$(mktemp)
+    tags=$(mktemp)
+    for dir in "$@"; do
+        cat "$dir/pulled" >> "$manifests"
+        cat "$dir/pulled-tags" >> "$tags"
+        if ! is_tag_build; then
+            served "$dir/built" >> "$manifests"
+            cat "$dir/built-tags" >> "$tags"
+        fi
+    done
+    sort -u -o "$manifests" "$manifests"
+    failed=$({
+        sed "s|^|$SIG_PREFIX/|" "$manifests"
+        sort -u "$tags" | while read -r tag; do
+            [ -n "$tag" ] || continue
+            ref=$(resolve "$PKG_PREFIX/$tag")
+            echo "$SIG_PREFIX/${tag%:*}@${ref##*@}"
+        done
+        base_manifests "$manifests" /dev/null "${arches[@]}"
+    } | sort -u | count_unverified)
+    rm -f "$manifests" "$tags"
+    [ "$failed" -eq 0 ] || die "$failed image(s) this run pushed or used have no valid signature"
+    echo "every image this run pushed or used is signed"
 }
 
 cmd="${1:-}"
@@ -351,15 +408,14 @@ check-inputs)
     require_policy
     check_inputs "$@"
     ;;
-sign-built)
-    [ $# -eq 1 ] || die "usage: sign-built <outdir>"
+sign-pushed)
+    [ $# -ge 1 ] || die "usage: sign-pushed <outdir>..."
     require_policy
     if is_tag_build; then
         echo "tag build: the packages were signed by the branch build that pushed them"
         exit 0
     fi
-    sign_pkgs "$1/built"
-    [ ! -f "$1/unsigned" ] || sign_pkgs "$1/unsigned"
+    sign_pushed "$@"
     ;;
 sign-indexes)
     [ $# -eq 1 ] || die "usage: sign-indexes <file>"
@@ -377,12 +433,16 @@ sign-tags)
         sign_tag "$tag" || die "cannot sign $tag"
     done
     ;;
+audit)
+    require_policy
+    audit "$@"
+    ;;
 verify)
     [ $# -eq 1 ] || die "usage: verify <file>"
     require_policy
     verify_pkgs "$1"
     ;;
 *)
-    die "usage: $0 check-inputs|sign-built|sign-indexes|sign-tags|verify ..."
+    die "usage: $0 check-inputs|sign-pushed|sign-indexes|sign-tags|audit|verify ..."
     ;;
 esac

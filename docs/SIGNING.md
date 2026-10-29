@@ -166,11 +166,15 @@ Packages are pushed only under their content tag, and only by branch builds.
 
 The policy accepts `release-sign.yml@refs/heads/master`,
 `build-alpine-base.yml@refs/heads/master`, and `publish.yml` at `master`,
-`N.N` and `N.N-stable`. A job signs the packages
-it built after pushing them, and the `manifest` job signs their indexes once
-every platform manifest in an index verifies. A re-run of a branch build
-also signs reused packages that do not verify, since an earlier attempt may
-have pushed them and failed before signing.
+`N.N` and `N.N-stable`. A job records the packages it built, as a run
+artifact per attempt, before pushing them, and signs what every attempt's
+record lists after pushing; a re-run thus signs what an earlier attempt pushed
+and failed to sign. The `manifest` job signs the indexes once every platform
+manifest in an index verifies. It then verifies every package manifest and index the run's
+jobs pushed or used, and the `lfedge/eve-*` bases of all those packages, and
+fails the run on any without a valid signature whatever
+`EVE_COSIGN_ENFORCE` says. On a tag build that stops the release before its
+assets are built and it is signed.
 
 The jobs that sign packages, in `publish.yml` and `build-alpine-base.yml`,
 hold `id-token: write` for their whole run, including `make` and the package
