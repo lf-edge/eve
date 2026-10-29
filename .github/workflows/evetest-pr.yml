@@ -349,9 +349,22 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
         with:
           script: |
+            // GitHub occasionally answers 5xx (or rate-limits bursts) on the status API.
+            const setStatus = async (params) => {
+              for (let attempt = 1; ; attempt++) {
+                try {
+                  return await github.rest.repos.createCommitStatus(params);
+                } catch (err) {
+                  const retryable = err.status >= 500 || err.status === 429 || err.status === 403;
+                  if (!retryable || attempt >= 5) throw err;
+                  core.warning(`createCommitStatus for ${params.context} failed (${err.status}), retry ${attempt}`);
+                  await new Promise(r => setTimeout(r, 2000 * attempt));
+                }
+              }
+            };
             const suites = ${{ steps.decide.outputs.suites }};
             for (const suite of suites) {
-              await github.rest.repos.createCommitStatus({
+              await setStatus({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 sha: '${{ steps.context.outputs.head-sha }}',
@@ -363,7 +376,7 @@ jobs:
             }
             const skipSuites = ${{ steps.decide.outputs.skip-suites }};
             for (const suite of skipSuites) {
-              await github.rest.repos.createCommitStatus({
+              await setStatus({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 sha: '${{ steps.context.outputs.head-sha }}',
