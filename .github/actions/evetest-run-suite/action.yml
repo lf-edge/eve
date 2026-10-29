@@ -370,6 +370,30 @@ runs:
         # "#" title outranking them.
         "${GITHUB_ACTION_PATH}/shift-headings.sh" 3 < "$OUT" >> "$GITHUB_STEP_SUMMARY"
 
+    # Only the latest run's analysis of this suite stays visible on the PR: the
+    # previous comment is collapsed (RESOLVED if this run passed, OUTDATED if it
+    # failed again) and, below, a new one is posted when this run failed.
+    - name: Collapse the previous analysis comment of this suite on the PR
+      if: ${{ !cancelled() && inputs.analyze-failures == 'true' && inputs.pr-number != '' }}
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        CLASSIFIER: ${{ failure() && 'OUTDATED' || 'RESOLVED' }}
+      run: |
+        MARKER='<!-- evetest-analysis:${{ inputs.test-suite }} -->'
+        gh api --paginate "repos/${GH_REPO}/issues/${{ inputs.pr-number }}/comments" \
+          --jq ".[] | select(.user.type == \"Bot\" and (.body | startswith(\"${MARKER}\"))) | .node_id" \
+          | while read -r node; do
+              gh api graphql -f id="$node" -f classifier="$CLASSIFIER" -f query='
+                mutation($id: ID!, $classifier: ReportedContentClassifiers!) {
+                  minimizeComment(input: {subjectId: $id, classifier: $classifier}) {
+                    minimizedComment { isMinimized }
+                  }
+                }' >/dev/null
+            done
+
     - name: Post Claude's analysis as a PR comment
       if: >-
         ${{ failure() && inputs.analyze-failures == 'true' &&
@@ -379,8 +403,10 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        "${GITHUB_ACTION_PATH}/shift-headings.sh" 3 < "${ARTIFACT_DIR}/claude-analysis.md" \
-          | gh pr comment "${{ inputs.pr-number }}" --body-file -
+        {
+          echo '<!-- evetest-analysis:${{ inputs.test-suite }} -->'
+          "${GITHUB_ACTION_PATH}/shift-headings.sh" 3 < "${ARTIFACT_DIR}/claude-analysis.md"
+        } | gh pr comment "${{ inputs.pr-number }}" --body-file -
 
     - name: Upload Claude's failure analysis
       if: ${{ failure() && inputs.analyze-failures == 'true' && env.ARTIFACT_DIR != '' }}
