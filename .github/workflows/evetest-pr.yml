@@ -12,12 +12,11 @@ permissions:
   actions: read
   statuses: write
 
-# Keyed on the source branch rather than the PR number: workflow_run.pull_requests
-# is empty for a PR from a fork, which would make every run its own group.
-concurrency:
-  group: >-
-    ${{ github.workflow }}-${{ github.event.workflow_run.head_repository.full_name }}:${{ github.event.workflow_run.head_branch }}
-  cancel-in-progress: true
+# No workflow-level concurrency group: head_branch of the triggering PR Gate run
+# is the PR branch for a review-triggered gate but the default branch for a
+# workflow_run-triggered one, so any group built from it either misses duplicates
+# or cancels unrelated PRs. The "dedupe" step of discover-suites keys on the PR
+# number instead.
 
 jobs:
   discover-suites:
@@ -25,14 +24,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: read
+      actions: write  # to cancel a superseded run, see the dedupe step
       statuses: write
       pull-requests: write
       issues: write
     outputs:
       suites: ${{ steps.decide.outputs.suites }}
       skip: ${{ steps.decide.outputs.skip }}
-      skip-run: ${{ steps.check_gate.outputs.skip_run }}
+      skip-run: ${{ steps.dedupe.outputs.skip_run }}
       pr-number: ${{ steps.context.outputs.pr-number }}
       base-branch: ${{ steps.context.outputs.base-branch }}
       head-sha: ${{ steps.context.outputs.head-sha }}
@@ -103,8 +102,63 @@ jobs:
               target_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}',
             });
 
+      # At most one evetest run per PR head commit, and never a run for a stale
+      # commit. A run for the same commit that is still active wins and this run
+      # stops before Claude is asked to decide the skips again; a run for a
+      # different commit of the same PR is superseded and cancelled. Active runs
+      # are recognised by the evetest-active-<pr>-<sha> artifact that each one
+      # uploads below, which survives a force-push, unlike a per-commit status.
+      - id: dedupe
+        name: Skip or supersede other evetest runs of this PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          GATE_SKIP: ${{ steps.check_gate.outputs.skip_run }}
+          PR: ${{ steps.context.outputs.pr-number }}
+          SHA: ${{ steps.context.outputs.head-sha }}
+        run: |
+          if [ "$GATE_SKIP" != "false" ]; then
+            echo "skip_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$(gh pr view "$PR" --json headRefOid -q .headRefOid)" != "$SHA" ]; then
+            echo "$SHA is no longer the head of PR #$PR; nothing to do."
+            echo "skip_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          stale=""
+          for state in queued in_progress waiting; do
+            runs=$(gh api "repos/$GH_REPO/actions/workflows/evetest-pr.yml/runs?status=$state&per_page=100" \
+                --jq ".workflow_runs[] | select(.id != ${{ github.run_id }}) | .id")
+            for run in $runs; do
+              marker=$(gh api "repos/$GH_REPO/actions/runs/$run/artifacts" \
+                  --jq ".artifacts[].name | select(startswith(\"evetest-active-$PR-\"))" | head -n1)
+              [ -n "$marker" ] || continue
+              if [ "$marker" = "evetest-active-$PR-$SHA" ]; then
+                echo "Run $run is already testing $SHA of PR #$PR; ignoring this trigger."
+                echo "skip_run=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              stale="$stale $run"
+            done
+          done
+          for run in $stale; do
+            echo "Cancelling run $run: PR #$PR moved on to $SHA."
+            gh run cancel "$run" --repo "$GH_REPO" || echo "::warning::Could not cancel run $run"
+          done
+          echo "skip_run=false" >> "$GITHUB_OUTPUT"
+          echo "active run of PR #$PR at $SHA" > evetest-active.txt
+
+      - name: Mark this run as the active evetest run of the PR
+        if: steps.dedupe.outputs.skip_run == 'false'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: evetest-active-${{ steps.context.outputs.pr-number }}-${{ steps.context.outputs.head-sha }}
+          path: evetest-active.txt
+          retention-days: 1
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-        if: steps.check_gate.outputs.skip_run == 'false'
+        if: steps.dedupe.outputs.skip_run == 'false'
         with:
           repository: ${{ steps.context.outputs.head-repository }}
           ref: ${{ steps.context.outputs.head-sha }}
@@ -112,7 +166,7 @@ jobs:
 
       - id: list
         name: List evetest test suites
-        if: steps.check_gate.outputs.skip_run == 'false'
+        if: steps.dedupe.outputs.skip_run == 'false'
         run: |
           SUITES_JSON=$(make -C evetest list-test-suites \
               | grep -E '^Test[A-Za-z0-9_]+$' \
@@ -125,14 +179,14 @@ jobs:
           echo "suites=$SUITES_JSON" >> "$GITHUB_OUTPUT"
 
       - name: List every evetest test/variant name for Claude
-        if: steps.check_gate.outputs.skip_run == 'false' && steps.context.outputs.run-mode == 'claude'
+        if: steps.dedupe.outputs.skip_run == 'false' && steps.context.outputs.run-mode == 'claude'
         run: |
           mkdir -p .evetest-skip
           make -C evetest list-tests > .evetest-skip/all-tests.txt
           echo "Listed $(wc -l < .evetest-skip/all-tests.txt) lines of test/variant names"
 
       - name: Fetch the PR diff, description and commit messages for Claude
-        if: steps.check_gate.outputs.skip_run == 'false' && steps.context.outputs.run-mode == 'claude'
+        if: steps.dedupe.outputs.skip_run == 'false' && steps.context.outputs.run-mode == 'claude'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -152,7 +206,7 @@ jobs:
       # .claude/.mcp.json first so it can't plant hooks/MCP servers
       # (same precaution as claude-sec-review.yml).
       - name: Strip in-tree tool configs from the PR checkout
-        if: steps.check_gate.outputs.skip_run == 'false' && steps.context.outputs.run-mode == 'claude'
+        if: steps.dedupe.outputs.skip_run == 'false' && steps.context.outputs.run-mode == 'claude'
         run: |
           find . -depth -type d -name .claude -exec rm -rf {} +
           find . -type l -name .claude -delete
@@ -160,7 +214,7 @@ jobs:
           find . -type l -name .mcp.json -delete
 
       - name: Ask Claude which tests can be skipped
-        if: steps.check_gate.outputs.skip_run == 'false' && steps.context.outputs.run-mode == 'claude'
+        if: steps.dedupe.outputs.skip_run == 'false' && steps.context.outputs.run-mode == 'claude'
         uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -251,7 +305,7 @@ jobs:
 
       - id: decide
         name: Determine EVETEST_SKIP
-        if: steps.check_gate.outputs.skip_run == 'false'
+        if: steps.dedupe.outputs.skip_run == 'false'
         env:
           REQUESTED_TESTS: ${{ steps.context.outputs.run-args }}
         run: |
@@ -291,7 +345,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Report suite statuses
-        if: steps.check_gate.outputs.skip_run == 'false'
+        if: steps.dedupe.outputs.skip_run == 'false'
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
         with:
           script: |
@@ -367,3 +421,45 @@ jobs:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           pr-number: ${{ needs.discover-suites.outputs.pr-number }}
           ledger-branch: ${{ needs.discover-suites.outputs.base-branch }}
+
+  # The suite action posts the final status itself, but only from jobs that got a
+  # runner. After a cancel (e.g. a newer push superseding this run) or a timeout,
+  # the suites that never started keep the "Queued" status posted by
+  # discover-suites; mark whatever of this run is still pending.
+  cleanup:
+    name: Close pending suite statuses
+    needs: [discover-suites, evetest]
+    if: ${{ always() && needs.discover-suites.outputs.skip-run == 'false' }}
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
+        with:
+          script: |
+            const sha = '${{ needs.discover-suites.outputs.head-sha }}';
+            const runUrl = '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}';
+            const statuses = await github.paginate(github.rest.repos.listCommitStatusesForRef, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: sha,
+              per_page: 100,
+            });
+            const latest = new Map();
+            for (const st of statuses) {
+              if (!latest.has(st.context)) latest.set(st.context, st);
+            }
+            for (const [ctx, st] of latest) {
+              if (!ctx.startsWith('Evetest / ') || st.state !== 'pending' || st.target_url !== runUrl) {
+                continue;
+              }
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha,
+                state: 'error',
+                context: ctx,
+                description: 'Cancelled or timed out before this suite finished.',
+                target_url: runUrl,
+              });
+            }
