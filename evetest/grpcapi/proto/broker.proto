@@ -30,6 +30,12 @@ service Broker {
   rpc BuildImage(BuildImageRequest) returns (BuildImageResponse);
   // PushEVEContainerImage streams a pre-built EVE container image to the broker.
   rpc PushEVEContainerImage(stream PushImageChunk) returns (PushImageResponse);
+  // PushSDNContainerImage streams a locally available SDN container image to the
+  // broker, for when the broker can neither find nor pull it (e.g. an SDN image
+  // built from an unmerged change). SetupDevices signals that case with a
+  // FailedPrecondition error carrying an ErrorInfo detail with the reason
+  // constants.MissingSDNImageErrorReason.
+  rpc PushSDNContainerImage(stream PushSDNImageChunk) returns (PushImageResponse);
   // Uploads a locally built EVE live image as a tar stream containing
   // live.qcow2, config.img and firmware/*.
   rpc PushEVELiveImage(stream PushLiveImageChunk) returns (PushLiveImageResponse);
@@ -222,7 +228,26 @@ message PushImageRequest {
   ImageRef image = 2;
 }
 
-// PushImageResponse is returned after the EVE docker image upload completes.
+// PushSDNImageChunk represents a single message in the SDN docker image upload stream.
+// The first message MUST contain a PushSDNImageRequest to provide image metadata.
+// Subsequent messages contain chunks of the gzipped SDN container image data.
+message PushSDNImageChunk {
+  oneof payload {
+    // Initial message containing metadata required to initiate the upload.
+    PushSDNImageRequest request = 1;
+
+    // A chunk of gzipped SDN container image data.
+    bytes data_gzip_chunk = 2;
+  }
+}
+
+// PushSDNImageRequest contains metadata describing the SDN docker image to be uploaded.
+message PushSDNImageRequest {
+  string client_id = 1;
+  SDNConfig sdn_config = 2;
+}
+
+// PushImageResponse is returned after the EVE or SDN docker image upload completes.
 message PushImageResponse {
   bool already_exists = 1;
 }

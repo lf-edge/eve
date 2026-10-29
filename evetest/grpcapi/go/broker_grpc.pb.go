@@ -28,6 +28,7 @@ const (
 	Broker_StreamLogs_FullMethodName             = "/org.lfedge.evetest.Broker/StreamLogs"
 	Broker_BuildImage_FullMethodName             = "/org.lfedge.evetest.Broker/BuildImage"
 	Broker_PushEVEContainerImage_FullMethodName  = "/org.lfedge.evetest.Broker/PushEVEContainerImage"
+	Broker_PushSDNContainerImage_FullMethodName  = "/org.lfedge.evetest.Broker/PushSDNContainerImage"
 	Broker_PushEVELiveImage_FullMethodName       = "/org.lfedge.evetest.Broker/PushEVELiveImage"
 	Broker_SetupDevices_FullMethodName           = "/org.lfedge.evetest.Broker/SetupDevices"
 	Broker_TeardownDevices_FullMethodName        = "/org.lfedge.evetest.Broker/TeardownDevices"
@@ -66,6 +67,12 @@ type BrokerClient interface {
 	BuildImage(ctx context.Context, in *BuildImageRequest, opts ...grpc.CallOption) (*BuildImageResponse, error)
 	// PushEVEContainerImage streams a pre-built EVE container image to the broker.
 	PushEVEContainerImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushImageChunk, PushImageResponse], error)
+	// PushSDNContainerImage streams a locally available SDN container image to the
+	// broker, for when the broker can neither find nor pull it (e.g. an SDN image
+	// built from an unmerged change). SetupDevices signals that case with a
+	// FailedPrecondition error carrying an ErrorInfo detail with the reason
+	// constants.MissingSDNImageErrorReason.
+	PushSDNContainerImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushSDNImageChunk, PushImageResponse], error)
 	// Uploads a locally built EVE live image as a tar stream containing
 	// live.qcow2, config.img and firmware/*.
 	PushEVELiveImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushLiveImageChunk, PushLiveImageResponse], error)
@@ -192,9 +199,22 @@ func (c *brokerClient) PushEVEContainerImage(ctx context.Context, opts ...grpc.C
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Broker_PushEVEContainerImageClient = grpc.ClientStreamingClient[PushImageChunk, PushImageResponse]
 
+func (c *brokerClient) PushSDNContainerImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushSDNImageChunk, PushImageResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[3], Broker_PushSDNContainerImage_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[PushSDNImageChunk, PushImageResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Broker_PushSDNContainerImageClient = grpc.ClientStreamingClient[PushSDNImageChunk, PushImageResponse]
+
 func (c *brokerClient) PushEVELiveImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushLiveImageChunk, PushLiveImageResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[3], Broker_PushEVELiveImage_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[4], Broker_PushEVELiveImage_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +327,7 @@ func (c *brokerClient) GetDeviceConsoleOutput(ctx context.Context, in *DeviceCon
 
 func (c *brokerClient) ConnectConsoleToDevice(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConnectConsoleRequest, ConnectConsoleResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[4], Broker_ConnectConsoleToDevice_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[5], Broker_ConnectConsoleToDevice_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +340,7 @@ type Broker_ConnectConsoleToDeviceClient = grpc.BidiStreamingClient[ConnectConso
 
 func (c *brokerClient) ConnectTunnelToSDN(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConnectTunnelToSDNRequest, ConnectTunnelToSDNResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[5], Broker_ConnectTunnelToSDN_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[6], Broker_ConnectTunnelToSDN_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -354,6 +374,12 @@ type BrokerServer interface {
 	BuildImage(context.Context, *BuildImageRequest) (*BuildImageResponse, error)
 	// PushEVEContainerImage streams a pre-built EVE container image to the broker.
 	PushEVEContainerImage(grpc.ClientStreamingServer[PushImageChunk, PushImageResponse]) error
+	// PushSDNContainerImage streams a locally available SDN container image to the
+	// broker, for when the broker can neither find nor pull it (e.g. an SDN image
+	// built from an unmerged change). SetupDevices signals that case with a
+	// FailedPrecondition error carrying an ErrorInfo detail with the reason
+	// constants.MissingSDNImageErrorReason.
+	PushSDNContainerImage(grpc.ClientStreamingServer[PushSDNImageChunk, PushImageResponse]) error
 	// Uploads a locally built EVE live image as a tar stream containing
 	// live.qcow2, config.img and firmware/*.
 	PushEVELiveImage(grpc.ClientStreamingServer[PushLiveImageChunk, PushLiveImageResponse]) error
@@ -422,6 +448,9 @@ func (UnimplementedBrokerServer) BuildImage(context.Context, *BuildImageRequest)
 }
 func (UnimplementedBrokerServer) PushEVEContainerImage(grpc.ClientStreamingServer[PushImageChunk, PushImageResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method PushEVEContainerImage not implemented")
+}
+func (UnimplementedBrokerServer) PushSDNContainerImage(grpc.ClientStreamingServer[PushSDNImageChunk, PushImageResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method PushSDNContainerImage not implemented")
 }
 func (UnimplementedBrokerServer) PushEVELiveImage(grpc.ClientStreamingServer[PushLiveImageChunk, PushLiveImageResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method PushEVELiveImage not implemented")
@@ -561,6 +590,13 @@ func _Broker_PushEVEContainerImage_Handler(srv interface{}, stream grpc.ServerSt
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Broker_PushEVEContainerImageServer = grpc.ClientStreamingServer[PushImageChunk, PushImageResponse]
+
+func _Broker_PushSDNContainerImage_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(BrokerServer).PushSDNContainerImage(&grpc.GenericServerStream[PushSDNImageChunk, PushImageResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Broker_PushSDNContainerImageServer = grpc.ClientStreamingServer[PushSDNImageChunk, PushImageResponse]
 
 func _Broker_PushEVELiveImage_Handler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(BrokerServer).PushEVELiveImage(&grpc.GenericServerStream[PushLiveImageChunk, PushLiveImageResponse]{ServerStream: stream})
@@ -838,6 +874,11 @@ var Broker_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "PushEVEContainerImage",
 			Handler:       _Broker_PushEVEContainerImage_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "PushSDNContainerImage",
+			Handler:       _Broker_PushSDNContainerImage_Handler,
 			ClientStreams: true,
 		},
 		{
