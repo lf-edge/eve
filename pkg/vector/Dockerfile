@@ -1,7 +1,7 @@
 # Copyright (c) 2025-2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-ARG RUST_VERSION=lfedge/eve-rust:1.93.1-1
+ARG RUST_VERSION=lfedge/eve-rust:1.93.1-2
 ARG VECTOR_FEATURES='--no-default-features --features \
 sources-socket,\
 sources-internal_metrics,\
