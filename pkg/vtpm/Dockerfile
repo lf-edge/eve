@@ -3,7 +3,7 @@
 # Copyright (c) 2023-2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-dom0-ztools:dfc623566748e5c90c4e967d156139e2dda743fd  AS dom0
+FROM lfedge/eve-dom0-ztools:2eefcba62aceccda0ced2b04d376c73f705e3957  AS dom0
 
 # ===========================================================================
 # C builds (libtpms, swtpm, tpm2-tss, tpm2-tools, ptpm)
