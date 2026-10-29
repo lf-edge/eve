@@ -229,7 +229,6 @@ jobs:
           # everything yourself" note in the prompt below for why).
           settings: '{"permissions": {"defaultMode": "acceptEdits", "allow": ["Edit", "Write"], "deny": ["Agent"]}}'
           claude_args: |
-            --allowedTools "Bash(gh pr comment:*)"
             --model claude-sonnet-5
           prompt: |
             REPO: ${{ github.repository }}
@@ -294,14 +293,15 @@ jobs:
 
             Write your decision as JSON to .evetest-skip/skip-decision.json (create it
             directly, not via a Bash heredoc/cat/printf) with exactly this shape:
-              {"skip": ["Name1", "Name2"], "reason": "one sentence per skipped name explaining why (unrelated or redundant)"}
+              {"skip": ["Name1", "Name2"]}
             (an empty "skip" array if nothing qualifies).
 
-            ONLY if "skip" is non-empty, also post exactly one PR comment via
-            `gh pr comment ${{ steps.context.outputs.pr-number }} --body "..."` listing every
-            skipped test/suite/variant and why, and mentioning that an engineer can
-            comment "/evetest all" to force the full suite to run instead, or
-            "/evetest <name> <name> ..." to run only specific tests/suites.
+            ONLY if "skip" is non-empty, also write a PR comment body (markdown) to
+            .evetest-skip/comment.md (again via the file-writing tool, not Bash)
+            listing every skipped test/suite/variant and why, and mentioning that an
+            engineer can comment "/evetest all" to force the full suite to run instead,
+            or "/evetest <name> <name> ..." to run only specific tests/suites. The
+            workflow posts this file as the PR comment; do not post anything yourself.
 
       - id: decide
         name: Determine EVETEST_SKIP
@@ -343,6 +343,50 @@ jobs:
             echo "suites=$RUN"
             echo "skip-suites=$SKIP_SUITES"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Update the skipped-tests PR comment
+        if: steps.dedupe.outputs.skip_run == 'false'
+        # Advisory only: a transient API error must not abort the run.
+        continue-on-error: true
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
+        env:
+          RUN_MODE: ${{ steps.context.outputs.run-mode }}
+        with:
+          script: |
+            // At most one such comment per PR, describing only the latest run.
+            const fs = require('fs');
+            const marker = '<!-- evetest-skip-summary -->';
+            const prNumber = ${{ steps.context.outputs.pr-number }};
+            let skip = [];
+            let text = '';
+            if (process.env.RUN_MODE === 'claude') {
+              try {
+                const d = JSON.parse(fs.readFileSync('.evetest-skip/skip-decision.json', 'utf8'));
+                skip = Array.isArray(d.skip) ? d.skip : [];
+                if (skip.length > 0) text = fs.readFileSync('.evetest-skip/comment.md', 'utf8').trim();
+              } catch (err) {
+                core.info(`No usable skip decision: ${err.message}`);
+              }
+            }
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            const mine = comments.filter(c => c.user?.type === 'Bot' && c.body?.startsWith(marker));
+            // Delete and re-post rather than edit, so the comment sits at the
+            // end of the conversation.
+            for (const c of mine) {
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner, repo: context.repo.repo, comment_id: c.id,
+              });
+            }
+            if (skip.length > 0 && text) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
+                body: `${marker}\n${text}`,
+              });
+            }
 
       - name: Report suite statuses
         if: steps.dedupe.outputs.skip_run == 'false'
