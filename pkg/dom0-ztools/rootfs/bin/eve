@@ -8,7 +8,8 @@ APP_STATUS_DIR="/run/zedmanager/AppInstanceStatus"
 
 # Locate jq: use the binary shipped inside the pillar onboot container.
 # The binary needs libonig from the same sysroot, so we set LD_LIBRARY_PATH.
-_JQ_SYSROOT="/containers/onboot/004-pillar-onboot/lower"
+# The numeric prefix depends on the onboot list in rootfs.yml.in, so glob it.
+for _JQ_SYSROOT in /containers/onboot/*-pillar-onboot/lower; do break; done
 jq() { LD_LIBRARY_PATH="${_JQ_SYSROOT}/usr/lib" "${_JQ_SYSROOT}/usr/bin/jq" "$@"; }
 
 help() {
