@@ -6,6 +6,7 @@ package kubectlx
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	containerd "github.com/containerd/containerd/v2/client"
@@ -82,9 +83,19 @@ func (cc *ContainerdClient) ImportImage(ctx context.Context, tarballPath string)
 		return nil, fmt.Errorf("kubectlx containerd: open %s: %w", tarballPath, err)
 	}
 	defer f.Close()
-	imgs, err := cc.client.Import(cc.nsCtx(ctx), f)
+	refs, err := cc.ImportImageFrom(ctx, f)
 	if err != nil {
 		return nil, fmt.Errorf("kubectlx containerd: import %s: %w", tarballPath, err)
+	}
+	return refs, nil
+}
+
+// ImportImageFrom imports a docker-archive or OCI-layout tar stream
+// read from r and returns the names of the imported images.
+func (cc *ContainerdClient) ImportImageFrom(ctx context.Context, r io.Reader) ([]string, error) {
+	imgs, err := cc.client.Import(cc.nsCtx(ctx), r)
+	if err != nil {
+		return nil, err
 	}
 	refs := make([]string, 0, len(imgs))
 	for _, img := range imgs {

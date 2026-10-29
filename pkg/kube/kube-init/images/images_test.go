@@ -15,69 +15,6 @@ func TestUpstreamImageFullRef(t *testing.T) {
 	}
 }
 
-func TestParseFirstRepoTag(t *testing.T) {
-	cases := []struct {
-		name    string
-		input   string
-		want    string
-		wantErr string // substring of expected error; "" means no error
-	}{
-		{
-			name:  "single-entry single-repotag",
-			input: `[{"RepoTags":["quay.io/kubevirt/virt-operator:v1.6.0"]}]`,
-			want:  "quay.io/kubevirt/virt-operator:v1.6.0",
-		},
-		{
-			name: "multi-entry uses the first",
-			input: `[
-				{"RepoTags":["first:v1"]},
-				{"RepoTags":["second:v2"]}
-			]`,
-			want: "first:v1",
-		},
-		{
-			name:  "multi-repotag uses the first",
-			input: `[{"RepoTags":["a:v1","b:v2"]}]`,
-			want:  "a:v1",
-		},
-		{
-			name:    "empty array",
-			input:   `[]`,
-			wantErr: "no RepoTags",
-		},
-		{
-			name:    "empty RepoTags",
-			input:   `[{"RepoTags":[]}]`,
-			wantErr: "no RepoTags",
-		},
-		{
-			name:    "malformed json",
-			input:   `{not json`,
-			wantErr: "parse manifest.json",
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			got, err := parseFirstRepoTag([]byte(c.input))
-			if c.wantErr != "" {
-				if err == nil {
-					t.Fatalf("expected error containing %q, got nil", c.wantErr)
-				}
-				if !strings.Contains(err.Error(), c.wantErr) {
-					t.Errorf("error = %v, want substring %q", err, c.wantErr)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("parseFirstRepoTag: %v", err)
-			}
-			if got != c.want {
-				t.Errorf("got %q, want %q", got, c.want)
-			}
-		})
-	}
-}
-
 // TestUpstreamImagesCatalogShape guards against accidental drift:
 // every entry must have non-empty Tarball / Name / Tag fields, the
 // tarball must live under /images/, and the Name must look like a
