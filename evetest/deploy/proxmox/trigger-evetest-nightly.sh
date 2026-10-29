@@ -13,6 +13,7 @@ set -eu
 GH_REPO=""
 WORKFLOW="evetest-nightly.yml"
 REF=""
+COVERAGE="false"
 # GH_TOKEN (environment) needs "Actions: read and write" permission
 # (fine-grained PAT) or the classic "repo" scope, on the target repository.
 GH_TOKEN="${GH_TOKEN:-}"
@@ -29,6 +30,7 @@ Required:
 
 Optional:
   --workflow NAME_OR_ID  Workflow file name or numeric ID. Default: $WORKFLOW
+  --collect-coverage     Set the collect-coverage workflow input to true.
   -h, --help             Show this help.
 
 Environment:
@@ -41,6 +43,7 @@ while [ $# -gt 0 ]; do
         --gh-repo)   GH_REPO="$2"; shift 2 ;;
         --workflow)  WORKFLOW="$2"; shift 2 ;;
         --branch|--ref) REF="$2"; shift 2 ;;
+        --collect-coverage) COVERAGE="true"; shift ;;
         -h|--help)   usage; exit 0 ;;
         *) echo "error: unknown flag: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -62,10 +65,10 @@ HTTP_STATUS=$(curl -s -o "$RESPONSE_FILE" -w '%{http_code}' \
     -H "Authorization: Bearer ${GH_TOKEN}" \
     -H "Accept: application/vnd.github+json" \
     "https://api.github.com/repos/${GH_REPO}/actions/workflows/${WORKFLOW}/dispatches" \
-    -d "{\"ref\":\"${REF}\"}")
+    -d "{\"ref\":\"${REF}\",\"inputs\":{\"collect-coverage\":\"${COVERAGE}\"}}")
 
 if [ "$HTTP_STATUS" = "204" ]; then
-    echo "Dispatched ${WORKFLOW} on ${GH_REPO}@${REF}."
+    echo "Dispatched ${WORKFLOW} on ${GH_REPO}@${REF} (collect-coverage=${COVERAGE})."
     exit 0
 fi
 
