@@ -166,10 +166,10 @@ This is not hypothetical: a purge issued while the device is off can leave zedma
 
 A container application in KubeVirt mode runs as a "container shim VMI": a
 `VirtualMachineInstanceReplicaSet` (VMIRS) whose `Firmware.KernelBoot.Container`
-points at the `eve-external-boot-image`, an EVE-bundled image supplying the
-kernel and initrd for the guest. That image is imported into the k3s containerd
-store by `external_boot_image_import` in `pkg/kube/cluster-init.sh` and is never
-pulled from a registry — the pod spec uses `ImagePullPolicy: PullNever`, so the
+points at the `eve-external-boot-image`, which supplies the kernel and initrd
+for the guest. kube-init builds that image in the k3s containerd store from the
+running rootfs's `/boot/kernel` and `/boot/runx-initrd`, once per EVE release,
+and it is never pulled from a registry — the pod spec uses `ImagePullPolicy: PullNever`, so the
 tag must already exist locally.
 
 Historically each VMIRS embedded the *versioned* tag

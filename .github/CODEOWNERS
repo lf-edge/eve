@@ -38,7 +38,6 @@
 /pkg/dom0-ztools/                     @rucoder @christoph-zededa @rene
 /pkg/edgeview/                        @naiming-zededa @christoph-zededa
 /pkg/eve/                             @rene
-/pkg/external-boot-image/             @rucoder @christoph-zededa
 /pkg/fscrypt/                         @shjala @andrewd-zededa
 /pkg/fw/                              @rucoder @rene
 /pkg/gpt-tools/                       @eriknordmark @rene @christoph-zededa

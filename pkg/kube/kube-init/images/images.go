@@ -4,9 +4,10 @@
 // Package images imports pre-packaged container image tarballs into
 // the user-side containerd that k3s' kubelet consumes. Two flavours:
 //
-//   - The EVE-authored external-boot-image, which gets re-tagged to
-//     match the running EVE release so KubeVirt can reference a
-//     stable image:tag across upgrades.
+//   - The external-boot-image, built on the device from the kernel
+//     and initrd in the running rootfs and tagged with the running EVE
+//     release, so KubeVirt can reference a stable image:tag across
+//     upgrades.
 //   - The catalog of upstream component images (KubeVirt, CDI,
 //     Longhorn, Multus, SUC, etc.) shipped as exported tarballs at
 //     their pinned versions. Importing locally avoids first-boot
@@ -20,12 +21,11 @@ package images
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
@@ -34,14 +34,16 @@ import (
 )
 
 const (
-	// ExternalBootImageTar is the on-disk path of the EVE-authored
-	// external-boot-image tarball. KubeVirt's virt-handler downloads
-	// the kernel/initrd from this image to boot guest VMs.
-	ExternalBootImageTar = "/etc/external-boot-image.tar"
+	// BootKernel and BootInitrd are the host rootfs's kernel and the
+	// initrd of the VMs container apps run in, seen through the
+	// /:/hostfs bind in pkg/kube/build.yml. They form the
+	// external-boot-image, from which KubeVirt boots container apps.
+	BootKernel = "/hostfs/boot/kernel"
+	BootInitrd = "/hostfs/boot/runx-initrd"
 
 	// ExternalBootImageName is the fully-qualified image name
-	// kubelet pod specs reference (re-tagged to the running EVE
-	// release at import time).
+	// kubelet pod specs reference, tagged with the running EVE
+	// release and :latest.
 	ExternalBootImageName = "docker.io/lfedge/eve-external-boot-image"
 )
 
@@ -139,9 +141,10 @@ func ImportAll(ctx context.Context, eveRelease string, installKubevirt bool) err
 	defer cc.Close()
 
 	if installKubevirt {
-		if err := importExternalBootImageWith(ctx, cc, eveRelease); err != nil {
-			log.Printf("WARNING: external-boot-image import failed: %v", err)
+		if err := EnsureExternalBootImage(ctx, cc, eveRelease); err != nil {
+			log.Printf("WARNING: external-boot-image build failed: %v", err)
 		}
+		cleanupOldImages(ctx, cc, ExternalBootImageName, eveRelease)
 	}
 
 	for _, img := range UpstreamImages {
@@ -202,115 +205,50 @@ func importUpstreamImageWith(ctx context.Context, cc *kubectlx.ContainerdClient,
 	return nil
 }
 
-// ImportExternalBootImage imports the external-boot-image tarball
-// and re-tags it as ExternalBootImageName:<eveRelease>. After a
-// successful import any prior :<release> tags are removed so the
-// image set tracks the running EVE release.
-//
-// Missing tarball is a silent no-op — the install may have skipped
-// KubeVirt artifacts deliberately.
-func ImportExternalBootImage(ctx context.Context, eveRelease string) error {
-	cc, err := kubectlx.NewContainerd(ctx, state.ContainerdSocket)
-	if err != nil {
-		return fmt.Errorf("containerd client: %w", err)
-	}
-	defer cc.Close()
-	return importExternalBootImageWith(ctx, cc, eveRelease)
-}
-
-// importExternalBootImageWith is the ImportExternalBootImage body
-// against a caller-owned containerd client.
-func importExternalBootImageWith(ctx context.Context, cc *kubectlx.ContainerdClient,
+// EnsureExternalBootImage makes ExternalBootImageName:<eveRelease>
+// and :latest name an image built from BootKernel and BootInitrd. It
+// does nothing when the :<eveRelease> tag exists, so the image is
+// built once per EVE release; distinct builds have distinct release
+// strings. Missing inputs are a logged no-op.
+func EnsureExternalBootImage(ctx context.Context, cc *kubectlx.ContainerdClient,
 	eveRelease string,
 ) error {
-	if _, err := os.Stat(ExternalBootImageTar); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			log.Printf("external-boot-image tarball not found at %s, skipping",
-				ExternalBootImageTar)
-			return nil
-		}
-		return fmt.Errorf("stat %s: %w", ExternalBootImageTar, err)
-	}
-
 	fullImageName := ExternalBootImageName + ":" + eveRelease
-	if exists, err := cc.ImageExists(ctx, fullImageName); err == nil && exists {
-		log.Printf("external-boot-image %s already imported", fullImageName)
-		cleanupOldImages(ctx, cc, ExternalBootImageName, eveRelease)
+	exists, err := cc.ImageExists(ctx, fullImageName)
+	if err != nil {
+		return fmt.Errorf("check %s: %w", fullImageName, err)
+	}
+	if exists {
 		return nil
 	}
-	if err := importImage(ctx, cc, ExternalBootImageTar,
-		ExternalBootImageName, eveRelease); err != nil {
+	for _, f := range bootFiles {
+		if _, err := os.Stat(f.src); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				log.Printf("%s not found, skipping external-boot-image", f.src)
+				return nil
+			}
+			return fmt.Errorf("stat %s: %w", f.src, err)
+		}
+	}
+
+	pr, pw := io.Pipe()
+	go func() {
+		_, err := writeBootImageArchive(pw, bootFiles, fullImageName)
+		pw.CloseWithError(err)
+	}()
+	_, err = cc.ImportImageFrom(ctx, pr)
+	pr.CloseWithError(err)
+	if err != nil {
 		return fmt.Errorf("import external-boot-image: %w", err)
 	}
-	log.Printf("successfully imported external-boot-image as %s", fullImageName)
-	// Also expose the release as :latest so VMIRSes can pin against a
-	// stable tag. The image store on /persist survives upgrades, so
-	// :latest already points at the previous release; TagImage
-	// overwrites the record rather than erroring on AlreadyExists.
+	log.Printf("built external-boot-image %s", fullImageName)
+	// The image store on /persist survives upgrades, so :latest
+	// already points at the previous release; TagImage overwrites it.
 	latestRef := ExternalBootImageName + ":latest"
 	if err := cc.TagImage(ctx, fullImageName, latestRef); err != nil {
 		return fmt.Errorf("re-tag %s -> %s: %w", fullImageName, latestRef, err)
 	}
-	cleanupOldImages(ctx, cc, ExternalBootImageName, eveRelease)
 	return nil
-}
-
-// importImage is the shared import-then-retag flow for EVE-authored
-// images whose tarball-internal tag may not match the
-// expectedName:expectedTag kubelet pod specs reference. Reads the
-// tarball's manifest.json, imports into containerd, and re-tags if
-// the tarball's own name doesn't already match.
-func importImage(ctx context.Context, cc *kubectlx.ContainerdClient,
-	tarball, expectedName, expectedTag string,
-) error {
-	tarballNameTag, err := getImageNameFromTarball(tarball)
-	if err != nil {
-		return fmt.Errorf("read image name from tarball %s: %w", tarball, err)
-	}
-	log.Printf("tarball %s contains image: %s", tarball, tarballNameTag)
-	if _, err := cc.ImportImage(ctx, tarball); err != nil {
-		return fmt.Errorf("import %s: %w", tarball, err)
-	}
-	log.Printf("imported tarball %s into containerd", tarball)
-
-	target := expectedName + ":" + expectedTag
-	if tarballNameTag != "" && tarballNameTag != "null" && tarballNameTag != target {
-		log.Printf("re-tagging %s -> %s", tarballNameTag, target)
-		if err := cc.TagImage(ctx, tarballNameTag, target); err != nil {
-			return fmt.Errorf("tag %s -> %s: %w", tarballNameTag, target, err)
-		}
-	}
-	return nil
-}
-
-// manifestJSON is the subset of Docker image manifest.json we parse.
-type manifestJSON struct {
-	RepoTags []string `json:"RepoTags"`
-}
-
-// getImageNameFromTarball returns the first RepoTags entry from
-// manifest.json inside tarball. Runs `tar -xf <tarball> manifest.json
-// -O` (stdout extraction) and parses the JSON in Go to avoid a jq
-// runtime dependency.
-func getImageNameFromTarball(tarball string) (string, error) {
-	output, err := exec.Command("tar", "-xf", tarball, "manifest.json", "-O").Output()
-	if err != nil {
-		return "", fmt.Errorf("extract manifest.json from %s: %w", tarball, err)
-	}
-	return parseFirstRepoTag(output)
-}
-
-// parseFirstRepoTag is the pure half of getImageNameFromTarball,
-// factored out for unit testing.
-func parseFirstRepoTag(manifestBytes []byte) (string, error) {
-	var manifests []manifestJSON
-	if err := json.Unmarshal(manifestBytes, &manifests); err != nil {
-		return "", fmt.Errorf("parse manifest.json: %w", err)
-	}
-	if len(manifests) == 0 || len(manifests[0].RepoTags) == 0 {
-		return "", errors.New("manifest.json has no RepoTags")
-	}
-	return manifests[0].RepoTags[0], nil
 }
 
 // cleanupOldImages lists every image whose name starts with baseName
