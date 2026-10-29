@@ -6,6 +6,7 @@ package kubectlx
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	containerd "github.com/containerd/containerd/v2/client"
@@ -82,9 +83,19 @@ func (cc *ContainerdClient) ImportImage(ctx context.Context, tarballPath string)
 		return nil, fmt.Errorf("kubectlx containerd: open %s: %w", tarballPath, err)
 	}
 	defer f.Close()
-	imgs, err := cc.client.Import(cc.nsCtx(ctx), f)
+	refs, err := cc.ImportImageFrom(ctx, f)
 	if err != nil {
 		return nil, fmt.Errorf("kubectlx containerd: import %s: %w", tarballPath, err)
+	}
+	return refs, nil
+}
+
+// ImportImageFrom imports a docker-archive or OCI-layout tar stream
+// read from r and returns the names of the imported images.
+func (cc *ContainerdClient) ImportImageFrom(ctx context.Context, r io.Reader) ([]string, error) {
+	imgs, err := cc.client.Import(cc.nsCtx(ctx), r)
+	if err != nil {
+		return nil, err
 	}
 	refs := make([]string, 0, len(imgs))
 	for _, img := range imgs {
@@ -105,6 +116,20 @@ func (cc *ContainerdClient) ImageExists(ctx context.Context, ref string) (bool, 
 		return false, nil
 	}
 	return false, fmt.Errorf("kubectlx containerd: get image %s: %w", ref, err)
+}
+
+// ImageDigest returns the digest of the descriptor the image reference
+// points at in the k8s.io namespace, or "" when the reference does not
+// exist; any other error surfaces.
+func (cc *ContainerdClient) ImageDigest(ctx context.Context, ref string) (string, error) {
+	img, err := cc.client.ImageService().Get(cc.nsCtx(ctx), ref)
+	if err == nil {
+		return img.Target.Digest.String(), nil
+	}
+	if errdefs.IsNotFound(err) {
+		return "", nil
+	}
+	return "", fmt.Errorf("kubectlx containerd: get image %s: %w", ref, err)
 }
 
 // DeleteImage removes the image with the given reference. NotFound
