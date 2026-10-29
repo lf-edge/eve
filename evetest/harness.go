@@ -575,6 +575,7 @@ func Init(t *testing.T, opts ...InitOption) *T {
 		}
 
 		if matched, skip := matchedSkipName(th.test.name, th.test.parentName); skip {
+			th.testM.Unlock()
 			t.Skipf("Skipping %q: listed in %s%s", matched,
 				constants.EnvPrefix, constants.SkipEnv)
 		}
