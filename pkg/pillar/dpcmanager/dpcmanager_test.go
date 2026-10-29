@@ -4160,8 +4160,11 @@ func TestPNACDHCPReacquire(test *testing.T) {
 	networkMonitor.AddOrUpdateInterface(eth0)
 
 	// Apply global config with PNAC DHCP reacquire enabled (max 3 retries).
+	// The periodic connectivity test blocks the main loop for TestDuration,
+	// delaying the retry signals whose timing these tests check.
 	gcp := globalConfig()
 	gcp.SetGlobalValueInt(types.PnacDHCPReacquireMaxRetries, 3)
+	gcp.SetGlobalValueInt(types.NetworkTestInterval, 3600)
 	dpcManager.UpdateGCP(gcp)
 
 	// Apply DPC with single ethernet port.
@@ -4172,11 +4175,13 @@ func TestPNACDHCPReacquire(test *testing.T) {
 	dpcManager.UpdateAA(aa)
 	dpcManager.AddDPC(dpc)
 
-	// Wait for verification to succeed.
-	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	// Wait for verification to succeed. The first GCP adds the lastresort
+	// DPC, so wait for this one by key, or the PNAC event below may be
+	// handled before it is applied.
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
 	t.Eventually(testingInProgressCb()).Should(BeFalse())
 	t.Eventually(dpcIdxCb()).Should(Equal(0))
-	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
 
 	// Confirm initial reacquire counter is 0.
 	t.Expect(dhcpReacquireCounter("eth0")).To(Equal(0))
@@ -4239,8 +4244,11 @@ func TestPNACDHCPReacquireMaxRetries(test *testing.T) {
 
 	// Apply global config with max 2 retries.
 	// Total wait: 2s + 4s = 6s.
+	// The periodic connectivity test blocks the main loop for TestDuration,
+	// delaying the retry signals whose timing these tests check.
 	gcp := globalConfig()
 	gcp.SetGlobalValueInt(types.PnacDHCPReacquireMaxRetries, 2)
+	gcp.SetGlobalValueInt(types.NetworkTestInterval, 3600)
 	dpcManager.UpdateGCP(gcp)
 
 	// Apply DPC.
@@ -4250,10 +4258,12 @@ func TestPNACDHCPReacquireMaxRetries(test *testing.T) {
 	dpcManager.UpdateAA(aa)
 	dpcManager.AddDPC(dpc)
 
-	// Wait for verification to succeed.
-	t.Eventually(testingInProgressCb()).Should(BeTrue())
-	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	// Wait for verification to succeed. The first GCP adds the lastresort
+	// DPC, so wait for this one by key, or the PNAC event below may be
+	// handled before it is applied.
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
 	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
 
 	// Simulate PNAC event.
 	networkMonitor.PublishPNACEvent(netmonitor.PNACEvent{
@@ -4306,10 +4316,12 @@ func TestPNACDHCPReacquireDisabled(test *testing.T) {
 	dpcManager.UpdateAA(aa)
 	dpcManager.AddDPC(dpc)
 
-	// Wait for verification to succeed.
-	t.Eventually(testingInProgressCb()).Should(BeTrue())
-	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	// Wait for verification to succeed. The first GCP adds the lastresort
+	// DPC, so wait for this one by key, or the PNAC event below may be
+	// handled before it is applied.
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
 	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
 
 	// Simulate PNAC event.
 	networkMonitor.PublishPNACEvent(netmonitor.PNACEvent{
@@ -4345,10 +4357,12 @@ func TestPNACDHCPReacquireNoPNACInNewDPC(test *testing.T) {
 	dpcManager.UpdateAA(aa)
 	dpcManager.AddDPC(dpc)
 
-	// Wait for verification to succeed.
-	t.Eventually(testingInProgressCb()).Should(BeTrue())
-	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	// Wait for verification to succeed. The first GCP adds the lastresort
+	// DPC, so wait for this one by key, or the PNAC event below may be
+	// handled before it is applied.
+	t.Eventually(dpcKeyCb(0)).Should(Equal("zedagent"))
 	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
 
 	// Simulate PNAC authentication — schedules a DHCP reacquire timer (2s delay).
 	networkMonitor.PublishPNACEvent(netmonitor.PNACEvent{
