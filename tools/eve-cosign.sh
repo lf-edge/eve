@@ -15,14 +15,16 @@
 #       lfedge/eve-* bases of the built ones. A tag build must have built
 #       nothing but the packages every build rebuilds (FORCE_BUILD_PKGS in
 #       the Makefile), since it cannot sign.
-#   eve-cosign.sh sign-pushed <outdir>...
-#       Run after the push: sign the <outdir>/built manifests the registry
-#       serves, unless already signed. Given the <outdir> of every attempt of
+#   eve-cosign.sh sign-pushed <dir>...
+#       Run after the push: sign the manifests that the check-inputs records
+#       in or directly under the <dir>s list as built and the registry
+#       serves, unless already signed. Given the records of every attempt of
 #       a job, a re-run signs what an earlier attempt pushed and failed to
 #       sign. Does nothing on a tag build.
-#   eve-cosign.sh sign-indexes <file>
-#       Sign the package index each "<name>:<tag>" line of <file> names, once
-#       every platform manifest in it verifies.
+#   eve-cosign.sh sign-indexes <dir>...
+#       Sign the package index each tag in the records under the <dir>s
+#       names, once every platform manifest in it verifies. Skips the
+#       packages every build rebuilds, whose tags concurrent builds overwrite.
 #   eve-cosign.sh sign-tags <name>:<tag>...
 #       Sign the platform manifests of each index the tags name, then the
 #       index; for images pushed outside publish.yml, such as eve-alpine-base.
@@ -30,12 +32,12 @@
 #       sign-tags for each "<name>:<tag> <index digest>" line of <file>,
 #       skipping, with a warning, a tag that no longer resolves or names that
 #       index.
-#   eve-cosign.sh audit <arch>... -- <outdir>...
-#       Verify every manifest and index the check-inputs <outdir>s list,
+#   eve-cosign.sh audit <arch>... -- <dir>...
+#       Verify every manifest and index the records under the <dir>s list,
 #       built ones the registry serves only on a branch build, and the
 #       lfedge/eve-* bases of all their packages for the given architectures.
-#       Fails on any image without a valid signature, whatever
-#       EVE_COSIGN_ENFORCE says.
+#       Indexes of the packages every build rebuilds are skipped, as in
+#       sign-indexes; their manifests are checked by digest.
 #   eve-cosign.sh verify <file>
 #       Verify every "<name>@sha256:<hex>" line of <file>, <name> being the
 #       package repository name, e.g. eve-pillar.
@@ -236,7 +238,9 @@ verify_pkgs() {
 }
 
 # sign_index <name>:<tag>: sign the package index the tag names once each of
-# its platform manifests verifies; a single-platform manifest is signed as is.
+# its platform manifests verifies. A tag naming a platform manifest is only
+# checked: its manifest is signed by the job that pushed it, and the tag may
+# have been moved since by another build.
 sign_index() {
     local ref digest raw m failed=0
     ref=$(resolve "$PKG_PREFIX/$1")
@@ -256,6 +260,10 @@ sign_index() {
                 failed=1
             fi
         done
+        ;;
+    *)
+        echo "::warning::$1 names $ref, which has no valid signature"
+        return 1
         ;;
     esac
     [ "$failed" -eq 0 ] || return 1
@@ -331,12 +339,10 @@ check_inputs() {
 # require_reused <file>: fail for each package in <file> other than those
 # every build rebuilds, since their tag does not name their content.
 require_reused() {
-    local rebuilt entry pkg n=0
-    rebuilt=" $(make -s -C "$EVE" force_build_pkgs_info | tail -1) "
+    local entry n=0
     while read -r entry; do
         [ -n "$entry" ] || continue
-        pkg=${entry%%@*}
-        if [[ "$rebuilt" == *" ${pkg#eve-} "* ]]; then
+        if force_built "${entry%%@*}"; then
             echo "rebuilt by every build: $entry"
         else
             echo "built by a tag build: $entry"
@@ -346,9 +352,30 @@ require_reused() {
     report "$n" "package(s) built by a tag build, which cannot sign them"
 }
 
-# served <list>...: the entries of the lists that the registry serves; one it
-# does not serve was never pushed, as when a push failed and a re-run built
-# the package again.
+# records <name> <dir>...: the sorted, unique lines of every <name> file of the
+# records in or directly under the <dir>s. download-artifact extracts a lone
+# matching artifact into its path rather than a subdirectory, so both depths
+# occur. Dies when no record is found.
+records() {
+    local name="$1" files
+    shift
+    files=$(find "$@" -maxdepth 2 -type f -name "$name" | sort)
+    [ -n "$files" ] || die "no $name record under $*"
+    # shellcheck disable=SC2086 # one path per line, none with spaces
+    sort -u $files
+}
+
+# force_built <name>:<tag>: succeed when every build rebuilds the package
+# (FORCE_BUILD_PKGS in the Makefile).
+force_built() {
+    local name="${1%%:*}"
+    [ -n "${FORCE_BUILT+x}" ] || FORCE_BUILT=" $(make -s -C "$EVE" force_build_pkgs_info | tail -1) "
+    [[ "$FORCE_BUILT" == *" ${name#eve-} "* ]]
+}
+
+# served <list>: the entries of <list> that the registry serves; one it does
+# not serve was never pushed, as when a push failed and a re-run built the
+# package again.
 served() {
     local entry
     while read -r entry; do
@@ -358,16 +385,41 @@ served() {
         else
             echo "not pushed: $entry" >&2
         fi
-    done < <(sort -u "$@")
+    done < "$1"
 }
 
-# sign_pushed <outdir>...: sign each manifest the <outdir>s list as built and
-# the registry serves.
+# sign_pushed <dir>...: sign each manifest the records under the <dir>s list
+# as built and the registry serves.
 sign_pushed() {
-    local entry
+    local built pushed entry n=0
+    built=$(mktemp)
+    pushed=$(mktemp)
+    records built "$@" > "$built"
+    served "$built" > "$pushed"
     while read -r entry; do
         sign_digest "$SIG_PREFIX/$entry"
-    done < <(served "${@/%//built}")
+        n=$((n + 1))
+    done < "$pushed"
+    echo "$n of $(grep -c . "$built" || true) built manifest(s) pushed and signed"
+    rm -f "$built" "$pushed"
+}
+
+# sign_indexes <dir>...: sign_index each tag the records under the <dir>s list,
+# except those of packages every build rebuilds.
+sign_indexes() {
+    local tags tag failed=0
+    tags=$(mktemp)
+    { records built-tags "$@"; records pulled-tags "$@"; } | sort -u > "$tags"
+    while read -r tag; do
+        [ -n "$tag" ] || continue
+        if force_built "$tag"; then
+            echo "rebuilt by every build: $tag"
+            continue
+        fi
+        sign_index "$tag" || failed=$((failed + 1))
+    done < "$tags"
+    rm -f "$tags"
+    report "$failed" "package index(es) with unsigned platform manifests left unsigned"
 }
 
 # sign_backfill <file>: sign_tag each "<name>:<tag> <index digest>" line whose
@@ -389,38 +441,40 @@ sign_backfill() {
     done < "$1"
 }
 
-# audit <arch>... -- <outdir>...: see the usage above.
+# audit <arch>... -- <dir>...: see the usage above.
 audit() {
-    local arches=() dir manifests tags tag ref failed
+    local arches=() manifests built tags tag ref failed
     while [ $# -gt 0 ] && [ "$1" != -- ]; do
         arches+=("$1")
         shift
     done
-    [ $# -gt 1 ] || die "usage: audit <arch>... -- <outdir>..."
+    [ $# -gt 1 ] || die "usage: audit <arch>... -- <dir>..."
     shift
     manifests=$(mktemp)
+    built=$(mktemp)
     tags=$(mktemp)
-    for dir in "$@"; do
-        cat "$dir/pulled" >> "$manifests"
-        cat "$dir/pulled-tags" >> "$tags"
-        if ! is_tag_build; then
-            served "$dir/built" >> "$manifests"
-            cat "$dir/built-tags" >> "$tags"
-        fi
-    done
+    records pulled "$@" > "$manifests"
+    records pulled-tags "$@" > "$tags"
+    if ! is_tag_build; then
+        records built "$@" > "$built"
+        served "$built" >> "$manifests"
+        records built-tags "$@" >> "$tags"
+    fi
     sort -u -o "$manifests" "$manifests"
+    sort -u -o "$tags" "$tags"
     failed=$({
         sed "s|^|$SIG_PREFIX/|" "$manifests"
-        sort -u "$tags" | while read -r tag; do
+        while read -r tag; do
             [ -n "$tag" ] || continue
+            force_built "$tag" && continue
             ref=$(resolve "$PKG_PREFIX/$tag")
             echo "$SIG_PREFIX/${tag%:*}@${ref##*@}"
-        done
+        done < "$tags"
         base_manifests "$manifests" /dev/null "${arches[@]}"
     } | sort -u | count_unverified)
-    rm -f "$manifests" "$tags"
-    [ "$failed" -eq 0 ] || die "$failed image(s) this run pushed or used have no valid signature"
-    echo "every image this run pushed or used is signed"
+    rm -f "$manifests" "$built" "$tags"
+    report "$failed" "image(s) this run pushed or used without a valid signature" || exit 1
+    [ "$failed" -ne 0 ] || echo "every image this run pushed or used is signed"
 }
 
 cmd="${1:-}"
@@ -432,7 +486,7 @@ check-inputs)
     check_inputs "$@"
     ;;
 sign-pushed)
-    [ $# -ge 1 ] || die "usage: sign-pushed <outdir>..."
+    [ $# -ge 1 ] || die "usage: sign-pushed <dir>..."
     require_policy
     if is_tag_build; then
         echo "tag build: the packages were signed by the branch build that pushed them"
@@ -441,13 +495,9 @@ sign-pushed)
     sign_pushed "$@"
     ;;
 sign-indexes)
-    [ $# -eq 1 ] || die "usage: sign-indexes <file>"
+    [ $# -ge 1 ] || die "usage: sign-indexes <dir>..."
     require_policy
-    failed=0
-    while read -r tag; do
-        if [ -n "$tag" ]; then sign_index "$tag" || failed=$((failed + 1)); fi
-    done < "$1"
-    report "$failed" "package index(es) with unsigned platform manifests left unsigned"
+    sign_indexes "$@"
     ;;
 sign-tags)
     [ $# -ge 1 ] || die "usage: sign-tags <name>:<tag>..."

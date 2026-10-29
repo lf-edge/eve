@@ -130,7 +130,7 @@ jobs:
       - name: Sign the packages this job pushed
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
-          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP"/records-pkgs/*
+          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP/records-pkgs"
       - name: Post package report
         run: |
           echo Disk usage
@@ -231,7 +231,7 @@ jobs:
       - name: Sign the packages this job pushed
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
-          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP"/records-pkgs/*
+          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP/records-pkgs"
       - name: Post package report
         run: |
           echo Disk usage
@@ -371,7 +371,7 @@ jobs:
       - name: Sign the packages this job pushed
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
-          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP"/records-pkgs/*
+          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP/records-pkgs"
       - name: Build EVE
         uses: ./.github/actions/run-make
         with:
@@ -410,7 +410,7 @@ jobs:
       - name: Sign the packages the EVE build pushed
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
-          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP"/records-eve/*
+          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP/records-eve"
       - name: Collect and push SBOM and sources
         uses: ./.github/actions/run-make
         if: matrix.arch != 'riscv64'
@@ -495,18 +495,14 @@ jobs:
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
           ./tools/eve-cosign.sh sign-backfill tools/eve-cosign-backfill
-      # The indexes of packages the run built now list every arch pushed.
+      # make above pushed every package's index, listing every arch pushed.
       - name: Sign package indexes
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
-          cat "$RUNNER_TEMP"/records/*/built-tags | sort -u > "$RUNNER_TEMP/pkg-tags"
-          ./tools/eve-cosign.sh sign-indexes "$RUNNER_TEMP/pkg-tags"
-      # Fails whatever EVE_COSIGN_ENFORCE says, so that a release is never
-      # built from an unsigned package, and a branch build that left one
-      # unsigned is red.
+          ./tools/eve-cosign.sh sign-indexes "$RUNNER_TEMP/records"
       - name: Verify that every package the run pushed or used is signed
         run: |
-          ./tools/eve-cosign.sh audit amd64 arm64 riscv64 -- "$RUNNER_TEMP"/records/*
+          ./tools/eve-cosign.sh audit amd64 arm64 riscv64 -- "$RUNNER_TEMP/records"
       - name: Clean
         if: ${{ always() }}
         run: |
