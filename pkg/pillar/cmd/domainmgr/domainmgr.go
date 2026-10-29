@@ -1448,6 +1448,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 				status.Key())
 			publishDomainStatus(ctx, status)
 		}
+		forgetCrashRetries(ctx, status, domainStatus)
 	}
 }
 
@@ -2232,6 +2233,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 
 	status.TriedCount = 0
+	status.CrashRetries = 0
 	var domainID int
 	// Invoke domain create; try 3 times with a timeout
 	for {
