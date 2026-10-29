@@ -431,8 +431,8 @@ FORCE_BUILD=
 # Packages to always rebuild rather than pull/skip (applied by the eve-%
 # rule below). Keyed by name, not a target-specific FORCE_BUILD variable:
 # those propagate to the whole prerequisite subtree in GNU Make, which
-# force-rebuilt their dependencies too (e.g. pkg/xen-tools via pkg/external-boot-image).
-FORCE_BUILD_PKGS=external-boot-image kube
+# would force-rebuild their dependencies too.
+FORCE_BUILD_PKGS=
 
 # ROOTFS_DEPS enforces the scan of all rootfs image dependencies
 ifdef ROOTFS_DEPS
@@ -505,7 +505,7 @@ ifeq ($(HV),k)
         ROOTFS_MAXSIZE_MB=10240
 else
         #kube container will not be in non-k builds
-        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image$$$(PKGS_PLATFORM_EXCLUDE)")
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube$$$(PKGS_PLATFORM_EXCLUDE)")
         # nvidia platform requires more space
         ifeq (, $(findstring nvidia,$(PLATFORM)))
             ROOTFS_MAXSIZE_MB=290
@@ -1075,40 +1075,6 @@ pkgs: RESCAN_DEPS=
 pkgs: $(LINUXKIT) $(PKGS) $(LK_POSSIBLE_BUILD_ARG_TARGETS)
 	@echo Done building packages
 
-# No-op target for get-deps which looks at
-# external-boot-image and sees a dep for eve-kernel
-# and attempts to build pkg/kernel, which is in
-# lf-edge/eve-kernel and not built here.
-pkg/kernel:
-	$(QUIET): $@: No-op pkg/kernel
-
-# external-boot-image's runtime contents (runx-initrd from XENTOOLS_TAG, kernel
-# from KERNEL_TAG) are baked in at build time via Dockerfile.in placeholder
-# substitution. `linuxkit pkg show-tag` only hashes git-tracked files under
-# pkg/external-boot-image/ — Dockerfile.in and build.yml — neither of which
-# changes when xen-tools or the kernel does. So the package tag is git-stable
-# but runtime-content-variable; without --force, linuxkit's "skip if tag is
-# already in cache/registry" behavior serves a stale runx-initrd whenever
-# xen-tools changes (e.g. an init-initrd edit produces a new xen-tools tag but
-# the same external-boot-image tag, so the cached external-boot-image wins).
-# Forced via FORCE_BUILD_PKGS above, applied by the eve-% rule below.
-
-# Same trap as pkg/external-boot-image, one level up: pkg/kube bundles
-# pkg/kube/external-boot-image.tar (a generated artifact, gitignored — see
-# /.gitignore:25), so changes to that .tar don't change linuxkit's content
-# hash for pkg/kube. Without --force, `linuxkit pkg build pkg/kube` finds the
-# existing kube image in cache and skips — keeping the OLD external-boot-image.tar
-# baked in, which the rootfs then ships to the device as /etc/external-boot-image.tar.
-# Forced via FORCE_BUILD_PKGS above, applied by the eve-% rule below.
-
-pkg/kube/external-boot-image.tar: pkg/external-boot-image
-	$(eval BOOT_IMAGE_TAG := $(shell $(LINUXKIT) pkg show-tag --canonical pkg/external-boot-image))
-	$(eval CACHE_CONTENT := $(shell $(LINUXKIT) cache ls 2>&1))
-	$(if $(filter $(BOOT_IMAGE_TAG),$(CACHE_CONTENT)),,$(LINUXKIT) cache pull $(BOOT_IMAGE_TAG))
-	$(MAKE) cache-export IMAGE=$(BOOT_IMAGE_TAG) OUTFILE=pkg/kube/external-boot-image.tar
-	rm -f pkg/external-boot-image/Dockerfile
-pkg/kube: pkg/kube/external-boot-image.tar eve-kube
-	$(QUIET): $@: Succeeded
 pkg/%: eve-% FORCE
 	$(QUIET): $@: Succeeded
 
