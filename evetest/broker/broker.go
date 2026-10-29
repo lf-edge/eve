@@ -26,8 +26,11 @@ import (
 	"github.com/lf-edge/eve/evetest/utils"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -803,6 +806,88 @@ func (b *broker) PushEVEContainerImage(
 		return err
 	}
 
+	alreadyExists, err := b.receiveDockerImage(ctx, log, dockerImageName,
+		func() ([]byte, error) {
+			chunk, err := stream.Recv()
+			if err != nil {
+				return nil, err
+			}
+			return chunk.GetDataGzipChunk(), nil
+		})
+	if err != nil {
+		return err
+	}
+	if !alreadyExists {
+		log.Infof("Loaded EVE docker image: %s", dockerImageName)
+	}
+	return stream.SendAndClose(&api.PushImageResponse{
+		AlreadyExists: alreadyExists,
+	})
+}
+
+// PushSDNContainerImage receives and imports a pre-built SDN container image
+// into the broker's local Docker image store. The protocol is the same as
+// for PushEVEContainerImage.
+func (b *broker) PushSDNContainerImage(
+	stream grpc.ClientStreamingServer[api.PushSDNImageChunk, api.PushImageResponse]) error {
+	ctx := stream.Context()
+
+	firstChunk, err := stream.Recv()
+	if err != nil {
+		err = fmt.Errorf("failed to receive SDN image metadata: %v", err)
+		b.globalLog.Error(err)
+		return err
+	}
+	req := firstChunk.GetRequest()
+	if req == nil {
+		err = fmt.Errorf("first message must contain image metadata")
+		b.globalLog.Error(err)
+		return err
+	}
+
+	b.mutex.Lock()
+	clientSession, exists := b.sessions[req.ClientId]
+	b.mutex.Unlock()
+	if !exists {
+		err = clientNotFoundErr(req.ClientId)
+		b.globalLog.Error(err)
+		return err
+	}
+	log := clientSession.log
+
+	dockerImageName, err := sdnDockerImageName(req.SdnConfig)
+	if err != nil {
+		err = fmt.Errorf("invalid SDN config: %w", err)
+		log.Error(err)
+		return err
+	}
+
+	alreadyExists, err := b.receiveDockerImage(ctx, log, dockerImageName,
+		func() ([]byte, error) {
+			chunk, err := stream.Recv()
+			if err != nil {
+				return nil, err
+			}
+			return chunk.GetDataGzipChunk(), nil
+		})
+	if err != nil {
+		return err
+	}
+	if !alreadyExists {
+		log.Infof("Loaded SDN docker image: %s", dockerImageName)
+	}
+	return stream.SendAndClose(&api.PushImageResponse{
+		AlreadyExists: alreadyExists,
+	})
+}
+
+// receiveDockerImage imports a pushed Docker image into the local image store.
+// recv returns the next gzipped chunk of `docker save | gzip` output, or io.EOF
+// at the end of the upload. If the image is already present, or is being
+// uploaded by another client (in which case this waits for that upload),
+// nothing is received and alreadyExists is returned.
+func (b *broker) receiveDockerImage(ctx context.Context, log *logrus.Entry,
+	dockerImageName string, recv func() ([]byte, error)) (alreadyExists bool, err error) {
 	// Check if image already exists locally. This is a Docker-daemon query, so
 	// it must not run under b.mutex -- that's the broker-wide lock every RPC
 	// handler also takes just to look up a session, and a stalled daemon would
@@ -813,15 +898,13 @@ func (b *broker) PushEVEContainerImage(
 		err = fmt.Errorf("failed to check for image %q presence: %w",
 			dockerImageName, err)
 		log.Error(err)
-		return err
+		return false, err
 	}
 	if haveImage {
 		b.imageUsage.touch(dockerImageName)
 		log.Infof("Image %q already present in Docker image store",
 			dockerImageName)
-		return stream.SendAndClose(&api.PushImageResponse{
-			AlreadyExists: true,
-		})
+		return true, nil
 	}
 
 	// Check if it's already being uploaded by another client, and reserve this
@@ -837,12 +920,10 @@ func (b *broker) PushEVEContainerImage(
 		case <-uploadDone:
 			log.Infof("Concurrent upload of image %q finished", dockerImageName)
 		case <-ctx.Done():
-			return fmt.Errorf("context cancelled while waiting for concurrent "+
+			return false, fmt.Errorf("context cancelled while waiting for concurrent "+
 				"upload of image %q: %w", dockerImageName, ctx.Err())
 		}
-		return stream.SendAndClose(&api.PushImageResponse{
-			AlreadyExists: true,
-		})
+		return true, nil
 	}
 
 	// Register this upload.
@@ -864,7 +945,7 @@ func (b *broker) PushEVEContainerImage(
 		defer pw.Close()
 
 		for {
-			chunk, err := stream.Recv()
+			data, err := recv()
 			if err == io.EOF {
 				return
 			}
@@ -872,7 +953,6 @@ func (b *broker) PushEVEContainerImage(
 				pw.CloseWithError(err)
 				return
 			}
-			data := chunk.GetDataGzipChunk()
 			if len(data) == 0 {
 				pw.CloseWithError(fmt.Errorf("received empty image data chunk"))
 				return
@@ -887,14 +967,11 @@ func (b *broker) PushEVEContainerImage(
 	if err := utils.LoadDockerImageFromReader(ctx, log, pr, dockerImageName); err != nil {
 		err = fmt.Errorf("failed to load Docker image from stream: %w", err)
 		log.Error(err)
-		return err
+		return false, err
 	}
 
 	b.imageUsage.touch(dockerImageName)
-	log.Infof("Loaded EVE docker image: %s", dockerImageName)
-	return stream.SendAndClose(&api.PushImageResponse{
-		AlreadyExists: false,
-	})
+	return false, nil
 }
 
 // PushEVELiveImage receives a locally built EVE live image, uploaded as a tar
@@ -1074,10 +1151,21 @@ func (b *broker) SetupDevices(
 			sdnDockerImageName)
 		err = utils.PullDockerImage(ctx, log, sdnDockerImageName)
 		if err != nil {
+			// Not published (e.g. built from an unmerged change). Nothing has been
+			// provisioned yet, so a client able to push the image can upload its
+			// local copy and repeat the request; older clients just fail with
+			// the pull error.
 			err = fmt.Errorf("failed to pull SDN image %q: %w",
 				sdnDockerImageName, err)
 			log.Error(err)
-			return nil, err
+			st := status.New(codes.FailedPrecondition, err.Error())
+			if withDetails, detErr := st.WithDetails(&errdetails.ErrorInfo{
+				Reason: constants.MissingSDNImageErrorReason,
+				Domain: constants.BrokerErrorDomain,
+			}); detErr == nil {
+				st = withDetails
+			}
+			return nil, st.Err()
 		}
 	}
 	b.imageUsage.touch(sdnDockerImageName)
