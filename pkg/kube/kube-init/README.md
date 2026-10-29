@@ -52,7 +52,7 @@ that side's test.
 | `clustermode` | Single↔HA transitions, startup-rank stagger, stale masterlease sweep, post-migration controller recycle. |
 | `monitor` | Steady-state watchers: cluster-config polling, user-overrides, log rotation, node-label drift. |
 | `update` | Cross-reboot upgrade flow for k3s + cluster components, KubeClusterUpdateStatus gating. |
-| `images` | Pre-packaged tarball import (external-boot-image, rt-operator, KubeVirt/CDI/Longhorn). |
+| `images` | external-boot-image build from the rootfs kernel and initrd; pre-packaged tarball import (rt-operator, KubeVirt/CDI/Longhorn). |
 | `tiebreaker` | Three-node HA: label/cordon the tie-breaker, scale operator deployments, patch DaemonSets. |
 | `vnc` | VNC proxy for KubeVirt VMIs; consumes `/run/edgeview/VncParams/`. |
 | `mgmtproxy` | HTTPS_PROXY/NO_PROXY env injection for containerd; cni0 anchor IP; CDI proxy patch. |
