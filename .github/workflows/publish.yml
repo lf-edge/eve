@@ -44,6 +44,7 @@ jobs:
     if: github.event.repository.full_name == 'lf-edge/eve'
     runs-on: zededa-ubuntu-2204
     permissions:
+      actions: read
       contents: read
       id-token: write
     timeout-minutes: 1440
@@ -95,6 +96,13 @@ jobs:
       - name: Verify package inputs
         run: |
           ./tools/eve-cosign.sh check-inputs "$RUNNER_TEMP/pkgs" amd64
+      # Recorded before the push, so that a re-run can sign what this attempt
+      # pushed even when it fails before signing.
+      - name: Record the packages built here
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: pkg-record-pkgs-amd64-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pkgs
       # A tag build has no package to push: it reuses what the branch build
       # pushed and signed, and rebuilds FORCE_BUILD_PKGS only into its own
       # EVE image. linuxkit would also add HEAD's git tag to every package
@@ -111,15 +119,18 @@ jobs:
             fi
           done
           if [ -z "$SUCCESS" ]; then echo "::error::failed to push packages" && exit 1; fi
-      - name: Sign packages built here
-        run: |
-          ./tools/eve-cosign.sh sign-built "$RUNNER_TEMP/pkgs"
-          mkdir -p "$RUNNER_TEMP/pkg-tags.d" && cp "$RUNNER_TEMP/pkgs/built-tags" "$RUNNER_TEMP/pkg-tags.d/pkgs-amd64"
-      - name: Hand the built package tags to the manifest job
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+      - name: Fetch every attempt's record
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
-          name: pkg-tags-pkgs-amd64
-          path: ${{ runner.temp }}/pkg-tags.d
+          pattern: pkg-record-pkgs-amd64-*
+          path: ${{ runner.temp }}/records-pkgs
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+      - name: Sign the packages this job pushed
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP"/records-pkgs/*
       - name: Post package report
         run: |
           echo Disk usage
@@ -139,6 +150,7 @@ jobs:
     if: github.event.repository.full_name == 'lf-edge/eve'
     runs-on: zededa-ubuntu-2204-arm64
     permissions:
+      actions: read
       contents: read
       id-token: write
     timeout-minutes: 1440
@@ -190,6 +202,11 @@ jobs:
       - name: Verify package inputs
         run: |
           ./tools/eve-cosign.sh check-inputs "$RUNNER_TEMP/pkgs" arm64
+      - name: Record the packages built here
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: pkg-record-pkgs-arm64-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pkgs
       # See pkgs-amd64.
       - name: Push packages
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -203,15 +220,18 @@ jobs:
             fi
           done
           if [ -z "$SUCCESS" ]; then echo "::error::failed to push packages" && exit 1; fi
-      - name: Sign packages built here
-        run: |
-          ./tools/eve-cosign.sh sign-built "$RUNNER_TEMP/pkgs"
-          mkdir -p "$RUNNER_TEMP/pkg-tags.d" && cp "$RUNNER_TEMP/pkgs/built-tags" "$RUNNER_TEMP/pkg-tags.d/pkgs-arm64"
-      - name: Hand the built package tags to the manifest job
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+      - name: Fetch every attempt's record
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
-          name: pkg-tags-pkgs-arm64
-          path: ${{ runner.temp }}/pkg-tags.d
+          pattern: pkg-record-pkgs-arm64-*
+          path: ${{ runner.temp }}/records-pkgs
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+      - name: Sign the packages this job pushed
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP"/records-pkgs/*
       - name: Post package report
         run: |
           echo Disk usage
@@ -239,6 +259,7 @@ jobs:
     needs: [pkgs-amd64, pkgs-arm64]
     runs-on: ${{ matrix.os }}
     permissions:
+      actions: read
       contents: read
       id-token: write
     timeout-minutes: 1440
@@ -325,6 +346,11 @@ jobs:
           ARCH: ${{ matrix.arch }}
         run: |
           ./tools/eve-cosign.sh check-inputs "$RUNNER_TEMP/pkgs" "$ARCH" "$(docker version -f '{{.Server.Arch}}')"
+      - name: Record the packages built here
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: pkg-record-eve-${{ matrix.arch }}-${{ matrix.hv }}-${{ matrix.platform }}-pkgs-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pkgs
       # See pkgs-amd64.
       - name: Push remaining packages
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -334,9 +360,18 @@ jobs:
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           clean: false
-      - name: Sign packages built here
+      - name: Fetch every attempt's record
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: pkg-record-eve-${{ matrix.arch }}-${{ matrix.hv }}-${{ matrix.platform }}-pkgs-*
+          path: ${{ runner.temp }}/records-pkgs
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+      - name: Sign the packages this job pushed
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
-          ./tools/eve-cosign.sh sign-built "$RUNNER_TEMP/pkgs"
+          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP"/records-pkgs/*
       - name: Build EVE
         uses: ./.github/actions/run-make
         with:
@@ -349,6 +384,11 @@ jobs:
           ARCH: ${{ matrix.arch }}
         run: |
           ./tools/eve-cosign.sh check-inputs "$RUNNER_TEMP/eve" "$ARCH" "$(docker version -f '{{.Server.Arch}}')"
+      - name: Record the packages the EVE build built
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: pkg-record-eve-${{ matrix.arch }}-${{ matrix.hv }}-${{ matrix.platform }}-eve-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/eve
       # A release is pushed by digest in "Push the release for signing", and
       # tagged only after release-sign.yml has signed it.
       - name: Push EVE
@@ -359,20 +399,18 @@ jobs:
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           clean: false
-      - name: Sign packages built by the EVE build
-        env:
-          ARCH: ${{ matrix.arch }}
-          HV: ${{ matrix.hv }}
-          PLATFORM: ${{ matrix.platform }}
-        run: |
-          ./tools/eve-cosign.sh sign-built "$RUNNER_TEMP/eve"
-          mkdir -p "$RUNNER_TEMP/pkg-tags.d"
-          cat "$RUNNER_TEMP/pkgs/built-tags" "$RUNNER_TEMP/eve/built-tags" > "$RUNNER_TEMP/pkg-tags.d/eve-$ARCH-$HV-$PLATFORM"
-      - name: Hand the built package tags to the manifest job
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+      - name: Fetch every attempt's record of the EVE build
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
-          name: pkg-tags-eve-${{ matrix.arch }}-${{ matrix.hv }}-${{ matrix.platform }}
-          path: ${{ runner.temp }}/pkg-tags.d
+          pattern: pkg-record-eve-${{ matrix.arch }}-${{ matrix.hv }}-${{ matrix.platform }}-eve-*
+          path: ${{ runner.temp }}/records-eve
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+      - name: Sign the packages the EVE build pushed
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP"/records-eve/*
       - name: Collect and push SBOM and sources
         uses: ./.github/actions/run-make
         if: matrix.arch != 'riscv64'
@@ -416,6 +454,7 @@ jobs:
     needs: eve
     runs-on: zededa-ubuntu-2204
     permissions:
+      actions: read
       contents: read
       id-token: write
     steps:
@@ -436,14 +475,19 @@ jobs:
           command: "V=1 LINUXKIT_PKG_TARGET=manifest pkgs"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
         with:
-          pattern: pkg-tags-*
-          path: ${{ runner.temp }}/pkg-tags.d
-          merge-multiple: true
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Fetch every job's records
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: pkg-record-*
+          path: ${{ runner.temp }}/records
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
       - name: Install cosign
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
         with:
           cosign-release: v3.1.4
@@ -451,8 +495,14 @@ jobs:
       - name: Sign package indexes
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         run: |
-          cat "$RUNNER_TEMP"/pkg-tags.d/* | sort -u > "$RUNNER_TEMP/pkg-tags"
+          cat "$RUNNER_TEMP"/records/*/built-tags | sort -u > "$RUNNER_TEMP/pkg-tags"
           ./tools/eve-cosign.sh sign-indexes "$RUNNER_TEMP/pkg-tags"
+      # Fails whatever EVE_COSIGN_ENFORCE says, so that a release is never
+      # built from an unsigned package, and a branch build that left one
+      # unsigned is red.
+      - name: Verify that every package the run pushed or used is signed
+        run: |
+          ./tools/eve-cosign.sh audit amd64 arm64 riscv64 -- "$RUNNER_TEMP"/records/*
       - name: Clean
         if: ${{ always() }}
         run: |
