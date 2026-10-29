@@ -1537,7 +1537,11 @@ func TestFallsBackToWorkingManualWhenNewerControllerConfigFails(test *testing.T)
 	networkMonitor.AddOrUpdateInterface(eth1)
 	aa := makeAA(selectedIntfs{eth0: true, eth1: true})
 	dpcManager.UpdateAA(aa)
-	dpcManager.UpdateGCP(globalConfig())
+	// The better-DPC timer would re-test the failed "zedagent" DPC and
+	// briefly make it current again while the final state is checked.
+	gcp := globalConfig()
+	gcp.SetGlobalValueInt(types.NetworkTestBetterInterval, 3600)
+	dpcManager.UpdateGCP(gcp)
 
 	// Manual DPC over eth0 succeeds and is current.
 	manualTimePrio := time.Now()
@@ -1558,17 +1562,14 @@ func TestFallsBackToWorkingManualWhenNewerControllerConfigFails(test *testing.T)
 	// zedagent DPC.
 	t.Eventually(testingInProgressCb()).Should(BeTrue())
 	t.Eventually(testingInProgressCb()).Should(BeFalse())
-	t.Eventually(dpcIdxCb()).Should(Equal(1))
-	t.Eventually(dpcKeyCb(1)).Should(Equal("manual"))
-	t.Eventually(dpcStateCb(1)).Should(Equal(types.DPCStateSuccess))
-
-	idx, dpcList := getDPCList()
-	t.Expect(idx).To(Equal(1))
-	t.Expect(dpcList).To(HaveLen(2))
-	t.Expect(dpcList[0].Key).To(Equal("zedagent"))
-	t.Expect(dpcList[0].State).To(Equal(types.DPCStateFailWithIPAndDNS))
-	t.Expect(dpcList[1].Key).To(Equal("manual"))
-	t.Expect(dpcList[1].State).To(Equal(types.DPCStateSuccess))
+	t.Eventually(func() bool {
+		idx, dpcList := getDPCList()
+		return idx == 1 && len(dpcList) == 2 &&
+			dpcList[0].Key == "zedagent" &&
+			dpcList[0].State == types.DPCStateFailWithIPAndDNS &&
+			dpcList[1].Key == "manual" &&
+			dpcList[1].State == types.DPCStateSuccess
+	}).Should(BeTrue())
 }
 
 // TestDeleteDPCMidVerification: reverting the current "manual" DPC while the
