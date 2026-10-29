@@ -75,3 +75,12 @@ ENE9KGxkzv0AAAAUbWxlbmNvQG1sZW5jby1sYXB0b3ABAgMEBQYH
 // SDNHostPortMACPrefix : MAC address prefix assigned to network port connecting
 // SDN with the host (hypervisor).
 var SDNHostPortMACPrefix = net.HardwareAddr{0x08, 0x33, 0x33}
+
+const (
+	// MissingSDNImageErrorReason is the ErrorInfo reason with which the broker
+	// fails SetupDevices when it has the SDN container image neither locally
+	// nor can pull it. The client may then upload the image and retry.
+	MissingSDNImageErrorReason = "MISSING_SDN_CONTAINER_IMAGE"
+	// BrokerErrorDomain is the ErrorInfo domain of the broker's typed errors.
+	BrokerErrorDomain = "evetest-broker"
+)

@@ -6,6 +6,11 @@ package evetest
 import (
 	"errors"
 	"testing"
+
+	"github.com/lf-edge/eve/evetest/constants"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // TestLiveImageChunkWriterReturnsSendError covers the broker's early close on
@@ -52,5 +57,36 @@ func TestLiveImageChunkWriterSkipsEmptyWrite(t *testing.T) {
 	}
 	if len(sent) != 1 || string(sent[0]) != string(payload) {
 		t.Fatalf("send got %v, want one call with %q", sent, payload)
+	}
+}
+
+func TestIsMissingSDNImageErr(t *testing.T) {
+	withInfo := func(code codes.Code, reason, domain string) error {
+		st, err := status.New(code, "pull failed").WithDetails(
+			&errdetails.ErrorInfo{Reason: reason, Domain: domain})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return st.Err()
+	}
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"plain error", errors.New("boom"), false},
+		{"no details", status.Error(codes.FailedPrecondition, "pull failed"), false},
+		{"typed error", withInfo(codes.FailedPrecondition,
+			constants.MissingSDNImageErrorReason, constants.BrokerErrorDomain), true},
+		{"other reason", withInfo(codes.FailedPrecondition,
+			"OTHER", constants.BrokerErrorDomain), false},
+		{"other code", withInfo(codes.Internal,
+			constants.MissingSDNImageErrorReason, constants.BrokerErrorDomain), false},
+	}
+	for _, tc := range tests {
+		if got := isMissingSDNImageErr(tc.err); got != tc.want {
+			t.Errorf("%s: isMissingSDNImageErr = %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }
