@@ -63,7 +63,7 @@ func TestSendOnAllIntfStatusComesFromDeliveringPort(test *testing.T) {
 		loopbackPort("fakefail", failingSrcIP, 0),
 		loopbackPort("fakework", workingSrcIP, 1),
 	}
-	client := makeControllerClient(test, &dns, controllerconn.NewAgentMetrics())
+	client := makeControllerClient(test, &dns, controllerconn.NewAgentMetrics(), nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -94,7 +94,7 @@ func TestSendOnAllIntfReportsStatusCodeWhenAllPortsFail(test *testing.T) {
 		loopbackPort("fakefail", "127.0.0.2", 0),
 		loopbackPort("fakefail2", "127.0.0.1", 1),
 	}
-	client := makeControllerClient(test, &dns, controllerconn.NewAgentMetrics())
+	client := makeControllerClient(test, &dns, controllerconn.NewAgentMetrics(), nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

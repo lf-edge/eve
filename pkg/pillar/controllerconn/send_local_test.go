@@ -33,7 +33,7 @@ func TestSendLocalRejectsOversizeResponse(test *testing.T) {
 	defer server.Close()
 
 	var dns types.DeviceNetworkStatus
-	client := makeControllerClient(test, &dns, controllerconn.NewAgentMetrics())
+	client := makeControllerClient(test, &dns, controllerconn.NewAgentMetrics(), nil)
 
 	_, contents, err := client.SendLocal(
 		server.URL, "lo", net.ParseIP("127.0.0.1"), nil, "")
@@ -54,7 +54,7 @@ func TestSendLocalAcceptsSmallResponse(test *testing.T) {
 	defer server.Close()
 
 	var dns types.DeviceNetworkStatus
-	client := makeControllerClient(test, &dns, controllerconn.NewAgentMetrics())
+	client := makeControllerClient(test, &dns, controllerconn.NewAgentMetrics(), nil)
 
 	resp, contents, err := client.SendLocal(
 		server.URL, "lo", net.ParseIP("127.0.0.1"), nil, "")
