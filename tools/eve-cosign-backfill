@@ -1,0 +1,16 @@
+# Temporary: backfills signatures that failed and that no retry recovered.
+# A future PR deletes this file, once a publish run on master has signed them.
+# Package indexes that publish.yml pushed and did not sign, as
+# "<name>:<tag> <index digest>" lines; the manifest job signs them and their
+# platform manifests. Each digest must be one a publish.yml run on this branch
+# pushed. Publish run 40594931115 (attempt 1) pushed all but eve-node-exporter
+# and failed signing their amd64 manifests on a Rekor outage; the
+# eve-node-exporter index carries no signature, while its platform manifests do.
+eve-bpftrace:c164238376fd577599b1b2925a32ade461467d3f sha256:422164fdb5b8ae5d957b7c7e68e7821abe8373a6351061e4a25bd1ac73a25a44
+eve-fscrypt:37378b2b27ecdd949d100d0925b16ee610e6433d sha256:ca02719cb38ce808723f1bc3370b2d2191b6902da950b2e2be209daec87b5620
+eve-ipxe:59feb627bb669883f2e0e611f8aa94e5023d2f2f sha256:0c7f040a603a8803e257555787adff77a7be408c15b8d2baea6bd11650ee066a
+eve-node-exporter:3f8ab4ed4f66d3cdfc4c39ec1d4c64b6bd38d17f sha256:5a949a5c6e5f033e9b7734bff9485a72fa6a00a215ef63489d1eec5349f32ddb
+eve-nvidia:c06de223c26eda6764971bc8c690a51d89ebbbf6-nvidia-jp5 sha256:2c8377237eedf6a30b1765f766b00ef48d651316d5cb8f13e525587a2cce28de
+eve-optee-os:a0bfecc8eb3936d39c1e612eb6ea4e22a9ffe6a0 sha256:84131bffd084a89ffec493404368ca320d0469c1675a730271a5099bb137eec7
+eve-recovertpm:acf11cfdc1a3ba1a5c61dfcbdc56681797db4cbe sha256:ea23a6d3c80c9f8e05ab6ec60871bf7dfee7af154ea2ef035d27b5c27ec8444c
+eve-storage-resizer:23af96b92f9e9d9abb070f879f2c8b6e5b469057 sha256:058a1a01abcfba2ae346c23dd9dc677a79a6ff2f1195c3592d5ce2f65fb8638b

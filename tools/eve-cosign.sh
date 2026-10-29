@@ -26,6 +26,10 @@
 #   eve-cosign.sh sign-tags <name>:<tag>...
 #       Sign the platform manifests of each index the tags name, then the
 #       index; for images pushed outside publish.yml, such as eve-alpine-base.
+#   eve-cosign.sh sign-backfill <file>
+#       sign-tags for each "<name>:<tag> <index digest>" line of <file>,
+#       skipping, with a warning, a tag that no longer resolves or names that
+#       index.
 #   eve-cosign.sh audit <arch>... -- <outdir>...
 #       Verify every manifest and index the check-inputs <outdir>s list,
 #       built ones the registry serves only on a branch build, and the
@@ -366,6 +370,25 @@ sign_pushed() {
     done < <(served "${@/%//built}")
 }
 
+# sign_backfill <file>: sign_tag each "<name>:<tag> <index digest>" line whose
+# tag still names that digest; a moved or deleted tag is skipped, since whatever
+# pushed or removed it signed it or left it to the audit.
+sign_backfill() {
+    local tag digest ref
+    while read -r tag digest; do
+        [[ -n "$tag" && "$tag" != \#* ]] || continue
+        if ! ref=$(resolve "$PKG_PREFIX/$tag"); then
+            echo "::warning::cannot resolve $tag; not signed"
+            continue
+        fi
+        if [ "${ref##*@}" != "$digest" ]; then
+            echo "::warning::$tag names ${ref##*@}, not $digest; not signed"
+            continue
+        fi
+        sign_tag "$tag" || die "cannot sign $tag"
+    done < "$1"
+}
+
 # audit <arch>... -- <outdir>...: see the usage above.
 audit() {
     local arches=() dir manifests tags tag ref failed
@@ -433,6 +456,11 @@ sign-tags)
         sign_tag "$tag" || die "cannot sign $tag"
     done
     ;;
+sign-backfill)
+    [ $# -eq 1 ] || die "usage: sign-backfill <file>"
+    require_policy
+    sign_backfill "$1"
+    ;;
 audit)
     require_policy
     audit "$@"
@@ -443,6 +471,6 @@ verify)
     verify_pkgs "$1"
     ;;
 *)
-    die "usage: $0 check-inputs|sign-pushed|sign-indexes|sign-tags|audit|verify ..."
+    die "usage: $0 check-inputs|sign-pushed|sign-indexes|sign-tags|sign-backfill|audit|verify ..."
     ;;
 esac
