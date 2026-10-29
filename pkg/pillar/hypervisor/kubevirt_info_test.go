@@ -6,13 +6,19 @@
 package hypervisor
 
 import (
+	"context"
+	"fmt"
+	"net"
+	"syscall"
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 )
@@ -255,6 +261,41 @@ func TestInfoUnreachableKeepsLastID(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, types.UNKNOWN, state)
 		assert.Equal(t, lastKnownID, id)
+	}
+}
+
+// TestInfoUnreachableIsUnknownWithoutError pins that an API that cannot be
+// asked leaves the workload UNKNOWN with the last known id and no error, so
+// domainmgr's verifyStatus holds the state rather than raising a failure.
+// A reachable API that answers with some other error still reports it.
+func TestInfoUnreachableIsUnknownWithoutError(t *testing.T) {
+	const lastKnownID = 918273645
+	cases := []struct {
+		name    string
+		getErr  error
+		wantErr bool
+	}{
+		{"client deadline", fmt.Errorf("Get https://127.0.0.1:6443/x: %w", context.DeadlineExceeded), false},
+		{"connection refused", &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED}, false},
+		{"server timeout", apierrors.NewServerTimeout(schema.GroupResource{}, "get", 1), false},
+		{"unrelated error", assert.AnError, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			task, _ := newInfoTestTask(t, lastKnownID)
+
+			ctrl := gomock.NewController(t)
+			mockClient := kubecli.NewMockKubevirtClient(ctrl)
+			mockRS := kubecli.NewMockReplicaSetInterface(ctrl)
+			mockClient.EXPECT().ReplicaSet(gomock.Any()).Return(mockRS).AnyTimes()
+			mockRS.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, tc.getErr)
+			swapKubevirtClient(t, mockClient)
+
+			id, state, err := task.Info(task.status.DomainName)
+			assert.Equal(t, tc.wantErr, err != nil)
+			assert.Equal(t, types.UNKNOWN, state)
+			assert.Equal(t, lastKnownID, id)
+		})
 	}
 }
 

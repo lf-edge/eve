@@ -12,6 +12,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	goerrors "errors"
 	"fmt"
 	"io"
 	"math"
@@ -22,6 +23,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -1700,8 +1702,13 @@ func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 		// Existence could not be confirmed one way or the other (API
 		// unreachable, or some other error): never produce the "confirmed
 		// absent" token while the answer is unknown, so keep whatever id
-		// the caller already had.
+		// the caller already had. An unreachable API is reported without an
+		// error: the workload's state is unknown, not failed, so domainmgr
+		// holds the last known state instead of starting a boot retry.
 		logrus.Infof("Info(%s): existence check for %s failed: %v", domainName, kubeName, err)
+		if isK3sUnreachable(err) {
+			return t.status.DomainId, types.UNKNOWN, nil
+		}
 		return t.status.DomainId, types.UNKNOWN, err
 	}
 	id := workloadID(uid, kubeName)
@@ -1783,7 +1790,7 @@ func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 		if isK3sUnreachable(err) {
 			logrus.Infof("Info(%s): k3s unreachable while determining scheduled node: %v",
 				domainName, err)
-			return t.status.DomainId, types.UNKNOWN, err
+			return t.status.DomainId, types.UNKNOWN, nil
 		}
 		logrus.Infof("Info(%s): failed to determine scheduled node for %s: %v",
 			domainName, kubeName, err)
@@ -1815,7 +1822,7 @@ func (t kubevirtTask) Info(domainName string) (int, types.SwState, error) {
 	if err != nil {
 		if isK3sUnreachable(err) {
 			logrus.Infof("Info(%s): k3s unreachable while getting status: %v", domainName, err)
-			return t.status.DomainId, types.UNKNOWN, err
+			return t.status.DomainId, types.UNKNOWN, nil
 		}
 		logrus.Infof("Info(%s): failed to get status for %s: %v", domainName, kubeName, err)
 		return id, types.SCHEDULING, err
@@ -3081,14 +3088,18 @@ func checkAndReturnStatus(vmis *vmiMetaData, gotUnknown bool) (string, error) {
 	return "", nil
 }
 
-// check if the error is due to k3s unreachable or any other timeouts.
+// isK3sUnreachable reports whether err means the API could not be asked at
+// all (server-side timeout or unavailability, or the client's own deadline,
+// refused connection or network timeout), as opposed to being answered.
 func isK3sUnreachable(err error) bool {
-
-	// k3s API server timeout or any other timeouts or if etcd service or any other service is not available.
 	if errors.IsServerTimeout(err) || errors.IsTimeout(err) || errors.IsServiceUnavailable(err) {
 		return true
 	}
-	return false
+	if goerrors.Is(err, context.DeadlineExceeded) || goerrors.Is(err, syscall.ECONNREFUSED) {
+		return true
+	}
+	var netErr net.Error
+	return goerrors.As(err, &netErr) && netErr.Timeout()
 }
 
 func ptrBool(b bool) *bool {
