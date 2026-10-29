@@ -170,10 +170,9 @@ The policy accepts `release-sign.yml@refs/heads/master`,
 artifact per attempt, before pushing them, and signs what every attempt's
 record lists after pushing; a re-run thus signs what an earlier attempt pushed
 and failed to sign. The `manifest` job pushes every package's index and signs
-each once every platform manifest in it verifies, and signs the indexes listed
-in `tools/eve-cosign-backfill`, which a run pushed and left unsigned before
-records existed. It then verifies every package manifest and index the run's
-jobs pushed or used, and the `lfedge/eve-*` bases of all those packages.
+each once every platform manifest in it verifies. It then verifies every
+package manifest and index the run's jobs pushed or used, and the
+`lfedge/eve-*` bases of all those packages.
 
 Every `HV=k` job rebuilds the `FORCE_BUILD_PKGS` packages and pushes them
 under the same tag, as do concurrent runs, each with a different digest. Each
