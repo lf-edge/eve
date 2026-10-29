@@ -5,6 +5,7 @@ package konvert_test
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -677,8 +678,13 @@ const carriedPVCWait = 10 * time.Minute
 // which leaves the app with an empty volume. csihandler logs "migrating
 // carried-over EVE-kvm ... into PVC <name>" before it creates a claim from the
 // carried file, and creates an empty claim without that line, so a claim with no
-// such line in newlog is empty. The carried file is not removed by the import,
-// so a device-side reading taken after this still finds it.
+// such line in the device log is empty. The line is looked for both in newlog on
+// the device and in the copy uploaded to the controller, because newlog on the
+// device has lacked the line while the controller held it. A miss in both fails
+// only when newlog holds records written after the claim appeared, which shows
+// the local copy was being written; otherwise the verdict is left to the checks
+// that follow. The carried file is not removed by the import, so a device-side
+// reading taken after this still finds it.
 func assertVolumeCarriedIntoPVC(t Gomega, device *evetest.EdgeDevice, volUUID uuid.UUID) {
 	log := evetest.Logger()
 	prefix := volUUID.String() + "-pvc-"
@@ -695,14 +701,23 @@ func assertVolumeCarriedIntoPVC(t Gomega, device *evetest.EdgeDevice, volUUID uu
 			volUUID, carriedPVCWait)
 		return
 	}
+	claimSeen, _ := runEVE(device, "date +%s")
+	pvcText := fmt.Sprintf("into PVC %s ", pvc)
 	var out string
 	for i := 0; i < 4; i++ {
 		out, _ = runEVEWithTimeout(device, newlogProbe(fmt.Sprintf(
-			`grep -a "migrating carried-over EVE-kvm" | grep -a -c "into PVC %s "`, pvc)), 5*time.Minute)
+			`grep -a "migrating carried-over EVE-kvm" | grep -a -c "%s"`, pvcText)), 5*time.Minute)
 		var n int
 		if _, err := fmt.Sscanf(strings.TrimSpace(out), "%d", &n); err == nil && n > 0 {
 			log.Infof("claim %s was created from the carried-over EVE-kvm volume", pvc)
 			return
+		}
+		for _, msg := range device.GetLogs(evetest.LogMsgMatch{MsgHasSubstring: pvcText}) {
+			if strings.Contains(msg.Message, "migrating carried-over EVE-kvm") {
+				log.Infof("claim %s was created from the carried-over EVE-kvm volume "+
+					"(in the uploaded device log only)", pvc)
+				return
+			}
 		}
 		time.Sleep(30 * time.Second)
 	}
@@ -710,7 +725,21 @@ func assertVolumeCarriedIntoPVC(t Gomega, device *evetest.EdgeDevice, volUUID uu
 		{"carried-over sources", "ls -l /persist/vault/volumes-kvm /persist/clear/volumes 2>&1"},
 		{"upgradeconverter kube entry", newlogProbe("grep -a relocateKvmVolumesForKube | tail -10")},
 	}, 5*time.Minute)
+	recent := "unknown"
+	if since, err := strconv.Atoi(strings.TrimSpace(claimSeen)); err == nil {
+		recent, _ = runEVEWithTimeout(device, newlogProbe(fmt.Sprintf(
+			`grep -ao "\"timestamp\":{\"seconds\":[0-9]*" | awk -F: -v t=%d "\$NF>=t" | wc -l`,
+			since)), 5*time.Minute)
+	}
+	var nRecent int
+	if _, err := fmt.Sscanf(strings.TrimSpace(recent), "%d", &nRecent); err != nil || nRecent == 0 {
+		log.Warnf("newlog on the device holds no record written since claim %s appeared "+
+			"(count %q), so it cannot show how the claim was created; leaving the verdict "+
+			"to the checks that follow", pvc, strings.TrimSpace(recent))
+		return
+	}
 	t.Expect(false).To(BeTrue(),
-		"EVE-K created claim %s empty: it found no carried-over EVE-kvm source for volume %s (newlog count: %q)",
-		pvc, volUUID, strings.TrimSpace(out))
+		"EVE-K created claim %s empty: it found no carried-over EVE-kvm source for volume %s "+
+			"(newlog count: %q, newlog records since the claim appeared: %d)",
+		pvc, volUUID, strings.TrimSpace(out), nRecent)
 }
