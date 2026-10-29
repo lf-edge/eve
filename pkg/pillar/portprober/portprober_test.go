@@ -35,6 +35,12 @@ func configForTest() portprober.Config {
 	}
 }
 
+// Latency is measured in real time around the mock's simulated RTT, so a slow
+// scheduler on a loaded host only inflates it. A probe that outlasts
+// UserProbeTimeout fails instead of reporting latency, which makes that the
+// only upper bound that holds.
+var maxProbeLatency = uint32(configForTest().UserProbeTimeout.Milliseconds())
+
 func prepareGomega(test *testing.T) *GomegaWithT {
 	t := NewGomegaWithT(test)
 	t.SetDefaultEventuallyTimeout(10 * time.Second)
@@ -526,7 +532,7 @@ func TestProbingSingleRoute(test *testing.T) {
 	t.Expect(intfStats.RemoteDownCnt).To(BeZero())
 	t.Expect(intfStats.RemoteUPCnt).ToNot(BeZero())
 	t.Expect(intfStats.LatencyToRemote >= 200).To(BeTrue()) // should be around 250ms
-	t.Expect(intfStats.LatencyToRemote <= 300).To(BeTrue())
+	t.Expect(intfStats.LatencyToRemote < maxProbeLatency).To(BeTrue())
 
 	neverChangedPort(t, ni1, routeDst)
 
@@ -598,7 +604,7 @@ func TestProbingSingleRoute(test *testing.T) {
 	t.Expect(eth0Stats.RemoteDownCnt).To(BeZero())
 	t.Expect(eth0Stats.RemoteUPCnt).ToNot(BeZero())
 	t.Expect(eth0Stats.LatencyToRemote >= 200).To(BeTrue()) // should be around 250ms
-	t.Expect(eth0Stats.LatencyToRemote <= 300).To(BeTrue())
+	t.Expect(eth0Stats.LatencyToRemote < maxProbeLatency).To(BeTrue())
 	wwan0Stats := metrics[0].IntfProbeStats[1]
 	t.Expect(wwan0Stats.IntfName).To(Equal(portIfName(wwan0LL)))
 	t.Expect(wwan0Stats.NexthopUP).To(BeFalse()) // next-hop ping is disabled for wwan ports
@@ -610,7 +616,7 @@ func TestProbingSingleRoute(test *testing.T) {
 	t.Expect(wwan0Stats.RemoteDownCnt).To(BeZero())
 	t.Expect(wwan0Stats.RemoteUPCnt).ToNot(BeZero())
 	t.Expect(wwan0Stats.LatencyToRemote >= 350).To(BeTrue()) // should be around 400ms
-	t.Expect(wwan0Stats.LatencyToRemote <= 450).To(BeTrue())
+	t.Expect(wwan0Stats.LatencyToRemote < maxProbeLatency).To(BeTrue())
 	wwan1Stats := metrics[0].IntfProbeStats[2]
 	t.Expect(wwan1Stats.IntfName).To(Equal(portIfName(wwan1LL)))
 	t.Expect(wwan1Stats.NexthopUP).To(BeFalse()) // next-hop ping is disabled for wwan ports
@@ -622,7 +628,7 @@ func TestProbingSingleRoute(test *testing.T) {
 	t.Expect(wwan1Stats.RemoteDownCnt).To(BeZero())
 	t.Expect(wwan1Stats.RemoteUPCnt).ToNot(BeZero())
 	t.Expect(wwan1Stats.LatencyToRemote >= 450).To(BeTrue()) // should be around 500ms
-	t.Expect(wwan1Stats.LatencyToRemote <= 550).To(BeTrue())
+	t.Expect(wwan1Stats.LatencyToRemote < maxProbeLatency).To(BeTrue())
 
 	// When user-defined endpoint reachability for eth0 goes down, wwan0 becomes better pick
 	// (it has better RSSI than wwan1).
@@ -855,7 +861,7 @@ func TestProbingMultipleRoutes(test *testing.T) {
 	t.Expect(eth1Stats.RemoteDownCnt).To(BeZero())
 	t.Expect(eth1Stats.RemoteUPCnt).ToNot(BeZero())
 	t.Expect(eth1Stats.LatencyToRemote >= 200).To(BeTrue()) // should be around 250ms
-	t.Expect(eth1Stats.LatencyToRemote <= 300).To(BeTrue())
+	t.Expect(eth1Stats.LatencyToRemote < maxProbeLatency).To(BeTrue())
 	wlanStats := metrics[0].IntfProbeStats[1]
 	t.Expect(wlanStats.IntfName).To(Equal(portIfName(wlanLL)))
 	t.Expect(wlanStats.NexthopUP).To(BeTrue()) // next-hop ping is enabled for wlan
@@ -867,7 +873,7 @@ func TestProbingMultipleRoutes(test *testing.T) {
 	t.Expect(wlanStats.RemoteDownCnt).To(BeZero())
 	t.Expect(wlanStats.RemoteUPCnt).ToNot(BeZero())
 	t.Expect(wlanStats.LatencyToRemote >= 300).To(BeTrue()) // should be around 350ms
-	t.Expect(wlanStats.LatencyToRemote <= 400).To(BeTrue())
+	t.Expect(wlanStats.LatencyToRemote < maxProbeLatency).To(BeTrue())
 	// Route1
 	t.Expect(metrics[1].DstNetwork).To(Equal(route1Dst.String()))
 	t.Expect(metrics[1].PortCount).To(BeEquivalentTo(3)) // eth0, wwan0, wwan1
@@ -887,7 +893,7 @@ func TestProbingMultipleRoutes(test *testing.T) {
 	t.Expect(eth0Stats.RemoteDownCnt).To(BeZero())
 	t.Expect(eth0Stats.RemoteUPCnt).ToNot(BeZero())
 	t.Expect(eth0Stats.LatencyToRemote >= 200).To(BeTrue()) // should be around 250ms
-	t.Expect(eth0Stats.LatencyToRemote <= 300).To(BeTrue())
+	t.Expect(eth0Stats.LatencyToRemote < maxProbeLatency).To(BeTrue())
 	wwan0Stats := metrics[1].IntfProbeStats[1]
 	t.Expect(wwan0Stats.IntfName).To(Equal(portIfName(wwan0LL)))
 	t.Expect(wwan0Stats.NexthopUP).To(BeFalse()) // next-hop ping is disabled for wwan ports
@@ -899,7 +905,7 @@ func TestProbingMultipleRoutes(test *testing.T) {
 	t.Expect(wwan0Stats.RemoteDownCnt).To(BeZero())
 	t.Expect(wwan0Stats.RemoteUPCnt).ToNot(BeZero())
 	t.Expect(wwan0Stats.LatencyToRemote >= 350).To(BeTrue()) // should be around 400ms
-	t.Expect(wwan0Stats.LatencyToRemote <= 450).To(BeTrue())
+	t.Expect(wwan0Stats.LatencyToRemote < maxProbeLatency).To(BeTrue())
 	wwan1Stats := metrics[1].IntfProbeStats[2]
 	t.Expect(wwan1Stats.IntfName).To(Equal(portIfName(wwan1LL)))
 	t.Expect(wwan1Stats.NexthopUP).To(BeFalse()) // next-hop ping is disabled for wwan ports
@@ -911,7 +917,7 @@ func TestProbingMultipleRoutes(test *testing.T) {
 	t.Expect(wwan1Stats.RemoteDownCnt).To(BeZero())
 	t.Expect(wwan1Stats.RemoteUPCnt).ToNot(BeZero())
 	t.Expect(wwan1Stats.LatencyToRemote >= 350).To(BeTrue()) // should be around 400ms
-	t.Expect(wwan1Stats.LatencyToRemote <= 450).To(BeTrue())
+	t.Expect(wwan1Stats.LatencyToRemote < maxProbeLatency).To(BeTrue())
 	// Route3
 	t.Expect(metrics[2].DstNetwork).To(Equal(route3Dst.String()))
 	t.Expect(metrics[2].PortCount).To(BeEquivalentTo(5))
@@ -931,7 +937,7 @@ func TestProbingMultipleRoutes(test *testing.T) {
 	t.Expect(eth0Stats.RemoteDownCnt).To(BeZero())
 	t.Expect(eth0Stats.RemoteUPCnt).ToNot(BeZero())
 	t.Expect(eth0Stats.LatencyToRemote >= 200).To(BeTrue()) // should be around 250ms
-	t.Expect(eth0Stats.LatencyToRemote <= 300).To(BeTrue())
+	t.Expect(eth0Stats.LatencyToRemote < maxProbeLatency).To(BeTrue())
 	eth1Stats = metrics[2].IntfProbeStats[1]
 	t.Expect(eth1Stats.IntfName).To(Equal(portIfName(eth1LL)))
 	t.Expect(eth1Stats.NexthopUP).To(BeTrue())
@@ -943,7 +949,7 @@ func TestProbingMultipleRoutes(test *testing.T) {
 	t.Expect(eth1Stats.RemoteDownCnt).To(BeZero())
 	t.Expect(eth1Stats.RemoteUPCnt).ToNot(BeZero())
 	t.Expect(eth1Stats.LatencyToRemote >= 200).To(BeTrue()) // should be around 250ms
-	t.Expect(eth1Stats.LatencyToRemote <= 300).To(BeTrue())
+	t.Expect(eth1Stats.LatencyToRemote < maxProbeLatency).To(BeTrue())
 	wlanStats = metrics[2].IntfProbeStats[2]
 	t.Expect(wlanStats.IntfName).To(Equal(portIfName(wlanLL)))
 	t.Expect(wlanStats.NexthopUP).To(BeTrue()) // next-hop ping is enabled for wlan
@@ -955,7 +961,7 @@ func TestProbingMultipleRoutes(test *testing.T) {
 	t.Expect(wlanStats.RemoteDownCnt).To(BeZero())
 	t.Expect(wlanStats.RemoteUPCnt).ToNot(BeZero())
 	t.Expect(wlanStats.LatencyToRemote >= 300).To(BeTrue()) // should be around 350ms
-	t.Expect(wlanStats.LatencyToRemote <= 400).To(BeTrue())
+	t.Expect(wlanStats.LatencyToRemote < maxProbeLatency).To(BeTrue())
 	wwan0Stats = metrics[2].IntfProbeStats[3]
 	t.Expect(wwan0Stats.IntfName).To(Equal(portIfName(wwan0LL)))
 	t.Expect(wwan0Stats.NexthopUP).To(BeFalse()) // next-hop ping is disabled for wwan ports
@@ -967,7 +973,7 @@ func TestProbingMultipleRoutes(test *testing.T) {
 	t.Expect(wwan0Stats.RemoteDownCnt).To(BeZero())
 	t.Expect(wwan0Stats.RemoteUPCnt).ToNot(BeZero())
 	t.Expect(wwan0Stats.LatencyToRemote >= 350).To(BeTrue()) // should be around 400ms
-	t.Expect(wwan0Stats.LatencyToRemote <= 450).To(BeTrue())
+	t.Expect(wwan0Stats.LatencyToRemote < maxProbeLatency).To(BeTrue())
 	wwan1Stats = metrics[2].IntfProbeStats[4]
 	t.Expect(wwan1Stats.IntfName).To(Equal(portIfName(wwan1LL)))
 	t.Expect(wwan1Stats.NexthopUP).To(BeFalse()) // next-hop ping is disabled for wwan ports
@@ -979,7 +985,7 @@ func TestProbingMultipleRoutes(test *testing.T) {
 	t.Expect(wwan1Stats.RemoteDownCnt).To(BeZero())
 	t.Expect(wwan1Stats.RemoteUPCnt).ToNot(BeZero())
 	t.Expect(wwan1Stats.LatencyToRemote >= 350).To(BeTrue()) // should be around 400ms
-	t.Expect(wwan1Stats.LatencyToRemote <= 450).To(BeTrue())
+	t.Expect(wwan1Stats.LatencyToRemote < maxProbeLatency).To(BeTrue())
 
 	// Next-hop for eth1 stops being reachable.
 	reachProberICMP.SetReachabilityState(portIfName(eth1LL), eth1NHAddr, errors.New("unreachable"), 50*time.Millisecond)
