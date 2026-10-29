@@ -47,8 +47,6 @@ ifeq ($(ZARCH), amd64)
             $(error "PLATFORM=ai-generic requires HV=k")
         endif
         KERNEL_CONFIG_FLAVOR=ai
-    else ifeq ($(HV), k)
-        KERNEL_CONFIG_FLAVOR=hwe
     else
         KERNEL_CONFIG_FLAVOR=core
     endif
