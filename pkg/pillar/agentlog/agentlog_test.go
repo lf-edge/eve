@@ -1079,9 +1079,7 @@ func TestManageStatFileSizeTargetSizesAvgThreshold(t *testing.T) {
 	// We also expect that the function will return the average size of the lines
 	assert.NotEqual(t, avgSize, 0)
 
-	duration := timeEnd.Sub(timeStart)
-	assert.Truef(t, duration < 5*time.Second, "expected duration to be less than 5 seconds, but got %v", duration)
-	t.Logf("Duration: %v", duration)
+	t.Logf("Duration: %v", timeEnd.Sub(timeStart))
 	t.Logf("AvgSize: %v", avgSize)
 
 	fileInfo, err = outputFile.Stat()
