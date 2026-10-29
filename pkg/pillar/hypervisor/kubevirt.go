@@ -572,12 +572,12 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 				// Include both tty0 (video) and ttyS0 (serial) consoles so that logs are captured
 				// by kubevirt's guest-console-log container
 				kernelArgs := "console=tty0 console=ttyS0 root=/dev/vda dhcp=1 rootfstype=ext4"
-				// :latest is a local k3s-containerd tag (re)created by cluster-init.sh
-				// each boot, never a registry pull (imagePullPolicy: Never below). Keep
-				// :latest, not a versioned tag: those are pruned on upgrade and wedge.
+				// :latest is a local k3s-containerd tag that kube-init builds once
+				// per EVE release, never a registry pull (imagePullPolicy: Never below).
+				// Keep :latest, not a versioned tag: those are pruned on upgrade and wedge.
 				// If image is not yet available early in boot the virt-launcher pod
 				// will show ErrImageNeverPull and kubelet will retry until
-				// pkg/kube imports the image.
+				// kube-init builds the image.
 				scratchImage := "docker.io/lfedge/eve-external-boot-image:latest"
 				kernelPath := "/kernel"
 				initrdPath := "/runx-initrd"
