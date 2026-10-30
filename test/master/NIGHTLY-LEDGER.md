@@ -2,6 +2,193 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-10-30 -- 0.0.0-master-a273c3e9 (run #2)](https://github.com/lf-edge/eve/actions/runs/40962376935)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/2/)
+
+### TestAppsSuite: failure analysis
+
+#### TestPurgeNeverActivatedApp
+
+##### Failure
+
+```
+Failed to receive SDN tunnel properties: rpc error: code = Unavailable desc = unable to connect to SDN gRPC service on any of the uplink IPs ([192.168.170.4]): failed to establish tunnel to SDN: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 192.168.170.4:50121: connect: no route to host"
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+This is an infrastructure/networking failure, not an EVE or test-code bug. Live evidence (`evetest status`, `evetest eve info`, `evetest sdn status`) confirms the EVE device is still `EVE_DEVICE_STATE_UNDEFINED` / "not onboarded" and the SDN client was never initialized — i.e. `TestPurgeNeverActivatedApp` is the very first subtest in this `TestAppsSuite` run (`gotest.json` confirms only `TestAppsSuite` and this one subtest ran), and it failed in `Setup`/`openTunnelToSDN` before any device or network instance existed. The broker log timeline shows both VMs were provisioned fine via Proxmox (`eve-7bfaa3c2-edge-dev` as VM 104, `sdn-7bfaa3c2` as VM 106, both powered on normally), and the SDN VM even reported a valid uplink IP (`192.168.170.4`) at 22:18:22 — but every one of ~45 retries over the following 5 minutes to reach its gRPC service on port 50121 failed with `no route to host`, not a timeout or refused connection. That specific error signature points to a routing/bridge-network problem between the (remote, Proxmox-hosted) broker and the SDN VM's uplink network rather than the SDN service itself failing to start.
+
+This does not share a root cause with any other failure in this run (no other subtests have executed yet), and it does not match any entry in the ledger — the ledger covers only this one 2026-10-29 run, and its other "no route to host" entries (`TestAppUserData` SSH, `TestMgmtProxy` registry pull) are unrelated, app/test-level routing issues on an already-onboarded device, not a pre-onboarding SDN-tunnel failure. So this looks like a new/first-occurrence infrastructure flake in the Proxmox broker's networking to the SDN VM, with no prior recorded history to confirm recurrence.
+
+#### TestVGAPassthroughNoHostAccess
+
+##### Failure
+
+```
+Host processes interfered with PCI devices while the VGA controller 0000:00:01.0 was passed through to the application:
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=13832 parent=runc:[1:CHILD]/13831 grandparent=runc:[0:PARENT]/13827
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=13832 parent=runc:[1:CHILD]/13831 grandparent=runc:[0:PARENT]/13827
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=13832 parent=runc:[1:CHILD]/13831 grandparent=runc:[0:PARENT]/13827
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=13832 parent=runc:[1:CHILD]/13831 grandparent=runc:[0:PARENT]/13827
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=13832 parent=runc:[1:CHILD]/13831 grandparent=runc:[0:PARENT]/13827
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=13832 parent=runc:[1:CHILD]/13831 grandparent=runc:[0:PARENT]/13827
+Kernel messages mentioning 0000:00:01.0:
+[    1.340329] [    T1] pci 0000:00:01.0: [1234:1111] type 00 class 0x030000 conventional PCI endpoint
+[    1.346047] [    T1] pci 0000:00:01.0: BAR 0 [mem 0x80000000-0x80ffffff pref]
+[    1.348012] [    T1] pci 0000:00:01.0: BAR 2 [mem 0x8264d000-0x8264dfff]
+[    1.349850] [    T1] pci 0000:00:01.0: ROM [mem 0xffff0000-0xffffffff pref]
+[    1.351649] [    T1] pci 0000:00:01.0: Video device with shadowed ROM at [mem 0x000c0000-0x000dffff]
+[    2.005250] [    T1] pci 0000:00:01.0: vgaarb: setting as boot VGA device
+[    2.005250] [    T1] pci 0000:00:01.0: vgaarb: bridge control possible
+[    2.005250] [    T1] pci 0000:00:01.0: vgaarb: VGA device added: decodes=io+mem,owns=io+mem,locks=none
+[    2.388987] [    T1] pci 0000:00:01.0: Adding to iommu group 1
+[  253.808329] [ T5880] vfio-pci 0000:00:01.0: vgaarb: deactivate vga console
+[  253.808347] [ T5880] vfio-pci 0000:00:01.0: vgaarb: VGA decodes changed: olddecodes=io+mem,decodes=io+mem:owns=io+mem
+[  287.925083] [ T7520] vfio-pci 0000:00:01.0: Invalid PCI ROM header signature: expecting 0xaa55, got 0x0000
+[  288.397152] [ T7520] vfio-pci 0000:00:01.0: vgaarb: VGA decodes changed: olddecodes=io+mem,decodes=io+mem:owns=io+mem
+[ 1075.719591] [T13858] vfio-pci 0000:00:01.0: Invalid PCI ROM header signature: expecting 0xaa55, got 0x0000
+```
+
+##### Claude's conclusion
+
+This confirms it live: PID 13832 is the VGA app's own qemu-system-x86_64 process (second boot, after `[app-restart]` — bootTime 1793318772), and TID 13858 within that same process is the `CPU 0/KVM` vCPU thread — exactly the thread the tracer's `comm` field reports in the violation. This is the identical bug already fully diagnosed for this exact test, in this exact nightly run.
+
+**Root cause:** This is the same issue already recorded in this run's `live-investigation.md`/ledger for `TestVGAPassthroughNoHostAccess` — `pciAccess.isViolation()` (`evetest/tests/apps/pciaccess_helpers_test.go:408-413`) only whitelists PCI config-space writes when `comm` has prefix `"qemu-system-"`, but QEMU's vCPU thread renames itself to `CPU N/KVM` while sharing the same PID. Live evidence reconfirms this: PID 13832 is `vga-passthrough-app`'s own qemu process after its `[app-restart]` reboot (bootTime `1793318772`, matching `evetest eve app-info`), and `ps -eLo pid,tid,comm` shows TID 13858 within that same process is literally named `CPU 0/KVM` — the exact comm string flagged as a "host interference" violation. So normal guest-driven PCI config emulation during the app's own restart is being misclassified as host interference, not an actual device/pillar regression. This is a recurring, known issue first seen in last night's run (2026-10-29, run #1) with the identical signature and root cause — it is not new, and is unrelated to the other failure already investigated in this run (`TestPurgeNeverActivatedApp`'s SDN-tunnel networking issue), since they're in entirely different subsystems.
+
+### TestBootstrapSuite: failure analysis
+
+#### TestBootstrapWithAutoDiscoveredProxyUsingOverrideJSON
+
+##### Failure
+
+```
+Failed to receive SDN tunnel properties: rpc error: code = Unavailable desc = unable to connect to SDN gRPC service on any of the uplink IPs ([192.168.170.5]): failed to establish tunnel to SDN: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 192.168.170.5:50121: connect: no route to host"
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live inspection confirms the test never got past SDN bring-up: `evetest eve ssh/info/collect-info` all fail with *"network model not applied, therefore cannot discover IP of device"*, and `evetest sdn status/ssh` fail with *"SDN client is not initialized"* / SSH connection reset — there is no live EVE device or SDN to inspect further because setup aborted first.
+
+From the raw `gotest.json` broker log: for this test, Proxmox VM 107 (`sdn-602052d4`) was freshly built and powered on at 23:37:37, and the broker immediately reported it had uplink IP `192.168.170.5` (DHCP lease observed). However, every retry of the gRPC tunnel dial to `192.168.170.5:50121` from 23:37:51 through 23:42:37 (the full 5-minute budget) failed with `connect: no route to host` — i.e., the host never saw a network path to that IP at all, not a refused/closed-port response. This points to the newly-created Proxmox SDN VM never actually coming up on the network (stuck boot, failed NIC attach, or a Proxmox/broker-host networking glitch), rather than the SDN service being slow to start inside an otherwise-reachable guest.
+
+This is unrelated to the preceding `TestBootstrapWithAutoDiscoveredProxy` test in the same run, which completed and tore down its own SDN VM normally (clean "Removed Proxmox VM 113" / "SDN tunnel proxy context is done" sequence) before this one provisioned VM 107 from scratch. I checked the live-ledger (which only has one prior dated run, 2026-10-29 run #1) and found no earlier occurrence of this SDN-gRPC/"no route to host" signature — this looks like a new, one-off broker/Proxmox-side infrastructure flake rather than a known recurring issue or a pillar/EVE code regression.
+
+### TestKonvertSuite: failure analysis
+
+#### TestKvmToKUpgrade
+
+##### Failure
+
+```
+Failed to receive SDN tunnel properties: rpc error: code = Unavailable desc = unable to connect to SDN gRPC service on any of the uplink IPs ([192.168.170.5]): failed to establish tunnel to SDN: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 192.168.170.5:50121: connect: no route to host"
+```
+
+##### Claude's conclusion
+
+No prior entries in the ledger match this exact failure mode (broker unable to reach the SDN VM's gRPC tunnel at boot) — those two "no route to host" hits in the ledger are unrelated (in-guest routing/proxy issues inside already-running devices, not broker→SDN-VM connectivity at setup). This is the first recorded occurrence of this specific failure.
+
+**Root cause:** From the evetest-container logs (`docker logs` on the paused `evetest-50021` container), the broker successfully built the SDN image, provisioned it as Proxmox VM 107 (`sdn-dbcea02d`), powered it on, and got back an uplink IP (`192.168.170.5`) — but every gRPC dial attempt to `192.168.170.5:50121` over the full ~5-minute retry window (22:18:28–22:23:26) failed with `connect: no route to host`, which is a routing-layer failure (no path/ARP to the host), not a refused connection from a service that simply hasn't started yet. Because the SDN tunnel never opened, the EVE device (`edge-dev`) never had its network model applied and was never onboarded (`evetest eve info` confirms: "device is not onboarded"; `evetest eve collect-info` confirms: "network model not applied, therefore cannot discover IP"), and `evetest sdn status`/`sdn logs` now report "SDN client is not initialized" — consistent with the gRPC tunnel to the SDN VM never having come up at all. This looks like a Proxmox-side infrastructure issue (the SDN VM's network path to the broker was never actually live despite Proxmox reporting an uplink IP) rather than an EVE/pillar or test-code bug — it occurred before any device code ran. I don't have Proxmox host access from this sandbox (no `qm`/`pvesh`, and raw network diagnostics like `ping`/`ip route` were blocked by tool permissions) to pin down why the VM's network path was down, and this run had no other failures to compare against for a shared root cause.
+
+#### Shrink
+
+##### Failure
+
+```
+
+Timed out after 722.784s.
+The function passed to Eventually failed at /evetest/tests/konvert/app_helpers_test.go:104 with:
+Unexpected error:
+    <*fmt.wrapError | 0x91065123c80>: 
+    unable to reach app "0f980e71-5b2d-4a97-9f43-fadf3e417d3c" SSH on device "edge-dev": no reachable endpoint among [172.20.20.123:2222 [fe80::a4bd:e572:452a:bfd7]:2222 172.20.20.214:22 [fe80::16:3eff:fe1a:2374]:22]
+    {
+        msg: "unable to reach app \"0f980e71-5b2d-4a97-9f43-fadf3e417d3c\" SSH on device \"edge-dev\": no reachable endpoint among [172.20.20.123:2222 [fe80::a4bd:e572:452a:bfd7]:2222 172.20.20.214:22 [fe80::16:3eff:fe1a:2374]:22]",
+        err: <*errors.errorString | 0x910653b47a0>{
+            s: "no reachable endpoint among [172.20.20.123:2222 [fe80::a4bd:e572:452a:bfd7]:2222 172.20.20.214:22 [fe80::16:3eff:fe1a:2374]:22]",
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+The "Shrink" subtest's SSH timeout is not a networking problem — the guest VM itself is wedged. `virt-handler` logs show the redeployed app's VMI (`konvert-repartition-app-0f980-04kc5l`) entered `Domain status: Paused, reason: IOError` at 01:19:55, within 25s of starting, and has stayed paused continuously ever since (still paused at the time of investigation, ~15 min later); `kubectl describe vmi` confirms `Warning IOerror ... VM Paused due to not enough space on volume: disk1` (17 occurrences). The backing Longhorn volume (`pvc-02d453f9...`, 300Mi) is already reported as fully allocated (`actualSize: 314576896` ≈ its 300Mi nominal size) even though the content tree behind it is only ~54MB (`VolumeStatus` `CurrentSize: 56701775`), and the node-level storage is nowhere near full (28GB free on `/persist`, 32GB `storageAvailable` reported by Longhorn) — so this is the VM's own root-disk PVC running out of backing space almost immediately on boot, not a host disk-pressure issue, which is why the guest never comes up to answer SSH on any of the listed endpoints.
+
+This is a distinct failure from the earlier `TestKvmToKUpgrade` failure recorded in this run's `live-investigation.md` (an SDN gRPC-tunnel connectivity problem that occurred before any device/app was ever created) — here the device, app deployment, and blob-reuse redeploy all succeeded, and the failure is specific to the post-conversion root-disk volume sizing/provisioning for this `Shrink` variant of `TestKvmToKRepartitionNoVolmig`. The ledger's one prior "Shrink" entry (same run, earlier date in the file) was a completely different, setup-time failure (`evebuild/nightly:10.1.0-kvm-amd64` image not found) that never even reached device creation, so this "VM paused on ENOSPC after blob-reused redeploy" mode has no prior entry in the ledger and appears to be a new, previously-unrecorded issue — plausibly in how the redeployed app's root-disk PVC size/backing is derived when content-tree blobs are reused after a kvm→k conversion.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.001s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+**Root cause:** This is a confirmed repeat of a known, previously-analyzed deadlock in `getKubeAppActivateStatus` (`pkg/pillar/cmd/zedmanager/zedmanager.go:2004`). Live evidence on edge-dev2: `designated_node_id` for `failover-purge-app` is `6636a8ae-...` (edge-dev1, which is `EVE_DEVICE_STATE_SUSPECT` / powered off for the failover scenario), the old VMIRS/VMI were torn down by `purgeCmdDone` at 00:40:54 (`SuccessfulDelete virtualmachineinstance/failover-purge-app-7c061-0jgrh9`), and ever since then zedmanager on edge-dev2 has logged an unbroken stream of `getKubeAppActivateStatus(...): not designated, ..., onTheDevice false, statusRunning false` — a non-designated node refuses to originate a fresh VMIRS once nothing is scheduled anywhere, so `kubectl get vmirs,vmi,vm -A` returns "No resources found" cluster-wide, matching the test's `found []`.
+
+This is the exact same failure signature, same test, same code path, and same log pattern already recorded in `live-ledger.md` for the 2026-10-29 nightly run (one night earlier) — that analysis concluded it's a genuine unhandled gap in zedmanager/zedkube's purge-after-failover activation logic (only the designated node, which is deliberately kept offline by the test, can originate a brand-new VMIRS), not an environment flake. So this is a known/recurring issue, first observed the previous night (2026-10-29), reproducing identically tonight. It's independent of the run's other failures (`TestVMIRSStrandedReplicasRecovery` passed; `TestDNIDandBackupDNID` is a separate test in this suite). No PR diff was provided to assess relevance.
+
+#### TestClusterPVCRedownload
+
+##### Failure
+
+```
+
+vm1's content tree is in state LOADED, not REMOTELOADED -- it was re-downloaded despite the PVC already being complete
+Expected
+    <types.SwState>: 108
+to equal
+    <types.SwState>: 125
+```
+
+##### Claude's conclusion
+
+Both the test and the `contentTreeSatisfiedByPVCs` logic are recent additions, consistent with this being a newly-exposed gap rather than a long-standing flake. I have enough evidence for a root-cause conclusion.
+
+**Root cause:** This is a genuine race in `contentTreeSatisfiedByPVCs`/`doUpdateContentTree` (`pkg/pillar/cmd/volumemgr/acceptclustercontenttree.go:43`, `updatestatus.go:51-63`), not the SDN/datastore outage the test sets up. Live evidence on edge-dev1: at `01:27:36.612` and again at `01:27:40.862` `doUpdateContentTree` ran the PVC-adoption check for vm1's ContentTreeStatus (`91b54b77...`) and logged `contentTreeSatisfiedByPVCs(...): no local volumes reference this content tree`, because the matching `VolumeConfig` (`cd7703a5...`, referencing that same ContentID) wasn't created in volumemgr until `01:27:40.951` — *after* the content tree had already fallen through to the normal download path, found all its blobs already verified in the local CAS (survived the reboot on disk), and self-completed straight to `VERIFIED→LOADING→LOADED` by `01:27:41.063`, all within that same reconcile call. So the datastore being firewalled off was irrelevant here — no actual network download was attempted (confirmed no DownloaderConfig for vm1's sha256) — the bug is purely that the PVC-adoption shortcut loses the race against VolumeConfig publication timing right after a reboot, landing the tree at `LOADED` instead of `REMOTELOADED`. This failure is unrelated to the earlier `TestVMAppPurgeDuringFailover` failure in this same run (different test, different code path: zedmanager/zedkube VMIRS activation vs. volumemgr's content-tree/PVC reconciliation). It also doesn't appear in `live-ledger.md`'s prior nightly history, and both the test and the `contentTreeSatisfiedByPVCs` check are recent additions (`git log` shows them added in `f02fe67c9`/later commits), so this looks like a newly-exposed, not-yet-fixed gap rather than a known recurring issue.
+
+### TestSecuritySuite: failure analysis
+
+#### TestVaultKeyModeRecoveryOnExt4
+
+##### Failure
+
+```
+
+a mode that opens the vault must not cost a second attempt
+Expected
+    <int>: 1
+to equal
+    <int>: 2
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live vaultmgr logs confirm the harness's two-reboot sequence worked exactly as designed: after the wrong-mode reboot at 22:50:56 (`Vault config inited with tpmkeyonly false`), vaultmgr tried `tpmKeyOnly=false`, got `Error unlocking vault: exit status 1`, then fell back to `tpmKeyOnly=true` and succeeded — 2 real attempts, correctly matching that reboot's own expectation. After the corrected-mode reboot at 22:52:51 (`Vault config inited with tpmkeyonly true`), it unsealed and opened the vault on the very first try with no fallback — 1 attempt. `VaultStatus` on the device (`Status:2`) confirms the vault is healthy/unlocked and `VaultConfig` reads `{"TpmKeyOnly":true}`, so nothing is actually broken on the device side.
+
+The failing assertion at `vault_keymode_test.go:298` expects `2` attempts for this "correct mode, no second attempt needed" case, even though the test's own title/message ("a mode that opens the vault must not cost a second attempt") describes the desired behavior as 1 attempt — the actual result. This looks like a stale/incorrect expected value in the test itself rather than a pillar/vaultmgr regression.
+
+This is a known, recurring issue: the ledger (`live-ledger.md`, 2026-10-29 run #1) already records this identical failure for `TestSecuritySuite/TestVaultKeyModeRecoveryOnExt4` with the same conclusion (test bug, not a pillar regression) — the timestamps and log sequence in that entry are essentially identical to what I observed live here, so this is the same recurring/first-seen-today issue, not a new one. It's the only failure in this suite this run, so there's no shared root cause with other suites' failures.
+
 ## [2026-10-29 -- 0.0.0-master-3a27e25d (run #1)](https://github.com/lf-edge/eve/actions/runs/40731449552)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/1/)
@@ -311,5 +498,3 @@ The pillar-side telemetry pipeline worked correctly: nodeagent detected the psto
 The failure is that `TestKernelPanicReport`'s `device.WatchLogs(...)` live subscription (which streams from Adam's admin `/device/<uuid>/logs` endpoint via `AdamClient.SubscribeToDeviceLogs` in `evetest/controller/adam.go`) never delivered those already-persisted entries to the test's channel — `gotest.json` shows no reconnect/error messages from that subscriber at all during the whole run, meaning it just silently never forwarded the matching records even though they existed in Adam's store seconds after the subscription was opened. That points to a bug/race in the evetest↔Adam log-streaming path (e.g. the stream missing records written around the device's reboot/re-registration, visible in Adam's log as brief onboarding/"integrity token mismatch" noise at 21:10:47–21:11:10 from the reconnecting device), rather than a pillar regression.
 
 This is the only failure in this run (no earlier failed test to share a root cause with), and I found no local ledger of known/recurring issues to check against, so I can't say whether this is a recurring flake — but the evidence (data present in Adam's DB, absent from the test's live watch channel, no error logged by the subscriber) strongly isolates the bug to the evetest/Adam log-watch mechanism rather than to EVE itself.
-
-
