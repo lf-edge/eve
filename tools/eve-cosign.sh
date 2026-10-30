@@ -51,7 +51,7 @@
 #   EVE_SIG_PREFIX              where package signatures live
 #                               (default EVE_PKG_PREFIX)
 #   EVE_COSIGN_EXCLUDE          regexp of package names whose signatures are
-#                               only logged (default ^eve-(kernel|rust)$)
+#                               only logged (default ^eve-kernel$)
 #   LINUXKIT_CACHE              linuxkit cache (default ~/.linuxkit/cache)
 
 set -euo pipefail
@@ -60,7 +60,7 @@ EVE="$(cd "$(dirname "$0")/.." && pwd)"
 OIDC_ISSUER=https://token.actions.githubusercontent.com
 PKG_PREFIX="${EVE_PKG_PREFIX:-docker.io/lfedge}"
 SIG_PREFIX="${EVE_SIG_PREFIX:-$PKG_PREFIX}"
-EXCLUDE="${EVE_COSIGN_EXCLUDE:-^eve-(kernel|rust)$}"
+EXCLUDE="${EVE_COSIGN_EXCLUDE:-^eve-kernel$}"
 CACHE="${LINUXKIT_CACHE:-$HOME/.linuxkit/cache}"
 
 # The signature policy: the workflows allowed to sign packages, and the
@@ -494,7 +494,7 @@ sign_indexes() {
 
 # audit <arch>... -- <dir>...: see the usage above.
 audit() {
-    local arches=() manifests built tags tag ref failed
+    local arches=() manifests built tags tag ref failed excluded_log unverified
     while [ $# -gt 0 ] && [ "$1" != -- ]; do
         arches+=("$1")
         shift
@@ -505,6 +505,7 @@ audit() {
     built=$(mktemp)
     tags=$(mktemp)
     EXCLUDED=$(mktemp)
+    excluded_log=$(mktemp)
     records pulled "$@" > "$manifests"
     records pulled-tags "$@" > "$tags"
     if ! is_tag_build; then
@@ -524,10 +525,16 @@ audit() {
         done < "$tags"
         base_manifests "$manifests" /dev/null "${arches[@]}"
     } | sort -u | count_unverified)
-    log_excluded "$EXCLUDED"
-    rm -f "$manifests" "$built" "$tags" "$EXCLUDED"
+    log_excluded "$EXCLUDED" | tee "$excluded_log"
+    unverified=$(grep -vc '^excluded, verified as ' "$excluded_log" || true)
+    rm -f "$manifests" "$built" "$tags" "$EXCLUDED" "$excluded_log"
     report "$failed" "image(s) this run pushed or used without a valid signature" || exit 1
-    [ "$failed" -ne 0 ] || echo "every image this run pushed or used is signed"
+    [ "$failed" -eq 0 ] || return 0
+    if [ "$unverified" -eq 0 ]; then
+        echo "every image this run pushed or used is signed"
+    else
+        echo "every image this run pushed or used is signed, except $unverified image(s) of packages in EVE_COSIGN_EXCLUDE that do not verify"
+    fi
 }
 
 cmd="${1:-}"

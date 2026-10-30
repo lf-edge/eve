@@ -13,6 +13,7 @@ its own builds the same way.
 | --- | --- | --- |
 | `lfedge/eve:<tag>[-<platform>]-<hv>-<arch>`, `lfedge/eve-sources:…`, their multi-arch indexes, and an SPDX SBOM attestation on each EVE image except riscv64 | `release-sign.yml@refs/heads/master` | release tags, after approval |
 | `<arch>.<hv>.<platform>.sha256sums` release asset | `release-sign.yml@refs/heads/master` | release tags, after approval |
+| `<tag>.tagger.sigstore.json` release asset: an in-toto statement, type `https://github.com/lf-edge/eve/release-tagger/v1`, naming who pushed the tag (`github.actor` and its ID), over every image, index and `sha256sums` above | `release-sign.yml@refs/heads/master` | release tags, after approval |
 | `lfedge/eve-<pkg>` platform manifests and indexes | `publish.yml@refs/heads/<branch>` | pushes to `master`, `N.N` and `N.N-stable` that build the package |
 | `lfedge/eve-alpine-base` platform manifests and index | `build-alpine-base.yml@refs/heads/master` | manual runs of that workflow on `master` |
 
@@ -155,6 +156,34 @@ accepted: a tag can be pushed at any commit.
 cosign cannot currently check the certificate's immutable repository-owner ID,
 so these checks rely on the `lf-edge` organization name.
 
+[eve-sigverify](https://github.com/lf-edge/eve-tools/tree/master/eve-sigverify)
+applies this policy by default. It also requires the release to be a GitHub
+immutable release and checks GitHub's attestation of the tag and its assets:
+
+```sh
+eve-sigverify release $TAG          # sums files, each variant's images.txt
+eve-sigverify release -variant amd64.kvm.generic \
+  -asset amd64.kvm.generic.installer.raw.zst $TAG
+eve-sigverify assets -tag $TAG DIR DIR/amd64.kvm.generic.sha256sums   # downloaded files
+eve-sigverify image -tag $TAG docker.io/lfedge/eve:$TAG-kvm-amd64
+eve-sigverify image -tag $TAG ./layout   # from oras copy --recursive --to-oci-layout
+```
+
+`docker pull` keeps no signatures, but the image keeps the digest the
+registry served. Verify that digest, then run the image by it:
+
+```sh
+d=$(docker image inspect --format '{{index .RepoDigests 0}}' lfedge/eve:$TAG-kvm-amd64)
+eve-sigverify image -tag $TAG "docker.io/$d"
+docker run --rm "$d" installer_raw > installer.raw
+```
+
+`docker run` output is only as trustworthy as the verified image that
+produced it. `rootfs` and `sbom` output is identical to the release's
+`rootfs.img` and `rootfs.spdx.json`, so the signed sums cover it too.
+`installer_raw`, `installer_iso` and `live` give different bytes on every
+run.
+
 ## Verification inside the build
 
 `publish.yml` verifies what it reuses before it pushes anything built from it,
@@ -199,7 +228,7 @@ tag build rebuilds them from the tagged source, as it does EVE itself.
 `lfedge/eve-kernel` and `lfedge/eve-rust` are published by the eve-kernel and
 eve-rust repositories and are verified against their workflows' identities
 instead. While a package is in `EVE_COSIGN_EXCLUDE` (default
-`^eve-(kernel|rust)$`), `check-inputs` and `audit` only log whether its images
+`^eve-kernel$`), `check-inputs` and `audit` only log whether its images
 verify, as `excluded, verified as …`, `excluded, not signed: …` or
 `excluded, does not verify as …`; once the log shows them verified, removing
 the package from the exclusion makes the check binding. Not verified: `linuxkit/*` images and external `FROM` images. The
