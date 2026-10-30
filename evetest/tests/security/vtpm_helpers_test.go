@@ -6,6 +6,7 @@ package security
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -39,7 +40,7 @@ func setupVTPMDeviceWithPCRBanks(t *evetest.T, withTPM bool, banks []api.TPMPCRB
 	evetest.DefineTestParameters(evetest.HypervisorParameter())
 	hypervisor := evetest.GetHypervisorParameterValue()
 	if hypervisor != evetest.HypervisorKVM {
-		t.Skipf("vTPM is implemented only by KVM, got %s", hypervisor)
+		t.Skipf("the host-side vtpm service exists only on KVM, got %s", hypervisor)
 	}
 	evetest.Setup(
 		evetest.RequireEdgeDevice{
@@ -59,7 +60,14 @@ func setupVTPMDeviceWithPCRBanks(t *evetest.T, withTPM bool, banks []api.TPMPCRB
 
 func addVTPMTestApp(config *evetest.EdgeDeviceConfig, niUUID uuid.UUID,
 	name string, sshPort uint16) uuid.UUID {
-	return config.AddApplication(evetest.ApplicationInstanceConfig{
+	return config.AddApplication(vtpmTestAppConfig(niUUID, name, sshPort))
+}
+
+// vtpmTestAppConfig is the app the vTPM tests deploy: the evetest-ubuntu-ctr
+// image (sshd, tpm2-tools) run as a shim VM, with a port-forward to its sshd.
+func vtpmTestAppConfig(niUUID uuid.UUID, name string,
+	sshPort uint16) evetest.ApplicationInstanceConfig {
+	return evetest.ApplicationInstanceConfig{
 		DisplayName: name,
 		Activate:    true,
 		Image: evetest.DockerContainer{
@@ -84,7 +92,50 @@ func addVTPMTestApp(config *evetest.EdgeDeviceConfig, niUUID uuid.UUID,
 				}},
 			},
 		},
-	})
+	}
+}
+
+// waitForAppSSH waits until sshd inside the app accepts connections: RUNNING
+// only means the domain was created.
+func waitForAppSSH(t *WithT, device *evetest.EdgeDevice, id uuid.UUID) {
+	t.Eventually(func(g Gomega) {
+		_, _, err := device.RunShellScriptInsideApp(id, appAuth,
+			"echo ok", appSSHTimeout, 0)
+		g.Expect(err).ToNot(HaveOccurred())
+	}, vtpmGuestWaitTime, pollingInterval).Should(Succeed())
+}
+
+// vmiTPMDevice is the TPM device entry of a KubeVirt VMI spec.
+type vmiTPMDevice struct {
+	Persistent *bool `json:"persistent"`
+}
+
+// appVMITPMDevices returns the TPM device of every VMI of the app, nil for a
+// VMI without one. An error means the VMIs could not be listed, which a caller
+// inside Eventually should retry.
+func appVMITPMDevices(device *evetest.EdgeDevice,
+	id uuid.UUID) ([]*vmiTPMDevice, error) {
+	items, err := device.ListAppVMIs(id, appSSHTimeout)
+	if err != nil {
+		return nil, err
+	}
+	var devs []*vmiTPMDevice
+	for _, item := range items {
+		var vmi struct {
+			Spec struct {
+				Domain struct {
+					Devices struct {
+						TPM *vmiTPMDevice `json:"tpm"`
+					} `json:"devices"`
+				} `json:"domain"`
+			} `json:"spec"`
+		}
+		if err := json.Unmarshal(item, &vmi); err != nil {
+			return nil, fmt.Errorf("parsing VMI: %w", err)
+		}
+		devs = append(devs, vmi.Spec.Domain.Devices.TPM)
+	}
+	return devs, nil
 }
 
 func waitForVTPMGuest(t *WithT, device *evetest.EdgeDevice, id uuid.UUID) {
