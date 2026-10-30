@@ -5,9 +5,12 @@ package controllerconn_test
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -31,7 +34,7 @@ var logger *logrus.Logger
 var logObj *base.LogObject
 
 func makeControllerClient(t *testing.T, dns *types.DeviceNetworkStatus,
-	metrics *controllerconn.AgentMetrics) *controllerconn.Client {
+	metrics *controllerconn.AgentMetrics, tlsConfig *tls.Config) *controllerconn.Client {
 	logger = logrus.StandardLogger()
 	logger.SetLevel(logrus.TraceLevel)
 	logObj = base.NewSourceLogObject(logger, "unittest", 1234)
@@ -44,6 +47,7 @@ func makeControllerClient(t *testing.T, dns *types.DeviceNetworkStatus,
 		AgentName:           "unittest",
 		NetworkMonitor:      &netmonitor.LinuxNetworkMonitor{Log: logObj, DisableWatcher: true},
 		DeviceNetworkStatus: dns,
+		TLSConfig:           tlsConfig,
 		AgentMetrics:        metrics,
 		NetworkSendTimeout:  10 * time.Second,
 		NetworkDialTimeout:  5 * time.Second,
@@ -69,12 +73,6 @@ func makeControllerClient(t *testing.T, dns *types.DeviceNetworkStatus,
 // If no default route or no DNS servers, it skips the test.
 func getDeviceNetworkStatus(t *testing.T) types.DeviceNetworkStatus {
 	var dns types.DeviceNetworkStatus
-
-	err := checkInternetConnectivity()
-	if err != nil {
-		t.Skipf("Skipping test: no Internet connectivity "+
-			"(GET https://www.google.com failed: %v)", err)
-	}
 
 	ifName, link, gw, err := getLinkForDefaultRoute()
 	if err != nil {
@@ -129,17 +127,40 @@ func getDeviceNetworkStatus(t *testing.T) types.DeviceNetworkStatus {
 	return dns
 }
 
-// checkInternetConnectivity does a quick GET to https://www.google.com.
-func checkInternetConnectivity() error {
-	client := http.Client{
-		Timeout: 5 * time.Second,
+// startTestServer starts an HTTPS server on an IPv4 address of the port,
+// standing in for the controller so that the tests depend on neither Internet
+// access nor DNS. It returns the server URL and a TLS config that trusts it.
+// Paths other than "/" return 404.
+func startTestServer(t *testing.T, port types.NetworkPortStatus) (string, *tls.Config) {
+	var ip net.IP
+	for _, addr := range port.AddrInfoList {
+		if addr.Addr.To4() != nil {
+			ip = addr.Addr
+			break
+		}
 	}
-	resp, err := client.Get("https://www.google.com")
+	if ip == nil {
+		t.Skipf("Skipping test: no IPv4 address on %s", port.IfName)
+	}
+	listener, err := net.Listen("tcp", net.JoinHostPort(ip.String(), "0"))
 	if err != nil {
-		return err
+		t.Fatalf("listen on %s: %v", ip, err)
 	}
-	defer resp.Body.Close()
-	return nil
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/" {
+				http.NotFound(w, r)
+				return
+			}
+			fmt.Fprint(w, "ok")
+		}))
+	srv.Listener = listener
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+	pool := x509.NewCertPool()
+	pool.AddCert(srv.Certificate())
+	// The httptest certificate is issued for example.com, not for this IP.
+	return srv.URL, &tls.Config{RootCAs: pool, ServerName: "example.com"}
 }
 
 // getLinkForDefaultRoute returns: interface name, link, and GW IP for default route.
@@ -204,11 +225,12 @@ func TestSendOnIntf(test *testing.T) {
 	dns := getDeviceNetworkStatus(test)
 	fmt.Printf("DeviceNetworkStatus %+v\n", dns)
 	agentMetrics := controllerconn.NewAgentMetrics()
-	client := makeControllerClient(test, &dns, agentMetrics)
+	url, tlsConfig := startTestServer(test, dns.Ports[0])
+	client := makeControllerClient(test, &dns, agentMetrics, tlsConfig)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	rv, err := client.SendOnIntf(ctx, "https://google.com", dns.Ports[0].IfName, nil,
+	rv, err := client.SendOnIntf(ctx, url, dns.Ports[0].IfName, nil,
 		controllerconn.RequestOptions{
 			AllowProxy:       false,
 			UseOnboard:       false,
@@ -237,8 +259,8 @@ func TestSendOnIntf(test *testing.T) {
 	t.Expect(intfMetrics.LastFailure.IsZero()).To(BeTrue())
 	t.Expect(intfMetrics.AuthFailCount).To(BeZero())
 	urlCounters := intfMetrics.URLCounters
-	t.Expect(urlCounters).To(HaveKey("https://google.com"))
-	counters := urlCounters["https://google.com"]
+	t.Expect(urlCounters).To(HaveKey(url))
+	counters := urlCounters[url]
 	t.Expect(counters.SentMsgCount).To(BeEquivalentTo(1))
 	t.Expect(counters.RecvMsgCount).To(BeEquivalentTo(1))
 	t.Expect(counters.TryMsgCount).To(BeZero())
@@ -263,7 +285,7 @@ func TestSendOnIntf_NoUsablePorts(test *testing.T) {
 	}
 	fmt.Printf("DeviceNetworkStatus %+v\n", dns)
 	agentMetrics := controllerconn.NewAgentMetrics()
-	client := makeControllerClient(test, &dns, agentMetrics)
+	client := makeControllerClient(test, &dns, agentMetrics, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -309,11 +331,12 @@ func TestSendOnIntf_WithNetTrace(test *testing.T) {
 	dns := getDeviceNetworkStatus(test)
 	fmt.Printf("DeviceNetworkStatus %+v\n", dns)
 	agentMetrics := controllerconn.NewAgentMetrics()
-	client := makeControllerClient(test, &dns, agentMetrics)
+	url, tlsConfig := startTestServer(test, dns.Ports[0])
+	client := makeControllerClient(test, &dns, agentMetrics, tlsConfig)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	rv, err := client.SendOnIntf(ctx, "https://google.com", dns.Ports[0].IfName, nil,
+	rv, err := client.SendOnIntf(ctx, url, dns.Ports[0].IfName, nil,
 		controllerconn.RequestOptions{
 			AllowProxy:       false,
 			UseOnboard:       false,
@@ -352,12 +375,13 @@ func TestSendOnAllIntf(test *testing.T) {
 	dns.Ports = append(dns.Ports, fakePort)
 	fmt.Printf("DeviceNetworkStatus %+v\n", dns)
 	agentMetrics := controllerconn.NewAgentMetrics()
-	client := makeControllerClient(test, &dns, agentMetrics)
+	url, tlsConfig := startTestServer(test, dns.Ports[0])
+	client := makeControllerClient(test, &dns, agentMetrics, tlsConfig)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	rv, err := client.SendOnAllIntf(ctx, "https://google.com", nil,
+	rv, err := client.SendOnAllIntf(ctx, url, nil,
 		controllerconn.RequestOptions{
 			AllowProxy:      false,
 			UseOnboard:      false,
@@ -397,7 +421,7 @@ func TestSendOnAllIntf_NoUsablePorts(test *testing.T) {
 	}
 	fmt.Printf("DeviceNetworkStatus %+v\n", dns)
 	agentMetrics := controllerconn.NewAgentMetrics()
-	client := makeControllerClient(test, &dns, agentMetrics)
+	client := makeControllerClient(test, &dns, agentMetrics, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -454,12 +478,13 @@ func TestVerifyAllIntf(test *testing.T) {
 	dns.Ports = append(dns.Ports, fakePort)
 	fmt.Printf("DeviceNetworkStatus %+v\n", dns)
 	agentMetrics := controllerconn.NewAgentMetrics()
-	client := makeControllerClient(test, &dns, agentMetrics)
+	url, tlsConfig := startTestServer(test, dns.Ports[0])
+	client := makeControllerClient(test, &dns, agentMetrics, tlsConfig)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	rv, err := client.VerifyAllIntf(ctx, "https://google.com", 1,
+	rv, err := client.VerifyAllIntf(ctx, url, 1,
 		controllerconn.RequestOptions{
 			AllowProxy:      false,
 			UseOnboard:      false,
@@ -477,7 +502,7 @@ func TestVerifyAllIntf(test *testing.T) {
 	t := NewGomegaWithT(test)
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(rv.TracedReqs).To(BeEmpty())
-	t.Expect(rv.ControllerReachable).To(BeTrue()) // Cloud in this case is google.com
+	t.Expect(rv.ControllerReachable).To(BeTrue()) // Cloud in this case is the test server
 	t.Expect(rv.RemoteTempFailure).To(BeFalse())
 }
 
@@ -500,7 +525,7 @@ func TestVerifyAllIntf_NoUsablePorts(test *testing.T) {
 	}
 	fmt.Printf("DeviceNetworkStatus %+v\n", dns)
 	agentMetrics := controllerconn.NewAgentMetrics()
-	client := makeControllerClient(test, &dns, agentMetrics)
+	client := makeControllerClient(test, &dns, agentMetrics, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
