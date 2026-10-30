@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/go-cmp/cmp"
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -126,7 +126,17 @@ func verifyJWT(ctx *getconfigContext, params []string) ([]byte, error) {
 	}
 
 	method := jwt.GetSigningMethod(jalgo.Alg)
-	err = method.Verify(strings.Join(params[0:2], "."), params[2], ecdsaKey)
+	if method == nil {
+		err := fmt.Errorf("jwt signing method %q not registered", jalgo.Alg)
+		log.Errorf("%v", err)
+		return nil, err
+	}
+	signature, err := base64.RawURLEncoding.DecodeString(params[2])
+	if err != nil {
+		log.Errorf("can not decode jwt signature: %v", err)
+		return nil, err
+	}
+	err = method.Verify(strings.Join(params[0:2], "."), signature, ecdsaKey)
 	if err != nil {
 		log.Errorf("verify jwt failed: %v", err)
 		return nil, err

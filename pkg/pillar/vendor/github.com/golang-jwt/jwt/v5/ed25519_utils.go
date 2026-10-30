@@ -9,11 +9,11 @@ import (
 )
 
 var (
-	ErrNotEdPrivateKey = errors.New("Key is not a valid Ed25519 private key")
-	ErrNotEdPublicKey  = errors.New("Key is not a valid Ed25519 public key")
+	ErrNotEdPrivateKey = errors.New("key is not a valid Ed25519 private key")
+	ErrNotEdPublicKey  = errors.New("key is not a valid Ed25519 public key")
 )
 
-// Parse PEM-encoded Edwards curve private key
+// ParseEdPrivateKeyFromPEM parses a PEM-encoded Edwards curve private key
 func ParseEdPrivateKeyFromPEM(key []byte) (crypto.PrivateKey, error) {
 	var err error
 
@@ -24,7 +24,7 @@ func ParseEdPrivateKeyFromPEM(key []byte) (crypto.PrivateKey, error) {
 	}
 
 	// Parse the key
-	var parsedKey interface{}
+	var parsedKey any
 	if parsedKey, err = x509.ParsePKCS8PrivateKey(block.Bytes); err != nil {
 		return nil, err
 	}
@@ -38,7 +38,7 @@ func ParseEdPrivateKeyFromPEM(key []byte) (crypto.PrivateKey, error) {
 	return pkey, nil
 }
 
-// Parse PEM-encoded Edwards curve public key
+// ParseEdPublicKeyFromPEM parses a PEM-encoded Edwards curve public key
 func ParseEdPublicKeyFromPEM(key []byte) (crypto.PublicKey, error) {
 	var err error
 
@@ -49,7 +49,7 @@ func ParseEdPublicKeyFromPEM(key []byte) (crypto.PublicKey, error) {
 	}
 
 	// Parse the key
-	var parsedKey interface{}
+	var parsedKey any
 	if parsedKey, err = x509.ParsePKIXPublicKey(block.Bytes); err != nil {
 		return nil, err
 	}
