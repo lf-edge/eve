@@ -14,7 +14,7 @@ FROM build-${TARGETARCH} AS build
 ENV BUILD_PKGS git gcc make libc-dev linux-pam-dev m4 findutils util-linux make patch
 RUN eve-alpine-deploy.sh
 
-ENV FSCRYPT_COMMIT=v0.3.4
+ENV FSCRYPT_COMMIT=v0.3.7
 WORKDIR /go/src/github.com/google/fscrypt
 # hadolint ignore=DL3020
 ADD --keep-git-dir=true https://github.com/google/fscrypt.git#${FSCRYPT_COMMIT} .
@@ -25,6 +25,12 @@ RUN set -e && for patch in *.patch; do \
         echo "Applying $patch"; \
         patch -p1 < "$patch"; \
     done
+
+# fscrypt pins golang.org/x/crypto at a release with known SSH advisories;
+# fscrypt uses none of that code, but the module version still shows up in
+# the SBOM. Move the dependencies of the binary to their current releases.
+RUN go get golang.org/x/crypto@v0.58.0 golang.org/x/sys@v0.49.0 golang.org/x/term@v0.47.0 \
+        google.golang.org/protobuf@v1.36.12
 
 RUN make -j "$(getconf _NPROCESSORS_ONLN)" && make DESTDIR="/out/opt/zededa" PREFIX="" install
 
