@@ -5,6 +5,8 @@ package zedrouter
 
 import (
 	"bytes"
+	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,9 +19,12 @@ import (
 
 	info "github.com/lf-edge/eve-api/go/info"
 	nestedapp "github.com/lf-edge/eve-api/go/nestedappinstancemetrics"
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/moby/moby/client"
 	// revive:disable:dot-imports
 	. "github.com/onsi/gomega"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -215,4 +220,86 @@ func TestRuntimeStatusSizeBound(t *testing.T) {
 	data, err := json.Marshal(status)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(len(data)).To(BeNumerically("<", 1024))
+}
+
+// TestAppContainerStatsAndLogs drives the Docker Engine API calls zedrouter
+// makes to an app's docker daemon against a fake daemon serving the API
+// version zedrouter pins, and checks the metrics and log lines derived from
+// the responses.
+func TestAppContainerStatsAndLogs(t *testing.T) {
+	g := NewWithT(t)
+
+	var paths []string
+	mux := http.NewServeMux()
+	jsonHandler := func(body string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			paths = append(paths, r.URL.RequestURI())
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, body)
+		}
+	}
+	prefix := "/v" + dockerAPIVersion + "/containers/"
+	mux.HandleFunc(prefix+"json", jsonHandler(
+		`[{"Id":"abc123","Names":["/web"],"Status":"Up 3 hours"}]`))
+	mux.HandleFunc(prefix+"abc123/json", jsonHandler(
+		`{"Id":"abc123","State":{"StartedAt":"2026-10-30T10:00:00.5Z"}}`))
+	mux.HandleFunc(prefix+"abc123/stats", jsonHandler(
+		`{"pids_stats":{"current":7},`+
+			`"cpu_stats":{"cpu_usage":{"total_usage":123456},"system_cpu_usage":789000},`+
+			`"memory_stats":{"usage":3145728,"limit":1073741824},`+
+			`"networks":{"eth0":{"rx_bytes":1000,"tx_bytes":2000}},`+
+			`"blkio_stats":{"io_service_bytes_recursive":`+
+			`[{"op":"Read","value":2097152},{"op":"Write","value":1048576}]}}`))
+	mux.HandleFunc(prefix+"abc123/logs", func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.RequestURI())
+		w.Header().Set("Content-Type", "application/vnd.docker.multiplexed-stream")
+		// One stdout frame of the multiplexed stream: an 8 byte header with
+		// the stream type and the big-endian payload length, then the line.
+		line := []byte("2026-10-30T10:01:00.000000000Z hello from web\n")
+		hdr := []byte{1, 0, 0, 0, 0, 0, 0, 0}
+		binary.BigEndian.PutUint32(hdr[4:], uint32(len(line)))
+		w.Write(hdr)
+		w.Write(line)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cli, err := client.New(client.WithHost(srv.URL), client.WithAPIVersion(dockerAPIVersion))
+	g.Expect(err).ToNot(HaveOccurred())
+	list, err := cli.ContainerList(context.Background(), client.ContainerListOptions{})
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(list.Items).To(HaveLen(1))
+
+	z := &zedrouter{
+		log:                base.NewSourceLogObject(logrus.StandardLogger(), agentName, 0),
+		appContainerLogger: logrus.New(),
+	}
+	stats := z.getAppContainerStats(cli, list.Items)
+	g.Expect(stats.StatsList).To(HaveLen(1))
+	st := stats.StatsList[0]
+	g.Expect(st.ContainerName).To(Equal("web"))
+	g.Expect(st.Status).To(Equal("Up 3 hours"))
+	g.Expect(st.Pids).To(Equal(uint32(7)))
+	g.Expect(st.CPUTotal).To(Equal(uint64(123456)))
+	g.Expect(st.SystemCPUTotal).To(Equal(uint64(789000)))
+	started := time.Date(2026, 10, 30, 10, 0, 0, 500000000, time.UTC)
+	g.Expect(st.Uptime).To(Equal(started.UnixNano()))
+	g.Expect(st.UsedMem).To(Equal(uint32(3)))
+	g.Expect(st.AllocatedMem).To(Equal(uint32(1024)))
+	g.Expect(st.RxBytes).To(Equal(uint64(1000)))
+	g.Expect(st.TxBytes).To(Equal(uint64(2000)))
+	g.Expect(st.ReadBytes).To(Equal(uint64(2)))
+	g.Expect(st.WriteBytes).To(Equal(uint64(1)))
+
+	last := map[string]time.Time{}
+	numlogs := z.getAppContainerLogs(types.AppNetworkStatus{}, last, cli, list.Items)
+	g.Expect(numlogs).To(BeNumerically(">", 0))
+	g.Expect(last).To(HaveKey("web"))
+	// The next poll starts just after the last line seen.
+	g.Expect(last["web"].Equal(time.Date(2026, 10, 30, 10, 1, 0, 2, time.UTC))).To(BeTrue())
+
+	g.Expect(paths).To(ContainElement(prefix + "json"))
+	g.Expect(paths).To(ContainElement(prefix + "abc123/json"))
+	g.Expect(paths).To(ContainElement(HavePrefix(prefix + "abc123/stats?")))
+	g.Expect(paths).To(ContainElement(HavePrefix(prefix + "abc123/logs?")))
 }
