@@ -28,8 +28,11 @@ A release tag runs `publish.yml` from the tagged commit. It reuses the
 packages a build of its branch pushed and signed (see below for the
 exception). Then:
 
-1. The `eve` jobs push EVE and `eve-sources` by digest, without a tag, and the
-   `indexes` job pushes the multi-arch indexes the same way.
+1. The `eve` jobs build EVE and `eve-sources`, even if the registry already
+   has an image under the release's name, and push them by digest, without a
+   tag. The `indexes` job pushes the multi-arch indexes the same way. A
+   branch build of the tagged commit pushes EVE only under the branch's
+   names.
 2. `assets.yml` builds the release files from those digests into a draft
    release, which only collaborators can see.
 3. One call of `release-sign.yml` from `master` signs the images, the indexes,
