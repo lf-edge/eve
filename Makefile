@@ -428,6 +428,9 @@ lk-extra-opt/%: FORCE
 RESCAN_DEPS=FORCE $(LK_POSSIBLE_BUILD_ARG_TARGETS)
 # set FORCE_BUILD to --force to enforce rebuild
 FORCE_BUILD=
+# set FORCE_BUILD_EVE to --force to build the eve and eve-sources images even
+# if the registry has their tag, which names a version, not their content
+FORCE_BUILD_EVE=
 # Packages to always rebuild rather than pull/skip (applied by the eve-%
 # rule below). Keyed by name, not a target-specific FORCE_BUILD variable:
 # those propagate to the whole prerequisite subtree in GNU Make, which
@@ -1032,7 +1035,7 @@ endef
 publish_sources: $(COLLECTED_SOURCES)
 	$(QUIET): $@: Begin
 	cp pkg/sources/* $(SOURCES_DIR)
-	$(call push-eve-image,$(SOURCES_DIR) $|)
+	$(call push-eve-image,$(SOURCES_DIR) $|,$(FORCE_BUILD_EVE))
 	$(QUIET): $@: Succeeded
 
 
@@ -1120,7 +1123,7 @@ eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	cp images/out/*.yml $|
 	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
-	$(call push-eve-image,$|,$(FORCE_BUILD))
+	$(call push-eve-image,$|,$(FORCE_BUILD) $(FORCE_BUILD_EVE))
 	$(QUIET): $@: Succeeded
 
 eden:

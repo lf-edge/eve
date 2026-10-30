@@ -258,6 +258,13 @@ jobs:
       contents: read
       id-token: write
     timeout-minutes: 1440
+    # run-make passes these to make -e. A branch build of a release's commit
+    # would otherwise take the release's version from its tag and push EVE
+    # under the release's names, which a tag build would then pull rather
+    # than build.
+    env:
+      REPO_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'snapshot' }}
+      FORCE_BUILD_EVE: ${{ startsWith(github.ref, 'refs/tags/') && '--force' || '' }}
     strategy:
       fail-fast: false
       matrix:
