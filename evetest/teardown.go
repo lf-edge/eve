@@ -5,6 +5,7 @@ package evetest
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/lf-edge/eve/evetest/constants"
@@ -57,6 +58,16 @@ func (th *TestHarness) teardownDevices() {
 	th.netModel = nil
 	th.netModelM.Unlock()
 
+	// Report failures after releasing devicesM: with pause-on-failure, Fatalf
+	// blocks until resumed, and holding the lock would hang the Status RPC.
+	if err := th.removeAndTeardownDevices(); err != nil {
+		th.t.Fatalf("%v", err)
+	}
+}
+
+// removeAndTeardownDevices removes all devices from the controller and tears
+// them down together with the SDN VM.
+func (th *TestHarness) removeAndTeardownDevices() error {
 	th.devicesM.Lock()
 	defer th.devicesM.Unlock()
 
@@ -72,8 +83,8 @@ func (th *TestHarness) teardownDevices() {
 		err := th.adamClient.RemoveDevice(ctx, dev.ID)
 		cancel()
 		if err != nil {
-			th.t.Fatalf(
-				"Failed to remove device %q from the controller: %v",
+			return fmt.Errorf(
+				"failed to remove device %q from the controller: %w",
 				dev.name, err)
 		}
 	}
@@ -87,9 +98,10 @@ func (th *TestHarness) teardownDevices() {
 		&api.TeardownDevicesRequest{ClientId: th.brokerClientID})
 	cancel()
 	if err != nil {
-		th.t.Fatalf("Failed to tear-down all devices: %v", err)
+		return fmt.Errorf("failed to tear-down all devices: %w", err)
 	}
 	th.devices = make(map[string]*deviceState)
+	return nil
 }
 
 // unsubscribeDeviceWatchers unsubscribes info and config request watchers
