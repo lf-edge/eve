@@ -380,8 +380,10 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
         GH_REPO: ${{ github.repository }}
-        CLASSIFIER: ${{ failure() && 'OUTDATED' || 'RESOLVED' }}
+        JOB_STATUS: ${{ job.status }}
       run: |
+        CLASSIFIER=RESOLVED
+        [ "$JOB_STATUS" = failure ] && CLASSIFIER=OUTDATED
         MARKER='<!-- evetest-analysis:${{ inputs.test-suite }} -->'
         gh api --paginate "repos/${GH_REPO}/issues/${{ inputs.pr-number }}/comments" \
           --jq ".[] | select(.user.type == \"Bot\" and (.body | startswith(\"${MARKER}\"))) | .node_id" \
