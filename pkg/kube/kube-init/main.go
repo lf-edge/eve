@@ -50,12 +50,14 @@ import (
 	"golang.org/x/sys/unix"
 	"gopkg.in/natefinch/lumberjack.v2"
 
+	"github.com/lf-edge/eve/pkg/kube/kube-init/clusterconn"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/clustermode"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/components"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/deploy"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/encconfig"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/encstatus"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/etcd"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/images"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kcus"
@@ -651,6 +653,11 @@ func main() {
 		// simply never receives anything on the topic.
 		log.Fatalf("witness status subscriber: %v", err)
 	}
+	if !role.IsWitness() {
+		if err := clusterconn.RegisterPublisher(psMgr); err != nil {
+			log.Fatalf("cluster connection publisher: %v", err)
+		}
+	}
 
 	// Register all topic subscribers before psMgr.Run starts —
 	// the Manager activates registered subscriptions at Run time
@@ -785,6 +792,11 @@ func (d *daemon) run(ctx context.Context) {
 		// has to be equally long-lived.
 		go d.bridgeMonitorRestarts(ctx)
 		monitor.StartClusterConfigMonitor(ctx, d.monRestartCh)
+
+		// Whether this node can still reach a quorum of its cluster is
+		// reported to the controller by the node itself: the cluster-wide
+		// report needs the very API that is gone when quorum is.
+		go clusterconn.Run(ctx, d.clusterMembership, etcd.LocalStatus)
 	} else {
 		// The witness has its own, much smaller watch: whether it
 		// should run at all, and which seed to join, both come from

@@ -108,3 +108,16 @@ func (d *daemon) publishStatus() {
 	}
 	_ = kubeinitstatus.Publish(d.buildStatus())
 }
+
+// clusterMembership reports the cluster this node is a member of, if it is
+// one right now.
+func (d *daemon) clusterMembership() (string, bool) {
+	if d.deriveMembership() != MembershipMember {
+		return "", false
+	}
+	cs, err := k3s.GetClusterStatus()
+	if err != nil || cs == nil {
+		return "", false
+	}
+	return cs.ClusterID, true
+}

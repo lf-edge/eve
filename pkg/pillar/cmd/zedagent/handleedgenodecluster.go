@@ -142,6 +142,73 @@ func initKubeSubs(ctx *zedagentContext) {
 		log.Fatal(err)
 	}
 	ctx.subKubeClusterInfo.Activate()
+
+	// kube-init, not zedkube, publishes this one: it has to be known
+	// when the cluster API, and with it zedkube's report, is gone.
+	ctx.subClusterNodeConn, err = ctx.ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "kube-init",
+		MyAgentName:   agentName,
+		TopicImpl:     types.ClusterNodeConnection{},
+		Persistent:    false,
+		Activate:      false,
+		Ctx:           ctx,
+		CreateHandler: handleClusterNodeConnectionCreate,
+		ModifyHandler: handleClusterNodeConnectionModify,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subClusterNodeConn.Activate()
+}
+
+func handleClusterNodeConnectionCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	handleClusterNodeConnectionImpl(ctxArg, key, statusArg)
+}
+
+func handleClusterNodeConnectionModify(ctxArg interface{}, key string,
+	statusArg interface{}, _ interface{}) {
+	handleClusterNodeConnectionImpl(ctxArg, key, statusArg)
+}
+
+// handleClusterNodeConnectionImpl sends this node's own view of its
+// cluster connection to the controller. kube-init publishes only when
+// the view changes, so each change is one message.
+func handleClusterNodeConnectionImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	ctx, ok := ctxArg.(*zedagentContext)
+	if !ok {
+		log.Errorf("handleClusterNodeConnectionImpl invalid type in ctxArg: %v", ctxArg)
+		return
+	}
+	conn, ok := statusArg.(types.ClusterNodeConnection)
+	if !ok {
+		log.Errorf("handleClusterNodeConnectionImpl invalid type in statusArg: %v", statusArg)
+		return
+	}
+	publishClusterNodeConnection(ctx, conn)
+}
+
+// publishClusterNodeConnection sends a ZInfoClusterNode message.
+func publishClusterNodeConnection(ctx *zedagentContext, conn types.ClusterNodeConnection) {
+	infoMsg := &info.ZInfoMsg{
+		Ztype:       info.ZInfoTypes_ZiClusterNode,
+		DevId:       devUUID.String(),
+		AtTimeStamp: ptypes.TimestampNow(),
+		InfoContent: &info.ZInfoMsg_ClusterNode{
+			ClusterNode: conn.ZInfoClusterNode(),
+		},
+	}
+	data, err := proto.Marshal(infoMsg)
+	if err != nil {
+		log.Errorf("publishClusterNodeConnection proto marshaling error: %v", err)
+		return
+	}
+	log.Functionf("publishClusterNodeConnection sending %v", infoMsg)
+	queueInfoToDest(ctx, AllDest, "clusternodeconnection", bytes.NewBuffer(data),
+		true, false, false, info.ZInfoTypes_ZiClusterNode)
 }
 
 func kubeClusterInfoTask(ctxPtr *zedagentContext, triggerClusterInfo <-chan destinationBitset) {

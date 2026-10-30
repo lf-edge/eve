@@ -4,6 +4,7 @@
 package etcd
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -96,5 +97,41 @@ func TestParseMembers(t *testing.T) {
 	}
 	if members[2].Voting() {
 		t.Error("learner must not count as voting")
+	}
+}
+
+// TestParseStatus pins how the local member's status is read: a leader
+// ID of zero, with the member's own error, is how it reports having
+// lost quorum.
+func TestParseStatus(t *testing.T) {
+	cases := []struct {
+		name       string
+		out        string
+		want       Status
+		wantErrStr bool
+	}{
+		{
+			name: "healthy",
+			out:  `[{"Endpoint":"https://127.0.0.1:2379","Status":{"leader":12345,"raftTerm":24}}]`,
+			want: Status{HasLeader: true},
+		},
+		{
+			name: "no leader",
+			out:  `[{"Endpoint":"https://127.0.0.1:2379","Status":{"leader":0,"errors":["etcdserver: no leader"]}}]`,
+			want: Status{Errors: []string{"etcdserver: no leader"}},
+		},
+		{name: "garbage", out: `not json`, wantErrStr: true},
+		{name: "no endpoints", out: `[]`, wantErrStr: true},
+	}
+	for _, c := range cases {
+		got, err := parseStatus([]byte(c.out))
+		if (err != nil) != c.wantErrStr {
+			t.Errorf("%s: err = %v, want error %v", c.name, err, c.wantErrStr)
+			continue
+		}
+		if got.HasLeader != c.want.HasLeader ||
+			strings.Join(got.Errors, ";") != strings.Join(c.want.Errors, ";") {
+			t.Errorf("%s: got %+v, want %+v", c.name, got, c.want)
+		}
 	}
 }

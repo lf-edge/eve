@@ -166,6 +166,61 @@ func (w *WitnessStatus) ZKubeWitnessInfo() *info.KubeWitnessInfo {
 	return out
 }
 
+// ClusterQuorum is a cluster member's own view of whether the cluster's
+// etcd has quorum.
+type ClusterQuorum uint8
+
+// ClusterQuorum values.
+const (
+	// ClusterQuorumUnknown - etcd is not running yet, or could not be asked.
+	ClusterQuorumUnknown ClusterQuorum = iota
+	// ClusterQuorumEstablished - the member reaches a majority of the etcd members.
+	ClusterQuorumEstablished
+	// ClusterQuorumLost - the member cannot reach a majority.
+	ClusterQuorumLost
+)
+
+// ClusterNodeConnection - this node's own connection to its cluster, as
+// reported to the controller. It is published by kube-init, which can
+// tell without the Kubernetes API, and so also when the API is down for
+// lack of quorum: the case no cluster-wide report can describe.
+type ClusterNodeConnection struct {
+	// ClusterID is the cluster this node belongs to.
+	ClusterID string
+	Quorum    ClusterQuorum
+	// Error is the probe failure behind ClusterQuorumLost.
+	Error ErrorDescription
+	// QuorumChangeTime is when Quorum took its current value, as first
+	// determined since the device started. Zero while Quorum is unknown.
+	QuorumChangeTime time.Time
+}
+
+// Key - returns the key for the ClusterNodeConnection publication.
+func (c ClusterNodeConnection) Key() string {
+	return "global"
+}
+
+// ZInfoClusterNode converts to the eve-api form. The node status stays
+// unspecified unless the cluster is unreachable, as readiness of the
+// node itself is part of the cluster-wide report.
+func (c ClusterNodeConnection) ZInfoClusterNode() *info.ZInfoClusterNode {
+	out := &info.ZInfoClusterNode{ClusterId: c.ClusterID}
+	switch c.Quorum {
+	case ClusterQuorumEstablished:
+		out.Quorum = info.ZInfoClusterNodeQuorum_Z_INFO_CLUSTER_NODE_QUORUM_ESTABLISHED
+	case ClusterQuorumLost:
+		out.Quorum = info.ZInfoClusterNodeQuorum_Z_INFO_CLUSTER_NODE_QUORUM_LOST
+		out.NodeStatus = info.ZInfoClusterNodeStatus_Z_INFO_CLUSTER_NODE_STATUS_DOWN
+	}
+	if c.Error.Error != "" {
+		out.Error = c.Error.ToProto()
+	}
+	if !c.QuorumChangeTime.IsZero() {
+		out.QuorumChangeTime = timestamppb.New(c.QuorumChangeTime)
+	}
+	return out
+}
+
 // KubePodStatus - Enum for the status of a Kubernetes pod
 type KubePodStatus int8
 

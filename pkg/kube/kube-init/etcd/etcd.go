@@ -99,6 +99,54 @@ func parseMembers(out []byte) ([]Member, error) {
 	return members, nil
 }
 
+// Status is what the local member reports about its place in the
+// cluster, without going through raft.
+type Status struct {
+	// HasLeader is false when the member knows of no leader, which is
+	// what it reports once it can no longer reach a majority.
+	HasLeader bool
+	// Errors are the member's own error strings, such as
+	// "etcdserver: no leader".
+	Errors []string
+}
+
+// statusJSON mirrors the parts of `etcdctl endpoint status -w json`
+// that we use.
+type statusJSON []struct {
+	Status struct {
+		Leader uint64   `json:"leader"`
+		Errors []string `json:"errors"`
+	} `json:"Status"`
+}
+
+// LocalStatus asks the local member for its status. Unlike
+// `endpoint health` it proposes nothing through raft, so it answers at
+// once even without quorum instead of waiting for a commit to time out.
+// An error means the member could not be reached at all, not that it
+// lacks quorum.
+func LocalStatus(ctx context.Context) (Status, error) {
+	out, err := run(ctx, "endpoint", "status", "-w", "json")
+	if err != nil {
+		return Status{}, err
+	}
+	return parseStatus(out)
+}
+
+func parseStatus(out []byte) (Status, error) {
+	var parsed statusJSON
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		return Status{}, fmt.Errorf("parse endpoint status: %w", err)
+	}
+	if len(parsed) != 1 {
+		return Status{}, fmt.Errorf("endpoint status: got %d endpoints, want 1",
+			len(parsed))
+	}
+	return Status{
+		HasLeader: parsed[0].Status.Leader != 0,
+		Errors:    parsed[0].Status.Errors,
+	}, nil
+}
+
 // RemoveMember evicts a member from the cluster.
 func RemoveMember(ctx context.Context, m Member) error {
 	if _, err := run(ctx, "member", "remove", m.IDHex()); err != nil {
