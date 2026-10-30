@@ -199,7 +199,7 @@ tag build rebuilds them from the tagged source, as it does EVE itself.
 `lfedge/eve-kernel` and `lfedge/eve-rust` are published by the eve-kernel and
 eve-rust repositories and are verified against their workflows' identities
 instead. While a package is in `EVE_COSIGN_EXCLUDE` (default
-`^eve-(kernel|rust)$`), `check-inputs` and `audit` only log whether its images
+`^eve-kernel$`), `check-inputs` and `audit` only log whether its images
 verify, as `excluded, verified as …`, `excluded, not signed: …` or
 `excluded, does not verify as …`; once the log shows them verified, removing
 the package from the exclusion makes the check binding. Not verified: `linuxkit/*` images and external `FROM` images. The
