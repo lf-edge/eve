@@ -4,3 +4,5 @@
 # SPDX-License-Identifier: Apache-2.0
 org: lfedge
 image: eve-runc
+# go get and go mod vendor fetch the moved dependencies.
+network: yes
