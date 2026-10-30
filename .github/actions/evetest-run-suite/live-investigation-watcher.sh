@@ -35,7 +35,7 @@ OWNER_PID="${2:-}"
 SEEN_SUCCESS=false
 STATUS_TIMEOUT=10                       # a wedged Status RPC must not wedge the watcher
 STATUS_HANG_LIMIT=3                     # consecutive timeouts before force-resuming
-INVESTIGATION_TIMEOUT=1800              # cap on one Claude investigation
+INVESTIGATION_TIMEOUT=1080              # cap on one Claude investigation; stay below EVETEST_PAUSE_LIMIT (20m)
 STATUS_HANGS=0
 
 log() { echo "[live-investigation] $*"; }
