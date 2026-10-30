@@ -232,6 +232,46 @@ jobs:
               --certificate-github-workflow-ref "$GITHUB_REF" "$f"
             echo "signed blob: $f"
           done
+      # Records in Rekor who pushed the tag, so a verifier can check that the
+      # maintainer who approves the release is someone else. github.actor is
+      # the pusher even when someone else re-runs the run.
+      - name: Attest the tagger
+        env:
+          TAGGER: ${{ github.actor }}
+          TAGGER_ID: ${{ github.actor_id }}
+        run: |
+          set -euo pipefail
+          retry() {
+            local tries=1
+            until "$@"; do
+              [ "$tries" -lt 5 ] || { echo "::error::$1 $2 failed $tries times"; exit 1; }
+              echo "$1 $2 failed, retrying in 30 s"
+              sleep 30
+              tries=$((tries + 1))
+            done
+          }
+          tag=${GITHUB_REF#refs/tags/}
+          type="https://github.com/$REPOSITORY/release-tagger/v1"
+          statement="$RUNNER_TEMP/tagger.json"
+          {
+            find images -name images.txt -exec cat {} + 2> /dev/null | sort -u | while read -r ref; do
+              jq -nc --arg n "${ref%@*}" --arg d "${ref#*@sha256:}" '{name: $n, digest: {sha256: $d}}'
+            done
+            find blobs -type f 2> /dev/null | while read -r f; do
+              jq -nc --arg n "$(basename "$f")" --arg d "$(sha256sum "$f" | cut -d' ' -f1)" '{name: $n, digest: {sha256: $d}}'
+            done
+          } | jq -s --arg type "$type" --arg tag "$tag" --arg commit "$GITHUB_SHA" \
+                --arg login "$TAGGER" --argjson id "$TAGGER_ID" \
+                '{_type: "https://in-toto.io/Statement/v1", subject: ., predicateType: $type,
+                  predicate: {tag: $tag, commit: $commit, tagger: {login: $login, id: $id}}}' > "$statement"
+          b="bundles/$tag.tagger.sigstore.json"
+          retry cosign attest-blob --yes --statement "$statement" --bundle "$b"
+          find blobs -type f 2> /dev/null | while read -r f; do
+            cosign verify-blob-attestation --bundle "$b" --type "$type" --certificate-oidc-issuer "$ISSUER" \
+              --certificate-identity "$IDENTITY" --certificate-github-workflow-repository "$REPOSITORY" \
+              --certificate-github-workflow-ref "$GITHUB_REF" "$f" > /dev/null
+          done
+          echo "attested tagger $TAGGER ($TAGGER_ID): $(jq '.subject | length' "$statement") subjects"
       - name: Upload blob bundles
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:

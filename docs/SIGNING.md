@@ -13,6 +13,7 @@ its own builds the same way.
 | --- | --- | --- |
 | `lfedge/eve:<tag>[-<platform>]-<hv>-<arch>`, `lfedge/eve-sources:…`, their multi-arch indexes, and an SPDX SBOM attestation on each EVE image except riscv64 | `release-sign.yml@refs/heads/master` | release tags, after approval |
 | `<arch>.<hv>.<platform>.sha256sums` release asset | `release-sign.yml@refs/heads/master` | release tags, after approval |
+| `<tag>.tagger.sigstore.json` release asset: an in-toto statement, type `https://github.com/lf-edge/eve/release-tagger/v1`, naming who pushed the tag (`github.actor` and its ID), over every image, index and `sha256sums` above | `release-sign.yml@refs/heads/master` | release tags, after approval |
 | `lfedge/eve-<pkg>` platform manifests and indexes | `publish.yml@refs/heads/<branch>` | pushes to `master`, `N.N` and `N.N-stable` that build the package |
 | `lfedge/eve-alpine-base` platform manifests and index | `build-alpine-base.yml@refs/heads/master` | manual runs of that workflow on `master` |
 
