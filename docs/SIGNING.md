@@ -155,6 +155,34 @@ accepted: a tag can be pushed at any commit.
 cosign cannot currently check the certificate's immutable repository-owner ID,
 so these checks rely on the `lf-edge` organization name.
 
+[eve-sigverify](https://github.com/lf-edge/eve-tools/tree/master/eve-sigverify)
+applies this policy by default. It also requires the release to be a GitHub
+immutable release and checks GitHub's attestation of the tag and its assets:
+
+```sh
+eve-sigverify release $TAG          # sums files, each variant's images.txt
+eve-sigverify release -variant amd64.kvm.generic \
+  -asset amd64.kvm.generic.installer.raw.zst $TAG
+eve-sigverify assets -tag $TAG DIR DIR/amd64.kvm.generic.sha256sums   # downloaded files
+eve-sigverify image -tag $TAG docker.io/lfedge/eve:$TAG-kvm-amd64
+eve-sigverify image -tag $TAG ./layout   # from oras copy --recursive --to-oci-layout
+```
+
+`docker pull` keeps no signatures, but the image keeps the digest the
+registry served. Verify that digest, then run the image by it:
+
+```sh
+d=$(docker image inspect --format '{{index .RepoDigests 0}}' lfedge/eve:$TAG-kvm-amd64)
+eve-sigverify image -tag $TAG "docker.io/$d"
+docker run --rm "$d" installer_raw > installer.raw
+```
+
+`docker run` output is only as trustworthy as the verified image that
+produced it. `rootfs` and `sbom` output is identical to the release's
+`rootfs.img` and `rootfs.spdx.json`, so the signed sums cover it too.
+`installer_raw`, `installer_iso` and `live` give different bytes on every
+run.
+
 ## Verification inside the build
 
 `publish.yml` verifies what it reuses before it pushes anything built from it,
