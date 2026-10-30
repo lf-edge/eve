@@ -19,7 +19,11 @@ RUN echo "Running go vet" && GOARCH=${TARGETARCH} go vet -mod=vendor ./... && ec
     ERR=$(gofmt -e -l -s $(find . -name \*.go | grep -v /vendor/)) && \
     if [ -n "$ERR" ] ; then echo "go fmt Failed - ERR: $ERR"; exit 1 ; fi
 
-RUN GO111MODULE=on CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags "-s -w" -mod=vendor -o /out/usr/bin/storage-resizer .
+# STRESS BRANCH ONLY (-tags chaos): compiles the partitionresizer GPT-write
+# delay/pause-pet backend. Dormant unless RESIZER_GPT_WRITE_DELAY is set at run
+# time, so a chaos build behaves identically to a normal one in the field. DO NOT
+# carry -tags chaos into a shippable image.
+RUN GO111MODULE=on CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -tags chaos -ldflags "-s -w" -mod=vendor -o /out/usr/bin/storage-resizer .
 
 # The binary is static and self-contained; the filesystem/partition tools it
 # shells out to (resize2fs, e2fsck, fsck.fat, sgdisk, partx) are provided by the
