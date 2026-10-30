@@ -231,7 +231,7 @@ runs:
 
         WATCHER_PID=""
         if [ "${{ inputs.analyze-failures }}" = "true" ]; then
-          "${GITHUB_ACTION_PATH}/live-investigation-watcher.sh" "${{ inputs.test-suite }}" &
+          "${GITHUB_ACTION_PATH}/live-investigation-watcher.sh" "${{ inputs.test-suite }}" "$$" &
           WATCHER_PID=$!
         fi
 
