@@ -70,7 +70,8 @@ func TestDeferredQueue(test *testing.T) {
 	dns.Ports = append(dns.Ports, fakePort)
 	fmt.Printf("DeviceNetworkStatus %+v\n", dns)
 	agentMetrics := controllerconn.NewAgentMetrics()
-	client := makeControllerClient(test, &dns, agentMetrics)
+	url, tlsConfig := startTestServer(test, dns.Ports[0])
+	client := makeControllerClient(test, &dns, agentMetrics, tlsConfig)
 
 	logger := logrus.StandardLogger()
 	logObj = base.NewSourceLogObject(logger, "test", 1234)
@@ -78,7 +79,7 @@ func TestDeferredQueue(test *testing.T) {
 		"deferred-send-operation", 15*time.Second, 20*time.Second, sentHandler)
 
 	buf := bytes.NewBufferString("foo=bar")
-	queue.SetDeferred("test1", buf, "https://postman-echo.com/post", nil,
+	queue.SetDeferred("test1", buf, url, nil,
 		controllerconn.DeferredItemOpts{
 			BailOnHTTPErr:    false,
 			WithNetTracing:   false,
@@ -139,7 +140,7 @@ func TestDeferredQueue_NoUsablePorts(test *testing.T) {
 	}
 	fmt.Printf("DeviceNetworkStatus %+v\n", dns)
 	agentMetrics := controllerconn.NewAgentMetrics()
-	client := makeControllerClient(test, &dns, agentMetrics)
+	client := makeControllerClient(test, &dns, agentMetrics, nil)
 
 	logger := logrus.StandardLogger()
 	logObj = base.NewSourceLogObject(logger, "test", 1234)
