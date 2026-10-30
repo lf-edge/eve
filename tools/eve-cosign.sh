@@ -51,7 +51,7 @@
 #   EVE_SIG_PREFIX              where package signatures live
 #                               (default EVE_PKG_PREFIX)
 #   EVE_COSIGN_EXCLUDE          regexp of package names whose signatures are
-#                               only logged (default ^eve-(kernel|rust)$)
+#                               only logged (default ^eve-kernel$)
 #   LINUXKIT_CACHE              linuxkit cache (default ~/.linuxkit/cache)
 
 set -euo pipefail
@@ -60,7 +60,7 @@ EVE="$(cd "$(dirname "$0")/.." && pwd)"
 OIDC_ISSUER=https://token.actions.githubusercontent.com
 PKG_PREFIX="${EVE_PKG_PREFIX:-docker.io/lfedge}"
 SIG_PREFIX="${EVE_SIG_PREFIX:-$PKG_PREFIX}"
-EXCLUDE="${EVE_COSIGN_EXCLUDE:-^eve-(kernel|rust)$}"
+EXCLUDE="${EVE_COSIGN_EXCLUDE:-^eve-kernel$}"
 CACHE="${LINUXKIT_CACHE:-$HOME/.linuxkit/cache}"
 
 # The signature policy: the workflows allowed to sign packages, and the
