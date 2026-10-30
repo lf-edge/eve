@@ -4,7 +4,7 @@ kernel:
 init:
   - linuxkit/init:075ff447b68e23feef95589c90010a039533e5b5
   - RUNC_TAG                   # runc v1.3.6 built from source, stripped
-  - linuxkit/containerd:eb5daf20704109ea58abb38d2b808e0c3a7e3717 # containerd v2.2.4
+  - CONTAINERD_TAG             # containerd v2.2.10 built from source, stripped
   # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
   - linuxkit/getty:v1.3.0
   - linuxkit/memlogd:v1.3.0
