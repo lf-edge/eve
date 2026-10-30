@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 //go:build darwin || dragonfly || freebsd || netbsd || openbsd
-// +build darwin dragonfly freebsd netbsd openbsd
 
 // BSD system call wrappers shared by *BSD based systems
 // including OS X (Darwin) and FreeBSD.  Like the other
@@ -189,7 +188,7 @@ func (sa *SockaddrUnix) sockaddr() (unsafe.Pointer, _Socklen, error) {
 	}
 	sa.raw.Len = byte(3 + n) // 2 for Family, Len; 1 for NUL
 	sa.raw.Family = AF_UNIX
-	for i := 0; i < n; i++ {
+	for i := range n {
 		sa.raw.Path[i] = int8(name[i])
 	}
 	return unsafe.Pointer(&sa.raw), _Socklen(sa.raw.Len), nil
@@ -317,7 +316,7 @@ func GetsockoptString(fd, level, opt int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(buf[:vallen-1]), nil
+	return ByteSliceToString(buf[:vallen]), nil
 }
 
 //sys	recvfrom(fd int, p []byte, flags int, from *RawSockaddrAny, fromlen *_Socklen) (n int, err error)
