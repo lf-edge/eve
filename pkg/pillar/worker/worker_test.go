@@ -10,6 +10,7 @@ import (
 	"errors"
 	"log"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -51,55 +52,45 @@ func TestWork(t *testing.T) {
 		},
 	}
 	ctx := dummyContext{contextName: "testContext"}
-
-	var res WorkResult
-	dummyResponse := func(ctx interface{}, r WorkResult) error {
-		res = r
-		return nil
-	}
-
-	logger := logrus.StandardLogger()
-	// logger.SetLevel(logrus.TraceLevel)
-	logObject = base.NewSourceLogObject(logger, "test", 1234)
-	worker := NewWorker(
-		logObject,
-		&ctx, 1, map[string]Handler{
-			"test": {Request: dummyWorker, Response: dummyResponse},
-		})
+	logObject = base.NewSourceLogObject(logrus.StandardLogger(), "test", 1234)
 	for testname, test := range testMatrix {
-		t.Logf("Running test case %s", testname)
 		t.Run(testname, func(t *testing.T) {
-			d := test.description
-			w := Work{Kind: "test", Key: testname, Description: d}
-			timestamp = time.Now() // In case we ask for sleep
-			worker.Submit(w)
-			assert.Equal(t, 1, worker.NumPending())
-			proc := <-worker.MsgChan()
-			proc.Process(ctx, true)
-			assert.Equal(t, 0, worker.NumPending())
-			assert.Equal(t, testname, res.Key)
-			assert.Equal(t, d.generateOutput, res.Output)
-			if d.sleepTime != 0 {
-				minDuration := time.Duration(d.sleepTime) * time.Second
-				maxDuration := minDuration + 100*time.Millisecond
-				took := time.Since(timestamp)
-				assert.GreaterOrEqual(t, int64(took), int64(minDuration))
-				assert.Less(t, int64(took), int64(maxDuration))
-			}
-			if d.generateError {
-				assert.NotNil(t, res.Error)
-				assert.Equal(t, timestamp, res.ErrorTime)
-			}
-			dout := res.Description.(dummyDescription)
-			assert.Equal(t, d.generateOutput, dout.generateOutput)
-			assert.True(t, dout.done)
+			// A fake clock makes the measured sleep exact.
+			synctest.Test(t, func(t *testing.T) {
+				var res WorkResult
+				dummyResponse := func(ctx interface{}, r WorkResult) error {
+					res = r
+					return nil
+				}
+				worker := NewWorker(
+					logObject,
+					&ctx, 1, map[string]Handler{
+						"test": {Request: dummyWorker, Response: dummyResponse},
+					})
+				d := test.description
+				w := Work{Kind: "test", Key: testname, Description: d}
+				timestamp = time.Now()
+				worker.Submit(w)
+				assert.Equal(t, 1, worker.NumPending())
+				proc := <-worker.MsgChan()
+				proc.Process(ctx, true)
+				assert.Equal(t, 0, worker.NumPending())
+				assert.Equal(t, testname, res.Key)
+				assert.Equal(t, d.generateOutput, res.Output)
+				assert.Equal(t, time.Duration(d.sleepTime)*time.Second, time.Since(timestamp))
+				if d.generateError {
+					assert.NotNil(t, res.Error)
+					assert.Equal(t, timestamp, res.ErrorTime)
+				}
+				dout := res.Description.(dummyDescription)
+				assert.Equal(t, d.generateOutput, dout.generateOutput)
+				assert.True(t, dout.done)
+				worker.Done()
+				_, ok := <-worker.MsgChan()
+				assert.False(t, ok)
+			})
 		})
 	}
-	assert.Equal(t, 0, worker.NumPending())
-	worker.Done()
-	_, ok := <-worker.MsgChan()
-	done := !ok
-	assert.True(t, done)
 }
 
 var sleep1 = dummyDescription{
@@ -117,6 +108,11 @@ var sleep3 = dummyDescription{
 
 // TestLength verifies that the channel length causes delay
 func TestLength(t *testing.T) {
+	// A fake clock makes the measured delays exact.
+	synctest.Test(t, testLength)
+}
+
+func testLength(t *testing.T) {
 	ctx := dummyContext{contextName: "testContext"}
 	var res WorkResult
 	dummyResponse := func(ctx interface{}, r WorkResult) error {

@@ -73,19 +73,38 @@ devices. ZFS does not automatically notify the NVMe controller of freed
 block ranges; without periodic TRIM the device's garbage-collection
 table grows and write amplification increases.
 
-EVE runs `zpool trim persist` at boot (to clear any backlog from the
-previous run) and then on a recurring cron schedule. The schedule is
-operator-configurable:
+EVE runs a rate-limited `zpool trim -r <rate> persist` on a recurring
+cron schedule. ZFS applies the rate to each disk (leaf vdev), so with the
+default of 1.5 MiB/s each disk trims at up to 1.5 MiB/s and a pool of N
+disks at up to N times that. Each TRIM command is capped at 16 MiB by the
+`zfs_trim_extent_bytes_max` module parameter, which is set at boot.
+There is no boot-time trim: an unthrottled trim of the whole free space
+keeps the disk saturated for hours and stalls application I/O. A trim interrupted by a reboot resumes
+on its own; at startup, and whenever the rate is changed, zfsmanager
+suspends it and restarts it at the configured rate, so a trim started
+without a limit by an older EVE is throttled too.
+The restart keeps the trim's progress, but the start time shown by
+`zpool status -t persist` becomes the time of the last boot.
+The schedule and rate are operator-configurable:
 
 | Config key | Default | Effect |
 | --- | --- | --- |
 | `timer.zfs.pool.trim.cron` | `0 3 * * 6,0` | Sat/Sun at 03:00 |
+| `storage.zfs.pool.trim.rate.bytespersec` | `1572864` | 1.5 MiB/s per disk, about a week per TB of free space on the disk |
 
-Set to an empty string to disable the scheduled trim. The boot-time
-trim always runs regardless of this setting.
+Set the cron spec to an empty string to disable the scheduled trim.
 
-`zpool trim` returns immediately; the actual NVMe work runs in the
-background. Progress is visible via `zpool status persist`.
+A pass over a 4 TB disk takes about a month at the default rate; raise the
+rate to finish sooner at the cost of more I/O latency while it runs.
+
+The trim starts only if the device is powered on at the scheduled minute;
+a missed slot is not caught up. Devices that are routinely off at 03:00 on
+weekends should use a time when they are on. One trigger a month is
+enough, e.g. `0 12 1 * *` for noon on the 1st. A trim already in progress
+keeps running, so a pass that spans several triggers is not restarted.
+
+`zpool trim` returns immediately; the actual work runs in the
+background. Progress is visible via `zpool status -t persist`.
 
 ### Vault fstrim (EVE-k only)
 
@@ -145,14 +164,14 @@ cat /run/zfsmanager/ZFSPoolStatus/persist.json \
 
 | Field | Meaning |
 | --- | --- |
-| `TrimStatus.LastStartTime` | When the most recent `zpool trim` was invoked |
+| `TrimStatus.LastStartTime` | When `zpool trim` last started a trim this boot |
 
 Pool trim end time is not published — `zpool trim` returns immediately
-and NVMe work continues in the background. Use `zpool status persist`
+and the work continues in the background. Use `zpool status -t persist`
 to check completion:
 
 ```sh
-zpool status persist | grep -A5 trim
+zpool status -t persist
 ```
 
 #### Agent logs
@@ -178,7 +197,8 @@ grep -i "runPoolTrimSchedule" /persist/newlog/agentlog/zfsmanager.log*
 
 | Log message | Meaning |
 | --- | --- |
-| `runPoolTrimSchedule: boot-time demand trim starting` | Boot trim started |
 | `runPoolTrimSchedule: zpool trim persist initiated` | Command accepted |
 | `runPoolTrimSchedule: scheduled trim starting` | Cron tick fired |
+| `runPoolTrimSchedule: zpool trim persist already in progress` | Cron tick during a running trim; it continues |
+| `runPoolTrimSchedule: resumed trim of persist at 1572864 bytes/s` | Startup re-issued a running trim at the rate limit |
 | `runPoolTrimSchedule: zpool trim persist: <error>` | Failure |
