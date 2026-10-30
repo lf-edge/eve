@@ -42,6 +42,15 @@ sequenceDiagram
 
 For a working example of this operation, please check `/pkg/vtpm/vtpm-attest/`. Please note that if a hardware TPM is not available to EVE, these security guarantees are nulled and the virtual TPM state is stored unencrypted.
 
+## VTPM on EVE-K (KubeVirt)
+
+On the KubeVirt flavor of EVE (`HV=k`) the virtual TPM is provided by KubeVirt rather than by the VTPM container: when `disable_vtpm` is not set in the app's `VmConfig`, pillar adds a `tpm` device to the VirtualMachineInstance spec and KubeVirt starts an SWTPM inside the virt-launcher pod. The guest sees the same TPM 2.0 device under `/dev/tpm*`. A `NOHYPER` app runs as a plain pod and gets no TPM.
+
+Two differences to EVE-KVM matter for guests that rely on the TPM:
+
+- **The state is not persistent.** KubeVirt keeps persistent TPM state on a PVC that it looks up by the VirtualMachineInstance name, and EVE runs each app through a VirtualMachineInstanceReplicaSet that generates a new name for every instance it creates. State keyed to that name would be lost on every app restart, device reboot and failover anyway, so the device is deliberately created without `persistent: true`. Keys sealed to the TPM, or a guest disk encryption bound to it, do not survive a restart. Persistent state keyed by the app needs the declarative `virtualMachineState` API that KubeVirt introduces in v1.10.
+- **No security guarantees.** The state is not encrypted and the SWTPM's EK is not signed by the hardware TPM, so the attestation chain described above does not apply.
+
 ## Example Usecase : Azure IoT Edge
 
 Using the VTPM, we can use the TPM based Device Provisioning service from Azure Portal. This guide walks you through a "Individual Enrollment" setup based on Ubuntu 22.04 and Azure IoT Edge 1.5.x .
