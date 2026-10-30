@@ -482,6 +482,9 @@ func startProcess(netNamespace, cmd string, args []string, pidFile string,
 			log.Error(err)
 			return err
 		}
+		// Reap the child once it exits, otherwise it stays as a zombie
+		// and isProcessRunning keeps reporting it as running.
+		go func() { _ = execCmd.Wait() }()
 
 		if makePIDFile {
 			if err := ensureDir(filepath.Dir(pidFile)); err != nil {

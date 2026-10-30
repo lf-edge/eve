@@ -3780,3 +3780,92 @@ func TestPNACDHCPReacquireNoPNACInNewDPC(test *testing.T) {
 	t.Consistently(dhcpReacquireCounterCb("eth0"), 10*time.Second, 500*time.Millisecond).
 		Should(Equal(0))
 }
+
+// TestPNACDHCPReacquirePNACRemoved verifies that DHCP lease is reacquired
+// when PNAC is removed from a port. The supplicant logs off, which can move
+// the port to a different VLAN.
+func TestPNACDHCPReacquirePNACRemoved(test *testing.T) {
+	t := initTest(test)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	networkMonitor.AddOrUpdateInterface(eth0)
+
+	// Apply global config with PNAC DHCP reacquire enabled.
+	gcp := globalConfig()
+	gcp.SetGlobalValueInt(types.PnacDHCPReacquireMaxRetries, 3)
+	dpcManager.UpdateGCP(gcp)
+
+	// Apply DPC with eth0 configured for PNAC + DHCP client.
+	aa := makeAA(selectedIntfs{eth0: true})
+	timePrio1 := time.Now()
+	dpc := makeDPC("zedagent", timePrio1, selectedIntfs{eth0: true})
+	dpc.Ports[0].PNAC = types.PNACConfig{Enabled: true}
+	dpcManager.UpdateAA(aa)
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	// Apply a new DPC where eth0 no longer has PNAC enabled.
+	timePrio2 := time.Now()
+	dpc2 := makeDPC("zedagent", timePrio2, selectedIntfs{eth0: true})
+	dpcManager.AddDPC(dpc2)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+	t.Expect(dhcpReacquireCounter("eth0")).To(Equal(0))
+
+	// The supplicant is removed and nim sees the PNAC state change.
+	networkMonitor.PublishPNACEvent(netmonitor.PNACEvent{
+		IfName:          "eth0",
+		IsAuthenticated: false,
+	})
+
+	// The reacquire is triggered even though the current DPC has no PNAC.
+	t.Eventually(dhcpReacquireCounterCb("eth0"), 10*time.Second, 200*time.Millisecond).
+		Should(Equal(1))
+}
+
+// TestPNACDHCPReacquireSubnetAlreadyChanged verifies that the DHCP lease is not
+// released when the DHCP client has already moved to another subnet by the time
+// the first reacquire is scheduled to run.
+func TestPNACDHCPReacquireSubnetAlreadyChanged(test *testing.T) {
+	t := initTest(test)
+
+	// Prepare simulated network stack.
+	eth0 := mockEth0()
+	networkMonitor.AddOrUpdateInterface(eth0)
+
+	gcp := globalConfig()
+	gcp.SetGlobalValueInt(types.PnacDHCPReacquireMaxRetries, 3)
+	dpcManager.UpdateGCP(gcp)
+
+	aa := makeAA(selectedIntfs{eth0: true})
+	dpc := makeDPC("zedagent", time.Now(), selectedIntfs{eth0: true})
+	dpc.Ports[0].PNAC = types.PNACConfig{Enabled: true}
+	dpcManager.UpdateAA(aa)
+	dpcManager.AddDPC(dpc)
+	t.Eventually(testingInProgressCb()).Should(BeTrue())
+	t.Eventually(testingInProgressCb()).Should(BeFalse())
+	t.Eventually(dpcStateCb(0)).Should(Equal(types.DPCStateSuccess))
+
+	networkMonitor.PublishPNACEvent(netmonitor.PNACEvent{
+		IfName:          "eth0",
+		IsAuthenticated: true,
+	})
+
+	// The VLAN transition completes on its own before the first retry.
+	// Give nim time to record the subnet in effect when the event was received.
+	time.Sleep(500 * time.Millisecond)
+	eth0New := mockEth0()
+	eth0New.IPAddrs = []*net.IPNet{ipAddress("10.0.0.5/16")}
+	eth0New.DHCP = netmonitor.DHCPInfo{
+		IPv4Subnet: ipSubnet("10.0.0.0/16"),
+	}
+	networkMonitor.AddOrUpdateInterface(eth0New)
+
+	// The first retry (after ~2s) is skipped.
+	t.Consistently(dhcpReacquireCounterCb("eth0"), 6*time.Second, 500*time.Millisecond).
+		Should(Equal(0))
+}

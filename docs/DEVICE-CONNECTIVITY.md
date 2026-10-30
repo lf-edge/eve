@@ -651,11 +651,17 @@ The full workflow from an unauthenticated device to an authenticated network por
    to authenticate the port via 802.1X EAP-TLS. Upon successful authentication, the switch
    moves the port to the authenticated VLAN, granting full network access.
 
-5. **DHCP reacquisition**: After the port authentication state changes, the device retries
+5. **DHCP reacquisition**: After the port authentication state changes, or when PNAC is
+   removed from the port (the supplicant then sends EAPOL-Logoff and the switch may move the
+   port out of the authenticated VLAN), the device retries
    the DHCP request with exponential backoff (2s, 4s, 8s, ...) to obtain an IP address from
    the authenticated VLAN. Retries continue until the IP subnet changes (indicating the VLAN
    transition completed) or the configured maximum number of retries
    ([`pnac.dhcp.reacquire.max.retries`](CONFIG-PROPERTIES.md), default 4) is reached.
+   Connectivity verification of a new network configuration waits for the first reacquire
+   to finish, so that it is not run with a lease from the previous VLAN.
+   A retry is skipped when the DHCP client has already obtained a lease from another
+   subnet in the meantime, to avoid a needless loss of connectivity.
 
 ### Configuration
 

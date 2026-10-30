@@ -224,7 +224,9 @@ type WpaSupplicantConfigurator struct {
 
 type processManagers struct {
 	supplicantPM *proc.ProcessManager
-	watcherPM    *proc.ProcessManager
+	// Stops the goroutine delivering 802.1X events (nil if PNAC is not used).
+	stopWatcher context.CancelFunc
+	watcherDone chan struct{}
 }
 
 // Create prepares config file and starts wpa_supplicant.
@@ -243,15 +245,16 @@ func (c *WpaSupplicantConfigurator) Create(ctx context.Context, item depgraph.It
 	}
 
 	if s.PNACConfig != nil {
-		err := c.createEventWatcherScript(s.AdapterIfName)
-		if err != nil {
+		stateDir := filepath.Dir(c.pnacStatePath(s.AdapterIfName))
+		if err := os.MkdirAll(stateDir, 0755); err != nil {
+			err = fmt.Errorf("failed to create PNAC state dir: %w", err)
+			c.Log.Error(err)
 			return err
 		}
 	}
 
 	pms := &processManagers{
 		supplicantPM: c.initPMForSupplicant(s),
-		watcherPM:    c.initPMForWatcher(s),
 	}
 	c.procManagers[s.AdapterIfName] = pms
 
@@ -268,43 +271,13 @@ func (c *WpaSupplicantConfigurator) Create(ctx context.Context, item depgraph.It
 		}
 
 		if s.PNACConfig != nil {
-			// Register event action script using wpa_cli to obtain 802.1x state updates.
-			delay := time.Second
-			var startErr error
-			for {
-				// Delay even the first attempt to start the watcher.
-				// Starting the watcher immediately after starting the supplicant
-				// almost always fails.
-				time.Sleep(delay)
-				if ctx.Err() != nil {
-					err = startErr
-					if err == nil {
-						err = ctx.Err()
-					}
-					err = fmt.Errorf(
-						"failed to start wpa_supplicant event watcher: %w", err)
-					c.Log.Error(err)
-					cancel()
-					done(err)
-					return
-				}
-
-				startErr = pms.watcherPM.Start(ctx)
-				if startErr == nil {
-					break
-				}
-				c.Log.Functionf("wpa_cli not ready yet, retrying: %v", startErr)
-			}
-			// Give the watcher a moment to fully attach to the supplicant's
-			// control socket before we check the current status. Without this,
-			// there is a window where the watcher process has started but is not
-			// yet listening for events.
-			time.Sleep(delay)
-			// Check if 802.1x authentication already completed before the watcher started
-			// and registered with the supplicant.
-			// If so, write the state file now so that the network monitor picks up
-			// the state change.
-			c.syncPNACStateFromSupplicant(s.AdapterIfName)
+			watcherCtx, stopWatcher := context.WithCancel(context.Background())
+			pms.stopWatcher = stopWatcher
+			pms.watcherDone = make(chan struct{})
+			go func() {
+				defer close(pms.watcherDone)
+				c.watchPNACEvents(watcherCtx, s.AdapterIfName)
+			}()
 		}
 
 		cancel()
@@ -346,23 +319,38 @@ func (c *WpaSupplicantConfigurator) initPMForSupplicant(
 	}
 }
 
-// Use `wpa_cli -a` to maintain a per-interface "pnac.state" file containing:
+// watchPNACEvents maintains a per-interface "pnac.state" file containing:
 //
 //	STATE: <CONNECTED|DISCONNECTED>
 //	TIMESTAMP: <last-change-time>
-func (c *WpaSupplicantConfigurator) initPMForWatcher(
-	s WpaSupplicant) *proc.ProcessManager {
-	args := []string{
-		"-p", types.WpaSupplicantCtrlSockDir,
-		"-i", s.AdapterIfName,
-		"-a", c.eventWatcherScriptPath(s.AdapterIfName),
-		"-r", // auto reconnect
-	}
-	return &proc.ProcessManager{
-		Log:      c.Log,
-		Cmd:      "wpa_cli",
-		Args:     args,
-		WillFork: false,
+//
+// The file is updated whenever wpa_supplicant reports a change of the 802.1X
+// authentication state, including every (re-)authentication, which the network
+// monitor picks up through inotify. The events are received by attaching
+// directly to the control socket of wpa_supplicant. It blocks until the context
+// is canceled, re-attaching whenever the connection is lost.
+func (c *WpaSupplicantConfigurator) watchPNACEvents(ctx context.Context, ifName string) {
+	ctrlPath := filepath.Join(types.WpaSupplicantCtrlSockDir, ifName)
+	localPath := filepath.Join(nimRunDir, fmt.Sprintf("wpa_ctrl-%s-%d", ifName, os.Getpid()))
+	tracker := newPNACStateTracker(pnacStateSettleDelay, func(state string) {
+		c.writePNACStateFile(ifName, state, true)
+	})
+	defer tracker.stop()
+
+	const retryDelay = 2 * time.Second
+	for ctx.Err() == nil {
+		// Attaching right after wpa_supplicant was started is expected to fail
+		// until it creates the control socket.
+		err := wpaEventListener(ctx, ctrlPath, localPath,
+			func() { c.syncPNACStateFromSupplicant(ifName) },
+			tracker.handleEvent)
+		if err != nil {
+			c.Log.Functionf("wpa_supplicant event listener for %s: %v", ifName, err)
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(retryDelay):
+		}
 	}
 }
 
@@ -384,15 +372,28 @@ func (c *WpaSupplicantConfigurator) Delete(ctx context.Context, item depgraph.It
 
 	done := reconciler.ContinueInBackground(ctx)
 	go func() {
-		if pms != nil && pms.watcherPM != nil {
-			// Stop the wpa_supplicant event watcher (wpa_cli -a) first.
-			// Errors are logged but otherwise ignored, since the watcher
-			// should exit automatically anyway once wpa_supplicant stops.
-			ctx, cancel := context.WithTimeout(ctx, wpaSupplicantStopTimeout)
-			if err := pms.watcherPM.Stop(ctx); err != nil {
-				c.Log.Errorf("Failed to stop wpa_supplicant event watcher: %v", err)
+		if pms != nil && pms.stopWatcher != nil {
+			// Stop delivering events first so that the shutdown of
+			// wpa_supplicant is not reported as an authentication change.
+			pms.stopWatcher()
+			select {
+			case <-pms.watcherDone:
+			case <-time.After(wpaSupplicantStopTimeout):
+				c.Log.Errorf("Timed out waiting for the wpa_supplicant event watcher "+
+					"of %s to stop", s.AdapterIfName)
 			}
-			cancel()
+		}
+
+		// Without EAPOL-Logoff the authenticator keeps the port authorized
+		// (e.g. in the post-authentication VLAN) after the supplicant is gone.
+		if s.PNACConfig != nil {
+			ctrlPath := filepath.Join(types.WpaSupplicantCtrlSockDir, s.AdapterIfName)
+			localPath := filepath.Join(nimRunDir,
+				fmt.Sprintf("wpa_ctrl-%s-%d-logoff", s.AdapterIfName, os.Getpid()))
+			if err := wpaCtrlLogoff(ctrlPath, localPath); err != nil {
+				c.Log.Warnf("Failed to send EAPOL-Logoff for %s: %v",
+					s.AdapterIfName, err)
+			}
 		}
 
 		// Stop wpa_supplicant itself.
@@ -406,7 +407,6 @@ func (c *WpaSupplicantConfigurator) Delete(ctx context.Context, item depgraph.It
 		// Clean up all files created for this supplicant instance. Ignore errors.
 		_ = os.Remove(c.configPath(s.AdapterIfName))
 		if s.PNACConfig != nil {
-			_ = os.Remove(c.eventWatcherScriptPath(s.AdapterIfName))
 			_ = os.Remove(c.pnacStatePath(s.AdapterIfName))
 		}
 		done(err)
@@ -424,18 +424,14 @@ func (c *WpaSupplicantConfigurator) configPath(ifName string) string {
 	return filepath.Join(nimRunDir, "wpa_supplicant-"+ifName+".conf")
 }
 
-func (c *WpaSupplicantConfigurator) eventWatcherScriptPath(ifName string) string {
-	return filepath.Join(nimRunDir, "wpa_supplicant-"+ifName+"-watcher.sh")
-}
-
 func (c *WpaSupplicantConfigurator) pnacStatePath(ifName string) string {
 	return filepath.Join(types.PNACStateDir, ifName)
 }
 
 // syncPNACStateFromSupplicant queries the current wpa_supplicant status and writes
 // the PNAC state file if authentication has already completed. This closes the race
-// window where wpa_supplicant finishes 802.1x authentication before the wpa_cli
-// event watcher starts, causing the CONNECTED event to be missed.
+// window where wpa_supplicant finishes 802.1x authentication before the event
+// listener attaches to it, causing the CONNECTED event to be missed.
 func (c *WpaSupplicantConfigurator) syncPNACStateFromSupplicant(ifName string) {
 	cmd := exec.Command("wpa_cli", "-p", types.WpaSupplicantCtrlSockDir,
 		"-i", ifName, "status")
@@ -466,23 +462,33 @@ func (c *WpaSupplicantConfigurator) syncPNACStateFromSupplicant(ifName string) {
 		eapState == "SUCCESS" {
 		c.Log.Noticef("Interface %s is already authenticated, writing state file",
 			ifName)
-		c.writePNACStateFile(ifName, "CONNECTED")
+		c.writePNACStateFile(ifName, pnacStateConnected, false)
 	}
 }
 
-// writePNACStateFile atomically creates the PNAC state file for the given interface.
-// It uses Renameat2 with RENAME_NOREPLACE so that the write is skipped (not an error)
-// if the watcher script already created the file -- avoiding both the TOCTOU race and
-// the .tmp file collision between this function and the shell script.
-func (c *WpaSupplicantConfigurator) writePNACStateFile(ifName, state string) {
+// writePNACStateFile atomically writes the PNAC state file for the given interface.
+// With replace=false the write is skipped (not an error) if the file already exists,
+// which is checked with Renameat2 and RENAME_NOREPLACE to avoid a TOCTOU race with
+// the event listener.
+func (c *WpaSupplicantConfigurator) writePNACStateFile(ifName, state string, replace bool) {
 	statePath := c.pnacStatePath(ifName)
-	// Use a distinct .sync.tmp suffix to avoid colliding with the watcher script's
-	// .tmp file.
+	// Both kinds of writers use their own tmp file. The network monitor ignores
+	// files with the .tmp extension.
 	tmpPath := statePath + ".sync.tmp"
+	if replace {
+		tmpPath = statePath + ".event.tmp"
+	}
 	content := fmt.Sprintf("STATE: %s\nTIMESTAMP: %s\n",
 		state, strconv.FormatInt(time.Now().Unix(), 10))
 	if err := os.WriteFile(tmpPath, []byte(content), 0644); err != nil {
 		c.Log.Errorf("Failed to write %s: %v", tmpPath, err)
+		return
+	}
+	if replace {
+		if err := os.Rename(tmpPath, statePath); err != nil {
+			c.Log.Errorf("Failed to rename %s -> %s: %v", tmpPath, statePath, err)
+			os.Remove(tmpPath)
+		}
 		return
 	}
 	stateDir := filepath.Dir(statePath)
@@ -499,7 +505,7 @@ func (c *WpaSupplicantConfigurator) writePNACStateFile(ifName, state string) {
 	if err != nil {
 		if errors.Is(err, unix.EEXIST) {
 			c.Log.Noticef(
-				"PNAC state file for %s already exists, watcher script got there first",
+				"PNAC state file for %s already exists, event listener got there first",
 				ifName)
 		} else {
 			c.Log.Errorf("renameat2 %s -> %s failed: %v", tmpPath, statePath, err)
@@ -600,46 +606,4 @@ network={
 		cfg.ClientCertPath,
 		cfg.ClientKeyPath,
 	)
-}
-
-// Script executed by `wpa_cli -a`. Receives two args:
-//
-//	$1 = interface name (unused)
-//	$2 = event (CONNECTED/DISCONNECTED)
-//
-// Updates per-interface PNAC state file with current connectivity status
-// and timestamp for the latest state change.
-func (c *WpaSupplicantConfigurator) createEventWatcherScript(ifName string) error {
-	scriptPath := c.eventWatcherScriptPath(ifName)
-	statePath := c.pnacStatePath(ifName)
-
-	// Ensure state directory exists
-	if err := os.MkdirAll(filepath.Dir(statePath), 0755); err != nil {
-		err = fmt.Errorf("failed to create PNAC state dir: %w", err)
-		c.Log.Error(err)
-		return err
-	}
-
-	script := fmt.Sprintf(`#!/bin/sh
-# Auto-generated by NIM.
-# Invoked by: wpa_cli -a <script>
-
-STATE="$2"
-STATE_FILE="%s"
-TMP_FILE="${STATE_FILE}.tmp"
-
-{
-    echo "STATE: $STATE"
-    echo "TIMESTAMP: $(date +%%s)"
-} > "$TMP_FILE"
-
-mv "$TMP_FILE" "$STATE_FILE"
-`, statePath)
-
-	if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
-		err = fmt.Errorf("failed to write event watcher script %s: %w", scriptPath, err)
-		c.Log.Error(err)
-		return err
-	}
-	return nil
 }

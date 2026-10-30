@@ -69,14 +69,31 @@ evetest eve ssh <command>       # run a single command on EVE
 evetest eve collect-info        # collect a tar archive with a full debug snapshot from the
                                 # device (logs, pubsub state, network info, etc.); use this
                                 # as a first step when diagnosing an unexpected failure
-evetest eve console             # interactive serial console (telnet); cannot be driven by
-                                # Claude -- ask the user to run it when EVE is not yet
-                                # IP-reachable (e.g. early boot failure)
+evetest eve console             # serial console (telnet), already logged in as root; see below
 evetest sdn status              # SDN status and any config errors
 evetest sdn logs                # SDN logs
 evetest continue                # resume the test
 evetest exit                    # tear down and exit
 ```
+
+### Using the EVE console
+
+The console is the only way in when `evetest eve ssh` does not work, typically because
+of a networking problem (no IP, wrong VLAN or DHCP lease, broken 802.1X) or an early
+boot failure. Use it to investigate such problems (`ip addr`, `ip route`, `wpa_cli`,
+`eve exec pillar ...`, logs under `/persist/newlog`), then fix or revert the cause.
+Prefer `evetest eve ssh` whenever it works.
+
+An AI agent cannot use the console interactively, but can pipe commands into it with a
+timeout, pausing between them, and clean up the terminal escape codes:
+
+```bash
+(for c in "ip addr" "ip route"; do echo "$c"; sleep 4; done) | \
+    timeout 60 evetest eve console 2>&1 | sed 's/\x1b\[6n//g' | tr -d '\r'
+```
+
+Run only short, non-interactive commands, and do not leave the console open in the
+background.
 
 Run `evetest eve`, `evetest sdn`, `evetest cluster`, or `evetest --help` to see the full
 list of available subcommands and their descriptions.
