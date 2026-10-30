@@ -31,6 +31,10 @@ export LC_NUMERIC=C
 SUITE="$1"
 SEEN_SUCCESS=false
 STARTUP_DEADLINE=$(($(date +%s) + 600)) # give the gRPC server up to 10m to come up
+STATUS_TIMEOUT=10                       # a wedged Status RPC must not wedge the watcher
+STATUS_HANG_LIMIT=3                     # consecutive timeouts before force-resuming
+INVESTIGATION_TIMEOUT=1800              # cap on one Claude investigation
+STATUS_HANGS=0
 
 log() { echo "[live-investigation] $*"; }
 
@@ -39,7 +43,21 @@ log "watching suite $SUITE for EVETEST_PAUSE_ON_FAILURE pauses"
 while true; do
     sleep 5
 
-    if ! RESP=$(evetest status 2>&1); then
+    RESP=$(timeout "$STATUS_TIMEOUT" evetest status 2>&1)
+    RC=$?
+    if [ "$RC" -eq 124 ]; then
+        # The server is up but not answering, e.g. paused while holding a lock.
+        STATUS_HANGS=$((STATUS_HANGS + 1))
+        log "evetest status timed out (${STATUS_HANGS}/${STATUS_HANG_LIMIT})"
+        if [ "$STATUS_HANGS" -ge "$STATUS_HANG_LIMIT" ]; then
+            log "evetest status is stuck; force-resuming the test"
+            timeout "$STATUS_TIMEOUT" evetest continue >/dev/null 2>&1 || true
+            STATUS_HANGS=0
+        fi
+        continue
+    fi
+    STATUS_HANGS=0
+    if [ "$RC" -ne 0 ]; then
         if [ "$SEEN_SUCCESS" = "true" ]; then
             log "evetest status can no longer connect (run finished); stopping"
             break
@@ -171,7 +189,7 @@ likely cause from what's available, say so briefly instead of
 speculating."
 
                 log "prompting Claude for a live investigation of $CURRENT_TEST (this may take a while)..."
-                RESULT_JSON=$(claude -p "$PROMPT" \
+                RESULT_JSON=$(timeout "$INVESTIGATION_TIMEOUT" claude -p "$PROMPT" \
                     --output-format json \
                     --model claude-sonnet-5 \
                     --add-dir "${ARTIFACT_DIR}" \
@@ -216,5 +234,5 @@ Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(find:*),Bash(jq:*),Bash(wc:*),Bash(so
     esac
 
     log "resuming the test"
-    evetest continue >/dev/null 2>&1 || true
+    timeout "$STATUS_TIMEOUT" evetest continue >/dev/null 2>&1 || true
 done
