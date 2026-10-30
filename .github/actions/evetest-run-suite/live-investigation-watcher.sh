@@ -2,7 +2,7 @@
 # Copyright (c) 2026, Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 #
-# live-investigation-watcher.sh <test-suite>
+# live-investigation-watcher.sh <test-suite> [<owner-pid>]
 #
 # Launched in the background (via "&") right before the "Run evetest" step's
 # own foreground `make -C evetest evetest ...` invocation, while
@@ -11,7 +11,9 @@
 # investigate it live against the still-running device/SDN, appends the
 # result to live-investigation.md in that suite's artifact directory, then
 # resumes. Exits on its own once `evetest status` can no longer reach the
-# (by then exited) evetest process.
+# (by then exited) evetest process. Before the gRPC server is up (the evetest
+# image build alone can take well over ten minutes) it keeps waiting for as
+# long as <owner-pid>, the shell running the evetest step, is alive.
 #
 # Expected in the environment:
 #   EVETEST_COLLECT_ARTIFACTS  (already set for every evetest invocation)
@@ -29,8 +31,8 @@ set -u
 export LC_NUMERIC=C
 
 SUITE="$1"
+OWNER_PID="${2:-}"
 SEEN_SUCCESS=false
-STARTUP_DEADLINE=$(($(date +%s) + 600)) # give the gRPC server up to 10m to come up
 STATUS_TIMEOUT=10                       # a wedged Status RPC must not wedge the watcher
 STATUS_HANG_LIMIT=3                     # consecutive timeouts before force-resuming
 INVESTIGATION_TIMEOUT=1800              # cap on one Claude investigation
@@ -62,7 +64,7 @@ while true; do
             log "evetest status can no longer connect (run finished); stopping"
             break
         fi
-        if [ "$(date +%s)" -gt "$STARTUP_DEADLINE" ]; then
+        if [ -z "$OWNER_PID" ] || ! kill -0 "$OWNER_PID" 2>/dev/null; then
             log "evetest status never became reachable; giving up on this watcher"
             break
         fi
