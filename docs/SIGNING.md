@@ -164,9 +164,9 @@ after `make pkgs` and again after `make eve`, with `tools/eve-cosign.sh`:
 
 Packages are pushed only under their content tag, and only by branch builds.
 
-The policy accepts `release-sign.yml@refs/heads/master`,
-`build-alpine-base.yml@refs/heads/master`, and `publish.yml` at `master`,
-`N.N` and `N.N-stable`. A job records the packages it built, as a run
+The policy, in `tools/eve-cosign.sh`, accepts
+`release-sign.yml@refs/heads/master`, `build-alpine-base.yml@refs/heads/master`,
+and `publish.yml` at `master`, `N.N` and `N.N-stable`. A job records the packages it built, as a run
 artifact per attempt, before pushing them, and signs what every attempt's
 record lists after pushing; a re-run thus signs what an earlier attempt pushed
 and failed to sign. The `manifest` job pushes every package's index and signs
@@ -193,9 +193,14 @@ a package is such a failure, except for the packages the Makefile rebuilds on
 every build (`FORCE_BUILD_PKGS`): their tag does not name their content, so a
 tag build rebuilds them from the tagged source, as it does EVE itself.
 
-Not signed by EVE's workflows, and therefore not verified: `lfedge/eve-kernel`
-and `lfedge/eve-rust` (published by the eve-kernel and eve-rust repositories),
-`linuxkit/*` images, and external `FROM` images. The build pins them by tag or digest as before.
+`lfedge/eve-kernel` and `lfedge/eve-rust` are published by the eve-kernel and
+eve-rust repositories and are verified against their workflows' identities
+instead. While a package is in `EVE_COSIGN_EXCLUDE` (default
+`^eve-(kernel|rust)$`), `check-inputs` and `audit` only log whether its images
+verify, as `excluded, verified as …`, `excluded, not signed: …` or
+`excluded, does not verify as …`; once the log shows them verified, removing
+the package from the exclusion makes the check binding. Not verified: `linuxkit/*` images and external `FROM` images. The
+build pins them by tag or digest as before.
 
 ## Enabling on a branch
 

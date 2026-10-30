@@ -14,7 +14,8 @@
 #       verify the pulled manifests and, for the given architectures, the
 #       lfedge/eve-* bases of the built ones. A tag build must have built
 #       nothing but the packages every build rebuilds (FORCE_BUILD_PKGS in
-#       the Makefile), since it cannot sign.
+#       the Makefile), since it cannot sign. Images of excluded packages
+#       among these are checked as well, and the result is only logged.
 #   eve-cosign.sh sign-pushed <dir>...
 #       Run after the push: sign the manifests that the check-inputs records
 #       in or directly under the <dir>s list as built and the registry
@@ -33,22 +34,24 @@
 #       built ones the registry serves only on a branch build, and the
 #       lfedge/eve-* bases of all their packages for the given architectures.
 #       Indexes of the packages every build rebuilds are skipped, as in
-#       sign-indexes; their manifests are checked by digest.
+#       sign-indexes; their manifests are checked by digest. Bases of
+#       excluded packages are checked as well, and the result is only logged.
 #   eve-cosign.sh verify <file>
 #       Verify every "<name>@sha256:<hex>" line of <file>, <name> being the
 #       package repository name, e.g. eve-pillar.
 #
 # Environment:
-#   EVE_COSIGN_IDENTITY_REGEXP  required: regexp the certificate SAN must match
-#   EVE_COSIGN_REPOSITORY       required: owner/repo the signing workflow ran in
+#   EVE_COSIGN_IDENTITY_REGEXP  regexp the certificate SAN must match, and
+#   EVE_COSIGN_REPOSITORY       owner/repo the signing workflow ran in, in
+#                               place of EVE's policy (to rehearse on a fork)
 #   EVE_COSIGN_ENFORCE          "true" makes verification failures fatal;
 #                               otherwise they are reported as warnings
 #   EVE_PKG_PREFIX              where packages are pulled from
 #                               (default docker.io/lfedge)
 #   EVE_SIG_PREFIX              where package signatures live
 #                               (default EVE_PKG_PREFIX)
-#   EVE_COSIGN_EXCLUDE          regexp of package names not signed by EVE's
-#                               workflows (default ^eve-(kernel|rust)$)
+#   EVE_COSIGN_EXCLUDE          regexp of package names whose signatures are
+#                               only logged (default ^eve-(kernel|rust)$)
 #   LINUXKIT_CACHE              linuxkit cache (default ~/.linuxkit/cache)
 
 set -euo pipefail
@@ -60,21 +63,49 @@ SIG_PREFIX="${EVE_SIG_PREFIX:-$PKG_PREFIX}"
 EXCLUDE="${EVE_COSIGN_EXCLUDE:-^eve-(kernel|rust)$}"
 CACHE="${LINUXKIT_CACHE:-$HOME/.linuxkit/cache}"
 
+# The signature policy: the workflows allowed to sign packages, and the
+# repository they ran in. A tag build runs its own commit's copy of this
+# script, so EVE's packages are accepted only from protected branches.
+# eve-rust and eve-kernel are signed by their own repositories' workflows.
+EVE_IDENTITY_REGEXP='^https://github\.com/lf-edge/eve/\.github/workflows/(release-sign\.yml@refs/heads/master|build-alpine-base\.yml@refs/heads/master|publish\.yml@refs/heads/(master|[0-9]+\.[0-9]+(-stable)?))$'
+RUST_IDENTITY_REGEXP='^https://github\.com/lf-edge/eve-rust/\.github/workflows/release\.yaml@refs/tags/[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$'
+KERNEL_IDENTITY_REGEXP='^https://github\.com/lf-edge/eve-kernel/\.github/workflows/publish\.yml@refs/heads/eve-kernel-(amd64|arm64|riscv64)-(v[0-9]+\.[0-9]+(\.[0-9]+)?-[a-z0-9-]+|next)$'
+IDENTITY_REGEXP="${EVE_COSIGN_IDENTITY_REGEXP:-$EVE_IDENTITY_REGEXP}"
+REPOSITORY="${EVE_COSIGN_REPOSITORY:-lf-edge/eve}"
+
 die() {
     echo "eve-cosign: $*" >&2
     exit 1
 }
 
-require_policy() {
-    [ -n "${EVE_COSIGN_IDENTITY_REGEXP:-}" ] || die "EVE_COSIGN_IDENTITY_REGEXP is not set"
-    [ -n "${EVE_COSIGN_REPOSITORY:-}" ] || die "EVE_COSIGN_REPOSITORY is not set"
+
+# policy <ref>: set POLICY_REGEXP and POLICY_REPOSITORY to the policy for
+# the package <ref> names.
+policy() {
+    local name="${1##*/}"
+    name="${name%%@*}"
+    case "${name%%:*}" in
+    eve-rust)
+        POLICY_REGEXP="$RUST_IDENTITY_REGEXP"
+        POLICY_REPOSITORY=lf-edge/eve-rust
+        ;;
+    eve-kernel)
+        POLICY_REGEXP="$KERNEL_IDENTITY_REGEXP"
+        POLICY_REPOSITORY=lf-edge/eve-kernel
+        ;;
+    *)
+        POLICY_REGEXP="$IDENTITY_REGEXP"
+        POLICY_REPOSITORY="$REPOSITORY"
+        ;;
+    esac
 }
 
 cosign_verify() {
+    policy "$1"
     cosign verify \
         --certificate-oidc-issuer "$OIDC_ISSUER" \
-        --certificate-identity-regexp "$EVE_COSIGN_IDENTITY_REGEXP" \
-        --certificate-github-workflow-repository "$EVE_COSIGN_REPOSITORY" \
+        --certificate-identity-regexp "$POLICY_REGEXP" \
+        --certificate-github-workflow-repository "$POLICY_REPOSITORY" \
         "$1" > /dev/null
 }
 
@@ -143,7 +174,8 @@ resolve() {
 }
 
 # The platform manifests of every cached $PKG_PREFIX/eve-* entry whose
-# manifest blob is present, attestation manifests and $EXCLUDE left out, as
+# manifest blob is present, attestation manifests left out and $EXCLUDE
+# passed to split_excluded, as
 # "<name>@<digest> <name>:<tag>" lines. `linuxkit pkg push` adds a
 # "<tag>-<arch>" entry for each manifest of a pushed index, attestations
 # included as "<tag>-unknown", copying the index's descriptor and annotations.
@@ -155,7 +187,6 @@ cached_pkg_manifests() {
         | (.annotations["org.opencontainers.image.ref.name"] | sub(".*/"; "")) as $ref
         | [($ref | sub(":[^:]*$"; "")), $ref, .mediaType, .digest] | @tsv' "$CACHE/index.json" |
     while IFS=$'\t' read -r name ref type digest; do
-        [[ "$name" =~ $EXCLUDE ]] && continue
         case "$type" in
         *index*|*manifest.list*)
             jq -r '.manifests[]
@@ -169,7 +200,28 @@ cached_pkg_manifests() {
             echo "$name@$digest $ref"
             ;;
         esac
-    done | sort -u
+    done | sort -u | split_excluded
+}
+
+# split_excluded: pass on the lines of stdin whose first field, a
+# "[<prefix>/]<name>@<digest>" or "[<prefix>/]<name>:<tag>" reference, names a
+# package $EXCLUDE does not match. The others are appended to $EXCLUDED, when
+# set, as references under $SIG_PREFIX.
+split_excluded() {
+    local entry rest name
+    while read -r entry rest; do
+        name="${entry##*/}"
+        name="${name%%@*}"
+        name="${name%%:*}"
+        if ! [[ "$name" =~ $EXCLUDE ]]; then
+            echo "$entry${rest:+ $rest}"
+        elif [ -n "${EXCLUDED:-}" ]; then
+            case "$entry" in
+            */*) echo "$entry" ;;
+            *) echo "$SIG_PREFIX/$entry" ;;
+            esac >> "$EXCLUDED"
+        fi
+    done
 }
 
 classify() {
@@ -290,8 +342,8 @@ sign_tag() {
 # leaves out Dockerfile.in placeholders such as PILLAR_TAG. A base the
 # registry does not serve is printed as its bare tag, which then fails
 # verification; bases listed in $2 are skipped, since this job built them and
-# signs them after pushing. No match is not an error: a job that pulled every
-# package has no Dockerfile to scan.
+# signs them after pushing; bases of $EXCLUDE go to split_excluded. No match is
+# not an error: a job that pulled every package has no Dockerfile to scan.
 base_manifests() {
     local list="$1" skip="$2" name ref arch index
     shift 2
@@ -302,7 +354,6 @@ base_manifests() {
     { grep -oE '(^|[[:space:]=])(docker\.io/)?lfedge/eve-[a-z0-9-]+:[a-z0-9][A-Za-z0-9_.-]*' || true; } |
     sed -E 's|.*lfedge/||' | sort -u |
     while read -r ref; do
-        [[ "${ref%:*}" =~ $EXCLUDE ]] && continue
         grep -q "^${ref%:*}@sha256:" "$skip" && continue
         if ! index=$(docker buildx imagetools inspect --raw "$PKG_PREFIX/$ref" 2> /dev/null); then
             echo "$SIG_PREFIX/$ref"
@@ -313,7 +364,7 @@ base_manifests() {
                 | select(.platform.os == "linux" and .platform.architecture == $a) | .digest' <<< "$index" |
                 sed "s|^|$SIG_PREFIX/${ref%:*}@|"
         done
-    done | sort -u
+    done | sort -u | split_excluded
 }
 
 is_tag_build() {
@@ -323,13 +374,36 @@ is_tag_build() {
 check_inputs() {
     local out="$1" failed=0
     shift
+    mkdir -p "$out"
+    EXCLUDED="$out/excluded"
+    : > "$EXCLUDED"
     classify "$out"
     verify_pkgs "$out/pulled" || failed=1
     if is_tag_build; then
         require_reused "$out/built" || failed=1
     fi
     base_manifests "$out/built" "$out/built" "$@" | verify_entries || failed=1
+    log_excluded "$EXCLUDED"
     return "$failed"
+}
+
+# log_excluded <file>: verify each reference in <file> under the policy for
+# its package and log the result. Never fails: these packages are excluded
+# until the log shows that they verify.
+log_excluded() {
+    local ref err
+    sort -u "$1" | while read -r ref; do
+        [ -n "$ref" ] || continue
+        policy "$ref"
+        if err=$(cosign_verify "$ref" 2>&1); then
+            echo "excluded, verified as $POLICY_REPOSITORY: $ref"
+        else
+            case "$err" in
+            *"no signatures found"*) echo "excluded, not signed: $ref" ;;
+            *) echo "excluded, does not verify as $POLICY_REPOSITORY: $ref: ${err##*$'\n'}" ;;
+            esac
+        fi
+    done
 }
 
 # require_reused <file>: fail for each package in <file> other than those
@@ -430,6 +504,7 @@ audit() {
     manifests=$(mktemp)
     built=$(mktemp)
     tags=$(mktemp)
+    EXCLUDED=$(mktemp)
     records pulled "$@" > "$manifests"
     records pulled-tags "$@" > "$tags"
     if ! is_tag_build; then
@@ -449,7 +524,8 @@ audit() {
         done < "$tags"
         base_manifests "$manifests" /dev/null "${arches[@]}"
     } | sort -u | count_unverified)
-    rm -f "$manifests" "$built" "$tags"
+    log_excluded "$EXCLUDED"
+    rm -f "$manifests" "$built" "$tags" "$EXCLUDED"
     report "$failed" "image(s) this run pushed or used without a valid signature" || exit 1
     [ "$failed" -ne 0 ] || echo "every image this run pushed or used is signed"
 }
@@ -459,12 +535,10 @@ cmd="${1:-}"
 case "$cmd" in
 check-inputs)
     [ $# -ge 2 ] || die "usage: check-inputs <outdir> <arch>..."
-    require_policy
     check_inputs "$@"
     ;;
 sign-pushed)
     [ $# -ge 1 ] || die "usage: sign-pushed <dir>..."
-    require_policy
     if is_tag_build; then
         echo "tag build: the packages were signed by the branch build that pushed them"
         exit 0
@@ -473,23 +547,19 @@ sign-pushed)
     ;;
 sign-indexes)
     [ $# -ge 1 ] || die "usage: sign-indexes <dir>..."
-    require_policy
     sign_indexes "$@"
     ;;
 sign-tags)
     [ $# -ge 1 ] || die "usage: sign-tags <name>:<tag>..."
-    require_policy
     for tag in "$@"; do
         sign_tag "$tag" || die "cannot sign $tag"
     done
     ;;
 audit)
-    require_policy
     audit "$@"
     ;;
 verify)
     [ $# -eq 1 ] || die "usage: verify <file>"
-    require_policy
     verify_pkgs "$1"
     ;;
 *)
