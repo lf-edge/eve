@@ -18,9 +18,6 @@ env:
   # github.com clone this job makes.
   GITHUB_TOKEN: ${{ github.token }}
   GIT_ASKPASS: ${{ github.workspace }}/tools/github-askpass.sh
-  # Signature policy for tools/eve-cosign.sh, the same as publish.yml's.
-  EVE_COSIGN_IDENTITY_REGEXP: '^https://github\.com/lf-edge/eve/\.github/workflows/(release-sign\.yml@refs/heads/master|build-alpine-base\.yml@refs/heads/master|publish\.yml@refs/heads/(master|[0-9]+\.[0-9]+(-stable)?))$'
-  EVE_COSIGN_REPOSITORY: lf-edge/eve
 
 jobs:
   # Step 1: Build alpine-base for each arch
