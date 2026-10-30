@@ -317,3 +317,17 @@ Access via console is enabled during initial bootstrap and will be disabled afte
 In order to have access via console you can set a `debug.enable.console` property to true as specified in [configuration properties](CONFIG-PROPERTIES.md).
 If you need console to debug some problem you can enable it for one boot of edge node from grub menu (`Set Boot Options`->`enable getty`).
 For development builds you can put `set_getty` line into `conf/grub.cfg` file.
+
+## Disabling DIRSYNC for the vault
+
+By default, EVE mounts the vault (and, for ext-based filesystems, the entire `/persist`)
+with the `DIRSYNC` flag. This forces synchronous directory updates, improving filesystem
+content consistency in the event of a power outage. On bare metal, the overhead is negligible,
+but in a virtual machine it can introduce significant I/O overhead, especially during
+container image unpacking, when many files and directories are created.
+
+To disable `DIRSYNC`, add the following line to `conf/grub.cfg`:
+
+```text
+set_no_dirsync
+```

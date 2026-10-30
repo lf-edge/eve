@@ -3,8 +3,8 @@
 # Copyright (c) 2023-2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-dom0-ztools:5260091b794f9466d08cb33b8c613a6a8398c16a AS dom0
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS build
+FROM lfedge/eve-dom0-ztools:bcb5b40409e7d67dd7f3dc0c1068cc7bf067698b AS dom0
+FROM lfedge/eve-alpine:a5885b38222df4ba5add4acca2d219c85741bf79 AS build
 ENV BUILD_PKGS="gcc g++ autoconf automake libtool make openssl-dev libtasn1-dev \
     json-glib-dev gnutls bash expect gawk socat libseccomp-dev gmp-dev \
     musl-utils autoconf-archive git json-c json-c-dev libcurl curl-dev \
@@ -51,9 +51,9 @@ RUN for patch in /patches/*.patch; do \
     echo "Applying $patch"; \
     patch -d /tpm2-tools -p1 < "$patch" || exit 1 ; \
     done
-RUN ./bootstrap && \
-    ./configure && \
-    make -j$(nproc)
+RUN ./bootstrap
+RUN ./configure CFLAGS="-Wno-error"
+RUN make -j$(nproc)
 RUN cp lib/.libs/libcommon.so* /out/usr/lib/
 RUN cp tools/.libs/tpm2 /out/usr/bin/
 RUN strip --strip-unneeded /out/usr/lib/*.so*
@@ -80,6 +80,8 @@ RUN strip --strip-unneeded /out/usr/bin/ptpm
 # remove static libraries and libtool libraries
 RUN find /out/usr/lib/ -name '*.la' -delete
 RUN find /out/usr/lib/ -name '*.a' -delete
+
+RUN rm /out/usr/lib/libprotoc.so* /out/usr/lib/libprotobuf*
 
 FROM build AS test
 # -race requires cgo, which needs a C compiler and libc headers.
