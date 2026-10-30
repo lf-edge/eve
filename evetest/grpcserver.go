@@ -104,6 +104,32 @@ func (th *TestHarness) errIfAdamNotReady() error {
 	return nil
 }
 
+// pauseLimitTimer returns a channel that fires once the configured pause limit
+// elapses (nil, i.e. never, when no limit is set) and a function to release the
+// timer.
+func (th *TestHarness) pauseLimitTimer() (<-chan time.Time, func()) {
+	if th.pauseLimit <= 0 {
+		return nil, func() {}
+	}
+	timer := time.NewTimer(th.pauseLimit)
+	return timer.C, func() { timer.Stop() }
+}
+
+// releasePause resumes the pause that waiters of resumeCh are blocked on, the
+// same way Continue does. It is a no-op if that pause was already released.
+func (th *TestHarness) releasePause(resumeCh chan struct{}) {
+	th.checkpointM.Lock()
+	defer th.checkpointM.Unlock()
+	if th.resume != resumeCh {
+		return
+	}
+	close(th.resume)
+	th.resume = make(chan struct{})
+	th.pausedAtCheckpoint = ""
+	th.pausedOnFailure = ""
+	th.pauseAtCheckpoint = ""
+}
+
 // Continue test execution until the end/failure or another checkpoint.
 func (th *TestHarness) Continue(
 	ctx context.Context, req *api.ContinueRequest) (*api.ContinueResponse, error) {
