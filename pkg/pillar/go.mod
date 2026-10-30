@@ -18,7 +18,7 @@ require (
 	github.com/getlantern/framed v0.0.0-20190601192238-ceb6431eeede
 	github.com/go-chi/chi/v5 v5.4.0
 	github.com/go-playground/validator/v10 v10.15.5
-	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/golang/protobuf v1.5.4
 	github.com/google/go-cmp v0.7.0
 	github.com/google/go-containerregistry v0.22.1
