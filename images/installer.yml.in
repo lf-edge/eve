@@ -5,7 +5,7 @@ init:
   - linuxkit/init:075ff447b68e23feef95589c90010a039533e5b5
   - RUNC_TAG # runc v1.3.6 built from source, stripped
   # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
-  - linuxkit/getty:v1.3.0
+  - GETTY_TAG # linuxkit's getty rebuilt on eve-alpine
   - linuxkit/memlogd:v1.3.0
   - GRUB_TAG
   - DOM0ZTOOLS_TAG

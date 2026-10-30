@@ -530,7 +530,8 @@ endif
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
              pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/cross-compilers \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash \
-	     pkg/bsp-imx pkg/optee-os pkg/recovertpm pkg/bpftrace pkg/apparmor pkg/runc pkg/containerd
+	     pkg/bsp-imx pkg/optee-os pkg/recovertpm pkg/bpftrace pkg/apparmor pkg/runc \
+	     pkg/containerd pkg/getty
 # alpine-base and alpine must be the first packages to build
 PKGS=pkg/alpine $(PKGS_$(ZARCH))
 # eve-alpine-base is bootstrap image for eve-alpine

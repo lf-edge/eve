@@ -1,0 +1,5 @@
+Welcome to LinuxKit!
+
+NOTE: This system is namespaced.
+The namespace you are currently in may not be the root.
+System services are namespaced; to access, use `ctr -n services.linuxkit ...`
