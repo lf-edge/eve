@@ -111,6 +111,8 @@ func assertAppSSH(t Gomega, device *evetest.EdgeDevice, appUUID uuid.UUID) {
 // whether the conversion repartitioned.
 func assertAppReady(t Gomega, device *evetest.EdgeDevice, appUUID uuid.UUID,
 	runningTimeout time.Duration) {
+	stopProbe := probeUnscheduledAppPod(device)
+	defer stopProbe()
 	device.WaitUntilAppIsRunning(appUUID, runningTimeout)
 	assertAppSSH(t, device, appUUID)
 }

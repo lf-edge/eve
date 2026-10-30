@@ -528,3 +528,77 @@ func probeStalledConfigFetch(device *evetest.EdgeDevice) (stop func()) {
 	}()
 	return func() { close(done) }
 }
+
+// unscheduledPodPoll is how often probeUnscheduledAppPod lists the app pods. A
+// pod seen unscheduled on two consecutive polls has waited at least this long,
+// where a healthy one is placed within seconds of being created.
+const unscheduledPodPoll = time.Minute
+
+// unscheduledPodCaptures bounds the captures of one wait, taken
+// unscheduledPodRecapture apart so that labels changing while the pod stays
+// pending show up as a difference between them.
+const (
+	unscheduledPodCaptures  = 3
+	unscheduledPodRecapture = 10 * time.Minute
+)
+
+// unscheduledAppPods lists the app pods kube-scheduler has not placed, one name
+// per line.
+const unscheduledAppPods = `eve exec kube kubectl -n eve-kube-app get pods --no-headers ` +
+	`-o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName 2>/dev/null ` +
+	`| awk '$2 == "<none>" {print $1}'`
+
+// probeUnscheduledAppPod records the node as kube-scheduler matches it against
+// an app pod that stays unscheduled. A pod refused with "didn't match Pod's node
+// affinity/selector" stays Pending with nothing in EVE to recover it, and the
+// node can carry every selector label by the time a failure-time collect-info
+// runs, so the labels have to be read while the pod is still waiting. Returns a
+// stop func; call it once.
+func probeUnscheduledAppPod(device *evetest.EdgeDevice) (stop func()) {
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		var seen map[string]bool
+		var lastCapture time.Time
+		for captures := 0; captures < unscheduledPodCaptures; {
+			select {
+			case <-done:
+				return
+			case <-time.After(unscheduledPodPoll):
+			}
+			out, err := runEVE(device, unscheduledAppPods)
+			if err != nil {
+				continue
+			}
+			now := map[string]bool{}
+			var pod string
+			for _, name := range strings.Fields(out) {
+				now[name] = true
+				if seen[name] && pod == "" {
+					pod = name
+				}
+			}
+			seen = now
+			if pod == "" || time.Since(lastCapture) < unscheduledPodRecapture {
+				continue
+			}
+			lastCapture = time.Now()
+			captures++
+			logDeviceClock(device, "unscheduled app pod")
+			runProbesWithTimeout(device, fmt.Sprintf("unscheduled app pod %s, capture %d", pod, captures), []probe{
+				{"node labels", "eve exec kube kubectl get nodes -o wide --show-labels 2>&1 || echo none"},
+				{"node with managedFields", "eve exec kube kubectl get nodes -o yaml --show-managed-fields 2>&1 || echo none"},
+				{"pod nodeSelector and affinity", "eve exec kube kubectl -n eve-kube-app get pod " + pod +
+					` -o jsonpath='{.spec.nodeSelector}{"\n"}{.spec.affinity}{"\n"}' 2>&1 || echo none`},
+				{"describe pod", "eve exec kube kubectl -n eve-kube-app describe pod " + pod + " 2>&1 || echo none"},
+				{"FailedScheduling events", "eve exec kube kubectl get events -A --field-selector reason=FailedScheduling 2>&1 || echo none"},
+				{"virt-handler log", "eve exec kube kubectl -n kubevirt logs -l kubevirt.io=virt-handler --tail=150 2>&1 || echo none"},
+			}, time.Minute)
+		}
+	}()
+	return func() {
+		close(done)
+		<-finished
+	}
+}
