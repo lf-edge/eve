@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -1419,6 +1420,14 @@ func Checkpoint(name string) {
 // enforcing that device network ports cannot change at runtime.
 func UpdateNetworkModel(netModel *api.NetworkModel) {
 	th := getTestHarness()
+	// Fail after releasing netModelM: with pause-on-failure, Fatal blocks
+	// until resumed, and holding the lock would hang SSH-based CLI commands.
+	if err := th.updateNetworkModel(netModel); err != nil {
+		th.t.Fatal(err)
+	}
+}
+
+func (th *TestHarness) updateNetworkModel(netModel *api.NetworkModel) error {
 	th.netModelM.Lock()
 	defer th.netModelM.Unlock()
 
@@ -1455,8 +1464,8 @@ func UpdateNetworkModel(netModel *api.NetworkModel) {
 				a.GetSdnMacAddress() == b.GetSdnMacAddress()
 		})
 	if !samePortSet {
-		th.t.Fatalf(
-			"It is not allowed to change the set of device network ports in runtime")
+		return errors.New(
+			"it is not allowed to change the set of device network ports in runtime")
 	}
 
 	// Apply the new network model.
@@ -1467,11 +1476,12 @@ func UpdateNetworkModel(netModel *api.NetworkModel) {
 	})
 	cancel()
 	if err != nil {
-		th.t.Fatal(err)
+		return err
 	}
 
 	th.netModel = netModel
 	th.log.Info("Successfully applied the new network model")
+	return nil
 }
 
 // RotateControllerSigningCert rotates the certificate and private key with which

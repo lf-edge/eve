@@ -4,6 +4,7 @@
 package evetest
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -382,8 +383,10 @@ func (th *TestHarness) disableRebootAccounting(devName, reason string) {
 // reboot count for every onboarded device. A mismatch indicates either an
 // unexpected reboot (device crashed) or a requested reboot that never occurred.
 func (th *TestHarness) checkRebootCounts() {
+	// Report after releasing devicesM: with pause-on-failure, Errorf blocks
+	// until resumed, and holding the lock would hang the Status RPC.
+	var mismatches []string
 	th.devicesM.Lock()
-	defer th.devicesM.Unlock()
 	for devName, dev := range th.devices {
 		if dev.ID == uuid.Nil {
 			continue
@@ -394,9 +397,14 @@ func (th *TestHarness) checkRebootCounts() {
 			continue
 		}
 		if dev.rebootCount != dev.expectedRebootCount {
-			th.t.Errorf("Device %q: expected %d reboot(s) but observed %d",
-				devName, dev.expectedRebootCount, dev.rebootCount)
+			mismatches = append(mismatches,
+				fmt.Sprintf("Device %q: expected %d reboot(s) but observed %d",
+					devName, dev.expectedRebootCount, dev.rebootCount))
 		}
+	}
+	th.devicesM.Unlock()
+	if len(mismatches) > 0 {
+		th.t.Errorf("%s", strings.Join(mismatches, "\n"))
 	}
 }
 
