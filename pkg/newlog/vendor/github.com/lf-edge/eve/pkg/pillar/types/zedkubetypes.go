@@ -34,6 +34,7 @@ const (
 // KubeNodeStatus - Enum for the status of a Kubernetes node
 type KubeNodeStatus int8
 
+// KubeNodeStatus values.
 const (
 	KubeNodeStatusUnknown      KubeNodeStatus = iota // KubeNodeStatusUnknown - Node status is unknown
 	KubeNodeStatusReady                              // KubeNodeStatusReady - Node is in ready status
@@ -44,6 +45,7 @@ const (
 // NodeAdmission - Enum for the admission status of a node in a cluster
 type NodeAdmission uint8
 
+// NodeAdmission values.
 const (
 	NodeAdmissionUnknown      NodeAdmission = iota // NodeAdmissionUnknown - Node admission status is unknown
 	NodeAdmissionNotClustered                      // NodeAdmissionNotClustered - Node is not part of the cluster
@@ -82,6 +84,16 @@ type KubeNodeInfo struct {
 	Schedulable        bool
 	Admission          NodeAdmission
 	NodeID             string
+	// Recovery is this node's quorum-recovery convergence, read back
+	// from its own annotation. Nil when the node has reported none,
+	// which is the normal state in a cluster that has never recovered.
+	Recovery *KubeQuorumRecoveryStatus
+}
+
+// Key returns the pubsub key for a KubeNodeInfo: the EVE device UUID it
+// describes, so subscribers can look a node up by UUID directly.
+func (kni KubeNodeInfo) Key() string {
+	return kni.NodeID
 }
 
 // ZKubeNodeInfo - Converts pubsub KubeNodeInfo to eve-api info.KubeNodeInfo
@@ -101,12 +113,63 @@ func (kni KubeNodeInfo) ZKubeNodeInfo() *info.KubeNodeInfo {
 	iKni.Schedulable = kni.Schedulable
 	iKni.AdmissionStatus = kni.Admission.ZNodeAdmission()
 	iKni.NodeId = kni.NodeID
+	iKni.Recovery = kni.Recovery.ZKubeQuorumRecoveryStatus()
 	return iKni
+}
+
+// ZKubeQuorumRecoveryStatus converts to the eve-api form. Nil in means
+// nil out: a device that has never reported convergence is different
+// from one reporting generation zero.
+func (r *KubeQuorumRecoveryStatus) ZKubeQuorumRecoveryStatus() *info.KubeQuorumRecoveryStatus {
+	if r == nil {
+		return nil
+	}
+	out := &info.KubeQuorumRecoveryStatus{
+		AppliedGeneration: r.AppliedGeneration,
+		Converging:        r.Converging,
+		LastTransitionAt:  timestamppb.New(r.LastTransitionAt),
+	}
+	if r.Error.Error != "" {
+		out.Error = r.Error.ToProto()
+	}
+	return out
+}
+
+// ZWitnessEtcdState converts to the eve-api enum.
+func (s WitnessEtcdState) ZWitnessEtcdState() info.WitnessEtcdState {
+	switch s {
+	case WitnessEtcdStateIdle:
+		return info.WitnessEtcdState_WITNESS_ETCD_STATE_IDLE
+	case WitnessEtcdStateJoining:
+		return info.WitnessEtcdState_WITNESS_ETCD_STATE_JOINING
+	case WitnessEtcdStateJoined:
+		return info.WitnessEtcdState_WITNESS_ETCD_STATE_JOINED
+	case WitnessEtcdStateError:
+		return info.WitnessEtcdState_WITNESS_ETCD_STATE_ERROR
+	default:
+		return info.WitnessEtcdState_WITNESS_ETCD_STATE_UNSPECIFIED
+	}
+}
+
+// ZKubeWitnessInfo converts to the eve-api form.
+func (w *WitnessStatus) ZKubeWitnessInfo() *info.KubeWitnessInfo {
+	if w == nil {
+		return nil
+	}
+	out := &info.KubeWitnessInfo{
+		WitnessIp: w.WitnessIP,
+		State:     w.State.ZWitnessEtcdState(),
+	}
+	if w.Error.Error != "" {
+		out.Error = w.Error.ToProto()
+	}
+	return out
 }
 
 // KubePodStatus - Enum for the status of a Kubernetes pod
 type KubePodStatus int8
 
+// KubePodStatus values.
 const (
 	KubePodStatusUnknown   KubePodStatus = iota // KubePodStatusUnknown - Pod status is unknown
 	KubePodStatusPending                        // KubePodStatusPending - Pod is in pending status
@@ -176,6 +239,7 @@ type KubePodNameSpaceInfo struct {
 // KubeVMIStatus - Enum for the status of a VirtualMachineInstance
 type KubeVMIStatus int8
 
+// KubeVMIStatus values.
 const (
 	KubeVMIStatusUnset      KubeVMIStatus = iota // KubeVMIStatusUnset - UnSet VMI status
 	KubeVMIStatusPending                         // KubeVMIStatusPending - VMI in pending status
@@ -240,11 +304,16 @@ type KubeClusterInfo struct {
 	AppVMIs   []KubeVMIInfo          `json:"pubsub-large-AppVMIs"` // List of VirtualMachineInstance
 	Storage   KubeStorageInfo        `json:"pubsub-large-Storage"` // Distributed storage info
 	PodNsInfo []KubePodNameSpaceInfo // General namespace pod running/failed count
+	// Witness is the 2-node-HA witness's status, nil when no witness is
+	// configured. Collected from the annotation of whichever node hosts
+	// it, the witness having no Node object of its own.
+	Witness *WitnessStatus
 }
 
 // StorageHealthStatus - Enum for the redundancy level and replication status of a storage volume
 type StorageHealthStatus uint8
 
+// StorageHealthStatus values.
 const (
 	StorageHealthStatusUnknown                                 StorageHealthStatus = iota // StorageHealthStatusUnknown - Storage health status is unknown
 	StorageHealthStatusHealthy                                                            // StorageHealthStatusHealthy - All replicas healthy
@@ -258,6 +327,7 @@ const (
 // StorageVolumeState - Enum for the attachment state of a storage volume
 type StorageVolumeState uint8
 
+// StorageVolumeState values.
 const (
 	StorageVolumeStateUnknown   StorageVolumeState = iota // StorageVolumeStateUnknown - Volume state is unknown
 	StorageVolumeStateCreating                            // StorageVolumeStateCreating - Volume is being created
@@ -293,6 +363,7 @@ func (svs StorageVolumeState) ZStorageVolumeState() info.StorageVolumeState {
 // StorageVolumeRobustness - Enum for the replica robustness of a storage volume
 type StorageVolumeRobustness uint8
 
+// StorageVolumeRobustness values.
 const (
 	StorageVolumeRobustnessUnknown  StorageVolumeRobustness = iota // StorageVolumeRobustnessUnknown - Volume robustness is unknown
 	StorageVolumeRobustnessHealthy                                 // StorageVolumeRobustnessHealthy - All Volume replicas healthy
@@ -303,6 +374,7 @@ const (
 // StorageVolumePvcStatus - Enum for the status of a PVC associated with a volume instance
 type StorageVolumePvcStatus uint8
 
+// StorageVolumePvcStatus values.
 const (
 	StorageVolumePvcStatusUnknown   StorageVolumePvcStatus = iota // StorageVolumePvcStatusUnknown - PVC status is unknown
 	StorageVolumePvcStatusBound                                   // StorageVolumePvcStatusBound - PVC is bound
@@ -315,6 +387,7 @@ const (
 // StorageVolumeReplicaStatus - Enum for the status of a replica of a storage volume
 type StorageVolumeReplicaStatus uint8
 
+// StorageVolumeReplicaStatus values.
 const (
 	StorageVolumeReplicaStatusUnknown    StorageVolumeReplicaStatus = iota // StorageVolumeReplicaStatusUnknown - Replica status is unknown
 	StorageVolumeReplicaStatusRebuilding                                   // StorageVolumeReplicaStatusRebuilding - Replica is rebuilding
@@ -400,6 +473,7 @@ func (kvi KubeVolumeInfo) ZKubeVolumeInfo() *info.KubeVolumeInfo {
 // ServiceStatus - Enum for the status of a service
 type ServiceStatus int8
 
+// ServiceStatus values.
 const (
 	ServiceStatusUnset    ServiceStatus = iota // ServiceStatusUnset - Service status is unset
 	ServiceStatusFailed                        // ServiceStatusFailed - Service status is failed
