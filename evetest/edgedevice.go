@@ -2984,6 +2984,43 @@ func (d *EdgeDevice) KubectlListNames(resource string) ([]string, error) {
 	return names, nil
 }
 
+// ListAppVMIs returns every KubeVirt VirtualMachineInstance belonging to
+// appUUID as raw JSON, so a test can inspect any part of the spec or status
+// without this package depending on the KubeVirt API types. Attribution is by
+// the appDomainNameLabel on the VMI, as for ListAppVMIRS. An empty list with a
+// nil error means the app has no VMI; an error means the list could not be
+// read, which a caller inside an Eventually should retry rather than fail on.
+func (d *EdgeDevice) ListAppVMIs(
+	appUUID uuid.UUID, timeout time.Duration) ([]json.RawMessage, error) {
+	stdout, err := d.RunKubectl(
+		"-n "+EVEKubeAppNamespace+" get vmi -o json", timeout)
+	if err != nil {
+		return nil, err
+	}
+	var list struct {
+		Items []json.RawMessage `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &list); err != nil {
+		return nil, fmt.Errorf("parsing kubectl vmi output: %w", err)
+	}
+	prefix := appUUID.String() + "."
+	var vmis []json.RawMessage
+	for _, item := range list.Items {
+		var meta struct {
+			Metadata struct {
+				Labels map[string]string `json:"labels"`
+			} `json:"metadata"`
+		}
+		if err := json.Unmarshal(item, &meta); err != nil {
+			return nil, fmt.Errorf("parsing kubectl vmi item: %w", err)
+		}
+		if strings.HasPrefix(meta.Metadata.Labels[appDomainNameLabel], prefix) {
+			vmis = append(vmis, item)
+		}
+	}
+	return vmis, nil
+}
+
 // GetClusterInfo returns the last recorded information about the Kubernetes
 // cluster, or nil if no such info message has been received yet.
 func (d *EdgeDevice) GetClusterInfo() *eveinfo.ZInfoKubeCluster {

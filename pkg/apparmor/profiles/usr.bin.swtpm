@@ -3,7 +3,11 @@
 
 #include <tunables/global>
 
-profile swtpm /usr/bin/swtpm {
+# No attachment path: AppArmor would otherwise also confine the swtpm that
+# libvirt runs inside an unconfined KubeVirt virt-launcher pod on EVE-K, which
+# keeps its state under /var/run/kubevirt-private and would be denied. Only the
+# vtpm profile transitions into this profile by name.
+profile swtpm {
     #include <abstractions/base>
 
     # allow necessary access for operations

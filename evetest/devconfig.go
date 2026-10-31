@@ -900,6 +900,9 @@ type ApplicationInstanceConfig struct {
 	UserData            string
 	NetworkAdapters     []AppNetworkAdapter
 	EnforceNetIntfOrder bool
+	// DisableVTPM turns off the per-app virtual TPM that EVE gives every VM
+	// by default (VmConfig.disable_vtpm).
+	DisableVTPM bool
 	// IOAdapters are I/O devices other than network adapters (a GPU, a USB
 	// controller, a serial port, ...) directly assigned to the application,
 	// each referencing a PhysicalIO entry added with
@@ -951,6 +954,7 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 		VncPasswd:                    config.VNCPassword,
 		DisableLogs:                  config.DisableLogs,
 		EnforceNetworkInterfaceOrder: config.EnforceNetIntfOrder,
+		DisableVtpm:                  config.DisableVTPM,
 	}
 	if config.MemoryBytes != 0 {
 		vmConfig.Memory = uint32(config.MemoryBytes / KiB)
