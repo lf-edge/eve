@@ -21,20 +21,21 @@ func TestRunWatchdogNoDevice(t *testing.T) {
 	}
 }
 
-// TestEscalatedTimeout: the no-pet stress timeout is spread LINEARLY from ~5s to
-// ~300s in ~30s steps (jittered), so fires sweep the shrink then the grow before
-// later attempts converge; it caps at 300s for attempts past the table.
+// TestEscalatedTimeout: the no-pet stress timeout packs its first eight rungs below
+// 65s (jittered), so their ~2x resets land inside the ~130s shrink -- the step that
+// relocates data -- before the last two rungs let the resize converge; it caps at
+// 300s for attempts past the table.
 func TestEscalatedTimeout(t *testing.T) {
 	cases := []struct{ attempt, lo, hi int }{
 		{0, 5, 14},
-		{1, 35, 44},
-		{2, 65, 74},
-		{3, 95, 104},
-		{4, 125, 134},
-		{5, 155, 164},
-		{6, 185, 194},
-		{7, 215, 224},
-		{8, 245, 254},
+		{1, 13, 22},
+		{2, 21, 30},
+		{3, 29, 38},
+		{4, 37, 46},
+		{5, 45, 54},
+		{6, 53, 62},
+		{7, 61, 70},
+		{8, 155, 164},
 		{9, 300, 309},
 		{10, 300, 300},
 		{15, 300, 300},
