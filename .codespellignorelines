@@ -10,3 +10,6 @@
 	match := AclCounters{IIf: iif, Piif: piif, OIf: oif, IpVer: ipVer,
 	IIf    string
 			ac.IIf = items[i+1]
+	"unknow":                   true,
+	"uknown":                   true,
+		"Unknow",
