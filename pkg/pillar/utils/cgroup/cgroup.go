@@ -69,6 +69,38 @@ func MemoryStat(group string) (map[string]uint64, error) {
 	return stat, sc.Err()
 }
 
+// Processes lists the processes in group, from its cgroup.procs.
+func Processes(group string) ([]int, error) {
+	b, err := os.ReadFile(Path(group, "cgroup.procs"))
+	if err != nil {
+		return nil, err
+	}
+	var pids []int
+	for _, field := range strings.Fields(string(b)) {
+		pid, err := strconv.Atoi(field)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", Path(group, "cgroup.procs"), err)
+		}
+		pids = append(pids, pid)
+	}
+	return pids, nil
+}
+
+// AddProcess moves process pid into group. The kernel refuses a kernel thread.
+func AddProcess(group string, pid int) error {
+	return os.WriteFile(Path(group, "cgroup.procs"), []byte(strconv.Itoa(pid)), 0)
+}
+
+// SubtreeControl lists the controllers group hands to its children, from its
+// cgroup.subtree_control.
+func SubtreeControl(group string) ([]string, error) {
+	b, err := os.ReadFile(Path(group, "cgroup.subtree_control"))
+	if err != nil {
+		return nil, err
+	}
+	return strings.Fields(string(b)), nil
+}
+
 // FormatCPUs formats a CPU list the way cpuset.cpus takes it: "1,3,5".
 func FormatCPUs(cpus []uint32) string {
 	list := make([]string, len(cpus))
