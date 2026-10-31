@@ -51,7 +51,7 @@ const (
 	// The worst-case floor-above-used tracks ~1742 MiB + 1.311% of size; the
 	// constants below are that fit scaled by 1.25, giving ~1.25x headroom over the
 	// measured upper envelope across the whole size range. See
-	// tests/resize-bench/README.md and ~/notes/ext4-floor-sweep0.md.
+	// tests/resize-bench/README.md.
 	shrinkMarginFixedBytes = 2177 * MiB // fixed reserve
 	shrinkMarginPerLakh    = 1639       // + 1.639% of partition size (1639 / 100000)
 
