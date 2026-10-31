@@ -1,4 +1,4 @@
-// This file is drived from the code available in linuxkit project under Apache License v2
+// This file is derived from the code available in linuxkit project under Apache License v2
 //    https://github.com/linuxkit/linuxkit/blob/master/pkg/init/cmd/service/logging.go
 
 package containerd
@@ -112,6 +112,22 @@ func (r *remoteLog) Path(n string) string {
 		}
 	}()
 	return path
+}
+
+// unblockFifoReader releases the reader goroutine started by remoteLog.Path,
+// which sits in a blocking O_RDONLY open until a writer opens the FIFO. The
+// intended writer is the container task, with CtrLogIOCreator opening the write
+// end as well. If that write-end open fails and the task never opens the FIFO
+// either, the reader goroutine would block forever and leak. Opening the FIFO
+// O_RDWR never blocks and completes the reader's pending open; closing it then
+// lets the reader observe EOF (no remaining writers) and exit cleanly.
+func unblockFifoReader(path string) {
+	fd, err := syscall.Open(path, syscall.O_RDWR|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		logrus.Errorf("unblockFifoReader: unable to open %s: %v", path, err)
+		return
+	}
+	syscall.Close(fd)
 }
 
 // Open a log file for the named service.
