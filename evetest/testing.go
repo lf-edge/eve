@@ -71,14 +71,19 @@ func (t *T) fail(msg string, now bool) {
 	// which releases every goroutine waiting here at once (see Continue).
 	if shouldPause {
 		t.th.log.Info("Paused on failure")
+		limitCh, stopLimit := t.th.pauseLimitTimer()
 		select {
 		case <-resumeCh:
 			t.th.log.Info("Resumed after failure")
+		case <-limitCh:
+			t.th.log.Warnf("Pause limit of %v reached on failure, resuming", t.th.pauseLimit)
+			t.th.releasePause(resumeCh)
 		case sig := <-t.th.sigCh:
 			t.th.log.Infof("Received signal %v while paused on failure, terminating", sig)
 		case <-t.th.exitCh:
 			t.th.log.Info("Exit requested while paused on failure")
 		}
+		stopLimit()
 	}
 
 	// Signal that the test has failed.

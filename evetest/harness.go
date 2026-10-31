@@ -366,6 +366,8 @@ type TestHarness struct {
 	pausedAtCheckpoint string
 	pauseOnFailure     bool
 	pausedOnFailure    string
+	// pauseLimit caps a single pause (zero: unlimited), see pauseLimitTimer.
+	pauseLimit time.Duration
 	// hasPausedOnFailure: has the current test already paused once on
 	// failure (see T.fail)? Reset per test/subtest by Init.
 	hasPausedOnFailure bool
@@ -641,6 +643,7 @@ func Init(t *testing.T, opts ...InitOption) *T {
 	th.deviceStateCh = make(chan deviceStateEvent, 64)
 	th.pauseAtCheckpoint = viper.GetString(constants.PauseOnCheckpointEnv)
 	th.pauseOnFailure = viper.GetBool(constants.PauseOnFailureEnv)
+	th.pauseLimit = time.Duration(viper.GetInt(constants.PauseLimitEnv)) * time.Second
 	th.resume = make(chan struct{})
 	th.exitCh = make(chan struct{})
 	th.sigCh = make(chan os.Signal, 1)
@@ -1409,9 +1412,14 @@ func Checkpoint(name string) {
 
 	if shouldPause {
 		th.log.Infof("Paused at checkpoint %q", name)
+		limitCh, stopLimit := th.pauseLimitTimer()
+		defer stopLimit()
 		select {
 		case <-resumeCh:
 			th.log.Infof("Resumed after checkpoint %q", name)
+		case <-limitCh:
+			th.log.Warnf("Pause limit of %v reached at checkpoint %q, resuming", th.pauseLimit, name)
+			th.releasePause(resumeCh)
 		case sig := <-th.sigCh:
 			th.t.Fatalf("Received signal %v while paused at checkpoint %q", sig, name)
 		case <-th.exitCh:
