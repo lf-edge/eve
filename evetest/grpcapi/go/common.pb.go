@@ -644,9 +644,16 @@ type EVEDevice struct {
 	Interfaces   []*EVEInterface        `protobuf:"bytes,6,rep,name=interfaces,proto3" json:"interfaces,omitempty"`
 	Image        *ImageRef              `protobuf:"bytes,7,opt,name=image,proto3" json:"image,omitempty"`
 	// Active PCR banks for the emulated TPM; empty uses provider defaults.
-	TpmPcrBanks   []TPMPCRBank `protobuf:"varint,8,rep,packed,name=tpm_pcr_banks,json=tpmPcrBanks,proto3,enum=org.lfedge.evetest.TPMPCRBank" json:"tpm_pcr_banks,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	TpmPcrBanks []TPMPCRBank `protobuf:"varint,8,rep,packed,name=tpm_pcr_banks,json=tpmPcrBanks,proto3,enum=org.lfedge.evetest.TPMPCRBank" json:"tpm_pcr_banks,omitempty"`
+	// How many SMT threads each physical core of the device exposes.
+	// Zero or one means no SMT: the device sees `cpus` single-thread cores,
+	// which is the default. Two makes the device see cpus/2 physical cores
+	// with two hardware threads each, which is what a test exercising
+	// SMT-aware CPU placement needs -- without it the guest has no sibling
+	// thread to place a second vCPU on.
+	ThreadsPerCore uint32 `protobuf:"varint,9,opt,name=threads_per_core,json=threadsPerCore,proto3" json:"threads_per_core,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *EVEDevice) Reset() {
@@ -733,6 +740,13 @@ func (x *EVEDevice) GetTpmPcrBanks() []TPMPCRBank {
 		return x.TpmPcrBanks
 	}
 	return nil
+}
+
+func (x *EVEDevice) GetThreadsPerCore() uint32 {
+	if x != nil {
+		return x.ThreadsPerCore
+	}
+	return 0
 }
 
 // Reports the current runtime status of an EVE device.
@@ -1103,7 +1117,7 @@ const file_common_proto_rawDesc = "" +
 	"\amessage\x18\x01 \x01(\tR\amessage\x12;\n" +
 	"\bseverity\x18\x02 \x01(\x0e2\x1f.org.lfedge.evetest.LogSeverityR\bseverity\x12\x16\n" +
 	"\x06source\x18\x03 \x01(\tR\x06source\x128\n" +
-	"\ttimestamp\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\xdd\x02\n" +
+	"\ttimestamp\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\x87\x03\n" +
 	"\tEVEDevice\x12\x1f\n" +
 	"\vdevice_name\x18\x01 \x01(\tR\n" +
 	"deviceName\x12\x12\n" +
@@ -1115,7 +1129,8 @@ const file_common_proto_rawDesc = "" +
 	"interfaces\x18\x06 \x03(\v2 .org.lfedge.evetest.EVEInterfaceR\n" +
 	"interfaces\x122\n" +
 	"\x05image\x18\a \x01(\v2\x1c.org.lfedge.evetest.ImageRefR\x05image\x12B\n" +
-	"\rtpm_pcr_banks\x18\b \x03(\x0e2\x1e.org.lfedge.evetest.TPMPCRBankR\vtpmPcrBanks\"\xc6\x01\n" +
+	"\rtpm_pcr_banks\x18\b \x03(\x0e2\x1e.org.lfedge.evetest.TPMPCRBankR\vtpmPcrBanks\x12(\n" +
+	"\x10threads_per_core\x18\t \x01(\rR\x0ethreadsPerCore\"\xc6\x01\n" +
 	"\x0fEVEDeviceStatus\x121\n" +
 	"\x04spec\x18\x01 \x01(\v2\x1d.org.lfedge.evetest.EVEDeviceR\x04spec\x128\n" +
 	"\x05state\x18\x02 \x01(\x0e2\".org.lfedge.evetest.EVEDeviceStateR\x05state\x12F\n" +

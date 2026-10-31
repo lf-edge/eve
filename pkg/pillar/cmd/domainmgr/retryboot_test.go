@@ -121,7 +121,8 @@ func newRetryBootContext(t *testing.T, aa *types.AssignableAdapters,
 	}
 	createSema := sema.New(log, 1)
 	createSema.P(1)
-	return &domainContext{
+	return placementContext(t, &domainContext{
+		cpuPlacement:          newCPUPlacement(testPlacer(t)),
 		assignableAdapters:    aa,
 		pubAssignableAdapters: newPub(types.AssignableAdapters{}),
 		pubCapabilities:       pubCap,
@@ -133,7 +134,7 @@ func newRetryBootContext(t *testing.T, aa *types.AssignableAdapters,
 		subNodeAgentStatus:  &mapSubscription{},
 		createSema:          createSema,
 		domainBootRetryTime: 600,
-	}
+	})
 }
 
 // TestRetryBootAfterAdaptersReleased reproduces the node crash

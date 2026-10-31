@@ -5,6 +5,7 @@ package zedmanager
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
@@ -905,6 +906,28 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	if c {
 		changed = true
 	}
+	// domainmgr's verdict on the CPU request. It travels as a plain status
+	// field rather than an error so that a workload which is merely placed
+	// sub-optimally is never mistaken for a failed one.
+	if status.CPUPlacementStatus != ds.CPUPlacementStatus {
+		status.CPUPlacementStatus = ds.CPUPlacementStatus
+		changed = true
+	}
+	// Whether it stands in another workload's way, which a repack has to move it
+	// out of. Advisory for the same reason.
+	if !slices.Equal(status.RepackFor, ds.RepackFor) {
+		status.RepackFor = ds.RepackFor
+		changed = true
+	}
+	// The CPUs it holds, reported like the adapters assigned to it.
+	if cpus := ds.CPUAssignment(); !status.AssignedCPUs.Equal(cpus) {
+		status.AssignedCPUs = cpus
+		changed = true
+	}
+	if !status.CPUWait.Equal(ds.CPUWait) {
+		status.CPUWait = ds.CPUWait
+		changed = true
+	}
 	// Are we doing a restart?
 	if status.RestartInprogress == types.BringDown {
 		if dc.Activate {
@@ -1178,6 +1201,24 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 		return changed, done
 	}
 	log.Functionf("Done with DomainStatus removal/deactivate for %s", uuidStr)
+
+	// The workload holds no CPUs any more, so there is no placement to judge.
+	if status.CPUPlacementStatus != types.CPUPlacementStatusUnspecified {
+		status.CPUPlacementStatus = types.CPUPlacementStatusUnspecified
+		changed = true
+	}
+	if len(status.RepackFor) > 0 {
+		status.RepackFor = nil
+		changed = true
+	}
+	if !status.AssignedCPUs.Equal(types.CPUAssignment{}) {
+		status.AssignedCPUs = types.CPUAssignment{}
+		changed = true
+	}
+	if status.CPUWait.Waiting() {
+		status.CPUWait = types.CPUWait{}
+		changed = true
+	}
 
 	if uninstall {
 		if lookupAppNetworkConfig(ctx, uuidStr) != nil {
