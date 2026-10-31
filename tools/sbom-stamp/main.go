@@ -162,6 +162,8 @@ type Stats struct {
 	Reparented        int
 	ConflictingIDs    int
 	FilledPURLs       int
+	AbsentFiles       int
+	ReplacedFiles     int
 	NoSupplier        int
 	NoSHA1            int
 }
@@ -221,18 +223,51 @@ func Stamp(in []byte, o Options, c Content) ([]byte, Stats, error) {
 		return nil, st, err
 	}
 
+	// Suppliers are looked up by purl, so fill the purls first.
+	if st.FilledPURLs, err = fillPURLs(pkgs); err != nil {
+		return nil, st, err
+	}
 	for i := range pkgs {
 		if pkgs[i], err = fillPackage(pkgs[i], o, c); err != nil {
 			return nil, st, err
 		}
 	}
-	if st.FilledPURLs, err = fillPURLs(pkgs); err != nil {
-		return nil, st, err
-	}
-	for i := range files {
-		if files[i], _, err = fillFile(files[i], c); err != nil {
+	kept := files[:0]
+	dropped := map[string]bool{}
+	for _, f := range files {
+		out, keep, err := reconcileFile(f, c)
+		if err != nil {
 			return nil, st, err
 		}
+		if !keep {
+			dropped[spdxID(f)] = true
+			st.AbsentFiles++
+			continue
+		}
+		if !bytes.Equal(out, f) {
+			st.ReplacedFiles++
+		}
+		if out, _, err = fillFile(out, c); err != nil {
+			return nil, st, err
+		}
+		kept = append(kept, out)
+	}
+	files = kept
+	for _, f := range files {
+		delete(dropped, spdxID(f))
+	}
+	if len(dropped) > 0 {
+		keptRels := rels[:0]
+		for _, it := range rels {
+			var r relationship
+			if err := json.Unmarshal(it, &r); err != nil {
+				return nil, st, err
+			}
+			if !dropped[r.SpdxElementID] && !dropped[r.RelatedSpdxElement] {
+				keptRels = append(keptRels, it)
+			}
+		}
+		rels = keptRels
 	}
 
 	var n int
@@ -426,7 +461,7 @@ func stampTar(path, member string, o Options) (st Stats, err error) {
 	src := io.TeeReader(in, inSum)
 	tr := tar.NewReader(src)
 	tw := tar.NewWriter(io.MultiWriter(tmp, outSum))
-	c := Content{SHA1: map[string]string{}, Images: map[string]string{}}
+	c := Content{SHA1: map[string]string{}, Images: map[string]string{}, Paths: map[string]string{}}
 	found := false
 	for {
 		hdr, err := tr.Next()
@@ -455,8 +490,12 @@ func stampTar(path, member string, o Options) (st Stats, err error) {
 			if _, err := io.Copy(w, tr); err != nil {
 				return st, err
 			}
+			name := strings.Trim(filepath.Clean(hdr.Name), "/")
+			c.Paths[name] = ""
 			if h1 != nil {
-				c.SHA1[hex.EncodeToString(h256.Sum(nil))] = hex.EncodeToString(h1.Sum(nil))
+				sum := hex.EncodeToString(h256.Sum(nil))
+				c.SHA1[sum] = hex.EncodeToString(h1.Sum(nil))
+				c.Paths[name] = sum
 			}
 			continue
 		}
@@ -535,7 +574,8 @@ func main() {
 	}
 	fmt.Fprintf(os.Stderr, "sbom-stamp: %s: %d duplicate entries dropped, %d image roots placed under %s, "+
 		"%d SPDX IDs still not unique, %d purls copied between copies of a package, "+
+		"%d files dropped and %d rehashed as linuxkit wrote them, "+
 		"%d packages without supplier, %d files without SHA1\n",
 		flag.Arg(0), st.DroppedDuplicates, st.Reparented, rootID, st.ConflictingIDs, st.FilledPURLs,
-		st.NoSupplier, st.NoSHA1)
+		st.AbsentFiles, st.ReplacedFiles, st.NoSupplier, st.NoSHA1)
 }

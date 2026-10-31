@@ -1,0 +1,1123 @@
+# Suppliers sbom-stamp gives packages the scanner left as NOASSERTION, keyed
+# by package URL without version, qualifiers or subpath, or by a run of its
+# leading path segments; the longest match wins. Fields are separated by a
+# tab. update-suppliers.py adds entries from the owner of each package's
+# source repository and keeps every existing entry, so an entry edited here
+# overrides that lookup.
+
+pkg:cargo/Inflector	Person: Josh Teeter
+pkg:cargo/addr2line	Organization: gimli-rs
+pkg:cargo/adler2	Person: oyvindln
+pkg:cargo/adler32	Person: Remi Rampin
+pkg:cargo/aead	Organization: Rust Crypto
+pkg:cargo/aes	Organization: Rust Crypto
+pkg:cargo/aes-siv	Organization: Rust Crypto
+pkg:cargo/ahash	Person: Tom Kaitchuck
+pkg:cargo/aho-corasick	Person: Andrew Gallant
+pkg:cargo/alloc-no-stdlib	Organization: Dropbox
+pkg:cargo/alloc-stdlib	Organization: Dropbox
+pkg:cargo/allocator-api2	Person: Zakarum
+pkg:cargo/amq-protocol	Organization: AMQP.rs
+pkg:cargo/amq-protocol-tcp	Organization: AMQP.rs
+pkg:cargo/amq-protocol-types	Organization: AMQP.rs
+pkg:cargo/amq-protocol-uri	Organization: AMQP.rs
+pkg:cargo/android_system_properties	Person: Nicolas Silva
+pkg:cargo/ansi_term	Person: Benjamin Sago
+pkg:cargo/anstream	Organization: Rust CLI WG
+pkg:cargo/anstyle	Organization: Rust CLI WG
+pkg:cargo/anstyle-parse	Organization: Rust CLI WG
+pkg:cargo/anstyle-query	Organization: Rust CLI WG
+pkg:cargo/anstyle-wincon	Organization: Rust CLI WG
+pkg:cargo/anyhow	Person: David Tolnay
+pkg:cargo/apache-avro	Organization: The Apache Software Foundation
+pkg:cargo/arbitrary	Organization: Rust Fuzzing Authority
+pkg:cargo/arc-swap	Person: Michal 'vorner' Vaner
+pkg:cargo/arr_macro	Person: Josh Mcguigan
+pkg:cargo/arr_macro_impl	Person: Josh Mcguigan
+pkg:cargo/arrayvec	Person: bluss
+pkg:cargo/arrow	Organization: The Apache Software Foundation
+pkg:cargo/arrow-arith	Organization: The Apache Software Foundation
+pkg:cargo/arrow-array	Organization: The Apache Software Foundation
+pkg:cargo/arrow-buffer	Organization: The Apache Software Foundation
+pkg:cargo/arrow-cast	Organization: The Apache Software Foundation
+pkg:cargo/arrow-data	Organization: The Apache Software Foundation
+pkg:cargo/arrow-ipc	Organization: The Apache Software Foundation
+pkg:cargo/arrow-json	Organization: The Apache Software Foundation
+pkg:cargo/arrow-ord	Organization: The Apache Software Foundation
+pkg:cargo/arrow-row	Organization: The Apache Software Foundation
+pkg:cargo/arrow-schema	Organization: The Apache Software Foundation
+pkg:cargo/arrow-select	Organization: The Apache Software Foundation
+pkg:cargo/arrow-string	Organization: The Apache Software Foundation
+pkg:cargo/ascii	Person: Thomas Bahn
+pkg:cargo/async-broadcast	Organization: smol-rs
+pkg:cargo/async-channel	Organization: smol-rs
+pkg:cargo/async-compression	Organization: Nullus157
+pkg:cargo/async-executor	Organization: smol-rs
+pkg:cargo/async-fs	Organization: smol-rs
+pkg:cargo/async-global-executor	Organization: async-rs
+pkg:cargo/async-global-executor-trait	Organization: AMQP.rs
+pkg:cargo/async-graphql	Organization: async-graphql
+pkg:cargo/async-graphql-derive	Organization: async-graphql
+pkg:cargo/async-graphql-parser	Organization: async-graphql
+pkg:cargo/async-graphql-value	Organization: async-graphql
+pkg:cargo/async-graphql-warp	Organization: async-graphql
+pkg:cargo/async-inotify	Person: Jia Chao
+pkg:cargo/async-io	Organization: smol-rs
+pkg:cargo/async-lock	Organization: smol-rs
+pkg:cargo/async-nats	Organization: NATS - The Edge & Cloud Native Messaging System
+pkg:cargo/async-net	Organization: smol-rs
+pkg:cargo/async-process	Organization: smol-rs
+pkg:cargo/async-reactor-trait	Organization: AMQP.rs
+pkg:cargo/async-recursion	Person: Robert Usher
+pkg:cargo/async-signal	Organization: smol-rs
+pkg:cargo/async-stream	Organization: Tokio
+pkg:cargo/async-stream-impl	Organization: Tokio
+pkg:cargo/async-task	Organization: smol-rs
+pkg:cargo/async-trait	Person: David Tolnay
+pkg:cargo/atoi	Person: Markus Klein
+pkg:cargo/atomic	Person: Amanieu d'Antras
+pkg:cargo/atomic-waker	Organization: smol-rs
+pkg:cargo/aws-config	Organization: smithy-lang
+pkg:cargo/aws-credential-types	Organization: smithy-lang
+pkg:cargo/aws-runtime	Organization: smithy-lang
+pkg:cargo/aws-sdk-cloudwatch	Organization: Amazon Web Services - Labs
+pkg:cargo/aws-sdk-cloudwatchlogs	Organization: Amazon Web Services - Labs
+pkg:cargo/aws-sdk-elasticsearch	Organization: Amazon Web Services - Labs
+pkg:cargo/aws-sdk-firehose	Organization: Amazon Web Services - Labs
+pkg:cargo/aws-sdk-kinesis	Organization: Amazon Web Services - Labs
+pkg:cargo/aws-sdk-kms	Organization: Amazon Web Services - Labs
+pkg:cargo/aws-sdk-s3	Organization: Amazon Web Services - Labs
+pkg:cargo/aws-sdk-secretsmanager	Organization: Amazon Web Services - Labs
+pkg:cargo/aws-sdk-sns	Organization: Amazon Web Services - Labs
+pkg:cargo/aws-sdk-sqs	Organization: Amazon Web Services - Labs
+pkg:cargo/aws-sdk-sso	Organization: Amazon Web Services - Labs
+pkg:cargo/aws-sdk-ssooidc	Organization: Amazon Web Services - Labs
+pkg:cargo/aws-sdk-sts	Organization: Amazon Web Services - Labs
+pkg:cargo/aws-sigv4	Organization: smithy-lang
+pkg:cargo/aws-smithy-async	Organization: smithy-lang
+pkg:cargo/aws-smithy-checksums	Organization: smithy-lang
+pkg:cargo/aws-smithy-compression	Organization: smithy-lang
+pkg:cargo/aws-smithy-eventstream	Organization: smithy-lang
+pkg:cargo/aws-smithy-http	Organization: smithy-lang
+pkg:cargo/aws-smithy-http-client	Organization: smithy-lang
+pkg:cargo/aws-smithy-json	Organization: smithy-lang
+pkg:cargo/aws-smithy-observability	Organization: smithy-lang
+pkg:cargo/aws-smithy-query	Organization: smithy-lang
+pkg:cargo/aws-smithy-runtime	Organization: smithy-lang
+pkg:cargo/aws-smithy-runtime-api	Organization: smithy-lang
+pkg:cargo/aws-smithy-types	Organization: smithy-lang
+pkg:cargo/aws-smithy-xml	Organization: smithy-lang
+pkg:cargo/aws-types	Organization: smithy-lang
+pkg:cargo/axum	Organization: Tokio
+pkg:cargo/axum-core	Organization: Tokio
+pkg:cargo/azure_core	Organization: Microsoft Azure
+pkg:cargo/azure_core_macros	Organization: Microsoft Azure
+pkg:cargo/azure_identity	Organization: Microsoft Azure
+pkg:cargo/azure_storage_blob	Organization: Microsoft Azure
+pkg:cargo/backoff	Person: Tibor Benke
+pkg:cargo/backon	Person: Xuanwo
+pkg:cargo/backtrace	Organization: The Rust Programming Language
+pkg:cargo/base16	Person: Thom Chiovoloni
+pkg:cargo/base16ct	Organization: Rust Crypto
+pkg:cargo/base62	Person: François Bernier
+pkg:cargo/base64	Person: Marshall Pierce
+pkg:cargo/base64-simd	Person: Nugine
+pkg:cargo/base64ct	Organization: Rust Crypto
+pkg:cargo/better-panic	Person: Armin Ronacher
+pkg:cargo/bigdecimal	Person: Andrew Kubera
+pkg:cargo/bit-set	Organization: contain-rs
+pkg:cargo/bit-vec	Organization: contain-rs
+pkg:cargo/bitflags	Organization: bitflags
+pkg:cargo/bitmask-enum	Person: Lukas
+pkg:cargo/bitvec	Organization: Rusty Bit-Sequences
+pkg:cargo/block-buffer	Organization: Rust Crypto
+pkg:cargo/block-padding	Organization: Rust Crypto
+pkg:cargo/blocking	Organization: smol-rs
+pkg:cargo/bloomy	Person: Alexis Sellier
+pkg:cargo/bollard	Person: Niel Drummond
+pkg:cargo/bollard-stubs	Person: Niel Drummond
+pkg:cargo/bon	Organization: Elastio Software, Inc
+pkg:cargo/bon-macros	Organization: Elastio Software, Inc
+pkg:cargo/borrow-or-share	Person: Scallop Ye
+pkg:cargo/borsh	Organization: NEAR
+pkg:cargo/borsh-derive	Organization: NEAR
+pkg:cargo/brotli	Organization: Dropbox
+pkg:cargo/brotli-decompressor	Organization: Dropbox
+pkg:cargo/bs58	Organization: Nullus157
+pkg:cargo/bson	Organization: mongodb
+pkg:cargo/bstr	Person: Andrew Gallant
+pkg:cargo/bumpalo	Person: Nick Fitzgerald
+pkg:cargo/bytecheck	Organization: rkyv
+pkg:cargo/bytecheck_derive	Organization: rkyv
+pkg:cargo/bytecount	Person: llogiq
+pkg:cargo/bytemuck	Person: Lokathor
+pkg:cargo/byteorder	Person: Andrew Gallant
+pkg:cargo/bytes	Organization: Tokio
+pkg:cargo/bytes-utils	Person: Michal 'vorner' Vaner
+pkg:cargo/bytesize	Organization: bytesize-rs
+pkg:cargo/castaway	Person: Stephen M. Coakley
+pkg:cargo/cbc	Organization: Rust Crypto
+pkg:cargo/cesu8	Person: Eric Kidd
+pkg:cargo/cfb-mode	Organization: Rust Crypto
+pkg:cargo/cfg-if	Organization: The Rust Programming Language
+pkg:cargo/chacha20	Organization: Rust Crypto
+pkg:cargo/chacha20poly1305	Organization: Rust Crypto
+pkg:cargo/charset	Person: Henri Sivonen
+pkg:cargo/chrono	Organization: Chronotope
+pkg:cargo/chrono-tz	Organization: Chronotope
+pkg:cargo/ciborium	Organization: Enarx
+pkg:cargo/ciborium-io	Organization: Enarx
+pkg:cargo/ciborium-ll	Organization: Enarx
+pkg:cargo/cidr	Person: Stefan Bühler
+pkg:cargo/cipher	Organization: Rust Crypto
+pkg:cargo/clap	Organization: clap-rs
+pkg:cargo/clap-verbosity-flag	Organization: clap-rs
+pkg:cargo/clap_builder	Organization: clap-rs
+pkg:cargo/clap_complete	Organization: clap-rs
+pkg:cargo/clap_derive	Organization: clap-rs
+pkg:cargo/clap_lex	Organization: clap-rs
+pkg:cargo/clipboard-win	Person: Douman
+pkg:cargo/cmac	Organization: Rust Crypto
+pkg:cargo/codespan-reporting	Person: Brendan Zabarauskas
+pkg:cargo/color-eyre	Organization: eyre-rs
+pkg:cargo/color-spantrace	Organization: eyre-rs
+pkg:cargo/colorchoice	Organization: Rust CLI WG
+pkg:cargo/colored	Organization: Colored RS
+pkg:cargo/combine	Person: Markus Westerlind
+pkg:cargo/community-id	Person: Julian Wang
+pkg:cargo/compact_str	Person: Parker Timmerman
+pkg:cargo/compression-codecs	Organization: Nullus157
+pkg:cargo/compression-core	Organization: Nullus157
+pkg:cargo/concurrent-queue	Organization: smol-rs
+pkg:cargo/console	Organization: console-rs
+pkg:cargo/console-api	Organization: Tokio
+pkg:cargo/console-subscriber	Organization: Tokio
+pkg:cargo/const-oid	Organization: Rust Crypto
+pkg:cargo/const-random	Person: Tom Kaitchuck
+pkg:cargo/const-random-macro	Person: Tom Kaitchuck
+pkg:cargo/const-str	Person: Nugine
+pkg:cargo/convert_case	Person: Dave Purdum
+pkg:cargo/cookie	Organization: Rocket Web Framework Foundation
+pkg:cargo/cookie-factory	Organization: rust-bakery
+pkg:cargo/cookie_store	Person: pfernie
+pkg:cargo/core-foundation	Organization: Servo
+pkg:cargo/core-foundation-sys	Organization: Servo
+pkg:cargo/core2	Person: Brendan Molloy
+pkg:cargo/cpufeatures	Organization: Rust Crypto
+pkg:cargo/crc	Person: Rui Hu
+pkg:cargo/crc-catalog	Person: Akhil Velagapudi
+pkg:cargo/crc32c	Person: Zack Owens
+pkg:cargo/crc32fast	Person: Sam Rijs
+pkg:cargo/crc64fast-nvme	Organization: Awesome
+pkg:cargo/critical-section	Organization: Rust Embedded
+pkg:cargo/crossbeam-channel	Organization: Crossbeam
+pkg:cargo/crossbeam-epoch	Organization: Crossbeam
+pkg:cargo/crossbeam-queue	Organization: Crossbeam
+pkg:cargo/crossbeam-utils	Organization: Crossbeam
+pkg:cargo/crossterm	Organization: crossterm-rs
+pkg:cargo/crossterm_winapi	Organization: crossterm-rs
+pkg:cargo/crunchy	Person: Eira Fransham
+pkg:cargo/crypto-bigint	Organization: Rust Crypto
+pkg:cargo/crypto-common	Organization: Rust Crypto
+pkg:cargo/crypto_secretbox	Organization: Rust Crypto
+pkg:cargo/csscolorparser	Person: Nor Khasyatillah
+pkg:cargo/csv	Person: Andrew Gallant
+pkg:cargo/csv-core	Person: Andrew Gallant
+pkg:cargo/ctr	Organization: Rust Crypto
+pkg:cargo/curl-sys	Person: Stephen M. Coakley
+pkg:cargo/curve25519-dalek	Organization: dalek cryptography
+pkg:cargo/curve25519-dalek-derive	Organization: dalek cryptography
+pkg:cargo/darling	Person: Ted Driggs
+pkg:cargo/darling_core	Person: Ted Driggs
+pkg:cargo/darling_macro	Person: Ted Driggs
+pkg:cargo/dary_heap	Person: Han
+pkg:cargo/dashmap	Person: Joel
+pkg:cargo/data-encoding	Person: Julien Cretin
+pkg:cargo/data-url	Organization: Servo
+pkg:cargo/databend-client	Organization: Databend Labs
+pkg:cargo/dbl	Organization: Rust Crypto
+pkg:cargo/deadpool	Organization: deadpool-rs
+pkg:cargo/deadpool-runtime	Organization: deadpool-rs
+pkg:cargo/deltae	Person: Ryan O'Beirne
+pkg:cargo/der	Organization: Rust Crypto
+pkg:cargo/deranged	Person: Jacob Pratt
+pkg:cargo/derivative	Person: Martin Carton
+pkg:cargo/derive-syn-parse	Person: sharnoff
+pkg:cargo/derive-where	Person: Roland Fredenhagen
+pkg:cargo/derive_arbitrary	Organization: Rust Fuzzing Authority
+pkg:cargo/derive_builder	Person: Colin Kiegel
+pkg:cargo/derive_builder_core	Person: Colin Kiegel
+pkg:cargo/derive_builder_macro	Person: Colin Kiegel
+pkg:cargo/derive_more	Person: Jelte Fennema-Nio
+pkg:cargo/derive_more-impl	Person: Jelte Fennema-Nio
+pkg:cargo/digest	Organization: Rust Crypto
+pkg:cargo/directories	Organization: dirs-dev
+pkg:cargo/dirs-next	Organization: xdg-rs
+pkg:cargo/dirs-sys	Organization: dirs-dev
+pkg:cargo/dirs-sys-next	Organization: xdg-rs
+pkg:cargo/displaydoc	Person: Jane Losare-Lusby
+pkg:cargo/dns-lookup	Person: keeperofdakeys
+pkg:cargo/doc-comment	Person: Guillaume Gomez
+pkg:cargo/document-features	Organization: Slint
+pkg:cargo/domain	Organization: NLnet Labs
+pkg:cargo/domain-macros	Organization: NLnet Labs
+pkg:cargo/dotenvy	Person: Allan
+pkg:cargo/dyn-clone	Person: David Tolnay
+pkg:cargo/ecdsa	Organization: Rust Crypto
+pkg:cargo/ed25519	Organization: Rust Crypto
+pkg:cargo/ed25519-dalek	Organization: dalek cryptography
+pkg:cargo/either	Organization: rayon-rs
+pkg:cargo/elliptic-curve	Organization: Rust Crypto
+pkg:cargo/email_address	Person: Simon Johnston
+pkg:cargo/encode_unicode	Person: Torbjørn Birch Moltu
+pkg:cargo/encoding_rs	Person: Henri Sivonen
+pkg:cargo/endian-type	Person: E
+pkg:cargo/enum-as-inner	Person: Benjamin Fry
+pkg:cargo/enum-display-derive	Person: Tibor Benke
+pkg:cargo/enum_dispatch	Person: Anton Lazarev
+pkg:cargo/enumflags2	Person: Maja Kądziołka
+pkg:cargo/enumflags2_derive	Person: Maja Kądziołka
+pkg:cargo/env_filter	Organization: Rust CLI WG
+pkg:cargo/env_logger	Organization: Rust CLI WG
+pkg:cargo/equivalent	Organization: indexmap-rs
+pkg:cargo/erased-serde	Person: David Tolnay
+pkg:cargo/errno	Person: Chris Wong
+pkg:cargo/error-chain	Organization: rust-lang-deprecated
+pkg:cargo/error-code	Person: Douman
+pkg:cargo/etcetera	Person: Luna Razzaghipour
+pkg:cargo/euclid	Organization: Servo
+pkg:cargo/event-listener	Organization: smol-rs
+pkg:cargo/event-listener-strategy	Organization: smol-rs
+pkg:cargo/evmap	Person: Jon Gjengset
+pkg:cargo/evmap-derive	Person: Jon Gjengset
+pkg:cargo/executor-trait	Organization: AMQP.rs
+pkg:cargo/exitcode	Person: Ben Wilber
+pkg:cargo/eyre	Organization: eyre-rs
+pkg:cargo/fakedata_generator	Person: Kevin Gimbel
+pkg:cargo/fallible-iterator	Person: Steven Fackler
+pkg:cargo/fancy-regex	Organization: fancy-regex
+pkg:cargo/fastrand	Organization: smol-rs
+pkg:cargo/ff	Organization: Zero-knowledge Cryptography in Rust
+pkg:cargo/fiat-crypto	Organization: Programming Languages and Verification Group at MIT CSAIL
+pkg:cargo/filedescriptor	Organization: WezTerm
+pkg:cargo/finl_unicode	Person: Don Hosek
+pkg:cargo/fixedbitset	Organization: petgraph
+pkg:cargo/flatbuffers	Organization: Google
+pkg:cargo/flate2	Organization: The Rust Programming Language
+pkg:cargo/float_eq	Person: Jessi Tempest
+pkg:cargo/fluent-uri	Person: Scallop Ye
+pkg:cargo/flume	Person: Joshua Barretto
+pkg:cargo/fnv	Organization: Servo
+pkg:cargo/foldhash	Person: Orson Peters
+pkg:cargo/foreign-types	Person: Steven Fackler
+pkg:cargo/foreign-types-shared	Person: Steven Fackler
+pkg:cargo/form_urlencoded	Organization: Servo
+pkg:cargo/fraction	Person: Serge Latyntsev
+pkg:cargo/fsevent-sys	Person: Pierre Baillet
+pkg:cargo/fslock	Person: brunoczim
+pkg:cargo/funty	Organization: Rusty Bit-Sequences
+pkg:cargo/futures	Organization: The Rust Programming Language
+pkg:cargo/futures-channel	Organization: The Rust Programming Language
+pkg:cargo/futures-core	Organization: The Rust Programming Language
+pkg:cargo/futures-executor	Organization: The Rust Programming Language
+pkg:cargo/futures-intrusive	Person: Matthias Einwag
+pkg:cargo/futures-io	Organization: The Rust Programming Language
+pkg:cargo/futures-lite	Organization: smol-rs
+pkg:cargo/futures-macro	Organization: The Rust Programming Language
+pkg:cargo/futures-sink	Organization: The Rust Programming Language
+pkg:cargo/futures-task	Organization: The Rust Programming Language
+pkg:cargo/futures-timer	Organization: async-rs
+pkg:cargo/futures-util	Organization: The Rust Programming Language
+pkg:cargo/generic-array	Person: Bartłomiej Kamiński
+pkg:cargo/getrandom	Organization: rust-random
+pkg:cargo/gimli	Organization: gimli-rs
+pkg:cargo/git2	Organization: The Rust Programming Language
+pkg:cargo/glob	Organization: The Rust Programming Language
+pkg:cargo/gloo-timers	Person: Elina
+pkg:cargo/gloo-utils	Person: Elina
+pkg:cargo/goauth	Person: Drazen Urch
+pkg:cargo/governor	Organization: boinkor.net open source
+pkg:cargo/graphql-introspection-query	Organization: GraphQL Rust
+pkg:cargo/graphql-parser	Organization: GraphQL Rust
+pkg:cargo/graphql_client	Organization: GraphQL Rust
+pkg:cargo/graphql_client_codegen	Organization: GraphQL Rust
+pkg:cargo/graphql_query_derive	Organization: GraphQL Rust
+pkg:cargo/grok	Person: Matt Mastracci
+pkg:cargo/group	Organization: Zero-knowledge Cryptography in Rust
+pkg:cargo/h2	Organization: hyperium
+pkg:cargo/half	Person: Kathryn Long
+pkg:cargo/hash_hasher	Person: Fraser Hutchison
+pkg:cargo/hashbag	Person: Jon Gjengset
+pkg:cargo/hashbrown	Organization: The Rust Programming Language
+pkg:cargo/hashlink	Person: Dirkjan Ochtman
+pkg:cargo/hdrhistogram	Organization: HdrHistogram
+pkg:cargo/headers	Organization: hyperium
+pkg:cargo/headers-core	Organization: hyperium
+pkg:cargo/heck	Person: srrrse
+pkg:cargo/hermit-abi	Organization: The Hermit Operating System
+pkg:cargo/hex	Person: KokaKiwi
+pkg:cargo/hickory-proto	Organization: Hickory DNS
+pkg:cargo/hickory-resolver	Organization: Hickory DNS
+pkg:cargo/hkdf	Organization: Rust Crypto
+pkg:cargo/hmac	Organization: Rust Crypto
+pkg:cargo/home	Organization: The Rust Programming Language
+pkg:cargo/hostname	Person: Dirkjan Ochtman
+pkg:cargo/http	Organization: hyperium
+pkg:cargo/http-body	Organization: hyperium
+pkg:cargo/http-body-util	Organization: hyperium
+pkg:cargo/http-range-header	Person: MarcusGrass
+pkg:cargo/http-serde	Person: Kornel
+pkg:cargo/httparse	Person: Sean McArthur
+pkg:cargo/httpdate	Person: pyfisch
+pkg:cargo/human-panic	Organization: Rust CLI WG
+pkg:cargo/humantime	Organization: Chronotope
+pkg:cargo/hyper	Organization: hyperium
+pkg:cargo/hyper-named-pipe	Person: Niel Drummond
+pkg:cargo/hyper-openssl	Person: Steven Fackler
+pkg:cargo/hyper-proxy	Person: Johann Tuffe
+pkg:cargo/hyper-rustls	Organization: rustls
+pkg:cargo/hyper-timeout	Person: Herman J. Radtke III
+pkg:cargo/hyper-tls	Organization: hyperium
+pkg:cargo/hyper-util	Organization: hyperium
+pkg:cargo/hyperlocal	Person: Doug Tangren
+pkg:cargo/iana-time-zone	Organization: Straw Lab
+pkg:cargo/iana-time-zone-haiku	Organization: Straw Lab
+pkg:cargo/icu_collections	Organization: The Unicode Consortium
+pkg:cargo/icu_locale_core	Organization: The Unicode Consortium
+pkg:cargo/icu_locid	Organization: The Unicode Consortium
+pkg:cargo/icu_locid_transform	Organization: The Unicode Consortium
+pkg:cargo/icu_locid_transform_data	Organization: The Unicode Consortium
+pkg:cargo/icu_normalizer	Organization: The Unicode Consortium
+pkg:cargo/icu_normalizer_data	Organization: The Unicode Consortium
+pkg:cargo/icu_properties	Organization: The Unicode Consortium
+pkg:cargo/icu_properties_data	Organization: The Unicode Consortium
+pkg:cargo/icu_provider	Organization: The Unicode Consortium
+pkg:cargo/icu_provider_macros	Organization: The Unicode Consortium
+pkg:cargo/id-arena	Person: Nick Fitzgerald
+pkg:cargo/ident_case	Person: Ted Driggs
+pkg:cargo/idna	Organization: Servo
+pkg:cargo/idna_adapter	Person: Henri Sivonen
+pkg:cargo/indenter	Organization: eyre-rs
+pkg:cargo/indexmap	Organization: indexmap-rs
+pkg:cargo/indicatif	Organization: console-rs
+pkg:cargo/indoc	Person: David Tolnay
+pkg:cargo/influxdb-line-protocol	Organization: InfluxData
+pkg:cargo/inotify	Person: Hanno Braun
+pkg:cargo/inotify-sys	Person: Hanno Braun
+pkg:cargo/inout	Organization: Rust Crypto
+pkg:cargo/instability	Organization: Ratatui
+pkg:cargo/instant	Person: Sébastien Crozet
+pkg:cargo/inventory	Person: David Tolnay
+pkg:cargo/io-lifetimes	Person: Dan Gohman
+pkg:cargo/iovec	Person: Carl Lerche
+pkg:cargo/ipconfig	Person: Liran Ringel
+pkg:cargo/ipcrypt-rs	Person: Frank Denis
+pkg:cargo/ipnet	Person: krisprice
+pkg:cargo/ipnetwork	Person: Abhishek Chanda
+pkg:cargo/iri-string	Person: YOSHIOKA Takuma
+pkg:cargo/is-terminal	Person: Dan Gohman
+pkg:cargo/is_ci	Person: Kat Marchán
+pkg:cargo/is_terminal_polyfill	Organization: polyfill-rs
+pkg:cargo/itertools	Organization: rust-itertools
+pkg:cargo/itoa	Person: David Tolnay
+pkg:cargo/jni	Organization: jni-rs
+pkg:cargo/jni-sys	Organization: jni-rs
+pkg:cargo/js-sys	Organization: wasm-bindgen
+pkg:cargo/json-patch	Person: Ivan Dubrov
+pkg:cargo/jsonpath-rust	Person: Boris Zhguchev
+pkg:cargo/jsonptr	Person: Chance
+pkg:cargo/jsonschema	Person: Dmitry Dygalo
+pkg:cargo/k8s-openapi	Person: Arnav Singh
+pkg:cargo/kasuari	Organization: Ratatui
+pkg:cargo/keccak	Organization: Rust Crypto
+pkg:cargo/kqueue	Organization: rust-kqueue
+pkg:cargo/kqueue-sys	Organization: rust-kqueue
+pkg:cargo/krb5-src	Organization: Materialize, Inc.
+pkg:cargo/kube	Organization: kube-rs
+pkg:cargo/kube-client	Organization: kube-rs
+pkg:cargo/kube-core	Organization: kube-rs
+pkg:cargo/kube-runtime	Organization: kube-rs
+pkg:cargo/lab	Person: Jess Bees
+pkg:cargo/lalrpop-util	Organization: lalrpop
+pkg:cargo/lapin	Organization: AMQP.rs
+pkg:cargo/lazy_static	Organization: rust-lang-nursery
+pkg:cargo/leb128fmt	Person: Bryant Luk
+pkg:cargo/lexical-core	Person: Alexander Huszagh
+pkg:cargo/lexical-parse-float	Person: Alexander Huszagh
+pkg:cargo/lexical-parse-integer	Person: Alexander Huszagh
+pkg:cargo/lexical-util	Person: Alexander Huszagh
+pkg:cargo/lexical-write-float	Person: Alexander Huszagh
+pkg:cargo/lexical-write-integer	Person: Alexander Huszagh
+pkg:cargo/libc	Organization: The Rust Programming Language
+pkg:cargo/libflate	Person: Takeru Ohta
+pkg:cargo/libflate_lz77	Person: Takeru Ohta
+pkg:cargo/libgit2-sys	Organization: The Rust Programming Language
+pkg:cargo/libm	Organization: The Rust Programming Language
+pkg:cargo/libredox	Organization: Redox OS
+pkg:cargo/libsqlite3-sys	Organization: Rusqlite
+pkg:cargo/libssh2-sys	Person: Alex Crichton
+pkg:cargo/libz-sys	Organization: The Rust Programming Language
+pkg:cargo/line-clipping	Organization: Ratatui
+pkg:cargo/linked-hash-map	Organization: contain-rs
+pkg:cargo/linked_hash_set	Person: Alex Butler
+pkg:cargo/linux-raw-sys	Person: Dan Gohman
+pkg:cargo/listenfd	Person: Armin Ronacher
+pkg:cargo/litemap	Organization: The Unicode Consortium
+pkg:cargo/litrs	Person: Lukas Kalbertodt
+pkg:cargo/lock_api	Person: Amanieu d'Antras
+pkg:cargo/lockfree-object-pool	Person: Vaillant Etienne
+pkg:cargo/log	Organization: The Rust Programming Language
+pkg:cargo/log2	Person: Alex Wei
+pkg:cargo/lru	Person: Jerome Froelich
+pkg:cargo/lru-cache	Organization: contain-rs
+pkg:cargo/lz4	Organization: 10x Genomics
+pkg:cargo/lz4-sys	Organization: 10x Genomics
+pkg:cargo/lz4_flex	Person: PSeitz
+pkg:cargo/mac_address	Person: Wesley Norris
+pkg:cargo/macaddr	Person: svartalf
+pkg:cargo/mach	Person: Nick Fitzgerald
+pkg:cargo/macro_magic	Person: Sam Johnson
+pkg:cargo/macro_magic_core	Person: Sam Johnson
+pkg:cargo/macro_magic_core_macros	Person: Sam Johnson
+pkg:cargo/macro_magic_macros	Person: Sam Johnson
+pkg:cargo/malloc_buf	Person: Steven Sheldon
+pkg:cargo/match_cfg	Person: gnzlbg
+pkg:cargo/matchers	Person: Eliza Weisman
+pkg:cargo/matchit	Person: Ibraheem Ahmed
+pkg:cargo/maxminddb	Person: Gregory Oschwald
+pkg:cargo/md-5	Organization: Rust Crypto
+pkg:cargo/memchr	Person: Andrew Gallant
+pkg:cargo/memmap2	Person: Yevhenii Reizner
+pkg:cargo/memmem	Person: jneem
+pkg:cargo/memoffset	Person: Gilad Naaman
+pkg:cargo/metrics	Organization: Metrics
+pkg:cargo/metrics-tracing-context	Organization: Metrics
+pkg:cargo/metrics-util	Organization: Metrics
+pkg:cargo/mime	Organization: hyperium
+pkg:cargo/mime_guess	Person: Austin Bonander
+pkg:cargo/minimal-lexical	Person: Alexander Huszagh
+pkg:cargo/miniz_oxide	Person: Frommi
+pkg:cargo/mio	Organization: Tokio
+pkg:cargo/mlua	Organization: mlua-rs
+pkg:cargo/mlua-sys	Organization: mlua-rs
+pkg:cargo/mlua_derive	Organization: mlua-rs
+pkg:cargo/moka	Organization: moka-rs
+pkg:cargo/mongocrypt	Organization: mongodb
+pkg:cargo/mongocrypt-sys	Organization: mongodb
+pkg:cargo/mongodb	Organization: mongodb
+pkg:cargo/mongodb-internal-macros	Organization: mongodb
+pkg:cargo/multer	Organization: Rocket Web Framework Foundation
+pkg:cargo/native-tls	Organization: rust-native-tls
+pkg:cargo/ndk-context	Organization: Rust Mobile
+pkg:cargo/netlink-packet-core	Organization: rust-netlink
+pkg:cargo/netlink-packet-sock-diag	Organization: rust-netlink
+pkg:cargo/netlink-packet-utils	Organization: rust-netlink
+pkg:cargo/netlink-sys	Organization: rust-netlink
+pkg:cargo/newtype-uuid	Organization: Oxide Computer Company
+pkg:cargo/nibble_vec	Person: Michael Sproul
+pkg:cargo/nix	Organization: nix-rust
+pkg:cargo/nkeys	Organization: wasmcloud
+pkg:cargo/no-proxy	Person: Jérémie Drouet
+pkg:cargo/nohash	Organization: Tetcoin
+pkg:cargo/nom	Organization: rust-bakery
+pkg:cargo/nom-language	Organization: rust-bakery
+pkg:cargo/nonblock	Person: Anthony Nowell
+pkg:cargo/nonzero_ext	Person: Andreas Fuchs
+pkg:cargo/notify	Organization: notify-rs
+pkg:cargo/notify-types	Organization: notify-rs
+pkg:cargo/ntapi	Person: MSxDOS
+pkg:cargo/nu-ansi-term	Organization: Nushell Project
+pkg:cargo/nuid	Person: Ivan Porto Carrero
+pkg:cargo/num	Organization: rust-num
+pkg:cargo/num-bigint	Organization: rust-num
+pkg:cargo/num-bigint-dig	Person: Friedel Ziegelmayer
+pkg:cargo/num-cmp	Person: Kang Seonghoon
+pkg:cargo/num-complex	Organization: rust-num
+pkg:cargo/num-conv	Person: Jacob Pratt
+pkg:cargo/num-derive	Organization: rust-num
+pkg:cargo/num-format	Person: Brian Myers
+pkg:cargo/num-integer	Organization: rust-num
+pkg:cargo/num-iter	Organization: rust-num
+pkg:cargo/num-rational	Organization: rust-num
+pkg:cargo/num-traits	Organization: rust-num
+pkg:cargo/num_cpus	Person: Sean McArthur
+pkg:cargo/num_enum	Person: Daniel Wagner-Hall
+pkg:cargo/num_enum_derive	Person: Daniel Wagner-Hall
+pkg:cargo/num_threads	Person: Jacob Pratt
+pkg:cargo/oauth2	Person: David Ramos
+pkg:cargo/objc	Person: Steven Sheldon
+pkg:cargo/objc2-core-foundation	Person: Mads Marquart
+pkg:cargo/objc2-io-kit	Person: Mads Marquart
+pkg:cargo/object	Organization: gimli-rs
+pkg:cargo/octseq	Organization: NLnet Labs
+pkg:cargo/ofb	Organization: Rust Crypto
+pkg:cargo/once_cell	Person: Alex Kladov
+pkg:cargo/once_cell_polyfill	Organization: polyfill-rs
+pkg:cargo/onig	Organization: rust-onig
+pkg:cargo/onig_sys	Organization: rust-onig
+pkg:cargo/opaque-debug	Organization: Rust Crypto
+pkg:cargo/opendal	Organization: The Apache Software Foundation
+pkg:cargo/openidconnect	Person: David Ramos
+pkg:cargo/openssl	Organization: rust-openssl
+pkg:cargo/openssl-macros	Organization: rust-openssl
+pkg:cargo/openssl-probe	Organization: rustls
+pkg:cargo/openssl-sys	Organization: rust-openssl
+pkg:cargo/option-ext	Person: soc
+pkg:cargo/ordered-float	Person: Jonathan Reem
+pkg:cargo/outref	Person: Nugine
+pkg:cargo/owo-colors	Organization: owo-colors
+pkg:cargo/p256	Organization: Rust Crypto
+pkg:cargo/p384	Organization: Rust Crypto
+pkg:cargo/pad	Person: Benjamin Sago
+pkg:cargo/parking	Organization: smol-rs
+pkg:cargo/parking_lot	Person: Amanieu d'Antras
+pkg:cargo/parking_lot_core	Person: Amanieu d'Antras
+pkg:cargo/parse-size	Person: kennytm
+pkg:cargo/passt	Person: Kevin Gimbel
+pkg:cargo/paste	Person: David Tolnay
+pkg:cargo/path-absolutize	Person: Magic Len Ron Li
+pkg:cargo/path-dedot	Person: Magic Len Ron Li
+pkg:cargo/pbkdf2	Organization: Rust Crypto
+pkg:cargo/peeking_take_while	Person: Nick Fitzgerald
+pkg:cargo/pem	Person: Jonathan Creekmore
+pkg:cargo/pem-rfc7468	Organization: Rust Crypto
+pkg:cargo/percent-encoding	Organization: Servo
+pkg:cargo/pest	Organization: pest
+pkg:cargo/pest_derive	Organization: pest
+pkg:cargo/pest_generator	Organization: pest
+pkg:cargo/pest_meta	Organization: pest
+pkg:cargo/phf	Organization: rust-phf
+pkg:cargo/phf_generator	Organization: rust-phf
+pkg:cargo/phf_macros	Organization: rust-phf
+pkg:cargo/phf_shared	Organization: rust-phf
+pkg:cargo/pin-project	Person: Taiki Endo
+pkg:cargo/pin-project-internal	Person: Taiki Endo
+pkg:cargo/pin-project-lite	Person: Taiki Endo
+pkg:cargo/pin-utils	Organization: The Rust Programming Language
+pkg:cargo/pinky-swear	Organization: AMQP.rs
+pkg:cargo/piper	Organization: smol-rs
+pkg:cargo/pkcs1	Organization: Rust Crypto
+pkg:cargo/pkcs8	Organization: Rust Crypto
+pkg:cargo/platforms	Organization: RustSec
+pkg:cargo/polling	Organization: smol-rs
+pkg:cargo/poly1305	Organization: Rust Crypto
+pkg:cargo/portable-atomic	Person: Taiki Endo
+pkg:cargo/postgres-openssl	Organization: rust-postgres
+pkg:cargo/postgres-protocol	Organization: rust-postgres
+pkg:cargo/postgres-types	Organization: rust-postgres
+pkg:cargo/potential_utf	Organization: The Unicode Consortium
+pkg:cargo/powerfmt	Person: Jacob Pratt
+pkg:cargo/ppv-lite86	Organization: cryptocorrosion
+pkg:cargo/prettydiff	Person: Oli Scherer
+pkg:cargo/prettyplease	Person: David Tolnay
+pkg:cargo/prettytable-rs	Person: Pierre-Henri Symoneaux
+pkg:cargo/primeorder	Organization: Rust Crypto
+pkg:cargo/proc-macro-crate	Person: Bastian Köcher
+pkg:cargo/proc-macro-error-attr2	Person: Gnome!
+pkg:cargo/proc-macro-error2	Person: Gnome!
+pkg:cargo/proc-macro-hack	Person: David Tolnay
+pkg:cargo/proc-macro-nested	Person: David Tolnay
+pkg:cargo/proc-macro2	Person: David Tolnay
+pkg:cargo/proptest	Organization: proptest-rs
+pkg:cargo/proptest-derive	Organization: proptest-rs
+pkg:cargo/prost	Organization: Tokio
+pkg:cargo/prost-derive	Organization: Tokio
+pkg:cargo/prost-reflect	Person: Andrew Hickman
+pkg:cargo/prost-types	Organization: Tokio
+pkg:cargo/psl	Organization: addr-rs
+pkg:cargo/psl-types	Organization: addr-rs
+pkg:cargo/ptr_meta	Organization: rkyv
+pkg:cargo/ptr_meta_derive	Organization: rkyv
+pkg:cargo/publicsuffix	Person: Rushmore Mushambi
+pkg:cargo/pulsar	Organization: StreamNative
+pkg:cargo/quad-rand	Person: Fedor Logachev
+pkg:cargo/quanta	Organization: Metrics
+pkg:cargo/quick-error	Person: Paul Colomiets
+pkg:cargo/quick-junit	Organization: nextest-rs
+pkg:cargo/quick-xml	Person: Johann Tuffe
+pkg:cargo/quickcheck	Person: Andrew Gallant
+pkg:cargo/quinn	Organization: quinn-rs
+pkg:cargo/quinn-proto	Organization: quinn-rs
+pkg:cargo/quinn-udp	Organization: quinn-rs
+pkg:cargo/quote	Person: David Tolnay
+pkg:cargo/quoted_printable	Person: Kartikaya Gupta kats
+pkg:cargo/r-efi	Organization: r-efi
+pkg:cargo/radium	Organization: Rusty Bit-Sequences
+pkg:cargo/radix_trie	Person: Michael Sproul
+pkg:cargo/rand	Organization: rust-random
+pkg:cargo/rand_chacha	Organization: rust-random
+pkg:cargo/rand_core	Organization: rust-random
+pkg:cargo/rand_distr	Organization: rust-random
+pkg:cargo/rand_xorshift	Organization: rust-random
+pkg:cargo/ratatui	Organization: Ratatui
+pkg:cargo/ratatui-core	Organization: Ratatui
+pkg:cargo/ratatui-crossterm	Organization: Ratatui
+pkg:cargo/ratatui-macros	Organization: Ratatui
+pkg:cargo/ratatui-termwiz	Organization: Ratatui
+pkg:cargo/ratatui-widgets	Organization: Ratatui
+pkg:cargo/raw-cpuid	Person: Gerd Zellweger
+pkg:cargo/raw-window-handle	Organization: Rust Windowing
+pkg:cargo/rdkafka	Person: Federico Giraud
+pkg:cargo/rdkafka-sys	Person: Federico Giraud
+pkg:cargo/reactor-trait	Organization: AMQP.rs
+pkg:cargo/redis	Organization: Redis for Rust
+pkg:cargo/redox_syscall	Organization: redox-os
+pkg:cargo/redox_users	Organization: redox-os
+pkg:cargo/ref-cast	Person: David Tolnay
+pkg:cargo/ref-cast-impl	Person: David Tolnay
+pkg:cargo/referencing	Person: Dmitry Dygalo
+pkg:cargo/regex	Organization: The Rust Programming Language
+pkg:cargo/regex-automata	Organization: The Rust Programming Language
+pkg:cargo/regex-filtered	Organization: ua-parser
+pkg:cargo/regex-lite	Organization: The Rust Programming Language
+pkg:cargo/regex-syntax	Organization: The Rust Programming Language
+pkg:cargo/relative-path	Person: John-John Tedro
+pkg:cargo/rend	Organization: rkyv
+pkg:cargo/reqwest	Person: Sean McArthur
+pkg:cargo/reqwest-middleware	Organization: TrueLayer
+pkg:cargo/reqwest-retry	Organization: TrueLayer
+pkg:cargo/resolv-conf	Organization: Hickory DNS
+pkg:cargo/retry-policies	Organization: TrueLayer
+pkg:cargo/rfc6979	Organization: Rust Crypto
+pkg:cargo/ring	Person: Brian Smith
+pkg:cargo/rkyv	Organization: rkyv
+pkg:cargo/rkyv_derive	Organization: rkyv
+pkg:cargo/rle-decode-fast	Person: Moritz Wanzenböck
+pkg:cargo/rmesg	Person: Archis
+pkg:cargo/rmp	Person: Evgeny Safronov
+pkg:cargo/rmp-serde	Person: Evgeny Safronov
+pkg:cargo/rmpv	Person: Evgeny Safronov
+pkg:cargo/roaring	Organization: Roaring bitmaps: A better compressed bitset
+pkg:cargo/roxmltree	Person: Yevhenii Reizner
+pkg:cargo/rsa	Organization: Rust Crypto
+pkg:cargo/rumqttc	Organization: bytebeam
+pkg:cargo/rust_decimal	Person: Paul Mason
+pkg:cargo/rustc-demangle	Organization: The Rust Programming Language
+pkg:cargo/rustc-hash	Organization: The Rust Programming Language
+pkg:cargo/rustc_version	Person: Dirkjan Ochtman
+pkg:cargo/rustc_version_runtime	Person: Sebastian Waisbrot
+pkg:cargo/rustix	Organization: Bytecode Alliance
+pkg:cargo/rustls	Organization: rustls
+pkg:cargo/rustls-native-certs	Organization: rustls
+pkg:cargo/rustls-pemfile	Organization: rustls
+pkg:cargo/rustls-pki-types	Organization: rustls
+pkg:cargo/rustls-webpki	Organization: rustls
+pkg:cargo/rustversion	Person: David Tolnay
+pkg:cargo/rusty-fork	Person: Jason Lingle
+pkg:cargo/rustyline	Person: Katsu Kawakami
+pkg:cargo/ryu	Person: David Tolnay
+pkg:cargo/salsa20	Organization: Rust Crypto
+pkg:cargo/same-file	Person: Andrew Gallant
+pkg:cargo/sasl2-sys	Organization: Materialize, Inc.
+pkg:cargo/schannel	Person: Steffen Butzer
+pkg:cargo/schemars	Person: Graham Esau
+pkg:cargo/scoped-tls	Person: Alex Crichton
+pkg:cargo/scopeguard	Person: bluss
+pkg:cargo/sct	Organization: rustls
+pkg:cargo/seahash	Organization: redox-os
+pkg:cargo/sec1	Organization: Rust Crypto
+pkg:cargo/secrecy	Organization: iqlusion
+pkg:cargo/security-framework	Person: Kornel
+pkg:cargo/security-framework-sys	Person: Kornel
+pkg:cargo/semver	Person: David Tolnay
+pkg:cargo/serde	Organization: serde-rs
+pkg:cargo/serde-aux	Person: Shockingly Good
+pkg:cargo/serde-toml-merge	Person: Jérémie Drouet
+pkg:cargo/serde-value	Person: arcnmx
+pkg:cargo/serde_bytes	Organization: serde-rs
+pkg:cargo/serde_core	Organization: serde-rs
+pkg:cargo/serde_derive	Organization: serde-rs
+pkg:cargo/serde_derive_internals	Organization: serde-rs
+pkg:cargo/serde_json	Organization: serde-rs
+pkg:cargo/serde_nanos	Person: Casper Beyer
+pkg:cargo/serde_path_to_error	Person: David Tolnay
+pkg:cargo/serde_plain	Person: Armin Ronacher
+pkg:cargo/serde_repr	Person: David Tolnay
+pkg:cargo/serde_spanned	Organization: toml-rs
+pkg:cargo/serde_urlencoded	Person: Anthony Ramine
+pkg:cargo/serde_with	Person: Jonas Bushart
+pkg:cargo/serde_with_macros	Person: Jonas Bushart
+pkg:cargo/serde_yaml	Person: David Tolnay
+pkg:cargo/serde_yaml_ng	Person: Antoine Catton
+pkg:cargo/sha-1	Organization: Rust Crypto
+pkg:cargo/sha1	Organization: Rust Crypto
+pkg:cargo/sha2	Organization: Rust Crypto
+pkg:cargo/sha3	Organization: Rust Crypto
+pkg:cargo/sharded-slab	Person: Eliza Weisman
+pkg:cargo/signal-hook	Person: Michal 'vorner' Vaner
+pkg:cargo/signal-hook-mio	Person: Michal 'vorner' Vaner
+pkg:cargo/signal-hook-registry	Person: Michal 'vorner' Vaner
+pkg:cargo/signatory	Organization: iqlusion
+pkg:cargo/signature	Organization: Rust Crypto
+pkg:cargo/simd-adler32	Person: Marvin Countryman
+pkg:cargo/simdutf8	Organization: rusticstuff
+pkg:cargo/simpl	Person: Drazen Urch
+pkg:cargo/siphasher	Person: Frank Denis
+pkg:cargo/sketches-ddsketch	Person: Mike Heffner
+pkg:cargo/slab	Organization: Tokio
+pkg:cargo/smallvec	Organization: Servo
+pkg:cargo/smol	Organization: smol-rs
+pkg:cargo/smpl_jwt	Person: Drazen Urch
+pkg:cargo/snafu	Person: Jake Goulding
+pkg:cargo/snafu-derive	Person: Jake Goulding
+pkg:cargo/snap	Person: Andrew Gallant
+pkg:cargo/socket2	Organization: The Rust Programming Language
+pkg:cargo/spin	Person: Joshua Barretto
+pkg:cargo/spinning_top	Organization: Rust OSDev
+pkg:cargo/spki	Organization: Rust Crypto
+pkg:cargo/sqlx	Organization: Transact.rs
+pkg:cargo/sqlx-core	Organization: Transact.rs
+pkg:cargo/sqlx-macros	Organization: launchbadge
+pkg:cargo/sqlx-macros-core	Organization: launchbadge
+pkg:cargo/sqlx-mysql	Organization: launchbadge
+pkg:cargo/sqlx-postgres	Organization: launchbadge
+pkg:cargo/sqlx-sqlite	Organization: launchbadge
+pkg:cargo/stable_deref_trait	Person: Robert Grosse
+pkg:cargo/static_assertions	Person: Nikolai Vazquez
+pkg:cargo/static_assertions_next	Organization: Scuffle
+pkg:cargo/stream-cancel	Person: Jon Gjengset
+pkg:cargo/stringprep	Person: Steven Fackler
+pkg:cargo/strip-ansi-escapes	Person: Ted Mielczarek
+pkg:cargo/strsim	Organization: RapidFuzz
+pkg:cargo/strum	Person: Peter Glotfelty
+pkg:cargo/strum_macros	Person: Peter Glotfelty
+pkg:cargo/subtle	Organization: dalek cryptography
+pkg:cargo/supports-color	Person: Kat Marchán
+pkg:cargo/syn	Person: David Tolnay
+pkg:cargo/sync_wrapper	Organization: Actyx AG
+pkg:cargo/synstructure	Person: Nika Layzell
+pkg:cargo/sysinfo	Person: Guillaume Gomez
+pkg:cargo/syslog	Person: Geoffroy Couprie
+pkg:cargo/syslog_loose	Person: Stephen Wakely
+pkg:cargo/system-configuration	Organization: Mullvad VPN
+pkg:cargo/system-configuration-sys	Organization: Mullvad VPN
+pkg:cargo/tagptr	Person: oliver-giersch
+pkg:cargo/take_mut	Person: Sgeo
+pkg:cargo/tap	Person: Alexander Payne
+pkg:cargo/tcp-stream	Organization: AMQP.rs
+pkg:cargo/tempfile	Person: Steven Allen
+pkg:cargo/term	Person: Steven Allen
+pkg:cargo/termcolor	Person: Andrew Gallant
+pkg:cargo/terminal_size	Person: Andrew Chin
+pkg:cargo/terminfo	Person: meh.
+pkg:cargo/termios	Person: David Cuddeback
+pkg:cargo/termwiz	Organization: WezTerm
+pkg:cargo/thiserror	Person: David Tolnay
+pkg:cargo/thiserror-impl	Person: David Tolnay
+pkg:cargo/thread_local	Person: Amanieu d'Antras
+pkg:cargo/tikv-jemalloc-sys	Organization: TiKV Project
+pkg:cargo/tikv-jemallocator	Organization: TiKV Project
+pkg:cargo/time	Organization: Time
+pkg:cargo/time-core	Organization: Time
+pkg:cargo/time-macros	Organization: Time
+pkg:cargo/tiny-keccak	Person: Marek Kotewicz
+pkg:cargo/tinystr	Organization: The Unicode Consortium
+pkg:cargo/tinyvec	Person: Lokathor
+pkg:cargo/tinyvec_macros	Person: Soveu
+pkg:cargo/tokio	Organization: Tokio
+pkg:cargo/tokio-io	Organization: Tokio
+pkg:cargo/tokio-io-timeout	Person: Steven Fackler
+pkg:cargo/tokio-macros	Organization: Tokio
+pkg:cargo/tokio-native-tls	Organization: Tokio
+pkg:cargo/tokio-openssl	Organization: Tokio
+pkg:cargo/tokio-postgres	Organization: rust-postgres
+pkg:cargo/tokio-retry	Person: Dirkjan Ochtman
+pkg:cargo/tokio-rustls	Organization: rustls
+pkg:cargo/tokio-stream	Organization: Tokio
+pkg:cargo/tokio-tungstenite	Organization: Snapview GmbH
+pkg:cargo/tokio-util	Organization: Tokio
+pkg:cargo/tokio-websockets	Person: Jens Reidel
+pkg:cargo/toml	Organization: toml-rs
+pkg:cargo/toml_datetime	Organization: toml-rs
+pkg:cargo/toml_edit	Organization: toml-rs
+pkg:cargo/toml_parser	Organization: toml-rs
+pkg:cargo/toml_write	Organization: toml-rs
+pkg:cargo/toml_writer	Organization: toml-rs
+pkg:cargo/tonic	Organization: grpc
+pkg:cargo/tower	Organization: Tower
+pkg:cargo/tower-http	Organization: Tower
+pkg:cargo/tower-layer	Organization: Tower
+pkg:cargo/tower-service	Organization: Tower
+pkg:cargo/tracing	Organization: Tokio
+pkg:cargo/tracing-attributes	Organization: Tokio
+pkg:cargo/tracing-core	Organization: Tokio
+pkg:cargo/tracing-error	Organization: Tokio
+pkg:cargo/tracing-futures	Organization: Tokio
+pkg:cargo/tracing-log	Organization: Tokio
+pkg:cargo/tracing-serde	Organization: Tokio
+pkg:cargo/tracing-subscriber	Organization: Tokio
+pkg:cargo/triomphe	Person: Manish Goregaokar
+pkg:cargo/try-lock	Person: Sean McArthur
+pkg:cargo/tryhard	Organization: Embark
+pkg:cargo/tungstenite	Organization: Snapview GmbH
+pkg:cargo/twox-hash	Person: Jake Goulding
+pkg:cargo/typed-builder	Person: Idan Arye
+pkg:cargo/typed-builder-macro	Person: Idan Arye
+pkg:cargo/typenum	Person: Paho Lurie-Gregg
+pkg:cargo/typespec	Organization: Microsoft Azure
+pkg:cargo/typespec_client_core	Organization: Microsoft Azure
+pkg:cargo/typespec_macros	Organization: Microsoft Azure
+pkg:cargo/typetag	Person: David Tolnay
+pkg:cargo/typetag-impl	Person: David Tolnay
+pkg:cargo/ua-parser	Organization: ua-parser
+pkg:cargo/ucd-trie	Person: Andrew Gallant
+pkg:cargo/unarray	Person: Cameron Mcloughlin
+pkg:cargo/unicase	Person: Sean McArthur
+pkg:cargo/unicode-bidi	Organization: Servo
+pkg:cargo/unicode-general-category	Organization: yeslogic
+pkg:cargo/unicode-ident	Person: David Tolnay
+pkg:cargo/unicode-normalization	Organization: unicode-rs
+pkg:cargo/unicode-segmentation	Organization: unicode-rs
+pkg:cargo/unicode-truncate	Person: Aetf
+pkg:cargo/unicode-width	Organization: unicode-rs
+pkg:cargo/unicode-xid	Organization: unicode-rs
+pkg:cargo/unit-prefix	Person: Fabio Valentini
+pkg:cargo/universal-hash	Organization: Rust Crypto
+pkg:cargo/unreachable	Person: Jonathan Reem
+pkg:cargo/unsafe-libyaml	Person: David Tolnay
+pkg:cargo/untrusted	Person: Brian Smith
+pkg:cargo/uom	Person: Mike Boutin
+pkg:cargo/url	Organization: Servo
+pkg:cargo/urlencoding	Person: Kornel
+pkg:cargo/utf-8	Person: Simon Sapin
+pkg:cargo/utf16_iter	Person: Henri Sivonen
+pkg:cargo/utf8-width	Person: Magic Len Ron Li
+pkg:cargo/utf8_iter	Person: Henri Sivonen
+pkg:cargo/utf8parse	Organization: Alacritty
+pkg:cargo/uuid	Organization: Rust Uuid
+pkg:cargo/uuid-simd	Person: Nugine
+pkg:cargo/valuable	Organization: Tokio
+pkg:cargo/void	Person: Jonathan Reem
+pkg:cargo/vrl	Organization: Vector
+pkg:cargo/vsimd	Person: Nugine
+pkg:cargo/vte	Organization: Alacritty
+pkg:cargo/vtparse	Organization: WezTerm
+pkg:cargo/wait-timeout	Person: Alex Crichton
+pkg:cargo/waker-fn	Organization: smol-rs
+pkg:cargo/walkdir	Person: Andrew Gallant
+pkg:cargo/want	Person: Sean McArthur
+pkg:cargo/warp	Person: Sean McArthur
+pkg:cargo/wasi	Organization: Bytecode Alliance
+pkg:cargo/wasip2	Organization: Bytecode Alliance
+pkg:cargo/wasip3	Organization: Bytecode Alliance
+pkg:cargo/wasite	Organization: Ardaku Systems
+pkg:cargo/wasm-bindgen	Organization: wasm-bindgen
+pkg:cargo/wasm-bindgen-futures	Organization: wasm-bindgen
+pkg:cargo/wasm-bindgen-macro	Organization: wasm-bindgen
+pkg:cargo/wasm-bindgen-macro-support	Organization: wasm-bindgen
+pkg:cargo/wasm-bindgen-shared	Organization: wasm-bindgen
+pkg:cargo/wasm-encoder	Organization: Bytecode Alliance
+pkg:cargo/wasm-metadata	Organization: Bytecode Alliance
+pkg:cargo/wasm-streams	Person: Mattias Buelens
+pkg:cargo/wasm-timer	Person: Pierre Krieger
+pkg:cargo/wasmparser	Organization: Bytecode Alliance
+pkg:cargo/web-sys	Organization: wasm-bindgen
+pkg:cargo/web-time	Person: daxpedda
+pkg:cargo/webbrowser	Person: Amod Malviya
+pkg:cargo/webpki-roots	Organization: rustls
+pkg:cargo/wezterm-bidi	Person: Wez Furlong
+pkg:cargo/wezterm-blob-leases	Organization: WezTerm
+pkg:cargo/wezterm-color-types	Organization: WezTerm
+pkg:cargo/wezterm-dynamic	Organization: WezTerm
+pkg:cargo/wezterm-dynamic-derive	Organization: WezTerm
+pkg:cargo/wezterm-input-types	Organization: WezTerm
+pkg:cargo/whoami	Organization: Ardaku Systems
+pkg:cargo/widestring	Person: Kathryn Long
+pkg:cargo/winapi	Person: Peter Atashian
+pkg:cargo/winapi-i686-pc-windows-gnu	Person: Peter Atashian
+pkg:cargo/winapi-util	Person: Andrew Gallant
+pkg:cargo/winapi-x86_64-pc-windows-gnu	Person: Peter Atashian
+pkg:cargo/windows	Organization: Microsoft
+pkg:cargo/windows-collections	Organization: Microsoft
+pkg:cargo/windows-core	Organization: Microsoft
+pkg:cargo/windows-future	Organization: Microsoft
+pkg:cargo/windows-implement	Organization: Microsoft
+pkg:cargo/windows-interface	Organization: Microsoft
+pkg:cargo/windows-link	Organization: Microsoft
+pkg:cargo/windows-numerics	Organization: Microsoft
+pkg:cargo/windows-registry	Organization: Microsoft
+pkg:cargo/windows-result	Organization: Microsoft
+pkg:cargo/windows-service	Organization: Mullvad VPN
+pkg:cargo/windows-strings	Organization: Microsoft
+pkg:cargo/windows-sys	Organization: Microsoft
+pkg:cargo/windows-targets	Organization: Microsoft
+pkg:cargo/windows-threading	Organization: Microsoft
+pkg:cargo/windows_aarch64_gnullvm	Organization: Microsoft
+pkg:cargo/windows_aarch64_msvc	Organization: Microsoft
+pkg:cargo/windows_i686_gnu	Organization: Microsoft
+pkg:cargo/windows_i686_gnullvm	Organization: Microsoft
+pkg:cargo/windows_i686_msvc	Organization: Microsoft
+pkg:cargo/windows_x86_64_gnu	Organization: Microsoft
+pkg:cargo/windows_x86_64_gnullvm	Organization: Microsoft
+pkg:cargo/windows_x86_64_msvc	Organization: Microsoft
+pkg:cargo/winnow	Organization: winnow-rs
+pkg:cargo/winreg	Person: gentoo90
+pkg:cargo/wit-bindgen	Organization: Bytecode Alliance
+pkg:cargo/wit-bindgen-core	Organization: Bytecode Alliance
+pkg:cargo/wit-bindgen-rust	Organization: Bytecode Alliance
+pkg:cargo/wit-bindgen-rust-macro	Organization: Bytecode Alliance
+pkg:cargo/wit-component	Organization: Bytecode Alliance
+pkg:cargo/wit-parser	Organization: Bytecode Alliance
+pkg:cargo/woothee	Organization: woothee
+pkg:cargo/write16	Person: Henri Sivonen
+pkg:cargo/writeable	Organization: The Unicode Consortium
+pkg:cargo/wyz	Person: Alexander Payne
+pkg:cargo/xmlparser	Person: Yevhenii Reizner
+pkg:cargo/xxhash-rust	Person: Douman
+pkg:cargo/yoke	Organization: The Unicode Consortium
+pkg:cargo/yoke-derive	Organization: The Unicode Consortium
+pkg:cargo/zerocopy	Organization: Google
+pkg:cargo/zerocopy-derive	Organization: Google
+pkg:cargo/zerofrom	Organization: The Unicode Consortium
+pkg:cargo/zerofrom-derive	Organization: The Unicode Consortium
+pkg:cargo/zeroize	Organization: Rust Crypto
+pkg:cargo/zerotrie	Organization: The Unicode Consortium
+pkg:cargo/zerovec	Organization: The Unicode Consortium
+pkg:cargo/zerovec-derive	Organization: The Unicode Consortium
+pkg:cargo/zlib-rs	Organization: Trifecta Tech Foundation
+pkg:cargo/zmij	Person: David Tolnay
+pkg:cargo/zstd	Person: Alexandre Bury
+pkg:cargo/zstd-safe	Person: Alexandre Bury
+pkg:cargo/zstd-sys	Person: Alexandre Bury
+pkg:golang/cel.dev/expr	Organization: Common Expression Language
+pkg:golang/cloud.google.com/go	Organization: Google APIs
+pkg:golang/dario.cat/mergo	Person: Dario Castañé
+pkg:golang/github.com/Azure	Organization: Microsoft Azure
+pkg:golang/github.com/GoogleCloudPlatform	Organization: Google Cloud Platform
+pkg:golang/github.com/Masterminds	Organization: Masterminds
+pkg:golang/github.com/Microsoft	Organization: Microsoft
+pkg:golang/github.com/alecthomas	Person: Alec Thomas
+pkg:golang/github.com/anatol	Person: Anatol Pomozov
+pkg:golang/github.com/anchore	Organization: Anchore, Inc.
+pkg:golang/github.com/andrewd-zededa	Person: andrewd-zededa
+pkg:golang/github.com/aws	Organization: Amazon Web Services
+pkg:golang/github.com/beevik	Person: Brett Vickers
+pkg:golang/github.com/beorn7	Person: Björn Rabenstein
+pkg:golang/github.com/cenkalti	Person: Cenk Altı
+pkg:golang/github.com/cespare	Person: Caleb Spare
+pkg:golang/github.com/checkpoint-restore	Organization: checkpoint-restore
+pkg:golang/github.com/cilium	Organization: Cilium
+pkg:golang/github.com/cncf	Organization: Cloud Native Computing Foundation CNCF
+pkg:golang/github.com/containerd	Organization: containerd
+pkg:golang/github.com/containernetworking	Organization: CNI
+pkg:golang/github.com/containers	Organization: Containers
+pkg:golang/github.com/coreos	Organization: CoreOS
+pkg:golang/github.com/cpuguy83	Person: Brian Goff
+pkg:golang/github.com/cyphar	Person: Aleksa Sarai
+pkg:golang/github.com/davecgh	Person: Dave Collins
+pkg:golang/github.com/dennwc	Person: Denys Smirnov
+pkg:golang/github.com/digitalocean	Organization: DigitalOcean
+pkg:golang/github.com/diskfs	Organization: disks and filesystems
+pkg:golang/github.com/distribution	Organization: Distribution
+pkg:golang/github.com/djherbis	Person: Dustin H
+pkg:golang/github.com/docker	Organization: Docker
+pkg:golang/github.com/elliotwutingfeng	Person: Wu Tingfeng
+pkg:golang/github.com/ema	Person: Emanuele Rocca
+pkg:golang/github.com/emicklei	Person: Ernest Micklei
+pkg:golang/github.com/envoyproxy	Organization: Envoy Proxy - CNCF
+pkg:golang/github.com/eriknordmark	Person: Erik Nordmark
+pkg:golang/github.com/eshard	Organization: eShard
+pkg:golang/github.com/euank	Person: Euan Kemp
+pkg:golang/github.com/facebook	Organization: Meta
+pkg:golang/github.com/felixge	Person: Felix Geisendörfer
+pkg:golang/github.com/fsnotify	Organization: fsnotify
+pkg:golang/github.com/fxamacker	Person: Faye Amacker
+pkg:golang/github.com/gabriel-vasile	Person: Gabriel Vasile
+pkg:golang/github.com/getlantern	Organization: Lantern
+pkg:golang/github.com/go-chi	Organization: go-chi
+pkg:golang/github.com/go-jose	Organization: go-jose
+pkg:golang/github.com/go-logr	Organization: go-logr
+pkg:golang/github.com/go-playground	Organization: Go Playgound
+pkg:golang/github.com/godbus	Organization: godbus
+pkg:golang/github.com/gogo	Organization: gogoprotobuf
+pkg:golang/github.com/golang	Organization: The Go Authors
+pkg:golang/github.com/golang-design	Organization: The golang.design Initiative
+pkg:golang/github.com/golang-jwt	Organization: golang-jwt
+pkg:golang/github.com/google	Organization: Google
+pkg:golang/github.com/googleapis	Organization: Google APIs
+pkg:golang/github.com/gorilla	Organization: Gorilla web toolkit
+pkg:golang/github.com/grandcat	Person: Stefan S
+pkg:golang/github.com/grpc-ecosystem	Organization: gRPC Ecosystem
+pkg:golang/github.com/hashicorp	Organization: HashiCorp
+pkg:golang/github.com/hodgesds	Person: Daniel Hodges
+pkg:golang/github.com/intel	Organization: Intel Corporation
+pkg:golang/github.com/jackwakefield	Person: Jack Wakefield
+pkg:golang/github.com/jaypipes	Person: Jay Pipes
+pkg:golang/github.com/josharian	Person: Josh Bleecher Snyder
+pkg:golang/github.com/jpillora	Person: Jaime Pillora
+pkg:golang/github.com/jsimonetti	Person: Jeroen Simonetti
+pkg:golang/github.com/json-iterator	Organization: Jsoniter
+pkg:golang/github.com/klauspost	Person: Klaus Post
+pkg:golang/github.com/knqyf263	Person: Teppei Fukuda
+pkg:golang/github.com/kr	Person: kr
+pkg:golang/github.com/leodido	Person: Leo Di Donato
+pkg:golang/github.com/linuxkit	Organization: LinuxKit
+pkg:golang/github.com/lithammer	Person: Peter Lithammer
+pkg:golang/github.com/mattn	Person: mattn
+pkg:golang/github.com/mdlayher	Person: Matt Layher
+pkg:golang/github.com/miekg	Person: Miek Gieben
+pkg:golang/github.com/mistifyio	Organization: Mistify
+pkg:golang/github.com/mitchellh	Person: Mitchell Hashimoto
+pkg:golang/github.com/moby	Organization: Moby
+pkg:golang/github.com/modern-go	Organization: Modern Go Programming
+pkg:golang/github.com/mrunalp	Person: Mrunal Patel
+pkg:golang/github.com/multiplay	Organization: Multiplay
+pkg:golang/github.com/munnerz	Person: James Munnelly
+pkg:golang/github.com/mwitkow	Person: Michal Witkowski
+pkg:golang/github.com/mxk	Person: Maxim Khitrov
+pkg:golang/github.com/opencontainers	Organization: Open Container Initiative
+pkg:golang/github.com/oxtoacart	Person: Percy Wegmann
+pkg:golang/github.com/packetcap	Organization: packetcap
+pkg:golang/github.com/pelletier	Person: Thomas Pelletier
+pkg:golang/github.com/pierrec	Person: Pierre Curto
+pkg:golang/github.com/pkg	Organization: pkg
+pkg:golang/github.com/prometheus	Organization: Prometheus
+pkg:golang/github.com/prometheus-community	Organization: Prometheus Monitoring Community
+pkg:golang/github.com/rivo	Person: rivo
+pkg:golang/github.com/robertkrimen	Person: Robert Krimen
+pkg:golang/github.com/russross	Person: Russ Ross
+pkg:golang/github.com/safchain	Person: Sylvain Afchain
+pkg:golang/github.com/satori	Person: Maxim Bublis
+pkg:golang/github.com/schollz	Person: Zack
+pkg:golang/github.com/seccomp	Organization: The libseccomp Project
+pkg:golang/github.com/shirou	Person: shirou
+pkg:golang/github.com/shurcooL	Organization: shurcooL
+pkg:golang/github.com/sirupsen	Person: Simon Eskildsen
+pkg:golang/github.com/smallstep	Organization: Smallstep
+pkg:golang/github.com/spiffe	Organization: SPIFFE
+pkg:golang/github.com/stefanberger	Person: Stefan Berger
+pkg:golang/github.com/syndtr	Person: Suryandaru Triandana
+pkg:golang/github.com/tatsushid	Person: Tatsushi Demachi
+pkg:golang/github.com/tchap	Person: Ondřej Kupka
+pkg:golang/github.com/tetratelabs	Organization: wazero
+pkg:golang/github.com/ti-mo	Person: Timo Beckers
+pkg:golang/github.com/tklauser	Person: Tobias Klauser
+pkg:golang/github.com/ulikunitz	Person: Ulrich Kunitz
+pkg:golang/github.com/urfave	Organization: urfave
+pkg:golang/github.com/vbatts	Person: Vincent Batts
+pkg:golang/github.com/vishvananda	Person: Vish Ishaya Abrams
+pkg:golang/github.com/x448	Person: Montgomery Edwards⁴⁴⁸
+pkg:golang/github.com/xeipuuv	Person: xeipuuv
+pkg:golang/github.com/xhit	Person: Santiago De la Cruz
+pkg:golang/github.com/xrash	Person: xrash
+pkg:golang/github.com/zededa	Organization: ZEDEDA Inc.
+pkg:golang/go.etcd.io/bbolt	Organization: etcd-io
+pkg:golang/go.opentelemetry.io	Organization: OpenTelemetry
+pkg:golang/go.uber.org/atomic	Organization: Uber Go
+pkg:golang/go.uber.org/multierr	Organization: Uber Go
+pkg:golang/go.yaml.in	Organization: The YAML Project
+pkg:golang/golang.org/x	Organization: The Go Authors
+pkg:golang/google.golang.org/api	Organization: Google APIs
+pkg:golang/google.golang.org/genproto	Organization: Google APIs
+pkg:golang/google.golang.org/grpc	Organization: grpc
+pkg:golang/google.golang.org/protobuf	Organization: Protocol Buffers
+pkg:golang/gopkg.in/inf.v0	Organization: go-inf
+pkg:golang/gopkg.in/sourcemap.v1	Organization: go-sourcemap
+pkg:golang/gopkg.in/yaml.v2	Organization: go-yaml
+pkg:golang/gopkg.in/yaml.v3	Organization: go-yaml
+pkg:golang/k8s.io	Organization: Kubernetes
+pkg:golang/oras.land/oras-go/v2	Organization: OCI Registry As Storage ORAS
+pkg:golang/recovertpm	Organization: LF Edge
+pkg:golang/sigs.k8s.io	Organization: Kubernetes
+pkg:golang/stdlib	Organization: The Go Authors
+pkg:golang/tags.cncf.io/container-device-interface	Organization: cncf-tags

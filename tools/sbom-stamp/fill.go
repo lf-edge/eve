@@ -4,7 +4,11 @@
 package main
 
 import (
+	"bufio"
+	_ "embed"
 	"encoding/json"
+	"fmt"
+	"path"
 	"regexp"
 	"strings"
 )
@@ -16,6 +20,10 @@ type Content struct {
 	// Images maps a directory in the tar to the image linuxkit unpacked
 	// there, taken from its LINUXKIT.source PAX record.
 	Images map[string]string
+	// Paths maps each path in the tar to the hex SHA-256 of the last
+	// regular file written there, or to "" for any other entry type. A nil
+	// Paths leaves files whose content is not in the tar untouched.
+	Paths map[string]string
 }
 
 const (
@@ -73,6 +81,7 @@ func imageSupplier(repo string) string {
 
 type pkgInfo struct {
 	SPDXID          string        `json:"SPDXID"`
+	Name            string        `json:"name"`
 	VersionInfo     string        `json:"versionInfo"`
 	Supplier        string        `json:"supplier"`
 	Description     string        `json:"description"`
@@ -85,6 +94,112 @@ func (p pkgInfo) purl() string {
 		if r.ReferenceType == "purl" {
 			return r.ReferenceLocator
 		}
+	}
+	return ""
+}
+
+// purlEscape percent-encodes s as a purl name or version: everything but
+// letters, digits, ".-_~" and ":" (purl-spec clause 5.4).
+func purlEscape(s string) string {
+	var b strings.Builder
+	for _, c := range []byte(s) {
+		switch {
+		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9',
+			strings.IndexByte(".-_~:", c) >= 0:
+			b.WriteByte(c)
+		default:
+			fmt.Fprintf(&b, "%%%02X", c)
+		}
+	}
+	return b.String()
+}
+
+// sourcePURL is the purl of a package EVE builds from source. The scanner
+// labels it pkg:apk because register-sbom-pkg.sh records it in the apk
+// database, which would match it against the distro's package of the same
+// name. purl-spec defines the generic type for upstream-from-distro packages.
+func sourcePURL(p pkgInfo) string {
+	purl := "pkg:generic/" + purlEscape(p.Name)
+	if p.VersionInfo != "" {
+		purl += "@" + purlEscape(p.VersionInfo)
+	}
+	return purl
+}
+
+// withPURL replaces the purl in refs, or adds one, keeping the other refs.
+func withPURL(refs []externalRef, purl string) []externalRef {
+	out := []externalRef{}
+	added := false
+	for _, r := range refs {
+		if r.ReferenceType == "purl" {
+			if added {
+				continue
+			}
+			r.ReferenceLocator, added = purl, true
+		}
+		out = append(out, r)
+	}
+	if !added {
+		out = append(out, externalRef{"PACKAGE-MANAGER", "purl", purl})
+	}
+	return out
+}
+
+// suppliersTxt maps package URLs to suppliers; update-suppliers.py adds to it.
+//
+//go:embed suppliers.txt
+var suppliersTxt string
+
+var suppliers = mustParseSuppliers(suppliersTxt)
+
+func mustParseSuppliers(s string) map[string]string {
+	m, err := parseSuppliers(s)
+	if err != nil {
+		panic(err)
+	}
+	return m
+}
+
+// parseSuppliers reads lines of a purl prefix and an SPDX supplier separated
+// by a tab, skipping blank lines and lines starting with #.
+func parseSuppliers(s string) (map[string]string, error) {
+	m := map[string]string{}
+	sc := bufio.NewScanner(strings.NewReader(s))
+	for n := 1; sc.Scan(); n++ {
+		line := sc.Text()
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		prefix, supplier, ok := strings.Cut(line, "\t")
+		switch {
+		case !ok || !strings.HasPrefix(prefix, "pkg:") || strings.ContainsAny(prefix, "@?#"):
+			return nil, fmt.Errorf("suppliers.txt:%d: want <purl prefix><tab><supplier>", n)
+		case !strings.HasPrefix(supplier, "Organization: ") && !strings.HasPrefix(supplier, "Person: "):
+			return nil, fmt.Errorf("suppliers.txt:%d: supplier must start with \"Organization: \" or \"Person: \"", n)
+		case m[prefix] != "":
+			return nil, fmt.Errorf("suppliers.txt:%d: %s listed twice", n, prefix)
+		}
+		m[prefix] = supplier
+	}
+	return m, sc.Err()
+}
+
+// mappedSupplier looks up purl, without its version, qualifiers and subpath,
+// in m, then each shorter run of its leading path segments, and returns the
+// supplier of the longest match or "".
+func mappedSupplier(m map[string]string, purl string) string {
+	key, _, _ := strings.Cut(purl, "#")
+	key, _, _ = strings.Cut(key, "?")
+	key, _, _ = strings.Cut(key, "@")
+	for strings.HasPrefix(key, "pkg:") {
+		if s := m[key]; s != "" {
+			return s
+		}
+		i := strings.LastIndexByte(key, '/')
+		if i < 0 {
+			break
+		}
+		key = key[:i]
 	}
 	return ""
 }
@@ -104,7 +219,7 @@ func knownSupplier(p pkgInfo) string {
 		apkRelease.MatchString(p.VersionInfo):
 		return alpine
 	}
-	return ""
+	return mappedSupplier(suppliers, purl)
 }
 
 // fillPackage names and versions the root linuxkit makes for each image, and
@@ -151,6 +266,11 @@ func fillPackage(raw json.RawMessage, o Options, c Content) (json.RawMessage, er
 			set("supplier", s, "versionInfo")
 		}
 	}
+	if strings.HasSuffix(p.Description, builtFromSource) {
+		if purl := sourcePURL(p); purl != p.purl() {
+			set("externalRefs", withPURL(p.ExternalRefs, purl), "")
+		}
+	}
 	if err != nil || !changed {
 		return raw, err
 	}
@@ -164,12 +284,9 @@ func fillPackage(raw json.RawMessage, o Options, c Content) (json.RawMessage, er
 func fillPURLs(pkgs []json.RawMessage) (int, error) {
 	type key struct{ id, name, version string }
 	keyOf := func(raw json.RawMessage) (key, pkgInfo, error) {
-		var p struct {
-			pkgInfo
-			Name string `json:"name"`
-		}
+		var p pkgInfo
 		err := json.Unmarshal(raw, &p)
-		return key{p.SPDXID, p.Name, p.VersionInfo}, p.pkgInfo, err
+		return key{p.SPDXID, p.Name, p.VersionInfo}, p, err
 	}
 	purls := map[key]map[string]bool{}
 	for _, raw := range pkgs {
@@ -216,6 +333,49 @@ func fillPURLs(pkgs []json.RawMessage) (int, error) {
 type checksum struct {
 	Algorithm     string `json:"algorithm"`
 	ChecksumValue string `json:"checksumValue"`
+}
+
+// reconcileFile matches a file whose SHA256 is in no tar entry against the
+// tar by path. linuxkit leaves etc/hostname out of every image and writes its
+// own etc/hosts (moby/build/image.go), so the scanner hashed files that do
+// not ship as hashed. keep is false for a file absent from the tar; a file
+// linuxkit replaced takes the SHA256 of the replacement.
+func reconcileFile(raw json.RawMessage, c Content) (out json.RawMessage, keep bool, err error) {
+	if c.Paths == nil {
+		return raw, true, nil
+	}
+	var f struct {
+		FileName  string     `json:"fileName"`
+		Checksums []checksum `json:"checksums"`
+	}
+	if err := json.Unmarshal(raw, &f); err != nil {
+		return nil, false, err
+	}
+	var sum256 string
+	for _, cs := range f.Checksums {
+		if cs.Algorithm == "SHA256" {
+			sum256 = cs.ChecksumValue
+		}
+	}
+	if _, ok := c.SHA1[sum256]; ok || sum256 == "" {
+		return raw, true, nil
+	}
+	shipped, ok := c.Paths[strings.Trim(path.Clean(f.FileName), "/")]
+	switch {
+	case !ok:
+		return nil, false, nil
+	case shipped == "":
+		return raw, true, nil
+	}
+	var obj object
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, false, err
+	}
+	if obj, err = obj.set("checksums", []checksum{{"SHA256", shipped}}, ""); err != nil {
+		return nil, false, err
+	}
+	out, err = json.Marshal(obj)
+	return out, true, err
 }
 
 // fillFile adds the SHA1 checksum SPDX 2.3 section 8.4 requires, looked up by
