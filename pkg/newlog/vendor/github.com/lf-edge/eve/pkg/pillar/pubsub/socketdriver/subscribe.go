@@ -4,6 +4,7 @@
 package socketdriver
 
 import (
+	"bytes"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -12,6 +13,8 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
@@ -26,9 +29,14 @@ import (
 // Implements Unix-domain socket or directory subscription,
 // and directory-based persistence.
 type Subscriber struct {
-	sockName         string   // there is one socket per publishing agent
-	sock             net.Conn // For socket subscriptions
-	subscribeFromDir bool     // Handle special case of file only info
+	sockName         string       // there is one socket per publishing agent
+	sockMu           sync.Mutex   // guards writes of sock against Stop
+	sock             net.Conn     // For socket subscriptions
+	protoReported    bool         // a wire protocol mismatch was logged
+	reader           *FrameReader // reads the frames from sock
+	stats            *pubsub.SubStats
+	subscribeFromDir bool // Handle special case of file only info
+	persistent       bool // initial Load() is from the persistent dir
 	name             string
 	topic            string
 	dirName          string
@@ -148,11 +156,14 @@ func (s *Subscriber) Stop() error {
 	} else if subscribeFromSock {
 		// Tell watchSock to finish
 		close(s.doneChan)
-		if s.sock != nil {
+		s.sockMu.Lock()
+		sock := s.sock
+		s.sockMu.Unlock()
+		if sock != nil {
 			// Force connectAndRead to terminate
 			s.log.Warnf("Stop(%s): forcing socket closed",
 				s.name)
-			s.sock.Close()
+			sock.Close()
 		}
 		return nil
 	} else {
@@ -162,15 +173,9 @@ func (s *Subscriber) Stop() error {
 	}
 }
 
-// LargeDirName where to put large fields
-func (s *Subscriber) LargeDirName() string {
-	return fmt.Sprintf("%s/persist/pubsub-large", s.rootDir)
-}
-
 func (s *Subscriber) watchSock() {
 	for {
 		msg, key, val := s.connectAndRead()
-		maybeLogAllocated(s.log)
 		switch msg {
 		case "hello":
 			// Do nothing
@@ -191,6 +196,9 @@ func (s *Subscriber) watchSock() {
 			// XXX is size of val any issue? pointer?
 			s.C <- pubsub.Change{Operation: pubsub.Modify, Key: key, Value: val}
 		case "done":
+			if s.sock != nil {
+				s.disconnect()
+			}
 			s.log.Warnf("watchSock(%s) goroutine exiting", s.name)
 			return
 		}
@@ -198,7 +206,6 @@ func (s *Subscriber) watchSock() {
 }
 
 // Returns msg, key, val
-// key and val are base64-encoded
 func (s *Subscriber) connectAndRead() (string, string, []byte) {
 	delay := time.Duration(0)
 	// Waiting for publisher to appear; retry on error
@@ -216,26 +223,39 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 			}
 		}
 		if s.sock == nil {
-			sock, err := net.Dial("unixpacket", s.sockName)
+			sock, err := net.Dial("unix", s.sockName)
 			if err != nil {
 				errStr := fmt.Sprintf("connectAndRead(%s): Dial failed %s",
 					s.name, err)
-				// During startup and after a publisher has
-				// exited we get these failures; treat
-				// as debug
-				s.log.Traceln(errStr)
+				if errors.Is(err, syscall.EPROTOTYPE) {
+					// The publisher listens on a socket of another
+					// type: it speaks a different pubsub wire protocol.
+					if !s.protoReported {
+						s.log.Errorf("%s: the publisher speaks a different pubsub "+
+							"wire protocol; is its component out of date?", errStr)
+						s.protoReported = true
+					}
+				} else {
+					// During startup and after a publisher has
+					// exited we get these failures; treat
+					// as debug
+					s.log.Traceln(errStr)
+				}
 				delay = 10 * time.Second
 				continue
 			}
+			s.sockMu.Lock()
 			s.sock = sock
+			s.sockMu.Unlock()
+			s.reader = NewFrameReaderWithStats(sock, s.stats)
+			s.stats.Subscribers.Add(1)
 			req := fmt.Sprintf("request %s", s.topic)
-			_, err = sock.Write([]byte(req))
+			err = WriteFrame(sock, []byte(req))
 			if err != nil {
 				errStr := fmt.Sprintf("connectAndRead(%s): sock write failed %s",
 					s.name, err)
 				s.log.Errorln(errStr)
-				s.sock.Close()
-				s.sock = nil
+				s.disconnect()
 				continue
 			}
 		}
@@ -244,17 +264,8 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 			return "done", "", nil
 		}
 
-		// wait for readable conn
-		// We close s.sock when we close s.doneChan to make sure
-		// ConnReadCheck unblocks
-		if err := pubsub.ConnReadCheck(s.sock); err != nil {
-			errStr := fmt.Sprintf("connectAndRead(%s) ConnReadCheck failed: %s",
-				s.name, err)
-			s.log.Errorln(errStr)
-			s.sock.Close()
-			s.sock = nil
-			continue
-		}
+		// read blocks until a frame arrives. We close s.sock when we
+		// close s.doneChan to make sure it unblocks.
 		msg, key, val := s.read()
 		if msg == "" {
 			continue
@@ -264,38 +275,31 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 }
 
 // Returns msg, key, val
-// key and val are base64-encoded
 // msg is "" if there is nothing to process
 func (s *Subscriber) read() (string, string, []byte) {
 
-	buf, doneFunc := GetBuffer()
-	defer doneFunc()
-
-	res, err := s.sock.Read(buf)
+	frame, err := s.reader.ReadFrame()
 	if err != nil {
 		errStr := fmt.Sprintf("connectAndRead(%s): sock read failed %s",
 			s.name, err)
 		s.log.Errorln(errStr)
-		s.sock.Close()
-		s.sock = nil
+		s.disconnect()
 		return "", "", nil
 	}
+	defer s.reader.Release()
 
-	if res == len(buf) {
-		// Likely truncated
-		// Peer process could have died
-		s.log.Errorf("connectAndRead(%s) request likely truncated\n", s.name)
-		return "", "", nil
-	}
-	reply := strings.Split(string(buf[0:res]), " ")
+	// The value of an update is the last field and may contain spaces.
+	// The frame is reused by the next read, hence everything returned
+	// is copied out of it.
+	reply := bytes.SplitN(frame, []byte(" "), 4)
 	count := len(reply)
 	if count < 2 {
 		errStr := fmt.Sprintf("connectAndRead(%s): too short read", s.name)
 		s.log.Errorln(errStr)
 		return "", "", nil
 	}
-	msg := reply[0]
-	t := reply[1]
+	msg := string(reply[0])
+	t := string(reply[1])
 
 	if t != s.topic {
 		errStr := fmt.Sprintf("connectAndRead(%s): mismatched topic %s vs. %s for %s", s.name, t, s.topic, msg)
@@ -308,6 +312,9 @@ func (s *Subscriber) read() (string, string, []byte) {
 	switch msg {
 	case "hello", "complete":
 		s.log.Tracef("connectAndRead(%s) Got message %s type %s\n", s.name, msg, t)
+		if msg == "hello" && count >= 3 {
+			s.checkPublisherPersistence(string(reply[2]))
+		}
 		return msg, "", nil
 
 	case "restarted":
@@ -328,7 +335,7 @@ func (s *Subscriber) read() (string, string, []byte) {
 		}
 		recvKey := reply[2]
 
-		key, err := base64.StdEncoding.DecodeString(recvKey)
+		key, err := base64.StdEncoding.AppendDecode(nil, recvKey)
 		if err != nil {
 			errStr := fmt.Sprintf("connectAndRead(%s): base64 failed %s", s.name, err)
 			s.log.Errorln(errStr)
@@ -347,17 +354,17 @@ func (s *Subscriber) read() (string, string, []byte) {
 		}
 		recvKey := reply[2]
 		recvVal := reply[3]
-		key, err := base64.StdEncoding.DecodeString(recvKey)
+		key, err := base64.StdEncoding.AppendDecode(nil, recvKey)
 		if err != nil {
 			errStr := fmt.Sprintf("connectAndRead(%s): base64 key failed %s", s.name, err)
 			s.log.Errorln(errStr)
 			return "", "", nil
 		}
-		val, err := base64.StdEncoding.DecodeString(recvVal)
-		if err != nil {
-			errStr := fmt.Sprintf("connectAndRead(%s): base64 val failed %s", s.name, err)
-			s.log.Errorln(errStr)
-			return "", "", nil
+		// A frame in a buffer of its own, a large or decompressed one, is
+		// not reused: keep the value in it instead of copying it out.
+		val := recvVal
+		if !s.reader.Owned() {
+			val = bytes.Clone(recvVal)
 		}
 		if s.logger.GetLevel() == logrus.TraceLevel {
 			s.log.Tracef("connectAndRead(%s): update type %s key %s val %s\n", s.name, t, string(key), string(val))
@@ -371,10 +378,41 @@ func (s *Subscriber) read() (string, string, []byte) {
 	}
 }
 
+// disconnect closes the connection to the publisher.
+func (s *Subscriber) disconnect() {
+	s.sock.Close()
+	s.sockMu.Lock()
+	s.sock = nil
+	s.sockMu.Unlock()
+	s.reader.Release()
+	s.stats.Subscribers.Add(-1)
+}
+
+// checkPublisherPersistence compares the publisher's persistence, as
+// advertised in its hello message, with the Persistent option of this
+// subscription. A persistent subscription to a non-persistent publication is
+// a bug: the initial Load() done by Activate() reads from the persistent
+// directory which the publisher never writes, so it silently loads nothing,
+// or worse, stale state left behind by an older EVE version.
+func (s *Subscriber) checkPublisherPersistence(pubPersistent string) {
+	persistent, err := strconv.ParseBool(pubPersistent)
+	if err != nil {
+		s.log.Errorf("checkPublisherPersistence(%s): malformed persistence flag %q in hello message",
+			s.name, pubPersistent)
+		return
+	}
+	if s.persistent && !persistent {
+		s.log.Errorf("checkPublisherPersistence(%s): subscription for topic %s is persistent, "+
+			"but the publisher is not; the initial load of this subscription is unreliable "+
+			"(empty or stale data); fix the Persistent flag on one of the two sides",
+			s.name, s.topic)
+	}
+}
+
 // translate takes file notifications from a file watcher and converts them
 // pubsub operations. Normally this is 1-1 but since the file watcher can not
 // ensure ordering for the restarted file we delay those until a bit to ensure
-// they are delivered after any notifictions for other files.
+// they are delivered after any notifications for other files.
 func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 	statusDirName := s.dirName
 	gotRestarted := false
@@ -382,10 +420,10 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 
 	// Delay sending restarted until we have seen other changes
 	interval := 3 * time.Second
-	max := float64(interval)
-	min := max / 3
-	ticker := flextimer.NewRangeTicker(time.Duration(1000*min),
-		time.Duration(1000*max))
+	maxDelay := float64(interval)
+	minDelay := maxDelay / 3
+	ticker := flextimer.NewRangeTicker(time.Duration(1000*minDelay),
+		time.Duration(1000*maxDelay))
 
 	for {
 		select {
@@ -399,8 +437,8 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 				restartedValue)
 			gotRestarted = false
 			restartedValue = ""
-			ticker.UpdateRangeTicker(time.Duration(1000*min),
-				time.Duration(1000*max))
+			ticker.UpdateRangeTicker(time.Duration(1000*minDelay),
+				time.Duration(1000*maxDelay))
 
 		case change, ok := <-in:
 			if !ok {
@@ -446,9 +484,9 @@ func (s *Subscriber) translate(in <-chan string, out chan<- pubsub.Change) {
 				restartedValue = string(cb)
 				s.log.Functionf("Starting timer restarted %s for %v %v",
 					restartedValue,
-					time.Duration(min), time.Duration(max))
-				ticker.UpdateRangeTicker(time.Duration(min),
-					time.Duration(max))
+					time.Duration(minDelay), time.Duration(maxDelay))
+				ticker.UpdateRangeTicker(time.Duration(minDelay),
+					time.Duration(maxDelay))
 
 			case !strings.HasSuffix(fileName, ".json"):
 				// s.log.Tracef("Ignoring file <%s> operation %s\n",

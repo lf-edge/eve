@@ -57,9 +57,6 @@ func RunInDebugContainer(clientCtx context.Context, taskID string, w io.Writer, 
 		Args: args,
 		Env:  env,
 		Cwd:  "/",
-		Scheduler: &specs.Scheduler{
-			Deadline: uint64(time.Now().Add(timeout).Unix()),
-		},
 	}
 	stderrBuf := bytes.Buffer{}
 

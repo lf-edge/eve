@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	// EveVirtTypeFile contains the virtualization type, i.e., kvm, xen or k
+	// EveVirtTypeFile contains the virtualization type, i.e., kvm or k
 	EveVirtTypeFile = "/run/eve-hv-type"
 	// KubeAppNameMaxLen limits the length of the app name for Kubernetes.
 	// This also includes the appended UUID prefix.
@@ -31,6 +31,12 @@ const (
 	DefaultEtcdSizeGB uint32 = 10
 	// EtcdVolBlockSizeBytes is the block size for the etcd volume
 	EtcdVolBlockSizeBytes = uint64(4 * 1024)
+	// InstallOptionWitnessZvol grub option at install time. Reserves a
+	// zvol for the 2-node-HA witness, sized from InstallOptionEtcdSizeGB.
+	// Presence enables it; there is no value. Only meaningful on ZFS,
+	// where the vault zvol otherwise claims the whole remaining pool and
+	// leaves nothing to carve out later.
+	InstallOptionWitnessZvol = "eve_install_k3s_witness"
 	// KubevirtHypervisorName is the name of the imaginary EVE 'k' hypervisor
 	KubevirtHypervisorName = "k"
 )
@@ -72,16 +78,21 @@ var (
 	kubeNameSeparators     = regexp.MustCompile("[.-]+")
 )
 
+// SanitizeKubeName converts an arbitrary display name into a DNS-1123-compatible
+// fragment usable inside a Kubernetes object name: underscores become dashes,
+// other forbidden characters are dropped, runs of '.'/'-' collapse to a single
+// dash, and the result is lowercased. It does NOT guarantee uniqueness - callers
+// that need a unique object name must append a discriminator (e.g. a UUID suffix).
+func SanitizeKubeName(displayName string) string {
+	name := strings.ReplaceAll(displayName, "_", "-")
+	name = kubeNameForbiddenChars.ReplaceAllString(name, "")
+	name = kubeNameSeparators.ReplaceAllString(name, "-")
+	return strings.ToLower(name)
+}
+
 // GetAppKubeName returns name of the application used inside Kubernetes (for Pod or VMI).
 func GetAppKubeName(displayName string, uuid uuid.UUID) string {
-	appKubeName := displayName
-	// Replace underscores with dashes for Kubernetes
-	appKubeName = strings.ReplaceAll(appKubeName, "_", "-")
-	// Remove special characters using regular expressions
-	appKubeName = kubeNameForbiddenChars.ReplaceAllString(appKubeName, "")
-	// Reduce combinations like '-.-' or '.-.' to a single dash
-	appKubeName = kubeNameSeparators.ReplaceAllString(appKubeName, "-")
-	appKubeName = strings.ToLower(appKubeName)
+	appKubeName := SanitizeKubeName(displayName)
 	const maxLen = KubeAppNameMaxLen - 1 - KubeAppNameUUIDSuffixLen
 	if len(appKubeName) > maxLen {
 		appKubeName = appKubeName[:maxLen]
@@ -95,6 +106,41 @@ func GetAppKubeName(displayName string, uuid uuid.UUID) string {
 // Format: <appKubeName>-<purgeCounter>  (e.g. "myapp-027a9-3")
 func GetAppKubeNameWithPurge(displayName string, id uuid.UUID, purgeCounter uint32) string {
 	return GetAppKubeName(displayName, id) + "-" + strconv.FormatUint(uint64(purgeCounter), 10)
+}
+
+// kubeAppUUIDSeed seeds the v5 UUID derivation for directly-deployed Kubernetes workloads.
+// It is a fixed constant so the derivation is stable across reboots, nodes, and EVE versions.
+var kubeAppUUIDSeed = uuid.NewV5(uuid.NamespaceOID, "eve-kube-app-network-id")
+
+// rsPodSuffix matches the 5-character lowercase-alphanumeric suffix that the ReplicaSet
+// controller appends to pod names ("<ownerName>-<suffix>").
+var rsPodSuffix = regexp.MustCompile(`^[a-z0-9]{5}$`)
+
+// KubeAppUUID derives a stable, cluster-consistent synthetic appUUID for a directly-deployed
+// Kubernetes workload (helm/raw yaml) that has no EVE controller-assigned UUID. It is a pure
+// function of (namespace, ownerName) so every cluster node derives the identical value —
+// which keeps the ClusterDeterministic MAC stable across reboot and migration.
+func KubeAppUUID(namespace, ownerName string) uuid.UUID {
+	return uuid.NewV5(kubeAppUUIDSeed, namespace+"/"+ownerName)
+}
+
+// KubePodMatchesOwner reports whether podName is either an ownerless bare Pod (whose synthesized
+// ownerName is the pod name itself) or a pod of the bare ReplicaSet ownerName, with the form
+// "<ownerName>-<5 lowercase-alnum chars>". Validating the suffix shape (rather than a plain
+// prefix check) disambiguates nested owner names such as "app" vs "app-foo":
+// "app-foo-x2k4p" matches only "app-foo", since "foo-x2k4p" is not a valid suffix.
+func KubePodMatchesOwner(podName, ownerName string) bool {
+	if ownerName == "" {
+		return false
+	}
+	if podName == ownerName {
+		return true
+	}
+	prefix := ownerName + "-"
+	if !strings.HasPrefix(podName, prefix) {
+		return false
+	}
+	return rsPodSuffix.MatchString(podName[len(prefix):])
 }
 
 // GetVMINameFromVirtLauncher extracts VMI name and ReplicaSet name from a Kubevirt
