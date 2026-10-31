@@ -97,6 +97,10 @@ tail -F /run/diag.out
 
 In addition this information is provided to application instances on the device using [the diag API endpoint](./ECO-METADATA.md).
 
+### Quick status
+
+`eve status` prints the controller URL (from `/config/server`), whether the node is onboarded (the device UUID in `/persist/status/uuid`), the result of the last config fetch from the controller (`ok`, `failed` or `using saved config`), and the management ports, followed by the list of running services. The config fetch line is the result reported by `zedagent`, not a live probe. The management ports line lists each management port with the result of the last controller connectivity test run by `nim` through it (`reachable`, `unreachable`, `untested`, or `link down`). Use the diag output above for connectivity details.
+
 ## Application management
 
 EVE provides the `eve app` family of subcommands for managing user applications
