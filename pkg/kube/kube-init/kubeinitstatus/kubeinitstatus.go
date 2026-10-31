@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/pubsubclient"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 )
 
@@ -98,10 +99,13 @@ func (KubeInitStatus) Key() string { return "global" }
 // the subscription under.
 const SubscriptionLabel = "KubeInitStatus"
 
-// publisherAgentName is also kube-init: the daemon subscribes to
-// its own publication. Same agent name on both sides is supported
-// by pillar pubsub.
-const publisherAgentName = pubsubclient.AgentName
+// publisherAgentName is the kube role's in both roles. The kube daemon
+// subscribes to its own publication, which pillar pubsub supports. The
+// witness subscribes to the kube role's, which is how it learns the node
+// it sits on has become a cluster member: until then the cluster token
+// the witness joins with is not the one the node's k3s accepts, and the
+// witness has no publication of its own worth reading back.
+var publisherAgentName = role.Kube.String()
 
 var (
 	mu          sync.RWMutex
@@ -114,7 +118,7 @@ var (
 // at startup, before m.Run(). After this Publish is safe to call.
 func RegisterPublisher(m *pubsubclient.Manager) error {
 	p, err := m.NewPublication(pubsub.PublicationOptions{
-		AgentName: pubsubclient.AgentName,
+		AgentName: pubsubclient.AgentName(),
 		TopicType: KubeInitStatus{},
 		// Not Persistent: the on-disk state.AllComponentsInitialized
 		// marker is the boot-survives record; this topic is the
@@ -138,7 +142,7 @@ func RegisterPublisher(m *pubsubclient.Manager) error {
 func RegisterSubscriber(m *pubsubclient.Manager) error {
 	_, err := m.Register(SubscriptionLabel, pubsub.SubscriptionOptions{
 		AgentName:     publisherAgentName,
-		MyAgentName:   pubsubclient.AgentName,
+		MyAgentName:   pubsubclient.AgentName(),
 		TopicImpl:     KubeInitStatus{},
 		Persistent:    false,
 		CreateHandler: handleCreate,

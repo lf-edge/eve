@@ -906,9 +906,13 @@ func (d *EdgeDevice) waitForRevert(targetShortVersion string) {
 	}
 }
 
-// ExpectReboots declares that the device will reboot count times on its
-// own, as a required consequence of a configuration change rather than at
-// the test's request.
+// ExpectAdditionalReboots declares that the device will reboot count more
+// times on its own, as a required consequence of a configuration change
+// rather than at the test's request.
+//
+// Additional, because it adds to the running total rather than stating
+// what the total should be: the framework's own reboot-driven flows
+// have already contributed to it.
 //
 // Close audits observed reboots against expected ones, so a reboot EVE
 // performs by design is reported as a failure unless it is declared. The
@@ -927,7 +931,7 @@ func (d *EdgeDevice) waitForRevert(targetShortVersion string) {
 // shrink/grow across more reboots than UpgradeEVE accounts for, and how many is
 // known only to the test driving it, since a plain kvm<->k conversion with no
 // resize reboots differently than a shrink+grow.
-func (d *EdgeDevice) ExpectReboots(count int) {
+func (d *EdgeDevice) ExpectAdditionalReboots(count int) {
 	d.th.collectCoverageFromDevice(d.th.ctx, d.devName)
 	for i := 0; i < count; i++ {
 		d.th.incExpectedRebootCount(d.devName)
@@ -936,7 +940,7 @@ func (d *EdgeDevice) ExpectReboots(count int) {
 
 // UnexpectedRebootCount is how many times the device has been seen rebooting
 // beyond what the test asked for (RequestReboot, SoftReboot, HardReboot,
-// UpgradeEVE, ExpectReboots): the same count Close audits at the end of every
+// UpgradeEVE, ExpectAdditionalReboots): the same count Close audits at the end of every
 // test, exposed so that a test waiting for something a crash would prevent
 // can fail at once, naming the cause, instead of waiting out its timeout. A
 // reboot is recognized from the boot time the device reports in its info
@@ -1198,7 +1202,7 @@ func (d *EdgeDevice) editDisk(caller string, req *api.EditDeviceDiskRequest) {
 // (see PowerOn), so the same test lands on different counts from run to run and
 // no fixed declaration can be right. Use it only where the count is genuinely
 // unknowable; a test whose reboots are merely more numerous than the harness
-// assumes should declare them with ExpectReboots instead.
+// assumes should declare them with ExpectAdditionalReboots instead.
 func (d *EdgeDevice) DisableRebootAccounting(reason string) {
 	d.th.disableRebootAccounting(d.devName, reason)
 }
@@ -2985,10 +2989,17 @@ func (d *EdgeDevice) KubectlListNames(resource string) ([]string, error) {
 }
 
 // GetClusterInfo returns the last recorded information about the Kubernetes
-// cluster, or nil if no such info message has been received yet.
-func (d *EdgeDevice) GetClusterInfo() *eveinfo.ZInfoKubeCluster {
+// cluster and the time the device stamped it, so that snapshots from
+// different devices can be ordered. Returns nil and a zero time if no such
+// info message has been received yet.
+//
+// The snapshot may be arbitrarily old: only the elected leader publishes
+// cluster info, so a device that has lost the election (or has been powered
+// off) keeps reporting whatever it last sent, indefinitely.
+func (d *EdgeDevice) GetClusterInfo() (*eveinfo.ZInfoKubeCluster, time.Time) {
 	devUUID := d.getDevUUID()
 	var result *eveinfo.ZInfoKubeCluster
+	var at time.Time
 	d.iterateInfoMsgs(devUUID,
 		func(msg *eveinfo.ZInfoMsg) bool {
 			return msg.GetZtype() == eveinfo.ZInfoTypes_ZiKubeCluster &&
@@ -2996,9 +3007,10 @@ func (d *EdgeDevice) GetClusterInfo() *eveinfo.ZInfoKubeCluster {
 		},
 		func(msg *eveinfo.ZInfoMsg) {
 			result = msg.GetClusterInfo()
+			at = msg.GetAtTimeStamp().AsTime()
 		},
 	)
-	return result
+	return result, at
 }
 
 // WatchClusterInfo subscribes to Kubernetes cluster info updates and returns a
@@ -3048,7 +3060,7 @@ func (d *EdgeDevice) WaitForClusterNodeIsReady(timeout time.Duration) {
 	updates, stop := d.WatchClusterInfo()
 	defer stop()
 
-	if info := d.GetClusterInfo(); info != nil && clusterNodeReady(info, d.devName) {
+	if info, _ := d.GetClusterInfo(); info != nil && clusterNodeReady(info, d.devName) {
 		d.th.log.Infof("Cluster node %q is already ready", d.devName)
 		return
 	}

@@ -700,7 +700,7 @@ Go coverage.  Setting `EVETEST_COLLECT_COVERAGE=true` (together with
 `EVETEST_COLLECT_ARTIFACTS`) tells the framework to collect coverage data:
 
 - **Before every device reboot** (`HardReboot`, `SoftReboot`, `RequestReboot`,
-  `UpgradeEVE`, `ExpectReboots`, and the CLI `evetest eve hard-reboot` /
+  `UpgradeEVE`, `ExpectAdditionalReboots`, and the CLI `evetest eve hard-reboot` /
   `evetest eve soft-reboot`). A reverted upgrade's second reboot has no such
   hook, since EVE (not evetest) decides when to revert.
 - **At test completion** (inside `Close()`).
@@ -1124,6 +1124,16 @@ Only when running the CLI against an instance on a remote machine, set
 > To test against a different (e.g. custom-built) Adam version, rebuild the image first:
 > `make build-container EVETEST_ADAM_VERSION=<version>`, then run tests as usual
 > against that locally-built image.
+>
+> **If the Adam image was built locally** (e.g. `docker build -t lfedge/adam:<version> .`
+> in your own `adam` checkout) rather than pulled from a registry, the build may fail
+> with `failed to resolve source metadata for docker.io/lfedge/adam:<version>: not found`
+> even though `docker images` shows it present. This happens when your active `docker
+> buildx` builder uses the `docker-container` driver, which runs in its own isolated
+> BuildKit instance with no visibility into the host's local image store (`docker buildx
+> ls` shows which driver is active). Work around it by pointing this one build at the
+> `default` builder (which shares the host's Docker image store), without changing your
+> global default: `BUILDX_BUILDER=default make build-container EVETEST_ADAM_VERSION=<version>`.
 
 ### Broker Variables (for distributed mode)
 

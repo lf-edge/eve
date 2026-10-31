@@ -108,6 +108,15 @@ type ClusterStatus struct {
 	PrefixLen        int
 	ClusterIPIsReady bool
 	ClusterID        string
+	// WitnessIP is the address the witness binds its etcd to, empty
+	// when the controller configured no witness. Set on every node,
+	// since NIM needs it too, but only acted on by the node that owns
+	// JoinServerIP.
+	WitnessIP string
+	// QuorumRecoveryGeneration is the controller's quorum-loss recovery
+	// counter. A change means the cluster was forcibly reset, so local
+	// etcd state belongs to a cluster that no longer exists.
+	QuorumRecoveryGeneration uint32
 }
 
 // ClusterType represents the EVE-API cluster-storage type. The
@@ -271,6 +280,10 @@ func GetClusterStatus() (*ClusterStatus, error) {
 	if raw.ClusterID.UUID != uuid.Nil {
 		cs.ClusterID = raw.ClusterID.UUID.String()
 	}
+	if raw.WitnessIP != nil {
+		cs.WitnessIP = raw.WitnessIP.String()
+	}
+	cs.QuorumRecoveryGeneration = raw.QuorumRecoveryGeneration
 	if err := cs.validate(); err != nil {
 		return nil, fmt.Errorf("validate EdgeNodeClusterStatus: %w", err)
 	}

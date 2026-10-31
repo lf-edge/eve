@@ -230,7 +230,7 @@ func TestKvmToKRepartitionAppVolume(test *testing.T) {
 	// The offline repartition boots once more than an upgrade does; declared
 	// here rather than before the update because UpgradeEVE was not asked to
 	// wait, so nothing can race the declaration.
-	device.ExpectReboots(1)
+	device.ExpectAdditionalReboots(1)
 	dumpResizeEvidence(device)
 	dumpLostFound(device, "post-conversion")
 	evetest.Checkpoint("conversion-complete")

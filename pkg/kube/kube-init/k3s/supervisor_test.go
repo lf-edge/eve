@@ -58,6 +58,7 @@ func TestCmdlineMatchesOrphan(t *testing.T) {
 		{"unrelated does not match", "/usr/bin/containerd --x", false},
 		{"kube-init excluded", "/usr/bin/k3s kube-init", false},
 		{"exclude wins over match", "/usr/bin/k3s server kube-init", false},
+		{"witness excluded", "/usr/bin/k3s server --node-name eve-witness", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -65,6 +66,73 @@ func TestCmdlineMatchesOrphan(t *testing.T) {
 				t.Errorf("cmdlineMatchesOrphan(%q) = %v, want %v", c.in, got, c.want)
 			}
 		})
+	}
+}
+
+// TestSamePIDNamespace pins the guard that keeps the orphan sweep off
+// the witness: under `pid: host` its k3s is visible here with a
+// matching cmdline, so only the namespace comparison tells them apart.
+func TestSamePIDNamespace(t *testing.T) {
+	root := t.TempDir()
+	origProcRoot := procRoot
+	procRoot = root
+	t.Cleanup(func() { procRoot = origProcRoot })
+
+	writeNSLink := func(dir, target string) {
+		nsDir := filepath.Join(root, dir, "ns")
+		if err := os.MkdirAll(nsDir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", nsDir, err)
+		}
+		if err := os.Symlink(target, filepath.Join(nsDir, "pid")); err != nil {
+			t.Fatalf("symlink %s: %v", nsDir, err)
+		}
+	}
+
+	const ourNS = "pid:[4026531836]"
+	writeNSLink("self", ourNS)
+	writeNSLink("101", ourNS)              // reparented child of our k3s
+	writeNSLink("202", "pid:[4026535428]") // witness container
+	// 303 exists but has no ns/pid link readable.
+	if err := os.MkdirAll(filepath.Join(root, "303"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		pid  int
+		want bool
+	}{
+		{"same namespace is ours", 101, true},
+		{"nested namespace is foreign", 202, false},
+		{"unreadable namespace is foreign", 303, false},
+		{"missing process is foreign", 404, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := samePIDNamespace(c.pid); got != c.want {
+				t.Errorf("samePIDNamespace(%d) = %v, want %v", c.pid, got, c.want)
+			}
+		})
+	}
+}
+
+// TestSamePIDNamespaceUnknownSelf: if our own namespace is unreadable,
+// every pid counts as foreign rather than let the sweep run blind.
+func TestSamePIDNamespaceUnknownSelf(t *testing.T) {
+	root := t.TempDir()
+	origProcRoot := procRoot
+	procRoot = root
+	t.Cleanup(func() { procRoot = origProcRoot })
+
+	nsDir := filepath.Join(root, "101", "ns")
+	if err := os.MkdirAll(nsDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.Symlink("pid:[4026531836]", filepath.Join(nsDir, "pid")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	if samePIDNamespace(101) {
+		t.Error("samePIDNamespace must return false when our own namespace is unreadable")
 	}
 }
 

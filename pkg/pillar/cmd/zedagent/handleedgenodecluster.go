@@ -214,6 +214,9 @@ func publishKubeClusterInfo(ctx *zedagentContext, dest destinationBitset) {
 	}
 	kci.Storage = psKubeClusterInfoGlb.Storage.ZKubeStorageInfo()
 	kci.ClusterId = clusterID.UUID.String()
+	// Nil unless a witness is configured and the node hosting it has
+	// reported; every other cluster leaves this absent.
+	kci.Witness = psKubeClusterInfoGlb.Witness.ZKubeWitnessInfo()
 
 	// Put it in the info msg
 	infoMsg.InfoContent = new(info.ZInfoMsg_ClusterInfo)

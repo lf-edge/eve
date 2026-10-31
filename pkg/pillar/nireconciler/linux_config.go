@@ -1823,11 +1823,15 @@ func (r *LinuxNIReconciler) generateVifHostIfName(vifNum, appNum int) string {
 func (r *LinuxNIReconciler) niBridgeIsCreatedByNIM(
 	niConfig types.NetworkInstanceConfig, br NIBridge) bool {
 	// If a Switch NI has a single port that is also used for EVE management,
-	// for a local NI, or as a VLAN parent, then the associated bridge is
-	// managed by NIM.
+	// for a local NI, as a VLAN parent, or is the cluster port, then the
+	// associated bridge is managed by NIM. The cluster port is always
+	// bridged by NIM (see AdapterConfigurator.isAdapterBridgedByNIM), so a
+	// single-port Switch NI referencing it must agree that NIM, not
+	// zedrouter, owns that bridge.
 	return niConfig.Type == types.NetworkInstanceTypeSwitch &&
 		len(br.Ports) == 1 &&
-		(br.Ports[0].UsedWithIP() || len(br.Ports[0].VLANSubinterfaces) > 0)
+		(br.Ports[0].UsedWithIP() || len(br.Ports[0].VLANSubinterfaces) > 0 ||
+			br.Ports[0].IsClusterPort)
 }
 
 func (r *LinuxNIReconciler) getVLANConfigForNI(ni *niInfo) (
