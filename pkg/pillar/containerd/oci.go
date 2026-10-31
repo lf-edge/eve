@@ -305,6 +305,26 @@ func (s *ociSpec) CreateContainer(removeExisting bool) error {
 	defer done()
 
 	containerOpts := append(s.containerOpts, containerd.WithSpec(&s.Spec))
+	if opt := shimCgroupOpt(s.client.ctrdClient.Runtime(), cgroup.Root, s.name); opt != nil {
+		containerOpts = append(containerOpts, opt)
+		// runc limits only its own child; the domain's cgroup above it, the
+		// helpers included, gets the same limit from the spec.
+		if m := s.Linux.Resources.Memory; m != nil && m.Limit != nil {
+			if err := setAppCgroupMemoryLimit(cgroup.Root, s.name, *m.Limit); err != nil {
+				logrus.Errorf("the helpers of %s run outside its memory limit: %v", s.name, err)
+			}
+		}
+		// The CPUs go to the domain's cgroup too, and only there: a cpuset
+		// runc wrote into the task child would stay as narrow as it was at
+		// creation when domainmgr widens the domain's later.
+		if c := s.Linux.Resources.CPU; c != nil && c.Cpus != "" {
+			if err := setAppCgroupCPUs(cgroup.Root, s.name, c.Cpus); err != nil {
+				logrus.Errorf("%s keeps the CPUs runc sets: %v", s.name, err)
+			} else {
+				c.Cpus = ""
+			}
+		}
+	}
 
 	_, err := s.client.ctrdClient.NewContainer(ctrdCtx, s.name, containerOpts...)
 	// if container exists, is stopped and we are asked to remove existing - try that
@@ -539,7 +559,7 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig, status *types.Domain
 			s.Linux.Resources.CPU.Cpus = cgroup.FormatCPUs(status.VmConfig.CPUs)
 		}
 
-		s.Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, dom.GetTaskName())
+		s.Linux.CgroupsPath = AppTaskCgroup(dom.GetTaskName())
 	}
 	if !s.service {
 		// not create uts namespace by default for MobyLabelConfigMode

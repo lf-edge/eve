@@ -57,10 +57,14 @@ import (
 //     effective CPUs are /eve's, and so are the CPUs memory-monitor may run
 //     on. The device has more CPUs than /eve, so that differs from the
 //     root's. The group holds no containerd shim.
-//   - KVM: the app's QEMU runs in the app's own cgroup under /eve-user-apps
-//     (from the qemu service's rootfs, but not in /eve/services/qemu); that
-//     cgroup has memory.max and the cpu.max of one vCPU ("100000 100000"),
-//     and the app's DomainMetric reports non-zero memory use and CPU time
+//   - KVM: the app's QEMU runs in the task child of the app's own cgroup
+//     under /eve-user-apps (from the qemu service's rootfs, but not in
+//     /eve/services/qemu); the app's cgroup has memory.max and, the app being
+//     unpinned, every CPU of the device in cpuset.cpus, the task child the
+//     cpu.max of one vCPU ("100000 100000") and no cpuset.cpus of its own,
+//     since domainmgr changes the CPUs on the app's cgroup and a list of the
+//     child's own would cap them, and the app's DomainMetric reports non-zero
+//     memory use and CPU time
 //     (the cgroup v2 stats of its shim decode).
 //   - Kubevirt: kube-init's first-boot CPU loan widened /eve/containerd and
 //     was restored (/persist/kubelog/k3s-install.log).
@@ -151,10 +155,13 @@ func TestCgroupTree(test *testing.T) {
 		t.Expect(f["loan.restored"]).ToNot(BeEmpty(), "kube-init's CPU loan was not restored")
 	} else {
 		t.Expect(f["app.dir"]).ToNot(BeEmpty(), "no cgroup for the app under /eve-user-apps")
-		t.Expect(f["app.qemu"]).To(Equal(strings.TrimPrefix(f["app.dir"], "/sys/fs/cgroup")),
+		t.Expect(f["app.qemu"]).To(Equal(strings.TrimPrefix(f["app.dir"], "/sys/fs/cgroup")+"/task"),
 			"the cgroup of the app's QEMU")
 		t.Expect(f["app.memory.max"]).ToNot(Equal("max"), "the app has no memory limit")
-		t.Expect(f["app.cpu.max"]).To(Equal("100000 100000"), "cpu.max of a 1-vCPU app")
+		t.Expect(f["app.cpu.max"]).To(Equal("100000 100000"), "cpu.max of a 1-vCPU app's task")
+		t.Expect(f["app.cpuset"]).To(Equal(cpuList(nproc)), "cpuset.cpus of an unpinned app's cgroup")
+		t.Expect(f["app.task.cpuset"]).To(BeEmpty(),
+			"the task child has a cpuset.cpus of its own, which caps what domainmgr sets on the app's cgroup")
 		var metric struct {
 			CPUTotalNs uint64
 			UsedMemory uint32
@@ -257,7 +264,9 @@ d=$(ls -d $CG/eve-user-apps/%[1]s.* 2>/dev/null | head -1)
 echo "app.dir=$d"
 if [ -n "$d" ]; then
     echo "app.memory.max=$(cat $d/memory.max)"
-    echo "app.cpu.max=$(cat $d/cpu.max)"
+    echo "app.cpu.max=$(cat $d/task/cpu.max)"
+    echo "app.cpuset=$(cat $d/cpuset.cpus)"
+    echo "app.task.cpuset=$(cat $d/task/cpuset.cpus)"
     echo "app.qemu=$(for p in $(pgrep -f '[q]emu-system.*-uuid %[1]s'); do tail -1 /proc/$p/cgroup | cut -d: -f3; done | tr '\n' ' ')"
     m=/run/domainmgr/DomainMetric/%[1]s.json
     for i in 1 2 3 4 5 6; do
