@@ -574,16 +574,38 @@ func getVersion(log *base.LogObject, part string, verFilename string) (string, e
 			}
 		}()
 		// Mount failure is ok; might not have a filesystem in the
-		// other partition
-		// XXX hardcoded file system type squashfs
+		// other partition.
+		//
+		// The filesystem type is detected from the superblock rather
+		// than assumed: EVE's rootfs is squashfs by default but ext4
+		// with ROOTFS_FORMAT=ext4 and erofs with the erofs fragment,
+		// and mounting with the wrong type fails with EINVAL. That
+		// failure used to surface as an empty version string, which
+		// baseosmgr reports as "image name not match ... image ver "
+		// before rolling the partition back to unused - an update
+		// that looks rejected on content when it was never readable.
 		mountFlags := MountFlagRDONLY
-		err = zbootMount(devname, target, "squashfs", mountFlags, "")
-		if err != nil {
-			errStr := fmt.Sprintf("Mount of %s failed: %s", devname, err)
+		fstypes, detectErr := fsTypesForDevice(devname)
+		if detectErr != nil {
+			log.Warnf("Could not probe %s for a filesystem (%s); will try %v",
+				devname, detectErr, fstypes)
+		}
+		var mounted string
+		for _, fstype := range fstypes {
+			err = zbootMount(devname, target, fstype, mountFlags, "")
+			if err == nil {
+				mounted = fstype
+				break
+			}
+			log.Functionf("Mount of %s as %s failed: %s", devname, fstype, err)
+		}
+		if mounted == "" {
+			errStr := fmt.Sprintf("Mount of %s failed for every filesystem type %v: %s",
+				devname, fstypes, err)
 			log.Errorln(errStr)
 			return "", errors.New(errStr)
 		}
-		log.Noticef("Mounted %s on %s", devname, target)
+		log.Noticef("Mounted %s on %s as %s", devname, target, mounted)
 		defer func() {
 			log.Noticef("Unmount(%s)", target)
 			for i := range 10 {
