@@ -77,6 +77,8 @@ const (
 	ContentTreeConfigLogType LogObjectType = "contenttree_config"
 	// ContentTreeStatusLogType :
 	ContentTreeStatusLogType LogObjectType = "contenttree_status"
+	// DeferredContentDeleteStatusLogType :
+	DeferredContentDeleteStatusLogType LogObjectType = "deferred_content_delete_status"
 	// DevicePortConfig : object being logged
 	DevicePortConfigLogType LogObjectType = "deviceport_config"
 	// DevicePortConfigList :
@@ -161,6 +163,8 @@ const (
 	SigUSR1StacksType LogObjectType = "sigusr1_stacks"
 	// FatalStacksType:
 	FatalStacksType LogObjectType = "fatal_stacks"
+	// KernelPanicStacksType: Linux kernel log of a panic, read from pstore
+	KernelPanicStacksType LogObjectType = "kernel_panic_stacks"
 	// MemoryNotificationType
 	MemoryNotificationType = "memory_notification"
 	// DiskNotificationType
@@ -171,14 +175,10 @@ const (
 	EncryptedVaultKeyFromDeviceLogType LogObjectType = "encrypted_vault_key_from_device"
 	// EncryptedVaultKeyFromControllerLogType:
 	EncryptedVaultKeyFromControllerLogType LogObjectType = "encrypted_vault_key_from_controller"
-	// CachedResolvedIPsLogType:
-	CachedResolvedIPsLogType LogObjectType = "cached_resolved_ips"
 	// AppMACGeneratorLogType : type for AppMACGenerator log entries
 	AppMACGeneratorLogType LogObjectType = "app_mac_generator"
 	// KubeAppFailover
 	KubeAppFailover LogObjectType = "kube_app_failover"
-	// EvalStatusLogType : type for EvalStatus log entries
-	EvalStatusLogType LogObjectType = "eval_status"
 )
 
 // RelationObjectType :

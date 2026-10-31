@@ -45,6 +45,10 @@ const (
 	PersistCachePatchEnvelopes = PersistDir + "/patchEnvelopesCache"
 	// PersistCachePatchEnvelopesUsage - folder to store patch envelopes usage stat per app
 	PersistCachePatchEnvelopesUsage = PersistDir + "/patchEnvelopesUsageCache"
+	// HWWatchdogBootStatusFile holds the hardware watchdog boot status flag
+	// names (one per line) recorded by pkg/watchdog at boot. A "CARDRESET"
+	// entry means the watchdog reset the device on the previous boot.
+	HWWatchdogBootStatusFile = PersistDir + "/hw_watchdog_bootstatus"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
@@ -80,6 +84,9 @@ const (
 	ITokenFile = "/run/eve.integrity_token"
 	//EveVersionFile contains the running version of EVE
 	EveVersionFile = "/run/eve-release"
+	//EveOriginVersionPattern matches the origin.<date>.<version> file created in
+	//the config partition at install time.
+	EveOriginVersionPattern = IdentityDirname + "/origin.*"
 	//DefaultVaultName is the name of the default vault
 	DefaultVaultName = "Application Data Store"
 
@@ -95,14 +102,6 @@ const (
 	NewlogUploadAppDir = NewlogDir + "/appUpload"
 	// NewlogKeepSentQueueDir - a circular queue of gzip files already been sent
 	NewlogKeepSentQueueDir = NewlogDir + "/keepSentQueue"
-	// PillarHardMemoryLimitFile - hard memory reserved for pillar
-	PillarHardMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/services/pillar/memory.limit_in_bytes"
-	// EveMemoryLimitFile - stores memory reserved for eve
-	EveMemoryLimitFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.limit_in_bytes"
-	// EveMemoryUsageFile - current usage
-	EveMemoryUsageFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.usage_in_bytes"
-	// EveKmemUsageFile - current kernel usage
-	EveKmemUsageFile = "/hostfs/sys/fs/cgroup/memory/eve/memory.kmem.usage_in_bytes"
 	// ZFSArcMaxSizeFile - file with zfs_arc_max size in bytes
 	ZFSArcMaxSizeFile = "/hostfs/sys/module/zfs/parameters/zfs_arc_max"
 
@@ -135,7 +134,7 @@ const (
 	// OVMFSettingsDir - directory for OVMF settings, they are stored in per-domain files
 	OVMFSettingsDir = SealedDirName + "/ovmf"
 	// OVMFSettingsTemplate - template file for OVMF settings
-	OVMFSettingsTemplate = "/usr/lib/xen/boot/OVMF_VARS.fd"
+	OVMFSettingsTemplate = "/usr/share/ovmf/OVMF_VARS.fd"
 	// CustomOVMFSettingsDir - directory for custom OVMF settings (for different resolutions)
 	CustomOVMFSettingsDir = "/hostfs/etc/ovmf"
 
@@ -159,6 +158,11 @@ const (
 	// changing this file does not change the actual policy, hence
 	// needs not be protected.
 	PolicyPcrFile = PersistStatusDir + "/policy-pcr.json"
+
+	// KvmToKubePendingFilename - marker under PersistStatusDir that EVE-kvm's
+	// baseosmgr writes before converting the device to EVE-k. The first EVE-k
+	// boot relocates the carried-over kvm volumes and removes it.
+	KvmToKubePendingFilename = "kvm-to-k-pending"
 )
 
 var (
@@ -176,8 +180,25 @@ var (
 	VolumeClearZFSDataset = ClearDataset + "/volumes"
 	//VolumeEncryptedZFSDataset - dataset to create volumes with encryption
 	VolumeEncryptedZFSDataset = SealedDataset + "/volumes"
+	// KvmParkedSealedDataset - the EVE-kvm filesystem vault that the EVE-k
+	// vault migration renames aside. EVE-k keeps it until the app-volume zvols
+	// it holds have been carried into PVCs; an EVE-kvm fallback puts it back.
+	KvmParkedSealedDataset = SealedDataset + ".old"
+	// KvmParkedVolumeEncryptedZFSDataset - the EVE-kvm encrypted app-volume
+	// zvols inside KvmParkedSealedDataset
+	KvmParkedVolumeEncryptedZFSDataset = KvmParkedSealedDataset + "/volumes"
 	// EtcdZvol - zvol encrypted for etcd storage
 	EtcdZvol = PersistDataset + "/etcd-storage"
+	// WitnessZvol - zvol encrypted for the 2-node-HA witness's etcd.
+	// Only created when InstallOptionWitnessZvol was given at install.
+	WitnessZvol = PersistDataset + "/witness-storage"
+	// WitnessZvolMarker records that WitnessZvol was reserved at install
+	// time. The witness cannot tell a zvol that was never reserved from
+	// one whose device node has not appeared yet, and the two need
+	// opposite responses: fall back to vault-backed storage, or wait.
+	// Written by vault once the zvol is created; on /persist so it is
+	// readable before the vault is unsealed.
+	WitnessZvolMarker = PersistDir + "/witness-zvol-reserved"
 	// TpmMeasurementLogFile is a kernel exposed variable that contains the
 	// TPM measurements and events log. it is not a constant so tests can override it.
 	TpmMeasurementLogFile = "/hostfs/sys/kernel/security/tpm0/binary_bios_measurements"

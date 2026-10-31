@@ -219,13 +219,22 @@ type tarFile struct {
 }
 
 func extractFileFromTar(opener Opener, filePath string) (io.ReadCloser, error) {
+	return followLinks(opener, filePath, make(map[string]bool))
+}
+
+func followLinks(opener Opener, filePath string, visited map[string]bool) (io.ReadCloser, error) {
+	if visited[filePath] {
+		return nil, fmt.Errorf("link cycle detected for %s", filePath)
+	}
+	visited[filePath] = true
+
 	f, err := opener()
 	if err != nil {
 		return nil, err
 	}
-	close := true
+	needClose := true
 	defer func() {
-		if close {
+		if needClose {
 			f.Close()
 		}
 	}()
@@ -239,12 +248,12 @@ func extractFileFromTar(opener Opener, filePath string) (io.ReadCloser, error) {
 		if err != nil {
 			return nil, err
 		}
-		if hdr.Name == filePath {
+		if path.Clean(hdr.Name) == path.Clean(filePath) {
 			if hdr.Typeflag == tar.TypeSymlink || hdr.Typeflag == tar.TypeLink {
 				currentDir := filepath.Dir(filePath)
-				return extractFileFromTar(opener, path.Join(currentDir, path.Clean(hdr.Linkname)))
+				return followLinks(opener, path.Join(currentDir, path.Clean(hdr.Linkname)), visited)
 			}
-			close = false
+			needClose = false
 			return tarFile{
 				Reader: tf,
 				Closer: f,
@@ -295,22 +304,36 @@ func (i *uncompressedImage) LayerByDiffID(h v1.Hash) (partial.UncompressedLayer,
 	}
 	for idx, diffID := range cfg.RootFS.DiffIDs {
 		if diffID == h {
+			if idx >= len(i.imgDescriptor.Layers) {
+				return nil, fmt.Errorf("config has %d rootfs.diff_id(s) but tarball manifest only references %d layer(s); the config may not describe a runnable image", len(cfg.RootFS.DiffIDs), len(i.imgDescriptor.Layers))
+			}
 			// Technically the media type should be 'application/tar' but given that our
 			// v1.Layer doesn't force consumers to care about whether the layer is compressed
 			// we should be fine returning the DockerLayer media type
 			mt := types.DockerLayer
-			if bd, ok := i.imgDescriptor.LayerSources[h]; ok {
-				// Overwrite the mediaType for foreign layers.
-				return &foreignUncompressedLayer{
-					uncompressedLayerFromTarball: uncompressedLayerFromTarball{
-						diffID:    diffID,
-						mediaType: bd.MediaType,
-						opener:    i.opener,
-						filePath:  i.imgDescriptor.Layers[idx],
-					},
-					desc: bd,
-				}, nil
+			bd, ok := i.imgDescriptor.LayerSources[h]
+			if ok {
+				// This is janky, but we don't want to implement Descriptor for
+				// uncompressed layers because it breaks a bunch of assumptions in partial.
+				// See https://github.com/google/go-containerregistry/issues/1870
+				docker25workaround := bd.MediaType == types.DockerUncompressedLayer || bd.MediaType == types.OCIUncompressedLayer
+
+				if !docker25workaround {
+					// Overwrite the mediaType for foreign layers.
+					return &foreignUncompressedLayer{
+						uncompressedLayerFromTarball: uncompressedLayerFromTarball{
+							diffID:    diffID,
+							mediaType: bd.MediaType,
+							opener:    i.opener,
+							filePath:  i.imgDescriptor.Layers[idx],
+						},
+						desc: bd,
+					}, nil
+				}
+
+				// Intentional fall through.
 			}
+
 			return &uncompressedLayerFromTarball{
 				diffID:    diffID,
 				mediaType: mt,
@@ -353,6 +376,9 @@ func (c *compressedImage) Manifest() (*v1.Manifest, error) {
 		cfg, err := partial.ConfigFile(c)
 		if err != nil {
 			return nil, err
+		}
+		if i >= len(cfg.RootFS.DiffIDs) {
+			return nil, fmt.Errorf("tarball manifest references %d layer(s) but config has %d rootfs.diff_ids; the config may not describe a runnable image (for example, a buildkit cacheconfig)", len(c.imgDescriptor.Layers), len(cfg.RootFS.DiffIDs))
 		}
 		diffid := cfg.RootFS.DiffIDs[i]
 		if d, ok := c.imgDescriptor.LayerSources[diffid]; ok {

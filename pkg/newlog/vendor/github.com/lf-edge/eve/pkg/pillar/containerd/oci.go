@@ -23,6 +23,7 @@ import (
 	"github.com/containerd/containerd/oci"
 	zconfig "github.com/lf-edge/eve-api/go/config"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/cgroup"
 	"github.com/linuxkit/linuxkit/src/cmd/linuxkit/moby"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -116,11 +117,11 @@ func (s *ociSpec) AddLoader(volume string) error {
 		return err
 	}
 
-	// we're gonna use a little hack: since we already have the rootfs of a xen-tools container
+	// we're gonna use a little hack: since we already have the rootfs of the loader service
 	// laid out on disk, but don't have it in a form of a snapshot or an image, we're going to
 	// create an empty snapshot and then overlay the rootfs on top of it - this way we can save
-	// ourselves copying the rootfs around and still have the newest version of xen-tools on every
-	// boot, while the original xen-tools rootfs stays read-only
+	// ourselves copying the rootfs around and still have the newest version of the loader on every
+	// boot, while the original loader rootfs stays read-only
 
 	ctrdCtx, done := s.client.CtrNewUserServicesCtx()
 	defer done()
@@ -350,10 +351,13 @@ func (s *ociSpec) UpdateWithIoBundles(config *types.DomainConfig, aa *types.Assi
 			if ib == nil {
 				continue
 			}
+			// domainmgr's adapter bookkeeping can disagree with the domain
+			// being started; warn rather than take the node down over it.
 			if ib.UsedByUUID != config.UUIDandVersion.UUID {
-				logrus.Fatalf("IoBundle not ours %s: %d %s for %v\n",
+				logrus.Warnf("IoBundle not ours %s: %d %s for %v\n",
 					ib.UsedByUUID, adapter.Type, adapter.Name,
 					domainID)
+				continue
 			}
 
 			// Video devices
@@ -532,11 +536,7 @@ func (s *ociSpec) UpdateFromDomain(dom *types.DomainConfig, status *types.Domain
 		s.Linux.Resources.CPU.Period = &p
 		s.Linux.Resources.CPU.Quota = &q
 		if len(status.VmConfig.CPUs) != 0 {
-			cpusAsString := make([]string, len(status.VmConfig.CPUs))
-			for i, cpu := range status.VmConfig.CPUs {
-				cpusAsString[i] = fmt.Sprintf("%d", cpu)
-			}
-			s.Linux.Resources.CPU.Cpus = strings.Join(cpusAsString, ",")
+			s.Linux.Resources.CPU.Cpus = cgroup.FormatCPUs(status.VmConfig.CPUs)
 		}
 
 		s.Linux.CgroupsPath = fmt.Sprintf("/%s/%s", ctrdServicesNamespace, dom.GetTaskName())
