@@ -12,6 +12,7 @@ package domainmgr
 
 import (
 	"bufio"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -260,13 +261,26 @@ func holdCrashedDomain(ctx *domainContext, status *types.DomainStatus, msg strin
 	publishDomainStatus(ctx, status)
 }
 
-// brokenAndTeardown clears the freeze, marks the domain BROKEN, and tears down
-// qemu via the normal lifecycle.
+// A crashed guest is booted again by maybeRetryBoot after timer.boot.retry,
+// the way a domain that failed to boot is, up to maxCrashRetries times in a
+// row: a guest that dies as it boots after a device reboot, or on a transient
+// fault of the hypervisor, comes back without an operator; one that keeps
+// crashing stays BROKEN, with its last core saved, until the application is
+// restarted. Each retry costs a core capture and a boot, so the count is
+// bounded, and it is forgotten once the guest has run for crashRetryGrace,
+// and on every activation by the controller.
+const (
+	maxCrashRetries = 3
+	crashRetryGrace = time.Hour
+)
+
+// brokenAndTeardown clears the freeze, marks the domain BROKEN, schedules the
+// boot retry and tears down qemu via the normal lifecycle.
 func brokenAndTeardown(ctx *domainContext, status *types.DomainStatus, errMsg string) {
 	status.CrashState = types.CrashNone
 	status.Activated = false
 	status.State = types.BROKEN
-	status.SetErrorNow(errMsg)
+	scheduleCrashRetry(ctx, status, errMsg)
 	if err := hyper.Task(status).Delete(status.DomainName); err != nil {
 		log.Errorf("crash-dump: delete domain %s: %v", status.DomainName, err)
 	}
@@ -274,6 +288,43 @@ func brokenAndTeardown(ctx *domainContext, status *types.DomainStatus, errMsg st
 		log.Errorf("crash-dump: cleanup domain %s: %v", status.DomainName, err)
 	}
 	status.DomainId = 0
+	publishDomainStatus(ctx, status)
+}
+
+// scheduleCrashRetry records the crash as the domain's error: while the domain
+// has retries left, as a failed boot that maybeRetryBoot repeats once
+// timer.boot.retry has passed; past them, as final.
+func scheduleCrashRetry(ctx *domainContext, status *types.DomainStatus, errMsg string) {
+	if status.CrashRetries >= maxCrashRetries {
+		status.BootFailed = false
+		status.SetErrorNow(fmt.Sprintf("%s; crashed again after %d boot retries - please restart application instance",
+			errMsg, maxCrashRetries))
+		return
+	}
+	status.CrashRetries++
+	status.BootFailed = true
+	retryIn := time.Duration(ctx.domainBootRetryTime) * time.Second
+	status.SetErrorDescription(types.ErrorDescription{
+		Error:         errMsg,
+		ErrorSeverity: types.ErrorSeverityWarning,
+		ErrorRetryCondition: fmt.Sprintf("will retry in %s (boot retry %d of %d)",
+			retryIn, status.CrashRetries, maxCrashRetries),
+	})
+	log.Noticef("crash-dump: %s will be booted again in %s, boot retry %d of %d",
+		status.Key(), retryIn, status.CrashRetries, maxCrashRetries)
+}
+
+// forgetCrashRetries gives a domain its boot retries back once it has run for
+// crashRetryGrace since its last boot: the crashes it came back from are
+// history, not a loop. domainStatus is what the hypervisor reports now.
+func forgetCrashRetries(ctx *domainContext, status *types.DomainStatus, domainStatus types.SwState) {
+	if status.CrashRetries == 0 || !status.Activated || domainStatus != types.RUNNING ||
+		time.Since(status.BootTime) < crashRetryGrace {
+		return
+	}
+	log.Noticef("crash-dump: %s has run for %s since its last boot, forgetting its %d boot retries",
+		status.Key(), crashRetryGrace, status.CrashRetries)
+	status.CrashRetries = 0
 	publishDomainStatus(ctx, status)
 }
 
