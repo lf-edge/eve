@@ -309,6 +309,24 @@ runs:
           --junitfile "${ARTIFACT_DIR}/${{ inputs.test-suite }}.xml" \
           -- cat "$JSON"
 
+    # Replace gotestsum's generic "Failed" failure messages with the real
+    # failure message and Claude's conclusion that the live-investigation
+    # watcher recorded for each failing test, so the Allure report's test
+    # overview page shows them instead of only the raw log trace.
+    - name: Inject failure analyses into the JUnit results
+      if: ${{ !cancelled() && env.ARTIFACT_DIR != '' && inputs.upload-junit-results == 'true' && inputs.analyze-failures == 'true' }}
+      continue-on-error: true
+      shell: bash
+      run: |
+        XML="${ARTIFACT_DIR}/${{ inputs.test-suite }}.xml"
+        LIVE="${ARTIFACT_DIR}/live-investigation.md"
+        if [[ ! -f "$XML" || ! -s "$LIVE" ]]; then
+          echo "No JUnit XML or no live investigation recorded; nothing to inject."
+          exit 0
+        fi
+        python3 "${GITHUB_ACTION_PATH}/inject-junit-analysis.py" \
+          "$XML" "$LIVE" "${{ inputs.test-suite }}"
+
     - name: Upload JUnit results artifact
       if: ${{ !cancelled() && inputs.upload-junit-results == 'true' }}
       continue-on-error: true
