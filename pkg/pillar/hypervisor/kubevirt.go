@@ -531,6 +531,11 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 		vmi.Spec.Domain.Devices.LogSerialConsole = ptrBool(false)
 	}
 
+	// domainmgr clears VirtualTPM when the app config sets disable_vtpm.
+	if status.VirtualTPM {
+		addTPMDevice(&vmi.Spec)
+	}
+
 	// Set Firmware UUID from app UUID so the guest always sees a stable SMBIOS UUID.
 	// This is required for Firewall kind of apps that needs a stable UUID to work with during failover and keep licenses valid.
 	vmi.Spec.Domain.Firmware = &v1.Firmware{
@@ -3001,6 +3006,18 @@ func setTerminationGracePeriod(spec *v1.VirtualMachineInstanceSpec) {
 		pointer.Int64Ptr(int64(GracefulShutdownWait / time.Second))
 }
 
+// addTPMDevice gives the VMI an emulated TPM 2.0. KubeVirt starts an swtpm
+// for it inside the virt-launcher pod, so nothing is needed on the host.
+//
+// The state is deliberately not persistent: KubeVirt keys persistent TPM
+// state to the VMI name, and the VMIRS generates a fresh name for every VMI
+// it creates, so Persistent would survive neither a restart nor a failover
+// and would leak one Longhorn volume per start. State keyed by the app has
+// to wait for KubeVirt's declarative virtualMachineState (v1.10).
+func addTPMDevice(spec *v1.VirtualMachineInstanceSpec) {
+	spec.Domain.Devices.TPM = &v1.TPMDevice{}
+}
+
 func addEFIBootLoader(spec *v1.VirtualMachineInstanceSpec) {
 	if spec.Domain.Firmware == nil {
 		spec.Domain.Firmware = &v1.Firmware{}
@@ -3029,16 +3046,27 @@ func (ctx kubevirtContext) PCISameController(id1 string, id2 string) bool {
 	return PCISameControllerGeneric(id1, id2)
 }
 
-func (ctx kubevirtContext) VirtualTPMSetup(domainName string, wp *types.WatchdogParam) error {
-	return fmt.Errorf("not implemented")
+// VirtualTPMSetup reports whether the domain can get a vTPM. KubeVirt runs
+// an swtpm inside the virt-launcher pod of a VMI that asks for a TPM device
+// (see addTPMDevice), so unlike the KVM backend there is no host-side
+// instance to launch. A NOHYPER app runs as a plain pod and cannot have one.
+func (t kubevirtTask) VirtualTPMSetup(domainName string, wp *types.WatchdogParam) error {
+	if t.status.VirtualizationMode == types.NOHYPER {
+		return fmt.Errorf("vTPM is not available for a NOHYPER (plain pod) app")
+	}
+	return nil
 }
 
-func (ctx kubevirtContext) VirtualTPMTerminate(domainName string, wp *types.WatchdogParam) error {
-	return fmt.Errorf("not implemented")
+// VirtualTPMTerminate is a no-op: the swtpm lives and dies with the
+// virt-launcher pod.
+func (t kubevirtTask) VirtualTPMTerminate(domainName string, wp *types.WatchdogParam) error {
+	return nil
 }
 
-func (ctx kubevirtContext) VirtualTPMTeardown(domainName string, wp *types.WatchdogParam) error {
-	return fmt.Errorf("not implemented")
+// VirtualTPMTeardown is a no-op: the TPM state is ephemeral (see
+// addTPMDevice), so there is nothing to purge.
+func (t kubevirtTask) VirtualTPMTeardown(domainName string, wp *types.WatchdogParam) error {
+	return nil
 }
 
 func (ctx kubevirtContext) OemWindowsLicenseKeySetup(wlk *types.OemWindowsLicenseKeyInfo) error {
