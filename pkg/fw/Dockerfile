@@ -23,6 +23,10 @@ ENV JETPACK6_URL=https://repo.download.nvidia.com/jetson/t234/pool/main/n/nvidia
 ENV JETPACK7_DEB=nvidia-l4t-firmware-openrm_38.4.0-20251230160601_arm64.deb
 ENV JETPACK7_URL=https://repo.download.nvidia.com/jetson/som/pool/main/n/nvidia-l4t-firmware-openrm/${JETPACK7_DEB}
 
+# Nvidia firmware for NVIDIA GB10 platform
+ENV GB10_DEB=nvidia-firmware-595-595.99.02_595.99.02-0ubuntu0.24.04.1_arm64.deb
+ENV GB10_URL=http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-595/nvidia-firmware-595-595.99.02_595.99.02-0ubuntu0.24.04.1_arm64.deb
+
 FROM build-base AS generic
 ENV NVIDIA_FW_TEGRA=${JETPACK5_DEB}
 ENV NVIDIA_FW_URL=${JETPACK5_URL}
@@ -38,6 +42,10 @@ ENV NVIDIA_FW_URL=${JETPACK6_URL}
 FROM build-base AS nvidia-jp7
 ENV NVIDIA_FW_TEGRA=${JETPACK7_DEB}
 ENV NVIDIA_FW_URL=${JETPACK7_URL}
+
+FROM build-base AS nvidia-gb
+ENV NVIDIA_FW_TEGRA=${GB10_DEB}
+ENV NVIDIA_FW_URL=${GB10_URL}
 
 FROM ${PLATFORM} AS build
 
@@ -285,6 +293,10 @@ FROM compactor-generic-${TARGETARCH} AS compactor-generic
 FROM compactor-common AS compactor-nvidia-jp5
 FROM compactor-common AS compactor-nvidia-jp6
 FROM compactor-common AS compactor-nvidia-jp7
+FROM compactor-common AS compactor-nvidia-gb
+COPY --from=build /lib/firmware/nvidia/ /lib/firmware/nvidia/
+# HP ZGX related firmwares
+COPY --from=build /lib/firmware/mediatek/mt7925 /lib/firmware/mediatek/mt7925
 
 FROM compactor-${PLATFORM} AS compactor
 

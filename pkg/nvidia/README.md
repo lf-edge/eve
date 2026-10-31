@@ -48,6 +48,13 @@ The following CDI files are provided:
 * jetson-xavier-nx.yaml: For devices based on Jetson Xavier NX
 * jetson-orin-nano.yaml: For devices based on Jetson Orin Nano
 
+On nvidia-gb, which covers GB10 and GB300 devices, no CDI file is installed
+at /etc/cdi. The device entries depend on the GPU (its UUID, PCI address and
+DRM nodes), so nv-init.sh generates the spec at boot into /run/cdi/nvidia.yaml:
+it appends the devices it finds in /proc/driver/nvidia/gpus to
+/opt/vendor/nvidia/etc/cdi/nvidia-base.yaml, the top-level containerEdits of
+cdi/gb/gb.yaml.
+
 ## CDI generation
 
 The Container Device Interface (CDI) specification is used to support

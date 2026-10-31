@@ -9,8 +9,7 @@ pkg/kube/descheduler_rbac.yaml
 pkg/kube/eve-bridge/vendor/
 pkg/kube/kube-init/vendor/
 pkg/kube/lh-cfg-v1.6.2.yaml
-pkg/kube/nvidia-container-runtime/nvidia-device-plugin-18.0.yml
-pkg/kube/nvidia-container-runtime/nvidia-device-plugin-18.0-dgpu.yml
+pkg/kube/nvidia-container-runtime/nvidia-device-plugin.yml
 pkg/kube/sriov/sriov-device-plugin.yaml
 pkg/kube/update-component/vendor/
 pkg/measure-config/vendor/
@@ -18,6 +17,7 @@ pkg/newlog/vendor/
 pkg/nvidia/cdi/jp5
 pkg/nvidia/cdi/jp6
 pkg/nvidia/cdi/jp7
+pkg/nvidia/cdi/gb
 pkg/pillar/vendor/
 pkg/recovertpm/src/vendor/
 pkg/rngd/cmd/rngd/vendor/
