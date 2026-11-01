@@ -2,6 +2,260 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-01 -- 0.0.0-master-203e89f9 (run #4)](https://github.com/lf-edge/eve/actions/runs/41246140600)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/4/)
+
+### TestAppsSuite: failure analysis
+
+#### TestVGAPassthroughNoHostAccess
+
+##### Failure
+
+```
+Host processes interfered with PCI devices while the VGA controller 0000:00:01.0 was passed through to the application:
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=11138 parent=runc:[1:CHILD]/11137 grandparent=runc:[0:PARENT]/11136
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=11138 parent=runc:[1:CHILD]/11137 grandparent=runc:[0:PARENT]/11136
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=11138 parent=runc:[1:CHILD]/11137 grandparent=runc:[0:PARENT]/11136
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=11138 parent=runc:[1:CHILD]/11137 grandparent=runc:[0:PARENT]/11136
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=11138 parent=runc:[1:CHILD]/11137 grandparent=runc:[0:PARENT]/11136
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=11138 parent=runc:[1:CHILD]/11137 grandparent=runc:[0:PARENT]/11136
+Kernel messages mentioning 0000:00:01.0:
+[    1.438223] [    T1] pci 0000:00:01.0: [1234:1111] type 00 class 0x030000 conventional PCI endpoint
+[    1.442352] [    T1] pci 0000:00:01.0: BAR 0 [mem 0x80000000-0x80ffffff pref]
+[    1.442983] [    T1] pci 0000:00:01.0: BAR 2 [mem 0x8264d000-0x8264dfff]
+[    1.443645] [    T1] pci 0000:00:01.0: ROM [mem 0xffff0000-0xffffffff pref]
+[    1.444368] [    T1] pci 0000:00:01.0: Video device with shadowed ROM at [mem 0x000c0000-0x000dffff]
+[    1.747964] [    T1] pci 0000:00:01.0: vgaarb: setting as boot VGA device
+[    1.748514] [    T1] pci 0000:00:01.0: vgaarb: bridge control possible
+[    1.749040] [    T1] pci 0000:00:01.0: vgaarb: VGA device added: decodes=io+mem,owns=io+mem,locks=none
+[    1.948029] [    T1] pci 0000:00:01.0: Adding to iommu group 1
+[  160.464199] [ T6050] vfio-pci 0000:00:01.0: vgaarb: deactivate vga console
+[  160.464206] [ T6050] vfio-pci 0000:00:01.0: vgaarb: VGA decodes changed: olddecodes=io+mem,decodes=io+mem:owns=io+mem
+[  198.711316] [ T7653] vfio-pci 0000:00:01.0: Invalid PCI ROM header signature: expecting 0xaa55, got 0x0000
+[  199.023447] [ T7653] vfio-pci 0000:00:01.0: vgaarb: VGA decodes changed: olddecodes=io+mem,decodes=io+mem:owns=io+mem
+[  594.269426] [T11161] vfio-pci 0000:00:01.0: Invalid PCI ROM header signature: expecting 0xaa55, got 0x0000
+```
+
+##### Claude's conclusion
+
+**Root cause:** Live SSH evidence confirms this is a false-positive from the test's own tracer, not real host interference. PID 11138 is `vga-passthrough-app`'s own `qemu-system-x86_64` process (domain `f444ed98-...1.1`), but its vCPU thread (TID 11161, same PID) is named `CPU 0/KVM` by the kernel. `pciAccess.isViolation()` (`evetest/tests/apps/pciaccess_helpers_test.go:408-410`) only whitelists accesses where `comm` has prefix `"qemu-system-"`, so the vCPU thread's config-space writes during `[app-restart]` get flagged as host interference even though they originate from the app's own qemu instance. The file hasn't been touched since it was moved in `c2539a9de`, so this gap is unfixed.
+
+This is the **same root cause** documented in the ledger for the identical test in last night's runs (2026-10-29 run #1 and 2026-10-30 run #2) — a known, recurring issue since 2026-10-29. Tonight's occurrence is on a newer build (`0.0.0-master-203e89f9`) than the one in the ledger (`c5d8a37e`), confirming it's reproducing across multiple commits, consistent with it being a test-harness defect rather than a product regression. No other failures were reported in this run to correlate with, and no PR diff was supplied to assess separately.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestDNIDandBackupDNID
+
+##### Failure
+
+```
+PowerOff: broker failed to power off device "edge-dev3": rpc error: code = Unknown desc = failed to power OFF EVE device "edge-dev3": failed waiting for VM 112 stop: Get "https://10.208.13.184:8006/api2/json/nodes/farfalle/tasks/UPID:farfalle:0001C361:793B3FC6:6AE683F5:qmstop:112:root@pam:/status": net/http: TLS handshake timeout
+```
+
+##### Claude's conclusion
+
+**Root cause:** This failed not in EVE code but in the test broker's RPC to the Proxmox host ("farfalle", 10.208.13.184:8006) that hosts the test VMs — `evetest eve ssh`/`evetest status` confirm edge-dev3 is still `EVE_DEVICE_STATE_ONLINE`, so the device itself never actually received or processed a power-off; the broker's single attempt to poll the Proxmox `qmstop` task status (`UPID:farfalle:...:qmstop:112:...`) hit a `net/http: TLS handshake timeout` against the Proxmox API and gave up without retrying, aborting the `PowerOff` RPC. The test had otherwise progressed normally up to that point (vm3 came up on edge-dev3 after a slow-but-recovering Longhorn/PVC hiccup at 00:04–00:09, then vm2 deactivated cleanly at 00:12:36) — the failure happened 15s later purely at the "power off edge-dev3" step, triggered by the broker↔Proxmox-host connection, not by anything on the EVE device. I checked `live-ledger.md` for this exact signature (TLS handshake timeout / port 8006 / "farfalle") and found no prior occurrence — this is a new, one-off infrastructure flake, not a known/recurring issue, and it's a different failure mode than the previously-logged `TestDNIDandBackupDNID` DNID-reporting gap or the recurring `TestVMAppPurgeDuringFailover`/SDN "no route to host" issues also in the ledger. No PR diff was supplied for this run, so there's nothing to assess for relatedness to a code change.
+
+#### TestClusterPVCGCDeletesOnlyOrphans
+
+##### Failure
+
+```
+Timed out waiting for app "dd5e77b5-2fa5-4c5a-ae1c-8a78ecd25afd" to be scheduled in cluster "pvc-gc-cluster"
+```
+
+##### Claude's conclusion
+
+No prior occurrence of this specific etcd/CDI-overload signature in the ledger — this looks like a new failure mode.
+
+###### Root cause
+
+Live evidence shows edge-dev1's embedded k3s/etcd is severely resource-starved: `uptime` shows a 15-min load average of **9.86 on a 4-vCPU node**, and `/persist/kubelog/k3s.log` has been logging `"apply request took too long"` etcd warnings (up to 1.26s vs. a 100ms budget) continuously since **01:00:54**, with 57 `ResponseCode: 503` aggregated-API errors for `v1beta1.upload.cdi.kubevirt.io` ("failed to retrieve openAPI spec... service unavailable"). This etcd slowness intermittently knocks the CDI upload aggregated API offline, which matches the app's own recorded error exactly: `virtctl` failed uploading the PVC-GC test's disk image with *"the server is currently unable to handle the request (post uploadtokenrequests.upload.cdi.kubevirt.io)"* — confirmed live just now, where `evetest eve -d edge-dev3 kubectl get pods` itself returned `Error from server (ServiceUnavailable): the server is currently unable to handle the request`. `kubectl get events` on edge-dev1 shows nearly every control-plane add-on pod (CDI, CSI, virt-controller/operator) being mass-restarted/rescheduled roughly 30s before I looked, and the PVC upload actually succeeded ("UploadSucceeded") only ~9s before I checked — i.e. the app was perpetually stuck in `CREATING_VOLUME`/unscheduled during this instability window, well past the test's scheduling-timeout.
+
+This is a different mechanism than the earlier `TestDNIDandBackupDNID` failure in this same run (a Proxmox-broker TLS timeout unrelated to EVE/k8s internals), so it does **not** share root cause with that one. It also doesn't match the ledger's `TestClusterPVCRedownload` race (a `volumemgr` content-tree/PVC-publish timing bug) or the other logged node-join auth failure — this specific etcd-overload/CDI-503 signature does not appear anywhere in `live-ledger.md`, so it's a new failure mode, not a known recurring issue, though it's consistent with general resource-contention flakiness this test class has shown before (undersized 4-vCPU/3-node cluster running the full Longhorn+KubeVirt+CDI stack).
+
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev1 edge-dev2 edge-dev3]: rpc error: code = Unknown desc = failed to setup EVE device "edge-dev1": failed waiting for VM 105 creation: Get "https://10.208.13.184:8006/api2/json/nodes/farfalle/tasks/UPID:farfalle:0002AB2D:7941AE08:6AE6946B:qmcreate:105:root@pam:/status": net/http: TLS handshake timeout, failed to setup EVE device "edge-dev3": failed waiting for VM 112 creation: Get "https://10.208.13.184:8006/api2/json/nodes/farfalle/tasks/UPID:farfalle:0002AC3F:7941B364:6AE69479:qmcreate:112:root@pam:/status": net/http: TLS handshake timeout
+```
+
+##### Claude's conclusion
+
+This gives a clear, direct timeline showing the broker repeatedly hitting TLS handshake timeouts against the Proxmox API host "farfalle" (10.208.13.184:8006) — first on `storage/local/status` (01:24:17–01:24:58, exhausting all retries), then on the `qmcreate` task-status polls for VMs 105/112, before the setup RPC gave up entirely at 01:25:28.
+
+###### Root cause
+
+The failure is purely infrastructure-side: the evetest broker's Proxmox API client on host "farfalle" (10.208.13.184:8006) suffered sustained `net/http: TLS handshake timeout` errors during device provisioning — first failing all 3 retries of a `storage/local/status` check (01:24:17–01:24:58), then failing to poll the `qmcreate` task status for VMs 105 (edge-dev1) and 112 (edge-dev3), causing `setup.go:852` to abort with "Failed to setup devices" before any EVE device ever booted. `evetest status`/`evetest eve ssh` confirm there is nothing live to inspect — "No EVE devices found" and SDN was never initialized ("SDN client is not initialized") — because the failure occurred entirely at the Proxmox-provisioning stage, before devices or SDN came up.
+
+This shares the same root cause as the earlier `TestDNIDandBackupDNID` failure in this same run: both hit `net/http: TLS handshake timeout` against the identical Proxmox host/port (`farfalle`, 10.208.13.184:8006), indicating that host's management API was intermittently unreachable/overloaded for an extended window spanning at least 00:12 through 01:25 tonight — this one during VM *creation* (`qmcreate`), the earlier one during VM *stop* (`qmstop`). Checking `live-ledger.md`, this exact signature (TLS handshake timeout against the Proxmox API) has no prior recorded occurrence, so it's not a previously-known recurring issue — it looks like a new, extended infrastructure outage/flake on the "farfalle" Proxmox host rather than an EVE/pillar code defect. No PR diff was supplied for this run to assess code relevance.
+
+#### TestClusterPVCRedownload
+
+##### Failure
+
+```
+failed to onboard device "edge-dev1": context deadline exceeded
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence shows edge-dev1's Proxmox VM (112) never actually booted for this test, even though the broker logged "Successfully powered ON EVE device \"edge-dev1\"" at `01:31:59`. Its serial console output is frozen at a stale login prompt from a boot at `00:24:38` (over an hour old, pre-dating this test's own `01:34` setup), there's been zero new console output since, and `evetest sdn ssh "ip neigh"` shows no ARP/ND entries at all for edge-dev1's MACs on the SDN bridges — meaning its NIC never came alive — while edge-dev2 and edge-dev3, powered on 9s later, booted and onboarded normally by `01:36:38`/`01:36:53`. `evetest eve info`/`ssh` both confirm `edge-dev1` has no IP and was never onboarded, consistent with the test's `setup.go:1157` timeout.
+
+This looks like a continuation of the same underlying infrastructure problem already investigated twice earlier in this run: both prior failures (`TestDNIDandBackupDNID`'s `qmstop` and `TestVMAppPurgeDuringFailover`'s `qmcreate`) hit `net/http: TLS handshake timeout` against the same Proxmox host "farfalle" (10.208.13.184:8006), and `TestVMAppPurgeDuringFailover`'s failed `edge-dev3` attempt even used the same VM ID 112 that was reassigned to this test's edge-dev1. Here the manifestation is slightly different (the power-on RPC itself succeeded but the guest silently never actually ran), suggesting continued flakiness/overload on that specific Proxmox host rather than a new EVE/pillar defect. Per `live-ledger.md`, no prior nightly run shows this exact "device not onboarding silently, no TLS error" signature, so while it's novel in exact symptom, it's very plausibly the same extended "farfalle" host instability (spanning at least `00:12`–`01:42` tonight) already flagged twice in this run, not an independent/new bug.
+
+### TestNodeClusterSuite: failure analysis
+
+#### TestNativeKubeAppNetworking
+
+##### Failure
+
+```
+
+kubectl apply manifest:
+apiVersion: v1
+kind: Pod
+metadata:
+  name: native-bare-pod
+  namespace: default
+  annotations:
+    k8s.v1.cni.cncf.io/networks: '[{"name":"ni-local-ni","namespace":"eve-kube-app","interface":"localni","portMappings":[{"hostPort":8022,"containerPort":22,"protocol":"tcp"}]},{"name":"ni-switch-ni","namespace":"eve-kube-app","interface":"switchni","mac":"02:00:00:00:01:01"}]'
+spec:
+  containers:
+  - name: native-bare-pod
+    image: lfedge/evetest-ubuntu-ctr:1.2
+
+Unexpected error:
+    <*fmt.wrapError | 0x3f3867057720>: 
+    failed to execute script over SSH for EVE device edge-dev: Process exited with status 1 (stderr: error: error validating "STDIN": error validating data: failed to download openapi: the server is currently unable to handle the request; if you choose to ignore these errors, turn validation off with --validate=false
+    )
+    {
+        msg: "failed to execute script over SSH for EVE device edge-dev: Process exited with status 1 (stderr: error: error validating \"STDIN\": error validating data: failed to download openapi: the server is currently unable to handle the request; if you choose to ignore these errors, turn validation off with --validate=false\n)",
+        err: <*ssh.ExitError | 0x3f38671b4c80>{
+            Waitmsg: {status: 1, signal: "", msg: "", lang: ""},
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+Not present in the 2026-10-30 run — so it's a known issue that first appeared 2026-10-29, skipped 2026-10-30, and has now recurred tonight (2026-10-31).
+
+###### Root cause
+
+Live evidence confirms a timing race between the single→cluster-mode transition and the test's `kubectl apply`. `kube-init` logs show the controller pushed cluster config at `22:45:42` ("EdgeNodeClusterStatus found, node not in cluster mode — signalling single→cluster transition"), which stopped k3s at `22:45:48` and restarted it at `22:45:58`; the apiserver stayed in a not-ready state (`readyz=503`, "apiserver not ready" from zedkube) until it finally reported `node edge-dev is Ready` at `22:46:14`. The test's `kubectl apply` for `native-bare-pod` ran at `22:46:01–22:46:03`, landing squarely inside that ~16-second readiness gap, which produced the observed `failed to download openapi: the server is currently unable to handle the request` error. The apiserver is healthy now (confirmed via a direct `curl https://127.0.0.1:6443/healthz`, which returns a normal authenticated response).
+
+This is a known/recurring issue: an essentially identical `TestNativeKubeAppNetworking` failure with the same "openapi download" kubectl-apply error during an apiserver restart was already recorded in the ledger for the 2026-10-29 (run #1) nightly; it didn't recur on 2026-10-30 (run #2) but has now reappeared tonight (2026-10-31, run #3) with the same mechanism — a k3s restart caused by a single→cluster config transition racing the test's kubectl call — so it looks like an unfixed, intermittent test/infra gap (the test isn't waiting for apiserver readiness after triggering a cluster-mode transition) rather than a new regression.
+
+#### TestThreeNodesCluster
+
+##### Failure
+
+```
+failed to onboard device "edge-dev1": context deadline exceeded
+```
+
+##### Claude's conclusion
+
+This is a new failure signature, not previously seen in the ledger, and it shares no root cause with the earlier `TestNativeKubeAppNetworking` failure investigated in this run (that was a k3s apiserver-readiness race; this one never gets as far as onboarding).
+
+**Root cause:** The evetest broker's Proxmox provisioning assigned the same VM ID (111) to two different VMs in quick succession: `edge-dev1` was "prepared as Proxmox VM 111" at 23:17:06, then 39 seconds later the test's SDN VM was *also* "prepared as Proxmox VM 111" at 23:17:45 (confirmed in `gotest.json`). This is consistent with live evidence: `evetest status` shows `edge-dev1` stuck in `EVE_DEVICE_STATE_UNDEFINED` with no interfaces at all, `evetest eve console-output` shows only the initial `"starting serial terminal on interface serial0"` line (the VM never produced any further boot output), and `evetest eve collect-info`/SDN-based IP discovery both fail to find any IP for it — while `edge-dev2` (VM 114) and `edge-dev3` (VM 110), which got distinct non-conflicting VM IDs, booted normally, got IPs, and onboarded successfully at 23:22:54. The harness then waited the full ~10 minutes for `edge-dev1`'s onboarding cert before failing with "context deadline exceeded." This looks like a VM-ID allocation bug/race in the evetest broker's Proxmox backend (not an EVE/pillar code issue) — likely the SDN VM's ID was picked from a pool that didn't account for the already-provisioned `edge-dev1`, clobbering it before it could boot.
+
+#### TestThreeNodesPortScan
+
+##### Failure
+
+```
+failed to onboard device "edge-dev2": context deadline exceeded
+```
+
+##### Claude's conclusion
+
+This confirms edge-dev2 has no IP at all — it never actually booted. The evidence is conclusive and matches the exact same mechanism already diagnosed for `TestThreeNodesCluster` earlier in this run.
+
+###### Root cause
+
+This is the **same root cause** as the `TestThreeNodesCluster` failure already investigated earlier in this run (see `live-investigation.md`): the evetest broker's Proxmox backend has a VM-ID allocation race where the SDN VM and an EVE device VM can be assigned the same Proxmox VM ID. Here, `gotest.json` shows `edge-dev2` was "prepared as Proxmox VM 111" at 23:33:19, then just 19 seconds later (and *before* edge-dev2 was even powered on at 23:34:10) the SDN VM `sdn-70a84b1c` was *also* "prepared as Proxmox VM 111" at 23:33:38 — clobbering edge-dev2's VM before it ever booted. Live evidence confirms this: `evetest status` shows edge-dev2 stuck in `EVE_DEVICE_STATE_UNDEFINED` with no interfaces, `evetest eve ssh` fails with "failed to detect any IP address," and `evetest eve info`/the controller report it as never onboarded — while edge-dev1 and edge-dev3 (distinct VM IDs 110 and another) booted and onboarded fine, and SDN itself is healthy (`evetest sdn status` is clean), as expected since it's the one that won the ID collision.
+
+This is not new: the identical bug (same mechanism, same VM ID 111) just caused `TestThreeNodesCluster` to fail earlier tonight in this very run, clobbering `edge-dev1` instead of `edge-dev2`. It's not yet in the ledger as a distinct recurring entry (the ledger only covers prior nightly runs, not this run's own earlier failure), but given it has now hit two different tests in the same run within ~15 minutes of each other, this looks like an actively-reproducing VM-ID allocation bug in evetest's Proxmox broker (ID reuse/pool race between SDN and device VMs), not an EVE/pillar issue.
+
+#### TestMgmtProxy
+
+##### Failure
+
+```
+Timed out waiting for app "6cd1e240-7657-4e9e-8303-f45b68fce0d8" to be scheduled in cluster "mgmtproxy-test-cluster"
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence shows the entire 3-node k3s cluster is in severe, ongoing control-plane instability caused by etcd overload from slow disk/CPU contention, not an mgmtproxy routing bug this time: `edge-dev1`'s `/persist/kubelog/` shows **9 k3s restarts in the last ~30 minutes** (399+ "leader is overloaded likely from slow disk" / "apply request took too long" / "context deadline exceeded" log lines in just the latest restart segment), `kube-scheduler` and `kube-controller-manager` repeatedly lose leader election, and `uptime` shows load averages of 10–14 on 4-vCPU nodes with 20% iowait across all three devices. Consistent with that, nearly every control-plane/CSI pod cluster-wide (`virt-controller`, `virt-operator`, `cdi-deployment`, `csi-attacher/provisioner/resizer/snapshotter`) is crash-looping with multiple restarts, and kubelet itself was unreachable at points (`connect: connection refused` on port 10250). With the scheduler bouncing this often, the test's app pod `6cd1e240-...` never got a stable scheduling window within the timeout — hence "Timed out waiting for app to be scheduled."
+
+This is a **new failure signature** for `TestMgmtProxy` — the ledger only has a prior `TestMgmtProxy` failure mode (`ImagePullBackOff` from an HTTP registry-mirror routing gap around mgmtproxy, recurring since 2026-10-29), which is a different mechanism from this scheduling timeout. It also doesn't match any of this run's earlier-investigated failures (`TestNativeKubeAppNetworking`'s single-shot apiserver-readiness race, `TestThreeNodesCluster`/`TestThreeNodesPortScan`'s Proxmox VM-ID collisions) — though it may share an underlying cause with the earlier `edge-dev3` "not authorized" rejoin failure in `TestThreeNodesCluster`'s cluster-member test, since both point to the same general theme of an overloaded/resource-starved k3s cluster producing control-plane flakiness, just manifesting differently (join rejection there vs. scheduler unavailability here).
+
+#### TestTieBreakerCluster
+
+##### Failure
+
+```
+failed to power on device "edge-dev3": rpc error: code = Unknown desc = failed to power ON EVE device "edge-dev3": failed to get VM 114 for device "eve-70a84b1c-edge-dev3": unexpected end of JSON input
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+The failure is a Proxmox API/broker flakiness issue, not an EVE/pillar bug. `gotest.json` shows the identical `"unexpected end of JSON input"` error occurred twice in this test's setup: first during provisioning at 00:58:02 (`"Attempt 1/3: failed to get storage \"local\" (will retry): unexpected end of JSON input"`, which succeeded on retry), and then fatally at 01:01:06 when the broker tried to power on VM 114 (`edge-dev3`): `"failed to get VM 114 for device ... unexpected end of JSON input"` — this time with no retry, aborting the test. Live evidence corroborates this: `evetest status` shows all three devices stuck in `EVE_DEVICE_STATE_UNDEFINED`, and `evetest eve console-output edge-dev3` shows only stale output timestamped `23:50:12` (from a prior test's VM 114 incarnation), confirming the VM never actually powered on this cycle — consistent with the Proxmox API call itself failing/returning a truncated/empty response rather than any EVE-side boot problem.
+
+This does not share a root cause with the earlier `TestNativeKubeAppNetworking` (k3s/apiserver readiness race) failure in this run, but it does belong to the same general theme as the `TestThreeNodesCluster`/`TestThreeNodesPortScan` failures investigated earlier tonight — both are Proxmox broker instability under concurrent multi-VM provisioning load (there it manifested as VM-ID collisions on ID 111, here as truncated JSON responses from the Proxmox API) — suggesting the underlying Proxmox host is generally overloaded/flaky tonight rather than each being an independent bug. This specific `"unexpected end of JSON input"` signature does not appear anywhere in the ledger, so it's a new failure mode, not a previously-known recurring issue.
+
+#### TestClusterVMApp
+
+##### Failure
+
+```
+Timed out waiting for cluster nodes to become ready in cluster "test-cluster" (device "edge-dev3")
+```
+
+##### Claude's conclusion
+
+No recent zedkube/nodeagent commits in this run's range suggest an unfixed code change; this looks purely like the pre-existing known bug, not something introduced by recent commits.
+
+###### Root cause
+
+This `TestClusterVMApp` failure is a **known, recurring issue**, not a new bug — it's the identical failure signature recorded twice already in the ledger (2026-10-29/30 under run #2, and again earlier tonight under run #3), and this is now its third consecutive occurrence. Live evidence on `edge-dev3` matches exactly: `NodeAgentStatus` shows `RebootReason: BootReasonKubeTransition, Reboot after retry cluster transition attempt 1` (`RestartCounter:2`, reboot at `2026-11-01T01:47:42Z`), after which `/persist/kubelog/k3s.log` has been crash-looping every few minutes ever since (latest attempt `02:09:34Z`, device uptime only ~24 min) with `Skipping cluster configuration validation: not authorized` → `failed to bootstrap cluster data: not authorized`, so k3s never forms a working API server on this node. Consistent with that, `kubectl get nodes` (run against edge-dev1) shows only `edge-dev1` and `edge-dev2` as Ready members — `edge-dev3` never rejoins the cluster, exactly the same "stale cluster identity rejected after kube-transition reboot-retry" mechanism described in both prior ledger entries. This does not appear to share a root cause with the other failure already investigated earlier in this run (`live-investigation.md`'s entries are for different tests/suites in this run; none overlap with `TestClusterVMApp`). Given the identical mechanism recurring across three nightly runs now, this looks like an unfixed EVE-K node-rejoin/reboot-retry bug in the kube cluster-transition logic rather than test or infra flakiness.
+
+### TestSecuritySuite: failure analysis
+
+#### TestVaultKeyModeRecoveryOnZFS
+
+##### Failure
+
+```
+
+a mode that opens the vault must not cost a second attempt
+Expected
+    <int>: 1
+to equal
+    <int>: 2
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+The live state matches the ledger exactly: `evetest status` shows `TestVaultKeyModeRecoveryOnZFS` failing at the assertion "a mode that opens the vault must not cost a second attempt" with `actual=1, expected=2`. Live vaultmgr/zedagent logs confirm the vault genuinely unsealed successfully with only one attempt — `VaultStatus` for "Application Data Store" shows `UnlockMethod: tpm-local-sealed`, `ConversionComplete: true`, no error, and the TPM-unseal path completed cleanly without any preceding failed/retry attempt in this boot's log sequence.
+
+This is a **known, recurring issue**, not a new regression. The live-ledger shows this identical test/assertion (`vault_keymode_test.go:298`) failing with the same `1` vs `2` mismatch going back to **2026-10-29** (first occurrence, `TestVaultKeyModeRecoveryOnExt4`), reproducing again on 2026-10-30 (both run #1 and run #2, across both the Ext4 and ZFS variants), and now a third+ night in a row tonight. Every prior investigation reached the same conclusion I'm confirming now: the test's hardcoded expected value of `2` is wrong/stale — the assertion's own description says the "no second attempt needed" case should cost 1 attempt, and the device correctly delivers that — so this is a bug in the test expectation itself, not a vaultmgr/pillar defect. It does not share a root cause with any other failure in tonight's run (it's the only failure in `TestSecuritySuite`).
+
 ## [2026-10-31 -- 0.0.0-master-c5d8a37e (run #3)](https://github.com/lf-edge/eve/actions/runs/41135067537)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/3/)
