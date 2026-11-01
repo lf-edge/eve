@@ -235,6 +235,7 @@ runs:
         PR_NUMBER: ${{ inputs.pr-number }}
         ANTHROPIC_API_KEY: ${{ inputs.analyze-failures == 'true' && inputs.anthropic-api-key || '' }}
         GH_TOKEN: ${{ inputs.analyze-failures == 'true' && github.token || '' }}
+        GH_REPO: ${{ github.repository }}
       run: |
         set -o pipefail
 
@@ -431,6 +432,7 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
       run: |
         {
           echo '<!-- evetest-analysis:${{ inputs.test-suite }} -->'
