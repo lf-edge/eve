@@ -1,0 +1,156 @@
+// Copyright (c) 2026 Zededa, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+package socketdriver_test
+
+import (
+	"bytes"
+	"crypto/rand"
+	"encoding/base64"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver"
+	"github.com/sirupsen/logrus"
+)
+
+// staticDiffer hands a fixed set of items to every connecting subscriber.
+type staticDiffer struct {
+	mockPubSub
+	items map[string][]byte
+}
+
+func (d staticDiffer) DetermineDiffs(local pubsub.LocalCollection) []string {
+	var keys []string
+	for key, val := range d.items {
+		if _, ok := local[key]; !ok {
+			local[key] = val
+			keys = append(keys, key)
+		}
+	}
+	return keys
+}
+
+// TestLargeMessage verifies that values well beyond the old 64KB datagram
+// limit, close to maxFrameSize, and far beyond it (sent compressed) are
+// delivered intact from a publisher to a subscriber.
+func TestLargeMessage(t *testing.T) {
+	for _, size := range []int{200 * 1024, 1000 * 1024, 20 * 1024 * 1024} {
+		rootPath, err := os.MkdirTemp("", "largemsg_test")
+		if err != nil {
+			t.Fatalf("TempDir failed: %s", err)
+		}
+		defer os.RemoveAll(rootPath)
+
+		logger := logrus.StandardLogger()
+		log := base.NewSourceLogObject(logger, "test", 1234)
+		driver := socketdriver.SocketDriver{
+			Logger:  logger,
+			Log:     log,
+			RootDir: rootPath,
+		}
+
+		// Values are JSON and can contain spaces, which also separate
+		// the fields of a message.
+		val := bytes.Repeat([]byte("x "), size/2)
+		differ := staticDiffer{items: map[string][]byte{"key": val}}
+		publisher, err := driver.Publisher(false, "testagent/item", "item",
+			false, &pubsub.Updaters{}, differ, differ)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := publisher.Start(); err != nil {
+			t.Fatal(err)
+		}
+
+		changes := make(chan pubsub.Change, 10)
+		subscriber, err := driver.Subscriber(false, "testagent/item", "item",
+			false, changes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := subscriber.Start(); err != nil {
+			t.Fatal(err)
+		}
+
+		select {
+		case change := <-changes:
+			if change.Operation != pubsub.Modify || change.Key != "key" {
+				t.Fatalf("expected Modify of key, got %v %s",
+					change.Operation, change.Key)
+			}
+			if !bytes.Equal(change.Value, val) {
+				t.Fatalf("value of %d bytes corrupted, got %d bytes",
+					size, len(change.Value))
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("timed out waiting for the %d byte value", size)
+		}
+		subscriber.Stop()
+		publisher.Stop()
+	}
+}
+
+// TestRefusedMessage verifies that a value which does not fit in a message
+// even compressed is not sent, is counted, and does not stop the publisher
+// from sending the others.
+func TestRefusedMessage(t *testing.T) {
+	rootPath := t.TempDir()
+	logger := logrus.StandardLogger()
+	log := base.NewSourceLogObject(logger, "test", 1234)
+	driver := socketdriver.SocketDriver{Logger: logger, Log: log, RootDir: rootPath}
+
+	random := make([]byte, 2*1024*1024)
+	_, _ = rand.Read(random)
+	big := []byte(`"` + base64.StdEncoding.EncodeToString(random) + `"`)
+	small := []byte(`"small"`)
+	differ := staticDiffer{items: map[string][]byte{"big": big, "small": small}}
+	// The counters are kept per publication name for the whole process.
+	refused := &pubsub.PublicationStats("testagent/refused").Refused
+	before := refused.Load()
+	publisher, err := driver.Publisher(false, "testagent/refused", "refused",
+		false, &pubsub.Updaters{}, differ, differ)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := publisher.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer publisher.Stop()
+	changes := make(chan pubsub.Change, 10)
+	subscriber, err := driver.Subscriber(false, "testagent/refused", "refused",
+		false, changes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := subscriber.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer subscriber.Stop()
+
+	// The values are sent in map order, so the refusal may come after the
+	// small value: wait for both.
+	deadline := time.After(10 * time.Second)
+	for got := false; !got || refused.Load() == before; {
+		select {
+		case change := <-changes:
+			if change.Key == "big" {
+				t.Fatal("the incompressible value was sent")
+			}
+			got = got || change.Operation == pubsub.Modify && change.Key == "small"
+		case <-time.After(10 * time.Millisecond):
+		case <-deadline:
+			t.Fatalf("timed out: small value received %v, %d refused",
+				got, refused.Load()-before)
+		}
+	}
+	if n := refused.Load() - before; n != 1 {
+		t.Errorf("refused %d messages, expected 1", n)
+	}
+	if err := publisher.CheckMaxSize("big", big); err == nil {
+		t.Error("CheckMaxSize accepted the incompressible value")
+	}
+}

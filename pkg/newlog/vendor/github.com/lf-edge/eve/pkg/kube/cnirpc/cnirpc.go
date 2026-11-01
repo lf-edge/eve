@@ -18,6 +18,13 @@ type CommonCNIRPCArgs struct {
 	Pod AppPod
 	// Interface inside the pod.
 	PodInterface NetInterfaceWithNs
+	// NetworkInstance : UUID of the EVE Network Instance that this interface attaches to,
+	// read by eve-bridge from the per-NI NAD CNI config ("networkInstance" field).
+	// Used for directly-deployed Kubernetes workloads, which carry no controller-assigned
+	// AppNetworkConfig: zedrouter has no pre-allocated adapter to match the inbound MAC against,
+	// so the NI identity must arrive explicitly. Empty for the controller-managed path, which
+	// continues to resolve the NI via the MAC-matched adapter.
+	NetworkInstance string
 }
 
 // CommonCNIRPCRetval : a set of values returned by every CNI RPC method.
@@ -76,6 +83,11 @@ type CheckPodConnectionRetval struct {
 // It describes Kubernetes Pod under which a given app is running.
 type AppPod struct {
 	Name string
+	// Namespace of the Kubernetes pod. Forwarded from K8S_POD_NAMESPACE.
+	// Needed for directly-deployed Kubernetes workloads so zedrouter can key on
+	// (Namespace, Name) — pod names are not unique across namespaces. Empty for the
+	// controller-managed path (which keys on the pod name only).
+	Namespace string
 	// NetNsPath references network namespace of the Kubernetes pod
 	// inside which the application is running.
 	NetNsPath string

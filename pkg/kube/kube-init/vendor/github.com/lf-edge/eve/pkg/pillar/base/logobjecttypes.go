@@ -163,6 +163,8 @@ const (
 	SigUSR1StacksType LogObjectType = "sigusr1_stacks"
 	// FatalStacksType:
 	FatalStacksType LogObjectType = "fatal_stacks"
+	// KernelPanicStacksType: Linux kernel log of a panic, read from pstore
+	KernelPanicStacksType LogObjectType = "kernel_panic_stacks"
 	// MemoryNotificationType
 	MemoryNotificationType = "memory_notification"
 	// DiskNotificationType

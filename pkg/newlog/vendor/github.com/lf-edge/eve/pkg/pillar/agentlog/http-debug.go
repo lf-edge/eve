@@ -19,6 +19,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 )
 
 var (
@@ -233,6 +234,9 @@ func ListenDebug(log *base.LogObject, stacksDumpFileName, memDumpFileName string
 			</ul>
 		</li>
 
+		<li><strong>Pubsub Statistics</strong>:</br>
+			Endpoint: <code>GET /debug/pubsub/stats</code></br>
+			Description: Per-topic pubsub counters as JSON: messages and bytes sent and received, largest message and the read buffers held.</li>
 		<li><strong>Memory PSI Collector - Start</strong>:</br>
 			Endpoint: <code>POST /memory-monitor/psi-collector/start</code></br>
 			Description: Starts the memory PSI (Pressure Stall Information) collector to monitor memory pressure.</br>
@@ -284,6 +288,7 @@ func ListenDebug(log *base.LogObject, stacksDumpFileName, memDumpFileName string
 	mux.Handle("GET /debug/pprof/profile", http.HandlerFunc(pprof.Profile))
 	mux.Handle("GET /debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
 	mux.Handle("GET /debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+	mux.Handle("GET /debug/pubsub/stats", http.HandlerFunc(pubsub.StatsHandler))
 	mux.Handle("POST /stop", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		server.Close()
 		listenDebugRunning.Swap(false)
