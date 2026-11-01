@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,8 +23,7 @@ import (
 )
 
 const (
-	testJetsonManifest = "apiVersion: apps/v1\nkind: DaemonSet\n# jetson\n"
-	testDGPUManifest   = "apiVersion: apps/v1\nkind: DaemonSet\n# dgpu\n"
+	testNvidiaManifest = "apiVersion: apps/v1\nkind: DaemonSet\n# nvidia\n"
 	testNvidiaCDISpec  = "cdiVersion: 0.5.0\nkind: nvidia.com/gpu\ndevices: []\n"
 )
 
@@ -43,7 +43,7 @@ type nvidiaFixture struct {
 	node     *fakeNodeLabels
 }
 
-// redirectNvidiaGPU points the reconcile at a temp tree: the two manifests
+// redirectNvidiaGPU points the reconcile at a temp tree: the manifest
 // pkg/kube ships, empty CDI dirs, an empty auto-deploy dir, and no
 // eve-platform file or nvidia module until a test adds them. The node's
 // labels live in memory.
@@ -64,8 +64,7 @@ func redirectNvidiaGPU(t *testing.T) nvidiaFixture {
 			t.Fatalf("mkdir %s: %v", dir, err)
 		}
 	}
-	writeFile(t, filepath.Join(src, nvidiaPluginManifestName), testJetsonManifest)
-	writeFile(t, filepath.Join(src, nvidiaDGPUPluginManifestName), testDGPUManifest)
+	writeFile(t, filepath.Join(src, nvidiaPluginManifestName), testNvidiaManifest)
 
 	oldSrc, oldPlatform, oldModule, oldCDI := nvidiaManifestsSrc, NvidiaPlatformFile, NvidiaModuleDir, NvidiaCDISpecDirs
 	oldGet, oldSet, oldCleared := nvidiaGetNodeLabel, nvidiaSetNodeLabel, nvidiaLabelCleared
@@ -155,58 +154,22 @@ func (f nvidiaFixture) reconcile(t *testing.T) error {
 	return reconcileNvidiaGPU(context.Background(), f.dst)
 }
 
-func TestReconcileNvidiaGPU_JetsonStagesJetsonManifestAndLabels(t *testing.T) {
-	f := redirectNvidiaGPU(t)
-	f.usable(t, "nvidia-jp6")
-	if err := f.reconcile(t); err != nil {
-		t.Fatalf("reconcile: %v", err)
-	}
-	if got, ok := f.staged(t); !ok || got != testJetsonManifest {
-		t.Errorf("staged %q (present=%v), want the Jetson manifest", got, ok)
-	}
-	if !f.labelled() {
-		t.Error("Jetson node with its module and CDI spec not labelled")
-	}
-}
-
-func TestReconcileNvidiaGPU_AIGenericStagesDGPUManifestAndLabels(t *testing.T) {
-	f := redirectNvidiaGPU(t)
-	f.usable(t, "ai-generic")
-	if err := f.reconcile(t); err != nil {
-		t.Fatalf("reconcile: %v", err)
-	}
-	if got, ok := f.staged(t); !ok || got != testDGPUManifest {
-		t.Errorf("staged %q (present=%v), want the discrete-GPU manifest", got, ok)
-	}
-	if !f.labelled() {
-		t.Error("ai-generic node with its module and CDI spec not labelled")
-	}
-}
-
-// Every Jetson platform name maps to the Jetson manifest.
-func TestReconcileNvidiaGPU_EveryJetsonPlatformGetsJetsonManifest(t *testing.T) {
-	for _, p := range []string{"nvidia-jp5", "nvidia-jp6", "nvidia-jp7"} {
+// Every NVIDIA platform stages the same manifest and labels a usable node.
+func TestReconcileNvidiaGPU_EveryPlatformStagesManifestAndLabels(t *testing.T) {
+	for _, p := range []string{"nvidia-jp5", "nvidia-jp6", "nvidia-jp7", "nvidia-gb", "ai-generic"} {
 		t.Run(p, func(t *testing.T) {
 			f := redirectNvidiaGPU(t)
-			f.setPlatform(t, p)
+			f.usable(t, p)
 			if err := f.reconcile(t); err != nil {
 				t.Fatalf("reconcile: %v", err)
 			}
-			if got, _ := f.staged(t); got != testJetsonManifest {
-				t.Errorf("staged %q, want the Jetson manifest", got)
+			if got, ok := f.staged(t); !ok || got != testNvidiaManifest {
+				t.Errorf("staged %q (present=%v), want the NVIDIA manifest", got, ok)
+			}
+			if !f.labelled() {
+				t.Error("node with its module and CDI spec not labelled")
 			}
 		})
-	}
-}
-
-func TestReconcileNvidiaGPU_UnknownPlatformIsAnError(t *testing.T) {
-	f := redirectNvidiaGPU(t)
-	f.setPlatform(t, "nvidia-unknown")
-	if err := f.reconcile(t); err == nil {
-		t.Fatal("expected an error for an NVIDIA platform without a manifest")
-	}
-	if _, ok := f.staged(t); ok {
-		t.Error("staged a manifest for an unknown platform")
 	}
 }
 
@@ -321,12 +284,65 @@ func TestReconcileNvidiaGPU_ReturnsLabelPatchError(t *testing.T) {
 func TestReconcileNvidiaGPU_RewritesChangedManifest(t *testing.T) {
 	f := redirectNvidiaGPU(t)
 	f.setPlatform(t, "ai-generic")
-	writeFile(t, filepath.Join(f.dst, nvidiaPluginManifestName), testJetsonManifest)
+	writeFile(t, filepath.Join(f.dst, nvidiaPluginManifestName), "stale")
 	if err := f.reconcile(t); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
-	if got, _ := f.staged(t); got != testDGPUManifest {
+	if got, _ := f.staged(t); got != testNvidiaManifest {
 		t.Errorf("staged %q, want the manifest this image ships", got)
+	}
+}
+
+// Older EVE versions staged the manifest under a versioned name; left in
+// place, k3s would keep applying its stale DaemonSet.
+func TestReconcileNvidiaGPU_RemovesLegacyManifests(t *testing.T) {
+	f := redirectNvidiaGPU(t)
+	f.setPlatform(t, "nvidia-jp6")
+	legacy := []string{"nvidia-device-plugin-18.0.yml", "nvidia-device-plugin-18.0-dgpu.yml"}
+	for _, name := range legacy {
+		writeFile(t, filepath.Join(f.dst, name), "old")
+	}
+	if err := f.reconcile(t); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	for _, name := range legacy {
+		if _, err := os.Stat(filepath.Join(f.dst, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("legacy manifest %s still present (err=%v)", name, err)
+		}
+	}
+	if got, _ := f.staged(t); got != testNvidiaManifest {
+		t.Errorf("staged %q, want the NVIDIA manifest", got)
+	}
+}
+
+// Before k3s starts the manifest is refreshed with no API server to label
+// the node with.
+func TestStageNvidiaManifest_StagesWithoutTouchingLabel(t *testing.T) {
+	f := redirectNvidiaGPU(t)
+	f.setPlatform(t, "nvidia-jp6")
+	writeFile(t, filepath.Join(f.dst, nvidiaPluginManifestName), "stale")
+	writeFile(t, filepath.Join(f.dst, "nvidia-device-plugin-18.0.yml"), "old")
+	if err := stageNvidiaManifest(f.dst); err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if got, _ := f.staged(t); got != testNvidiaManifest {
+		t.Errorf("staged %q, want the NVIDIA manifest", got)
+	}
+	if _, err := os.Stat(filepath.Join(f.dst, "nvidia-device-plugin-18.0.yml")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("legacy manifest still present (err=%v)", err)
+	}
+	if f.node.gets != 0 || f.node.patches != 0 {
+		t.Errorf("node label accessed: gets=%d patches=%d", f.node.gets, f.node.patches)
+	}
+}
+
+func TestStageNvidiaManifest_NoNvidiaUserlandStagesNothing(t *testing.T) {
+	f := redirectNvidiaGPU(t)
+	if err := stageNvidiaManifest(f.dst); err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if _, ok := f.staged(t); ok {
+		t.Error("staged a manifest on an image without an NVIDIA userland")
 	}
 }
 
@@ -443,26 +459,28 @@ func TestReconcileNvidiaGPU_NoNvidiaUserlandRetriesUntilChecked(t *testing.T) {
 	}
 }
 
-// The DaemonSets' nodeSelector and the label kube-init sets are defined in
+// The DaemonSet's nodeSelector and the label kube-init sets are defined in
 // different files; nothing else ties them together.
-func TestNvidiaManifestsSelectNodeLabel(t *testing.T) {
-	for _, name := range []string{nvidiaPluginManifestName, nvidiaDGPUPluginManifestName} {
-		t.Run(name, func(t *testing.T) {
-			data, err := os.ReadFile(filepath.Join("..", "..", "nvidia-container-runtime", name))
-			if err != nil {
-				t.Fatalf("read %s: %v", name, err)
-			}
-			var ds appsv1.DaemonSet
-			if err := yaml.Unmarshal(data, &ds); err != nil {
-				t.Fatalf("parse %s: %v", name, err)
-			}
-			if ds.Kind != "DaemonSet" {
-				t.Fatalf("%s is a %q, want a DaemonSet", name, ds.Kind)
-			}
-			if got := ds.Spec.Template.Spec.NodeSelector[NvidiaGPUNodeLabel]; got != "true" {
-				t.Errorf("%s nodeSelector[%s] = %q, want \"true\"", name, NvidiaGPUNodeLabel, got)
-			}
-		})
+func TestNvidiaManifestSelectsNodeLabel(t *testing.T) {
+	name := nvidiaPluginManifestName
+	data, err := os.ReadFile(filepath.Join("..", "..", "nvidia-container-runtime", name))
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
+	}
+	var ds appsv1.DaemonSet
+	for _, doc := range strings.Split(string(data), "\n---\n") {
+		if err := yaml.Unmarshal([]byte(doc), &ds); err != nil {
+			t.Fatalf("parse %s: %v", name, err)
+		}
+		if ds.Kind == "DaemonSet" {
+			break
+		}
+	}
+	if ds.Kind != "DaemonSet" {
+		t.Fatalf("%s declares no DaemonSet", name)
+	}
+	if got := ds.Spec.Template.Spec.NodeSelector[NvidiaGPUNodeLabel]; got != "true" {
+		t.Errorf("%s nodeSelector[%s] = %q, want \"true\"", name, NvidiaGPUNodeLabel, got)
 	}
 }
 
