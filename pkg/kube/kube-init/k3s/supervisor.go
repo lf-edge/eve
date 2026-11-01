@@ -48,6 +48,9 @@ var (
 	}
 	orphanCmdlineExcludes = []string{
 		"kube-init",
+		// The witness's own k3s; samePIDNamespace is the real guard,
+		// this is a cheap second line of defence.
+		"eve-witness",
 	}
 )
 
@@ -370,6 +373,11 @@ func (s *Supervisor) startK3s() error {
 
 	if s.pidFile != "" {
 		body := strconv.Itoa(pid) + "\n"
+		// The witness keeps its pid file in a subdirectory of /run so it
+		// does not collide with the node's, and /run is emptied on boot.
+		if err := os.MkdirAll(filepath.Dir(s.pidFile), 0755); err != nil {
+			log.Printf("WARNING: create pid file dir for %s: %v", s.pidFile, err)
+		}
 		if err := os.WriteFile(s.pidFile, []byte(body), 0644); err != nil {
 			// External monitoring keys off this file; surface the
 			// inconsistency clearly so an operator can act.
@@ -559,9 +567,12 @@ func readPPID(pid int) int {
 //
 // The cmdline match is deliberately loose — anything containing
 // "k3s server" / "k3s init" / "k3s-server" / "/usr/bin/k3s" (and
-// not "kube-init") is a kill target. False positives are unlikely
-// in a kube container; false negatives (wrapper scripts that
-// rewrite argv[0]) are accepted.
+// not "kube-init") is a kill target. False negatives (wrapper
+// scripts that rewrite argv[0]) are accepted.
+//
+// Matches are then confined to our own PID namespace: this container
+// runs with `pid: host`, so the witness's k3s is visible here too and
+// killing it would cost an etcd vote. See samePIDNamespace.
 func (s *Supervisor) killOrphanedK3sProcesses() {
 	entries, err := os.ReadDir(procRoot)
 	if err != nil {
@@ -594,6 +605,11 @@ func (s *Supervisor) killOrphanedK3sProcesses() {
 		if !cmdlineMatchesOrphan(normalized) {
 			continue
 		}
+		if !samePIDNamespace(pid) {
+			log.Printf("skipping k3s process outside our PID namespace: pid=%d cmd=%s",
+				pid, truncate(normalized, 80))
+			continue
+		}
 		log.Printf("killing orphaned k3s process: pid=%d cmd=%s",
 			pid, truncate(normalized, 80))
 		killOne(pid, syscall.SIGKILL)
@@ -602,6 +618,30 @@ func (s *Supervisor) killOrphanedK3sProcesses() {
 	if killed > 0 {
 		log.Printf("killed %d orphaned k3s processes", killed)
 	}
+}
+
+// samePIDNamespace reports whether pid shares our PID namespace,
+// comparing <procRoot>/<pid>/ns/pid symlinks. Reparented descendants of
+// our k3s always do; another container's k3s never does. Unreadable
+// means unknown, and unknown counts as foreign: a surviving orphan is
+// recoverable, a killed witness is a lost etcd vote.
+func samePIDNamespace(pid int) bool {
+	self, err := os.Readlink(fmt.Sprintf("%s/self/ns/pid", procRoot))
+	if err != nil {
+		log.Printf("warning: read own PID namespace: %v (treating pid %d as foreign)",
+			err, pid)
+		return false
+	}
+	path := fmt.Sprintf("%s/%d/ns/pid", procRoot, pid)
+	other, err := os.Readlink(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			log.Printf("warning: read %s: %v (treating pid %d as foreign)",
+				path, err, pid)
+		}
+		return false
+	}
+	return self == other
 }
 
 func cmdlineMatchesOrphan(cmdline string) bool {

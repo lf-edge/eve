@@ -54,6 +54,11 @@ type VolumeMgr interface {
 	// GetNodeName returns this device's Kubernetes node name (EVE-k), derived from
 	// EdgeNodeInfo.DeviceName. Empty off EVE-k.
 	GetNodeName() string
+	// IsTwoNodeHACluster reports whether this node belongs to a 2-physical-node
+	// cluster backed by a lightweight etcd-only witness (EdgeNodeClusterConfig.WitnessIP
+	// != nil). With only two nodes able to host a Longhorn replica, callers use this to
+	// cap the replica count at 2 instead of the usual 3.
+	IsTwoNodeHACluster() bool
 }
 
 func useVhost(log *base.LogObject, volumeManager VolumeMgr) bool {

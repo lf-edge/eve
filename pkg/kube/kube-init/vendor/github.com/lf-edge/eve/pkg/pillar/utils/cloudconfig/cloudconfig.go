@@ -4,16 +4,13 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/lf-edge/eve/pkg/pillar/base"
-	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"gopkg.in/yaml.v2"
 )
 
@@ -31,6 +28,14 @@ type WritableFile struct {
 	Permissions string `yaml:"permissions"`
 	Encoding    string `yaml:"encoding"`
 	Owner       string `yaml:"owner"`
+}
+
+// hostnameConfig holds only the cloud-config keys through which the user
+// takes charge of the guest hostname.
+type hostnameConfig struct {
+	Hostname         string `yaml:"hostname"`
+	FQDN             string `yaml:"fqdn"`
+	PreserveHostname bool   `yaml:"preserve_hostname"` //nolint:tagliatelle // cloud-init standard uses snake_case
 }
 
 var validate = validator.New()
@@ -73,15 +78,6 @@ func WriteFile(log *base.LogObject, file WritableFile, rootPath string) error {
 	}
 	mode := os.FileMode(perm)
 
-	writePath := filepath.Join(rootPath, file.Path)
-	// Reject any write that escapes rootPath. filepath.Rel expresses the
-	// resolved writePath relative to rootPath: a contained path yields a
-	// normal subpath, while an escape yields ".." or a "../"-prefixed result.
-	rel, err := filepath.Rel(rootPath, writePath)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return fmt.Errorf("detected possible attempt to write file outside of root path. invalid path %s", file.Path)
-	}
-
 	var contentBytes []byte
 	switch file.Encoding {
 	case "b64", "base64":
@@ -104,23 +100,8 @@ func WriteFile(log *base.LogObject, file WritableFile, rootPath string) error {
 		return err
 	}
 
-	// check if the parent directory exists
-	parentDir := filepath.Dir(writePath)
-	if _, err := os.Stat(parentDir); os.IsNotExist(err) {
-		// create parent directory
-		err = os.MkdirAll(parentDir, 0755)
-		if err != nil {
-			return err
-		}
-	}
-
 	log.Tracef("Creating file %s with mode %s in %s\n", file.Path, mode, rootPath)
-	err = fileutils.WriteRename(writePath, contentBytes)
-	if err != nil {
-		return err
-	}
-	err = os.Chmod(writePath, mode)
-	if err != nil {
+	if err := writeFileInRoot(rootPath, file.Path, contentBytes, mode); err != nil {
 		return err
 	}
 	if file.Owner != "" {
@@ -128,6 +109,21 @@ func WriteFile(log *base.LogObject, file WritableFile, rootPath string) error {
 	}
 
 	return nil
+}
+
+// DeclaresHostname reports whether the given user-data is a cloud-config in
+// which the user has taken charge of the guest hostname, via any of the
+// `hostname`, `fqdn` or `preserve_hostname` directives.
+func DeclaresHostname(ci string) bool {
+	if !IsCloudConfig(ci) {
+		return false
+	}
+	var hc hostnameConfig
+	if err := yaml.Unmarshal([]byte(ci), &hc); err != nil {
+		// Not parseable as cloud-config; no hostname directive to honour.
+		return false
+	}
+	return hc.Hostname != "" || hc.FQDN != "" || hc.PreserveHostname
 }
 
 func decodeGzipContent(content string) ([]byte, error) {

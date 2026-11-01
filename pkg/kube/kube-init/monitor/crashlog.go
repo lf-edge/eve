@@ -18,10 +18,13 @@ import (
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/k3s"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/prereqs"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
 )
 
+// k3sLogFile is the supervisor log, which differs per role.
+var k3sLogFile = role.Pick("k3s.log", "witness.log")
+
 const (
-	k3sLogFile       = "k3s.log"
 	maxCrashLogFiles = 10
 	// maxRaftLogFiles caps how many of k3s' own rotated raft log
 	// files (k3s-YYYY-MM-DDTHH-MM-SS.mmm.log.gz) we retain.

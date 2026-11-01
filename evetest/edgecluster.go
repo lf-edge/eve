@@ -5,6 +5,7 @@ package evetest
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -98,33 +99,63 @@ func (ec *EdgeCluster) waitUntilNodesAreReady(timeout time.Duration, freshOnly b
 		ec.th.t.Fatalf("WaitUntilNodesAreReady: no devices in cluster %q "+
 			"(call ApplyConfig first)", ec.clusterName)
 	}
-	ec.th.log.Infof("Waiting for %d cluster node(s) in %q to become ready...",
-		len(ec.devices), ec.clusterName)
-
 	expectedNodes := make([]string, len(ec.devices))
 	for i, dev := range ec.devices {
 		expectedNodes[i] = dev.devName
 	}
+	ec.WaitUntilClusterInfoSatisfies(timeout, freshOnly,
+		fmt.Sprintf("cluster nodes %v to become ready", expectedNodes),
+		func(info *eveinfo.ZInfoKubeCluster) bool {
+			return allNodesReady(info, expectedNodes)
+		})
+}
+
+// WaitUntilClusterInfoSatisfies waits until any device in the cluster
+// reports a ZInfoKubeCluster satisfying pred. Only the elected leader node
+// publishes cluster info, and which device that is can change over the
+// cluster's lifetime (e.g. after a quorum recovery promotes a different
+// node), so every device is watched in parallel and the function succeeds
+// as soon as any single one satisfies pred. It fails if the timeout
+// expires before that happens. With freshOnly, reports received before the
+// call are ignored. description is used only for logging.
+func (ec *EdgeCluster) WaitUntilClusterInfoSatisfies(timeout time.Duration,
+	freshOnly bool, description string, pred func(*eveinfo.ZInfoKubeCluster) bool) {
+	if len(ec.devices) == 0 {
+		ec.th.t.Fatalf("WaitUntilClusterInfoSatisfies: no devices in cluster %q "+
+			"(call ApplyConfig first)", ec.clusterName)
+	}
+	ec.th.log.Infof("Waiting for %s in cluster %q...", description, ec.clusterName)
 
 	ctx, cancel := context.WithTimeout(ec.th.ctx, timeout)
 	defer cancel()
-	// doneCh is closed when any device reports all nodes ready,
-	// signalling the other goroutines to stop waiting.
+	// doneCh is closed when any device satisfies pred, signalling the
+	// other goroutines to stop waiting.
 	doneCh := make(chan struct{})
 	closeOnce := sync.Once{}
-	RunParallel(len(ec.devices), func(i int) {
-		dev := ec.devices[i]
-		// Subscribe before taking the initial snapshot, so a transition
-		// landing between the two calls can never be missed.
+
+	// Subscribe to every device before taking the snapshot, so a
+	// transition landing between the two can never be missed.
+	allUpdates := make([]<-chan *eveinfo.ZInfoKubeCluster, len(ec.devices))
+	for i, dev := range ec.devices {
 		updates, stop := dev.WatchClusterInfo()
 		defer stop()
-		if info := dev.GetClusterInfo(); !freshOnly && info != nil &&
-			allNodesReady(info, expectedNodes) {
-			ec.th.log.Infof("All cluster nodes already ready per device %q",
-				dev.devName)
-			closeOnce.Do(func() { close(doneCh) })
-			return
-		}
+		allUpdates[i] = updates
+	}
+
+	// The snapshot is evaluated once, on the newest info any device has
+	// reported, rather than once per device on that device's own. Only the
+	// elected leader publishes, so a device that lost the election or was
+	// powered off still offers its last snapshot, and letting that satisfy
+	// pred would end the wait on a description of the cluster that no
+	// longer holds.
+	if info := ec.newestClusterInfo(nil); !freshOnly && info != nil && pred(info) {
+		ec.th.log.Infof("%s: already satisfied", description)
+		return
+	}
+
+	RunParallel(len(ec.devices), func(i int) {
+		dev := ec.devices[i]
+		updates := allUpdates[i]
 		var tickerCh <-chan time.Time
 		if i == 0 {
 			ticker := time.NewTicker(1 * time.Minute)
@@ -137,22 +168,21 @@ func (ec *EdgeCluster) waitUntilNodesAreReady(timeout time.Duration, freshOnly b
 				if !ok {
 					return
 				}
-				if allNodesReady(info, expectedNodes) {
-					ec.th.log.Infof("All cluster nodes reported as ready by device %q",
-						dev.devName)
+				if pred(info) {
+					ec.th.log.Infof(
+						"%s: satisfied by device %q", description, dev.devName)
 					closeOnce.Do(func() { close(doneCh) })
 					return
 				}
 			case <-tickerCh:
 				if i == 0 {
-					ec.th.log.Infof("Waiting for cluster nodes %v to become ready...",
-						expectedNodes)
+					ec.th.log.Infof("Still waiting for %s...", description)
 				}
 			case <-doneCh:
 				return
 			case <-ctx.Done():
-				ec.th.t.Fatalf("Timed out waiting for cluster nodes to become ready "+
-					"in cluster %q (device %q)", ec.clusterName, dev.devName)
+				ec.th.t.Fatalf("Timed out waiting for %s in cluster %q (device %q)",
+					description, ec.clusterName, dev.devName)
 			}
 		}
 	})

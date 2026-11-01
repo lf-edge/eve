@@ -58,7 +58,7 @@ const (
 //     no records and its last boot reason is not BOOT_REASON_KERNEL, so
 //     nothing below can be satisfied by an earlier boot.
 //  2. kernel-panicked: "echo c > /proc/sysrq-trigger", with the reboot that
-//     follows declared through ExpectReboots.
+//     follows declared through ExpectAdditionalReboots.
 //  3. reboot-reported: ZInfoDevice reports lastBootReason BOOT_REASON_KERNEL,
 //     lastRebootReason "kernel panic, pstore: <panic message>" and a
 //     lastRebootStack that starts at the panic message and holds the
@@ -135,7 +135,7 @@ func TestKernelPanicReport(test *testing.T) {
 
 	// Phase 2: panic. The SSH session dies with the kernel, so its error is
 	// expected and not checked.
-	device.ExpectReboots(1)
+	device.ExpectAdditionalReboots(1)
 	panickedAt := time.Now()
 	_, _, _ = device.RunShellScript(
 		"sync; echo c > /proc/sysrq-trigger", probeSSHTimeout, 0)

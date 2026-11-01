@@ -91,6 +91,8 @@ var ControlProtocolMarkingIDMap = map[string]uint32{
 	"in_https_ingress": 27,
 	// for DNS traffic in Kubernetes environments
 	"kube_dns": 28,
+	// for etcd traffic originating from the witness (see pkg/witness)
+	"in_witness": 29,
 }
 
 // GetConnmark : create connection mark corresponding to the given attributes.

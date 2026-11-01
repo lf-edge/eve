@@ -149,7 +149,7 @@ func requireKubeRegCluster(t *evetest.T) *kubeRegClusterState {
 	}
 	wantID := kubeRegCluster.config.ClusterID.String()
 	for _, devName := range kubeRegCluster.members {
-		if info := evetest.GetEdgeDevice(devName).GetClusterInfo(); info != nil {
+		if info, _ := evetest.GetEdgeDevice(devName).GetClusterInfo(); info != nil {
 			if info.GetClusterId() == wantID {
 				return kubeRegCluster
 			}
@@ -268,7 +268,7 @@ func longhornNodeDisks(dev *evetest.EdgeDevice) (map[string][]string, error) {
 // info and the others unpublish it, so the members are asked collectively.
 func clusterInfoReadyNodes(members []string, clusterID string) []string {
 	for _, devName := range members {
-		info := evetest.GetEdgeDevice(devName).GetClusterInfo()
+		info, _ := evetest.GetEdgeDevice(devName).GetClusterInfo()
 		if info == nil || info.GetClusterId() != clusterID {
 			continue
 		}
