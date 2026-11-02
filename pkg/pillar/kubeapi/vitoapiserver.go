@@ -98,15 +98,15 @@ func CreatePVC(pvcName string, size uint64, log *base.LogObject, storageClass st
 // each have an available replica before a CDI image upload can succeed.
 var cdiControlPlaneDeployments = []string{"cdi-apiserver", "cdi-deployment", "cdi-uploadproxy"}
 
-// kubeControllerRestartPending is set by cluster-init.sh on the /run bind shared with
+// kubeControllerRestartPending is set by kube-init on the /run bind shared with
 // the kube container while it still has to recycle the Longhorn/CDI/KubeVirt
 // controller pods after a single->cluster datastore migration (their informers
-// are blind until then). It is written as CONTROLLER_RESTART_PENDING in
-// pkg/kube/cluster-init.sh, which documents the contract. A var so tests can
-// redirect it.
+// are blind until then). It is written by clustermode.ControllerRestartPending in
+// the separate kube-init module; the contract is documented under "Markers shared
+// with pillar" in pkg/kube/kube-init/README.md. A var so tests can redirect it.
 var kubeControllerRestartPending = "/run/kube/controller-restart-pending"
 
-// ControllerRestartPending reports whether cluster-init.sh still has to recycle the
+// ControllerRestartPending reports whether kube-init still has to recycle the
 // cluster-storage controllers after a single->cluster datastore migration. Until
 // it has, storage must be treated as not ready even if it was ready before.
 func ControllerRestartPending() bool {
@@ -136,7 +136,7 @@ func ControllerRestartPending() bool {
 // EdgeNodeInfo.DeviceName), used for the per-node Longhorn checks below — not
 // os.Hostname().
 //
-// It also reports not-ready while cluster-init.sh's kubeControllerRestartPending marker
+// It also reports not-ready while kube-init's kubeControllerRestartPending marker
 // exists: right after a single->cluster transition the controllers above are all
 // Running and Available, yet still watching the pre-migration datastore, and are
 // about to be recycled.
