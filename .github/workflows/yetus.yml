@@ -1,10 +1,6 @@
-# NOTE that this is the only workflow that requires access to the
-# GitHub token. However, it is safe since in EVE repo itself we
-# only trigger this workflow on pull requests and as such making
-# it effectively read-only.
-# yamllint disable rule:line-length
-#   https://docs.github.com/en/free-pro-team@latest/actions/reference/authentication-in-a-workflow#permissions-for-the-github_token
-# yamllint enable rule:line-length
+# Copyright (c) 2025, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
 ---
 name: Apache Yetus
 on:  # yamllint disable-line rule:truthy
@@ -13,6 +9,10 @@ on:  # yamllint disable-line rule:truthy
       - "master"
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
+      - "[0-9]+.[0-9]+-hotfix"
+
+permissions:
+  contents: read
 
 jobs:
   yetus:
@@ -23,16 +23,51 @@ jobs:
         with:
           path: src
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Generate patch locally
+        working-directory: src
+        run: |
+          # Add upstream and fetch the base branch
+          git remote add upstream ${{ github.server_url }}/${{ github.repository }}.git
+          git fetch upstream ${{ github.base_ref }}
+          # Now diff against the correct base. --binary is required for any
+          # patch that adds or changes a non-text file: Yetus picks its apply
+          # method by dry-run, and without the binary hunks `git apply --check`
+          # rejects the patch, so it falls back to `patch -p1 -E`, which creates
+          # such a file empty and then deletes it again.
+          git diff --binary upstream/${{ github.base_ref }}...HEAD > ${{ github.workspace }}/pr.patch
+          # Get back to upstream master so patch can be applied
+          git checkout upstream/${{ github.base_ref }} -b ${{ github.base_ref }}
+          git submodule update --init --recursive
+
+      - name: Prepare gitconfig for container
+        run: |
+          cat > /tmp/gitconfig <<'EOF'
+          [safe]
+              directory = *
+          EOF
 
       - name: Yetus
-        uses: apache/yetus-test-patch-action@0.15.1
-        with:
-          basedir: ./src
-          buildtool: nobuild
-          continuousimprovement: true
-          githubtoken: ${{ secrets.GITHUB_TOKEN }}
-          patchdir: ./out
-          reviveconfig: .revive.toml
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -v /tmp/gitconfig:/etc/gitconfig \
+            lfedge/eve-yetus:0.15.1-eve-2 \
+            test-patch \
+            --basedir=/workspace/src \
+            --patch-dir=/workspace/out \
+            --build-tool=nobuild \
+            --continuous-improvement=true \
+            --plugins='all,-asflicense,-author,-findbugs,-gitlab,-jira,-shelldocs' \
+            --revive-config=.revive.toml \
+            --brief-report-file=/workspace/out/brief.txt \
+            --console-report-file=/workspace/out/console.txt \
+            --html-report-file=/workspace/out/report.html \
+            --junit-report-xml=/workspace/out/junit-report.xml \
+            --pylint-requirements=true \
+            --report-unknown-options=false \
+            /workspace/pr.patch
 
       - name: Store Yetus artifacts
         if: ${{ always() }}
@@ -40,3 +75,45 @@ jobs:
         with:
           name: 'yetus-scan'
           path: ${{ github.workspace }}/out
+
+      - name: Publish Yetus vote table in the job summary
+        if: ${{ always() }}
+        run: |
+          console=${{ github.workspace }}/out/console.txt
+          if [ ! -s "${console}" ]; then
+            echo "No Yetus report to publish."
+            exit 0
+          fi
+          {
+            echo '```'
+            cat "${console}"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Annotate errors from Yetus
+        if: ${{ always() }}
+        run: |
+          # Yetus collects the issues a patch *adds* - the ones it posts as
+          # inline review comments when it has PR access - into results-full.txt,
+          # one per line as file:line:column:plugin:message. This is the only
+          # output scoped to the patch: the branch-*/patch-*-result.txt files it
+          # derives that from are scans of the whole tree, so annotating those
+          # buries the patch's own issues under pre-existing ones.
+          results=${{ github.workspace }}/out/results-full.txt
+          if [ ! -s "${results}" ]; then
+            echo "No new issues to annotate."
+            exit 0
+          fi
+          while IFS=: read -r file lineno column plugin message; do
+            case "${lineno}" in
+              ''|*[!0-9]*)
+                echo "${file}:${lineno}:${column}:${plugin}:${message}"
+                continue
+              ;;
+            esac
+            case "${column}" in
+              ''|0|*[!0-9]*) col='' ;;
+              *) col=",col=${column}" ;;
+            esac
+            echo "::error file=${file},line=${lineno}${col},title=Yetus [${plugin}]::${message}"
+          done < "${results}"

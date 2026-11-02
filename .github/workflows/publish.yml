@@ -8,6 +8,7 @@ on:  # yamllint disable-line rule:truthy
       - "master"
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
+      - "[0-9]+.[0-9]+-hotfix"
     paths-ignore:
       - '**/*.md'
       - '.github/**'
@@ -15,6 +16,17 @@ on:  # yamllint disable-line rule:truthy
       - "[0-9]+.[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+.[0-9]+-lts"
       - "[0-9]+.[0-9]+.[0-9]+-rc[0-9]+"
+
+permissions:
+  contents: read
+
+env:
+  # The build and some tests clone from github.com (linuxkit, swtpm, ...).
+  # GitHub throttles anonymous fetches per source IP, which makes those clones
+  # fail in bursts on the shared self-hosted runners, so authenticate every
+  # github.com clone this job makes.
+  GITHUB_TOKEN: ${{ github.token }}
+  GIT_ASKPASS: ${{ github.workspace }}/tools/github-askpass.sh
 
 jobs:
   # 1) non-ARM packages, fully parallel
@@ -242,6 +254,8 @@ jobs:
   trigger_assets:
     if: ${{ (startsWith(github.ref, 'refs/tags/')) && (github.event.repository.full_name == 'lf-edge/eve') }}
     needs: [manifest, eve]
-    uses: lf-edge/eve/.github/workflows/assets.yml@14.5-stable
+    permissions:
+      contents: write
+    uses: lf-edge/eve/.github/workflows/assets.yml@14.5-hotfix
     with:
       tag_ref: ${{ github.ref_name }}

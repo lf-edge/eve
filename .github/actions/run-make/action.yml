@@ -5,13 +5,10 @@ description: 'Fetch tags, login to dockerhub, build and push artifacts produced 
 inputs:
   command:
     required: true
-    type: string
   dockerhub-token:
     required: true
-    type: string
   dockerhub-account:
     required: true
-    type: string
 
 runs:
   using: 'composite'
