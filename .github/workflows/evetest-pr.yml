@@ -185,22 +185,65 @@ jobs:
           make -C evetest list-tests > .evetest-skip/all-tests.txt
           echo "Listed $(wc -l < .evetest-skip/all-tests.txt) lines of test/variant names"
 
-      - name: Fetch the PR diff, description and commit messages for Claude
+      # The diff is computed with git, not `gh pr diff`: the API refuses PRs
+      # touching more than 300 files, which vendor bumps easily exceed. Vendored
+      # code is left out of the diff and only summarised. If any of this fails,
+      # Claude is not asked and the decide step falls back to the full suite.
+      # Blobless full history of every branch is small (~20 MB), and the sparse
+      # checkout keeps the working tree to a handful of files.
+      - id: pr-src
+        name: Fetch the PR history for the diff
         if: steps.dedupe.outputs.skip_run == 'false' && steps.context.outputs.run-mode == 'claude'
+        continue-on-error: true
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          repository: ${{ github.repository }}
+          ref: refs/pull/${{ steps.context.outputs.pr-number }}/head
+          path: .evetest-skip/src
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: .github
+          persist-credentials: false
+
+      - id: pr-diff
+        name: Fetch the PR diff, description and commit messages for Claude
+        if: steps.pr-src.outcome == 'success'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          PR: ${{ steps.context.outputs.pr-number }}
+          SHA: ${{ steps.context.outputs.head-sha }}
+          BASE: ${{ steps.context.outputs.base-branch }}
         run: |
-          mkdir -p .evetest-skip
-          gh pr diff "${{ steps.context.outputs.pr-number }}" > .evetest-skip/pr.diff
-          gh pr view "${{ steps.context.outputs.pr-number }}" --json title,body,commits \
+          set -euo pipefail
+          out="$PWD/.evetest-skip"
+          src="$out/src"
+          # Keep the clone out of the tree Claude reads.
+          trap 'rm -rf "$src"' EXIT
+          if [ "$(git -C "$src" rev-parse HEAD)" != "$SHA" ]; then
+            echo "::error::refs/pull/$PR/head is no longer $SHA"
+            exit 1
+          fi
+          mb=$(git -C "$src" merge-base "origin/$BASE" HEAD)
+          git -C "$src" diff "$mb" HEAD -- . ":(glob,exclude)**/vendor/**" > "$out/pr.diff"
+          # Vendored modules added, removed or bumped, from vendor/modules.txt.
+          vendored=$(git -C "$src" diff --unified=0 "$mb" HEAD -- ':(glob)**/vendor/modules.txt' \
+              | sed -nE -e 's#^\+\+\+ b/(.*)/modules\.txt$#\n\1:#p' -e 's#^([-+])\# (.*)$#  \1 \2#p')
+          echo "PR diff against merge-base $mb: $(wc -l < "$out/pr.diff") lines" \
+              "($(printf '%s' "$vendored" | grep -c '^  ' || true) vendored module changes omitted)"
+          {
+            gh pr view "$PR" --json title,body,commits \
               -q '"# PR title\n" + .title
                   + "\n\n# PR description\n" + (.body // "(none)")
                   + "\n\n# Commit messages\n"
                   + ([.commits[] | "- " + .messageHeadline
                       + (if .messageBody != "" then "\n" + .messageBody else "" end)]
-                     | join("\n\n"))' \
-              > .evetest-skip/pr-context.txt
+                     | join("\n\n"))'
+            if [ -n "$vendored" ]; then
+              printf '\n\n# Vendored modules changed (code omitted from pr.diff)\n%s\n' "$vendored"
+            fi
+          } > "$out/pr-context.txt"
 
       # Claude below runs against this fork-controlled tree; strip its
       # .claude/.mcp.json first so it can't plant hooks/MCP servers
@@ -214,7 +257,7 @@ jobs:
           find . -type l -name .mcp.json -delete
 
       - name: Ask Claude which tests can be skipped
-        if: steps.dedupe.outputs.skip_run == 'false' && steps.context.outputs.run-mode == 'claude'
+        if: steps.dedupe.outputs.skip_run == 'false' && steps.context.outputs.run-mode == 'claude' && steps.pr-diff.outcome == 'success'
         uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -234,9 +277,11 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ steps.context.outputs.pr-number }}
 
-            Read .evetest-skip/pr.diff -- the full diff of this pull request.
+            Read .evetest-skip/pr.diff -- the full diff of this pull request, minus
+            vendored code (any **/vendor/** path).
             Read .evetest-skip/pr-context.txt -- the PR title, description and commit
-            messages, for context on the change's intent and scope.
+            messages, for context on the change's intent and scope, followed by the
+            vendored Go modules the PR added, removed or bumped, if any.
             Read .evetest-skip/all-tests.txt -- the full tree of evetest suites, their
             subtests, and (indented further) their variants, one name per line. Also
             feel free to grep/read the suite-level doc comments in evetest/tests/**/*_test.go
