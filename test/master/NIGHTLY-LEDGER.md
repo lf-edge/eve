@@ -2,6 +2,348 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-02 -- 0.0.0-master-8afd590e (run #5)](https://github.com/lf-edge/eve/actions/runs/41354834539)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/5/)
+
+### TestAppsSuite: failure analysis
+
+#### TestMemoryPressureEvents
+
+##### Failure
+
+```
+
+Timed out after 180.001s.
+memory-monitor's handler wrote no complete report after "": map[dir:2026-11-01-23-04-46 handler.log:Warning: Problem (retrying all errors). Will retry in 16 seconds. 1 retry left.   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0 curl: (7) Failed to connect to 127.0.0.1 port 6543 after 0 ms: Could not connect to server + cleanup + set +x memstat_eve.out: memstat_pillar.out:]
+Expected
+    <bool>: false
+to be true
+```
+
+##### Claude's conclusion
+
+This confirms the exact same code path as the ledger's prior diagnosis is still present and unfixed.
+
+**Root cause:** This nightly build is a `COVER=y` coverage build — confirmed live via `/persist/coverage/` on `edge-dev` containing fresh `covcounters.*` files. Per `pkg/pillar/agentlog/coverage.go`, `MaybeInitSigUsr2` is a deliberate no-op on coverage builds (SIGUSR2 is reserved for the coverage-flush handler), so `agentlog.ListenDebug`'s pprof server on port 6543 never starts; live-checking the device confirms `curl 127.0.0.1:6543/...` still gets nothing (connection refused) while `zedbox` (pid 2574) is alive and healthy, consistent with `memory-monitor-handler.sh`'s `eve http-debug` retries exhausting and aborting via `set -e` before `memstat_pillar.out`/`memstat_eve.out` are written — exactly the symptom in the failure message.
+
+This is a **known, recurring issue**: the identical failure (same signature, same "port 6543"/coverage root cause) is already recorded in `live-ledger.md` from the **2026-10-29** nightly run (run #1), then didn't occur on the 2026-10-30 or 2026-10-31 runs, and has now reappeared tonight (2026-11-01) — likely because those two intervening nights' nightly builds happened to run without `COVER=y`, while tonight's build has it on again. This is unrelated to the other failures logged for tonight's run (`TestVGAPassthroughNoHostAccess`'s vCPU-thread tracer bug), as it's a different subsystem entirely. No PR diff was supplied to assess for relatedness.
+
+#### TestVGAPassthroughNoHostAccess
+
+##### Failure
+
+```
+Host processes interfered with PCI devices while the VGA controller 0000:00:01.0 was passed through to the application:
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=10207 parent=runc:[1:CHILD]/10206 grandparent=runc:[0:PARENT]/10204
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=10207 parent=runc:[1:CHILD]/10206 grandparent=runc:[0:PARENT]/10204
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=10207 parent=runc:[1:CHILD]/10206 grandparent=runc:[0:PARENT]/10204
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=10207 parent=runc:[1:CHILD]/10206 grandparent=runc:[0:PARENT]/10204
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=10207 parent=runc:[1:CHILD]/10206 grandparent=runc:[0:PARENT]/10204
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=10207 parent=runc:[1:CHILD]/10206 grandparent=runc:[0:PARENT]/10204
+Kernel messages mentioning 0000:00:01.0:
+[    1.470706] [    T1] pci 0000:00:01.0: [1234:1111] type 00 class 0x030000 conventional PCI endpoint
+[    1.474490] [    T1] pci 0000:00:01.0: BAR 0 [mem 0x80000000-0x80ffffff pref]
+[    1.475081] [    T1] pci 0000:00:01.0: BAR 2 [mem 0x8264d000-0x8264dfff]
+[    1.475636] [    T1] pci 0000:00:01.0: ROM [mem 0xffff0000-0xffffffff pref]
+[    1.476251] [    T1] pci 0000:00:01.0: Video device with shadowed ROM at [mem 0x000c0000-0x000dffff]
+[    1.764506] [    T1] pci 0000:00:01.0: vgaarb: setting as boot VGA device
+[    1.765063] [    T1] pci 0000:00:01.0: vgaarb: bridge control possible
+[    1.765592] [    T1] pci 0000:00:01.0: vgaarb: VGA device added: decodes=io+mem,owns=io+mem,locks=none
+[    1.946163] [    T1] pci 0000:00:01.0: Adding to iommu group 1
+[  173.301930] [ T2649] vfio-pci 0000:00:01.0: vgaarb: deactivate vga console
+[  173.301963] [ T2649] vfio-pci 0000:00:01.0: vgaarb: VGA decodes changed: olddecodes=io+mem,decodes=io+mem:owns=io+mem
+[  205.875500] [ T7593] vfio-pci 0000:00:01.0: Invalid PCI ROM header signature: expecting 0xaa55, got 0x0000
+[  206.180660] [ T7593] vfio-pci 0000:00:01.0: vgaarb: VGA decodes changed: olddecodes=io+mem,decodes=io+mem:owns=io+mem
+[  484.354954] [T10239] vfio-pci 0000:00:01.0: Invalid PCI ROM header signature: expecting 0xaa55, got 0x0000
+```
+
+##### Claude's conclusion
+
+This confirms the exact same mechanism documented earlier tonight: PID 10207 is this app's own `qemu-system-x86_64` process, and thread TID 10239 (the one flagged) is the vCPU thread named `CPU 0/KVM` by the kernel — same false-positive pattern as the run #4 ledger entry.
+
+**Root cause:** This is the identical false-positive mechanism already diagnosed earlier in this run and recorded in `live-ledger.md`. Live `ps -eLo` confirms PID 10207 is `vga-passthrough-app`'s own qemu process (domain `c674ed41-...1.1`), and its vCPU thread (TID 10239, same PID) is named `CPU 0/KVM` by the kernel rather than `qemu-system-*`. `pciaccess_helpers_test.go`'s `isViolation()` whitelist only matches `comm` prefixed `"qemu-system-"`, so the vCPU thread's own config-space writes during `[app-restart]` get wrongly flagged as host interference, exactly as seen in the PID-11138 instance investigated earlier tonight. This is a known, recurring issue dating to the 2026-10-29 nightly (per `live-ledger.md`, it also hit 2026-10-30), and it is the **same root cause** as the earlier `TestVGAPassthroughNoHostAccess` failure already logged for this very run (run #4) — this is effectively a repeat/retry occurrence of that same unfixed test-harness tracer bug, not a new or product-side issue.
+
+### TestControllerFaultsSuite: failure analysis
+
+#### TestInfoRetriedAfterServerError
+
+##### Failure
+
+```
+Failed to receive SDN tunnel properties: rpc error: code = Unavailable desc = unable to connect to SDN gRPC service on any of the uplink IPs ([192.168.170.7]): failed to establish tunnel to SDN: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 192.168.170.7:50121: connect: no route to host"
+```
+
+##### Claude's conclusion
+
+I now have the full picture: live evidence plus a well-documented ledger pattern.
+
+**Root cause:** Live evidence shows the SDN VM (`sdn-3b111169`, Proxmox VM 112) was provisioned and powered on normally, and immediately reported a valid uplink IP (`192.168.170.7`) at `00:54:11` — but every gRPC dial from the broker to `192.168.170.7:50121` over the full ~5-minute retry window (`00:54:17`–`00:59:12`) failed with `connect: no route to host`, a routing-layer failure (no path to the host) rather than a service-not-ready response. Because the SDN tunnel never opened, `edge-dev` never had its network model applied — confirmed live via `evetest sdn status` ("SDN client is not initialized"), `evetest eve info` ("not onboarded"), and `evetest eve collect-info` ("network model not applied") — consistent with `setup.go:905`'s `openTunnelToSDN` failing before any device code ran. This is the **same root cause** as a recurring, well-documented issue in `live-ledger.md`: the identical "freshly-provisioned SDN VM reports an uplink IP, but the broker can never reach its gRPC tunnel on port 50121 (`no route to host`)" signature has appeared repeatedly since first being recorded on 2026-10-29 (`TestAppsSuite/TestPurgeNeverActivatedApp`), and recurred again on 2026-10-31 across `TestBootstrapWithAutoDiscoveredProxyUsingOverrideJSON` and `TestKonvertSuite/TestKvmToKUpgrade` (ledger lines 339–348). This points to systemic flakiness in the Proxmox broker's networking path to newly created SDN VMs rather than an EVE/pillar code defect — no PR diff was supplied for this investigation to assess separately.
+
+### TestDeviceConnectivitySuite: failure analysis
+
+#### TestDeviceNTPConfig
+
+##### Failure
+
+```
+Failed to receive SDN tunnel properties: rpc error: code = Unavailable desc = unable to connect to SDN gRPC service on any of the uplink IPs ([192.168.170.6]): failed to establish tunnel to SDN: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 192.168.170.6:50121: connect: no route to host"
+```
+
+##### Claude's conclusion
+
+All other subtests in this suite completed normally before this one — only `TestDeviceNTPConfig` failed, confirming it's an isolated setup-stage infra flake, not a cascading issue.
+
+###### Root cause
+
+Live evidence (`evetest status`) confirms the EVE device is stuck `EVE_DEVICE_STATE_UNDEFINED`/not onboarded and `evetest sdn status` reports "SDN client is not initialized" — the failure happened entirely in `openTunnelToSDN` (`evetest/setup.go:905`) before any EVE device or network model was ever created. The broker's own logs show the SDN VM (`sdn-f942552c`, freshly provisioned as Proxmox VM 109) powered on normally at 23:49:50 and immediately reported a valid uplink IP (`192.168.170.6`), but every one of ~47 retries to its gRPC tunnel on port 50121 over the full ~5-minute budget (23:50:05–23:54:44) failed with `connect: no route to host` — a routing-layer failure (no path to the host) rather than a service that was merely slow to start.
+
+This is a **known, recurring issue**, not a new one: the identical signature (freshly-provisioned SDN VM reports a valid uplink IP, but the broker gets `no route to host` on every gRPC dial to port 50121) is logged in `live-ledger.md` first on **2026-10-29** (`TestAppsSuite/TestPurgeNeverActivatedApp`), then again on 2026-10-30 (`TestKonvertSuite/TestKvmToKUpgrade`) and twice more on 2026-10-31 (`TestAppsSuite/TestPurgeNeverActivatedApp` and `TestBootstrapWithAutoDiscoveredProxyUsingOverrideJSON`) — each time on a different freshly-created SDN VM with a distinct Proxmox VM ID/IP. Tonight's occurrence is the fifth instance of this pattern and the first time it's hit `TestDeviceConnectivitySuite`/`TestDeviceNTPConfig` specifically, but it's the same underlying mechanism. It points to intermittent networking flakiness between the Proxmox broker host and newly-provisioned SDN VMs, not an EVE/pillar code defect — no other test failed in this run to correlate with, and no PR diff was supplied for this investigation.
+
+### TestKonvertSuite: failure analysis
+
+#### TestKvmToKRepartitionGeometry
+
+##### Failure
+
+```
+EVE image "evebuild/nightly:10.1.0-kvm-amd64" is not available (neither locally nor on Docker Hub). If running against the current HEAD (EVETEST_EVE_VERSION not explicitly set), build the image first with: make eve
+```
+
+##### Claude's conclusion
+
+**Root cause:** The test's setup (`setup.go:564` → `pushDockerImageToBroker`) tried to pull `evebuild/nightly:10.1.0-kvm-amd64` and got `pull access denied ... repository does not exist` — confirmed live via `evetest eve info`/`sdn status`, both reporting no device/SDN was ever onboarded, so this failed purely in image-prep before any VM provisioning. `TestKvmToKRepartitionGeometry` pins `INITIAL_EVE_VERSION=10.1.0` (needs a real prior release to convert from) but resolves it through the unset `initialEVERepoParamKey`, which defaults to the `evebuild/nightly` CI-nightly repo — that repo only holds numeric build-id tags (e.g. `40731449552-kvm-amd64`), not semantic release tags, so the `10.1.0` pull always fails there.
+
+This is a known/recurring issue: the exact same failure for this test is logged in this run's own ledger on **2026-10-29 (run #1)**, where four other `TestKonvertSuite` tests (`TestBackupCorruptRestore`, `Shrink`, `PersistTooFull`, `ZFSPersist`) hit the identical cause the same day, all tagged as an environment/test-config gap rather than a code regression. It did not recur in the intervening runs (#2 on 10-30, #3 on 10-31, #4 earlier today) for this specific test, suggesting it's intermittent/config-dependent rather than a steady every-run failure — not a new issue introduced by recent commits. No other konvert test in today's run shares this exact cause (today's earlier failures in this run's ledger were different, e.g. the `Shrink` ENOSPC-after-redeploy issue), and no PR diff was supplied for me to assess relatedness to in-flight code changes.
+
+#### TestBackupCorruptRestore
+
+##### Failure
+
+```
+EVE image "evebuild/nightly:10.1.0-kvm-amd64" is not available (neither locally nor on Docker Hub). If running against the current HEAD (EVETEST_EVE_VERSION not explicitly set), build the image first with: make eve
+```
+
+##### Claude's conclusion
+
+Confirmed live: no EVE device or SDN was ever created, and `evetest status` shows the identical failure string for `TestBackupCorruptRestore`.
+
+**Root cause:** This is the exact same known/recurring issue already diagnosed multiple times in this very run (`TestKvmToKRepartitionGeometry`, and a prior `TestBackupCorruptRestore` entry in the ledger). `TestBackupCorruptRestore` is a `TestKonvertSuite` test that pins `INITIAL_EVE_VERSION=10.1.0` via `requirePinnedInitialVersion`, which resolves through the unset `initialEVERepoParamKey` and defaults to the `evebuild/nightly` repo — a repo that only holds numeric nightly build-id tags, not semantic release tags like `10.1.0-kvm-amd64`. Live checks confirm `evetest eve info` and `evetest sdn status` both report no device/SDN was ever onboarded, consistent with the failure occurring in `Setup`/`pushDockerImageToBroker` before any VM provisioning, not a code regression. Per the ledger, this is a known, recurring issue dating back to at least **2026-10-29 (run #1)**, where the identical failure hit `TestBackupCorruptRestore` plus four other konvert tests, and it recurred again earlier in today's run — it's an environment/test-config gap (missing release-tag mirroring for pinned-initial-version konvert tests), not something introduced by recent code changes.
+
+#### Shrink
+
+##### Failure
+
+```
+EVE image "evebuild/nightly:10.1.0-kvm-amd64" is not available (neither locally nor on Docker Hub). If running against the current HEAD (EVETEST_EVE_VERSION not explicitly set), build the image first with: make eve
+```
+
+##### Claude's conclusion
+
+This confirms the mechanism is identical (default `evebuild/nightly` repo resolution for the pinned `INITIAL_EVE_VERSION`, lacking a semantic-tag mirror) across multiple `TestKonvertSuite` tests that call `requirePinnedInitialVersion`. I have enough to write the root cause now.
+
+**Root cause:** This is the same known issue already diagnosed twice earlier in this run. `Shrink` is a variant of `TestKvmToKRepartitionNoVolmig`, which (like `TestKvmToKRepartitionGeometry` and `TestBackupCorruptRestore`, both investigated earlier in `live-investigation.md`) calls `requirePinnedInitialVersion(t, p)` and needs a real prior-release image pinned via `INITIAL_EVE_VERSION=10.1.0`. With `initialEVERepoParamKey` unset, this resolves to the `evebuild/nightly` repo, which only holds numeric nightly build-id tags, not semantic release tags like `10.1.0-kvm-amd64` — so the pull always fails there. Live checks confirm the byte-identical failure string via `evetest status`, and both `evetest sdn status` ("SDN client is not initialized") and "No EVE devices found" show the failure occurred purely in image-prep before any device/SDN provisioning, matching the pattern seen for the other two tests tonight. Per the ledger, this exact failure mode (missing release-tag mirroring for pinned-initial-version konvert tests) is known/recurring back to at least 2026-10-29 (run #1), where it hit four `TestKonvertSuite` tests including `Shrink` itself — it's an environment/test-config gap, not a code regression, and shares the same root cause as the other two konvert failures already investigated in this run.
+
+#### PersistTooFull
+
+##### Failure
+
+```
+EVE image "evebuild/nightly:10.1.0-kvm-amd64" is not available (neither locally nor on Docker Hub). If running against the current HEAD (EVETEST_EVE_VERSION not explicitly set), build the image first with: make eve
+```
+
+##### Claude's conclusion
+
+This `PersistTooFull` failure is confirmed live (`evetest status` and `evetest eve info`/`sdn status` all show no EVE device or SDN was ever created) to be the identical byte-for-byte error — `evebuild/nightly:10.1.0-kvm-amd64` not found — as the three failures already diagnosed earlier in this run (`TestKvmToKRepartitionGeometry`, `TestBackupCorruptRestore`, `Shrink`), so it shares the same root cause: `PersistTooFull` calls `requirePinnedInitialVersion` with `INITIAL_EVE_VERSION=10.1.0`, which resolves through the unset `initialEVERepoParamKey` and defaults to the `evebuild/nightly` nightly-build repo — a repo that only holds numeric build-id tags, not semantic release tags like `10.1.0-kvm-amd64` — so the pull always fails in setup before any device/SDN provisioning. This is a known, recurring issue: the exact same `PersistTooFull` failure (identical signature) is already logged in this run's own ledger on 2026-10-29 (run #1), alongside four other konvert tests, meaning it's been a recurring environment/test-config gap since at least that date, not a new regression or code defect.
+
+#### ZFSPersist
+
+##### Failure
+
+```
+EVE image "evebuild/nightly:10.1.0-kvm-amd64" is not available (neither locally nor on Docker Hub). If running against the current HEAD (EVETEST_EVE_VERSION not explicitly set), build the image first with: make eve
+```
+
+##### Claude's conclusion
+
+Confirmed live: `evetest status` shows the byte-identical error for `ZFSPersist`, "No EVE devices found," and `evetest sdn status` reports the SDN client was never initialized — i.e. the failure occurred purely during image setup, before any device/SDN provisioning.
+
+**Root cause:** This is the same recurring issue already diagnosed five times earlier in this very run (`TestKvmToKRepartitionGeometry`, `TestBackupCorruptRestore`, `Shrink`, `PersistTooFull`, and an earlier `ZFSPersist` entry under `TestKvmToKRepartitionRefused`). `ZFSPersist` is a `TestKonvertSuite` test that pins `INITIAL_EVE_VERSION=10.1.0` via `requirePinnedInitialVersion`, which resolves through the unset `initialEVERepoParamKey` and defaults to the `evebuild/nightly` repo — a repo that holds only numeric nightly build-id tags, not semantic release tags like `10.1.0-kvm-amd64` — so the pull always fails in setup. Per the ledger, this exact failure mode has been a known, recurring environment/test-config gap (missing release-tag mirroring for pinned-initial-version konvert tests) since at least 2026-10-29 (run #1), where it hit the same cluster of konvert tests including `ZFSPersist` itself; it is not a code regression.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestClusterPVCGCDeletesOnlyOrphans
+
+##### Failure
+
+```
+
+Timed out after 900.062s.
+The function passed to Eventually failed at /evetest/tests/cluster/pvcgc_test.go:115 with:
+node "edge-dev2" has no created VolumeStatus for volume 18355a22-1ed4-4837-bcb2-074f3bc715e4
+Expected
+    <bool>: false
+to be true
+```
+
+##### Claude's conclusion
+
+This confirms it — `volumehandlers/csihandler.go`'s `PrepareVolume` never checks `EdgeNodeClusterConfig.IsTieBreakerNode` before calling `kubeapi.WaitForLonghornReady`, even though `longhorninfo.go:720-721` documents that contract explicitly. Now I have enough to write the final analysis.
+
+###### Root cause
+
+Live evidence on `edge-dev2` shows `volumemgr` endlessly logging `WaitForLonghornReady: not ready yet: longhorn daemonset:engine-image-ei-b4bcf0a5 missing on this node` from before the test started through the present moment, while `/run/volumemgr/VolumeStatus/18355a22-....json` is permanently stuck at `State:109` (`CREATING_VOLUME`), never reaching `CREATED_VOLUME` — exactly matching the test's "no created VolumeStatus" failure. `kubectl get node edge-dev2` shows it's labeled `tie-breaker-node=true`, and the Longhorn `engine-image`/`csi-plugin`/`manager` DaemonSets carry `nodeSelector: tie-breaker-node=false`, so they are (by design) never scheduled on `edge-dev2` — `checkLonghornReady` in `pkg/pillar/kubeapi/kubeapi.go` requires exactly one running pod of each on the local node and will *never* be satisfied there. `pkg/pillar/kubeapi/longhorninfo.go:720-721` documents that callers must skip this readiness wait on tie-breaker nodes via `EdgeNodeClusterConfig.IsTieBreakerNode`, but `volumehandlers/csihandler.go`'s `PrepareVolume` calls `kubeapi.WaitForLonghornReady` unconditionally with no such check, so it hangs forever on the witness node for any PVC whose `VolumeStatus` is expected there.
+
+This is a distinct mechanism from the `TestClusterPVCGCDeletesOnlyOrphans` failure already logged in tonight's own ledger for 2026-11-01/run #4 (that one was an etcd-overload-induced scheduling timeout, not a tie-breaker/Longhorn gating bug), and it doesn't appear anywhere else in `live-ledger.md` under this or any other signature ("tie-breaker"/"WaitForLonghornReady"/"has no created VolumeStatus" all have zero prior hits) — so this is a new, previously-unrecorded failure mode, not a known recurring issue. No PR diff was supplied for this run, so there's nothing to assess for code relatedness beyond what's shown above.
+
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.000s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+This all lines up exactly: purge was applied at 02:08, old VMIRS/VMI torn down by `purgeCmdDone` at 02:10:09, and from then until the 900s timeout zedmanager has been stuck logging `not designated` since the designated node (edge-dev1) is powered off and no replica exists anywhere to activate a new VMIRS.
+
+Root cause summary:
+
+**Likely root cause:** This is the exact same deadlock in `getKubeAppActivateStatus` (`pkg/pillar/cmd/zedmanager/zedmanager.go:2004`) documented in prior nightly runs. Live evidence on edge-dev2 confirms it precisely: `purgeCmdDone` tore down `failover-purge-app`'s old VMIRS/VMI at 02:10:09 after the purge command, and since then zedmanager has logged an unbroken stream of `getKubeAppActivateStatus(...): not designated, node 2799c831-..., onTheDevice false, statusRunning false` through the 900s timeout — matching `kubectl get vmirs,vmi,vm -A` returning nothing cluster-wide (the test's `found []`). The designated node is edge-dev1 (currently `EVE_DEVICE_STATE_SUSPECT`/`NotReady`, deliberately powered off for this failover test), and only the designated node can unconditionally originate a fresh VMIRS, so once the purge deletes the existing one with no replica scheduled anywhere, nothing in the cluster can ever create a new one. This is unrelated to the other currently-paused failure in this run (`TestClusterPVCGCDeletesOnlyOrphans`'s tie-breaker/Longhorn gating gap — a different code path). Per `live-ledger.md`, this is a known, recurring issue: the identical test, failure line (`purge_during_failover_test.go:169`), and root cause have appeared in three prior nightly runs — first on 2026-10-29, again on 2026-10-30, and again on 2026-10-31 — though last night (2026-11-01) that test instead failed on an unrelated Proxmox-infra TLS-handshake flake. So tonight's occurrence is a reproduction of the original, still-unfixed zedmanager/zedkube purge-after-failover activation gap dating back to its introduction in commit `98acf1411` (2026-10-18), not a new bug.
+
+#### TestClusterPVCRedownload
+
+##### Failure
+
+```
+
+vm1's content tree is in state LOADED, not REMOTELOADED -- it was re-downloaded despite the PVC already being complete
+Expected
+    <types.SwState>: 108
+to equal
+    <types.SwState>: 125
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live `volumemgr` logs on edge-dev1 show the exact race: right after the test power-cycles all three nodes (02:47:15), `doUpdateContentTree` for vm1's ContentTreeStatus (`0403fbb5-3921-4b4d-bc9a-c30a50a834eb`) runs at `02:58:14.766` and `02:58:18.871`, both times logging `contentTreeSatisfiedByPVCs(...): no local volumes reference this content tree` — because the matching `VolumeConfig` (`handleVolumeCreate(4886fabf-...)`) wasn't published until `02:58:18.980`, *after* the content tree had already fallen through to the normal path, found all three blobs already verified in local CAS from before reboot, and self-completed `VERIFIED → LOADING → LOADED` at `02:58:18.907`/`02:58:19.383`. This lands the tree at `LOADED` (108) instead of `REMOTELOADED` (125), matching the test's exact failure.
+
+This is the identical mechanism in `contentTreeSatisfiedByPVCs`/`doUpdateContentTree` (`pkg/pillar/cmd/volumemgr/acceptclustercontenttree.go`, `updatestatus.go`) already documented twice in `live-ledger.md`: it failed this same way in run #2 (2026-10-30) and run #3 (2026-10-31), both times from the same PVC-adoption-vs-VolumeConfig-publication timing loss right after a reboot. (It also failed in run #4/2026-11-01 under this same test name, but that was an unrelated Proxmox-onboarding infra timeout, not this race.) So this is a known, recurring bug first seen 2026-10-30, not a new issue — and it's unrelated to the other two failures already paused/investigated earlier in tonight's run (`TestClusterPVCGCDeletesOnlyOrphans`'s tie-breaker/Longhorn gating gap and `TestVMAppPurgeDuringFailover`'s zedmanager purge-after-failover deadlock), which are different code paths entirely.
+
+### TestNodeClusterSuite: failure analysis
+
+#### TestSingleNodeCluster
+
+##### Failure
+
+```
+timed out after 10m0.000367882s (excluding download) waiting for app "dcb23eb6-e3f5-4bc4-8688-1a79c4a667cd" (container-app) on device "edge-dev" to reach RUNNING state (last state: INSTALLED)
+```
+
+##### Claude's conclusion
+
+No prior occurrence of this exact "MOUNT-WEDGE-RECOVERY" / stuck-mount signature in the ledger — this looks new. Found a clear root cause directly from live evidence.
+
+**Root cause:** The cdi-upload pod's PVC (`pvc-b47375af-...`) hit the kubelet volume-mount wedge that `zedkube`'s stuck-mount detector (`pkg/pillar/cmd/zedkube/stuckmount.go`, added 2026-08-31 in `092d7a326`) exists to catch: the volume attached successfully but kubelet never issued NodeStage, so the pod sat `Pending` indefinitely. The detector correctly identified this at `23:26:00.365` ("`MOUNT-WEDGE-RECOVERY: restarting kubelet/k3s ... pod=cdi-upload-... Pending 5m43s`") and restarted k3s to clear it, but by then the pod had already been wedged for ~6 minutes. The k3s restart itself knocked the apiserver out for ~21s (`connection refused` 23:26:00–23:26:21), and only after it came back did the `container-app` VMI actually get created (`SuccessfulCreate` ~23:27:29) — about 15 seconds *after* the test's 10-minute timeout had already fired at 23:27:14 (test started 22:57:51, app stuck at `INSTALLED` the whole time). So the app was never actually broken; it was just recovering one restart cycle too late relative to the test's fixed timeout.
+
+This doesn't match any entry in `live-ledger.md` — no prior `TestSingleNodeCluster`/mount-wedge/CDI-upload-pending signature is recorded, and the wedge-recovery code itself is only ~2 months old, so this looks like a new (not previously recurring) failure mode: either the underlying kubelet mount-wedge bug this detector works around is occurring more readily in this environment, or the detector's 5-minute detection threshold plus restart/recovery time doesn't leave enough margin inside the test's 10-minute timeout. No PR diff was supplied for this run, so I can't assess relatedness to a specific code change beyond what's in `master` already.
+
+#### TestAppInstancePurge
+
+##### Failure
+
+```
+Device "edge-dev": expected 0 reboot(s) but observed 1
+```
+
+##### Claude's conclusion
+
+**Root cause:** Live `NodeAgentStatus` on `edge-dev` confirms the reboot was a deliberate EVE-K cluster-mode transition, not a crash: `RebootReason:" [2026-11-01 23:57:23]: BootReasonKubeTransition, Transition from cluster mode to single node"`, `BootReason:15`, `RestartCounter:1`. `gotest.json` shows why: the immediately-preceding test in this same suite run, `TestNativeKubeAppNetworking` (23:30:52–23:56:21), explicitly put `edge-dev` into single-node eve-k cluster mode (`"cluster-is-ready"` checkpoint at 23:39:37) and passed, but `TestAppInstancePurge`'s own applied config doesn't carry that cluster mode forward — so nodeagent correctly detected the mode mismatch on the reused device and rebooted to apply it (`restart counter 0→1, boot time 2026-11-01T23:57:54Z`), tripping the harness's "expected 0 reboots" check.
+
+This does **not** share a root cause with the already-investigated `TestSingleNodeCluster` failure in this run (that one was a kubelet mount-wedge/CDI-upload-pod issue, an unrelated subsystem). It **does** match a failure already recorded in `live-ledger.md` for this exact test (`TestAppInstancePurge`, identical error string and identical "cluster-mode-not-carried-forward across back-to-back tests on a reused device" mechanism) — that earlier entry treated it as a brand-new, one-off finding at the time, but seeing the identical signature reproduce again tonight means this is in fact a recurring device-reuse/test-isolation gap between `TestNativeKubeAppNetworking` and `TestAppInstancePurge`, not an independent new bug.
+
+#### TestMgmtProxy
+
+##### Failure
+
+```
+
+wait for the raw container pod to become Ready
+Unexpected error:
+    <*fmt.wrapError | 0x32f6b2607360>: 
+    failed to execute script over SSH for EVE device edge-dev1: Process exited with status 141 (stderr: )
+    {
+        msg: "failed to execute script over SSH for EVE device edge-dev1: Process exited with status 141 (stderr: )",
+        err: <*ssh.ExitError | 0x32f6b04ee100>{
+            Waitmsg: {status: 141, signal: "", msg: "", lang: ""},
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+This confirms it's been recurring since the very first nightly run (2026-10-29) through at least 2026-10-31, and now again tonight — a persistent, unfixed infra gap.
+
+###### Root cause
+
+This is a known, recurring issue, not a new bug — the identical signature (`exit status 141` wrapping a `kubectl wait` timeout) has appeared in every nightly run since 2026-10-29. Live evidence on `edge-dev1` confirms the exact same mechanism each time: the `mgmtproxy-test-container` pod is stuck `ImagePullBackOff` because kubelet's image pull fails with `Head "http://192.168.170.2:5000/...": dial tcp 192.168.170.2:5000: connect: no route to host`, while `/run/mgmtproxy-containerd-env` shows only `HTTPS_PROXY=http://127.0.0.1:5443` set for containerd (no `HTTP_PROXY`). Since the registry mirror is wired as a plain `http://` endpoint and Go's proxy resolution only consults `HTTPS_PROXY` for `https://` requests, this pull never routes through mgmtproxy's loopback listener and instead falls through to the deliberately-poisoned main routing table (`ip route get 192.168.170.2` resolves via `eth1`/cluster network), where it has no route. The SSH `exit status 141` is simply `kubectl wait`'s SIGPIPE once its timeout expired against a pod that can never become Ready.
+
+This does not share a root cause with any other failure investigated earlier in this run (`TestSingleNodeCluster`'s kubelet mount-wedge, `TestAppInstancePurge`'s cluster-mode-not-carried-forward reboot) — it's an independent, pre-existing test/infra gap where plain-HTTP registry-mirror pulls bypass mgmtproxy's `HTTPS_PROXY`-only wiring, first documented in the ledger's 2026-10-29 run and still unfixed.
+
+#### TestClusterVMApp
+
+##### Failure
+
+```
+Timed out waiting for cluster nodes to become ready in cluster "test-cluster" (device "edge-dev1")
+```
+
+##### Claude's conclusion
+
+**Root cause:** This is the same `TestClusterVMApp` failure mode already investigated earlier in this run and recorded repeatedly in `live-ledger.md` — the `edge-dev3` join/reboot-retry "not authorized" bug. Live evidence matches exactly: `edge-dev3`'s `NodeAgentStatus` shows `RebootReason: BootReasonKubeTransition, Reboot after retry cluster transition attempt 1` (`RestartCounter:2`, reboot at `2026-11-02T02:12:40Z`), and `/persist/kubelog/k3s.log` has been crash-looping every few minutes since (still failing at `02:34:48Z`, ~24 min uptime) with `Skipping cluster configuration validation: not authorized` → `failed to bootstrap cluster data: not authorized`, so k3s never forms a working API server there; `kubectl get nodes` confirms only `edge-dev1`/`edge-dev2` are `Ready`, with `edge-dev3` permanently excluded.
+
+This is a **known, recurring issue** — it's the identical signature recorded in `live-ledger.md` for 2026-10-29, 2026-10-30, and twice already tonight (run #3 and earlier in run #4), now reproducing for at least a fourth/fifth consecutive occurrence, and it does **not** share a root cause with the earlier `TestSingleNodeCluster`/`TestAppInstancePurge`/`TestMgmtProxy` failures already investigated in this run's `live-investigation.md` (those are unrelated kubelet-mount, cluster-mode-carryover, and registry-routing issues). This remains an unfixed EVE-K node-rejoin/reboot-retry bug in the kube cluster-transition logic, not test or infra flakiness.
+
+### TestSecuritySuite: failure analysis
+
+#### TestAppVTPMIdentitySurvivesReboots
+
+##### Failure
+
+```
+
+Timed out after 300.000s.
+The function passed to Eventually failed at /evetest/tests/security/vtpm_helpers_test.go:94 with:
+Unexpected error:
+    <*fmt.wrapError | 0x27f17102f8a0>: 
+    failed to execute script over SSH for app aff80bab-c947-4a4f-9c5f-5828531e8acf: Process exited with status 1 (stderr: )
+    {
+        msg: "failed to execute script over SSH for app aff80bab-c947-4a4f-9c5f-5828531e8acf: Process exited with status 1 (stderr: )",
+        err: <*ssh.ExitError | 0x27f1710c5900>{
+            Waitmsg: {status: 1, signal: "", msg: "", lang: ""},
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live `domainmgr` logs show that at `00:16:56Z`, right as `vtpmd` started handling the launch request for app `vtpm-identity` (`aff80bab-...`), it also began a `"Trying to unseal disk key with PCRs [...]"` operation that blocked its request handler for ~58 seconds. `domainmgr`'s vTPM-launch client has only a 10s timeout (`swtpmTimeout` in `pkg/pillar/hypervisor/kvm.go`), so at `00:17:01.816Z` it logged `"Failed to setup vTPM for aff80bab-...: ... context deadline exceeded"`, set `status.VirtualTPM = false`, and built the qemu domain config with **no TPM device at all** (confirmed live: `/run/domainmgr/domains/dom1.cfg` has zero `tpm`/`tpmdev` entries). Meanwhile `vtpmd` kept going in the background and actually launched the `swtpm` instance 53s later at `00:17:54Z` — which is why a live `swtpm` process and its `/persist/swtpm/tpm-state-aff80bab-...` dir exist on the host, but the guest (which booted fine and is SSH-reachable) has no `/dev/tpm0`/`/dev/tpmrm0`, so `waitForVTPMGuest`'s `test -c /dev/tpmrm0 -o -c /dev/tpm0` kept returning exit 1 for the full 300s until the test's `Eventually` timed out — exactly matching the "Process exited with status 1 (stderr: )" failure and the fact the test never even reached its own first checkpoint (`vtpm-identity-app-running`).
+
+This is a race between `vtpmd`'s (slow, possibly first-boot) disk-key-unseal/launch path and domainmgr's fixed 10s client timeout, not an app/network issue — the swtpm backend and guest network/SSH are both healthy. `live-ledger.md` has no prior mention of `vtpm`/`VTPM` anywhere, so this is a new failure, not a previously-known/recurring issue (consistent with this being a newly-added test per its doc comment). No other test failures exist yet in this run to correlate with, and no PR diff was supplied to assess for relatedness.
+
 ## [2026-11-01 -- 0.0.0-master-203e89f9 (run #4)](https://github.com/lf-edge/eve/actions/runs/41246140600)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/4/)
