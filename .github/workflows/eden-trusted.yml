@@ -178,9 +178,12 @@ jobs:
             }
 
   tests-13-4-stable:
-    name: ${{ needs.context.outputs.eden_parent_job_title }} for 13.4-stable
+    name: ${{ needs.context.outputs.eden_parent_job_title }} for ${{ needs.context.outputs.pr_base_ref }}
     needs: context
-    if: needs.context.outputs.skip_run == 'false' && needs.context.outputs.pr_base_ref == '13.4-stable'
+    if: >-
+      needs.context.outputs.skip_run == 'false' &&
+      (needs.context.outputs.pr_base_ref == '13.4-stable' ||
+      needs.context.outputs.pr_base_ref == '13.4-hotfix')
     uses: lf-edge/eden/.github/workflows/test.yml@1.0.15  # zizmor: ignore[unpinned-uses] eden release tag versioned with our EVE release branches; a SHA pin would force a cross-repo bump on every eden patch release
     secrets: inherit
     with:
@@ -191,9 +194,12 @@ jobs:
       eden_version: "EVE-13.4-stable"
 
   tests-14-5-stable:
-    name: ${{ needs.context.outputs.eden_parent_job_title }} for 14.5-stable
+    name: ${{ needs.context.outputs.eden_parent_job_title }} for ${{ needs.context.outputs.pr_base_ref }}
     needs: context
-    if: needs.context.outputs.skip_run == 'false' && needs.context.outputs.pr_base_ref == '14.5-stable'
+    if: >-
+      needs.context.outputs.skip_run == 'false' &&
+      (needs.context.outputs.pr_base_ref == '14.5-stable' ||
+      needs.context.outputs.pr_base_ref == '14.5-hotfix')
     uses: lf-edge/eden/.github/workflows/test.yml@1.0.15  # zizmor: ignore[unpinned-uses] eden release tag versioned with our EVE release branches; a SHA pin would force a cross-repo bump on every eden patch release
     secrets: inherit
     with:
@@ -204,9 +210,12 @@ jobs:
       eden_version: "EVE-14.5-stable"
 
   tests-16-0-stable:
-    name: ${{ needs.context.outputs.eden_parent_job_title }} for 16.0-stable
+    name: ${{ needs.context.outputs.eden_parent_job_title }} for ${{ needs.context.outputs.pr_base_ref }}
     needs: context
-    if: needs.context.outputs.skip_run == 'false' && needs.context.outputs.pr_base_ref == '16.0-stable'
+    if: >-
+      needs.context.outputs.skip_run == 'false' &&
+      (needs.context.outputs.pr_base_ref == '16.0-stable' ||
+      needs.context.outputs.pr_base_ref == '16.0-hotfix')
     uses: lf-edge/eden/.github/workflows/test.yml@1.0.15  # zizmor: ignore[unpinned-uses] eden release tag versioned with our EVE release branches; a SHA pin would force a cross-repo bump on every eden patch release
     secrets: inherit
     with:
