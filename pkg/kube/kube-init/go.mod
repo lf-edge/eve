@@ -1,6 +1,6 @@
 module github.com/lf-edge/eve/pkg/kube/kube-init
 
-go 1.25.12
+go 1.25.0
 
 require (
 	github.com/containerd/containerd/v2 v2.2.9
