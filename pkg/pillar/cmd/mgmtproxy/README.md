@@ -114,11 +114,12 @@ the first port whose dial succeeds.
   `DataVolumeTemplate` that uses `source.http.url` or `source.registry.url`,
   CDI creates an importer pod that fetches the VM disk image from the external
   URL. These pods run in the k3s pod network (10.42.x.x) and cannot reach
-  `127.0.0.1:5443`. To cover them, `cluster-init.sh:setup_cni0_proxy_ip()`
+  `127.0.0.1:5443`. To cover them, kube-init's `mgmtproxy.SetupCNI0ProxyIP`
   assigns a well-known link-local IP (`169.254.100.1/32`) to `cni0` on every
   kubevirt-enabled node. mgmtproxy gains a second listener on
-  `169.254.100.1:5443`. After CDI installs, `cluster-init.sh:patch_cdi_proxy_config()`
-  patches the CDI CR (`spec.config.importProxy`) to inject
+  `169.254.100.1:5443`. After CDI installs, kube-init's
+  `mgmtproxy.PatchCDIProxyConfig` patches the CDI CR
+  (`spec.config.importProxy`) to inject
   `HTTPS_PROXY=https://cdi:<token>@169.254.100.1:5443` and `trustedCAProxy`
   into every importer pod CDI creates. Link-local addresses are not routed by
   flannel across nodes, so each importer pod always reaches its own node's
@@ -217,13 +218,13 @@ after `/persist/vault` is unsealed — `startProxySecretsReconciler` waits for t
 the background, since mgmtproxy itself starts well before kube-init's
 vault-unseal gate opens, then keeps running for the process lifetime (see
 "Clustered nodes" below for why). On a clustered node it's derived rather
-than random. kube-init's `patch_cdi_proxy_config()`
-(`pkg/kube/cluster-init.sh`) reads the same file and embeds the token as the
-password half of the CDI CR's `importProxy.HTTPSProxy` userinfo
-(`https://cdi:<token>@169.254.100.1:5443`), which every standard HTTP client
-(Go's `net/http`, curl, ...) automatically turns into a
-`Proxy-Authorization: Basic ...` header on CONNECT — no CDI-side code change
-needed. `handleConnect` on the cni0 listener requires and
+than random. kube-init's
+`PatchCDIProxyConfig` (`pkg/kube/kube-init/mgmtproxy/cni0.go`) reads the same
+file and embeds the token as the password half of the CDI CR's
+`importProxy.HTTPSProxy` userinfo (`https://cdi:<token>@169.254.100.1:5443`),
+which every standard HTTP client (Go's `net/http`, curl, ...) automatically
+turns into a `Proxy-Authorization: Basic ...` header on CONNECT — no CDI-side
+code change needed. `handleConnect` on the cni0 listener requires and
 constant-time-compares this header before doing anything else
 (`podpolicy.go:checkProxyAuth`); a pod with no route into `/persist/vault` has no
 way to obtain the token. Missing/wrong credentials get `407`; a request that
@@ -243,15 +244,14 @@ trust root, `TLSCertFile`/`TLSKeyFile` under `/persist/vault/mgmtproxy`,
 same persistence convention as the token) and serving the cni0 listener
 over TLS with it (`tls.Config.GetCertificate` in `mgmtproxy.go`, loaded
 lazily so the listener doesn't have to wait for it — a handshake attempted
-before it's ready just fails). kube-init's `patch_cdi_proxy_config()` reads
-the same cert, publishes it via `ensure_proxy_ca_configmap()`
-(`pkg/kube/cluster-init.sh`) as a ConfigMap in the `cdi` namespace, and
-points the CDI CR's `importProxy.trustedCAProxy` at it — CDI's own importer
-validates the proxy's certificate against that CA before ever sending the
-CONNECT request, so an ARP-spoofing attacker without the private key gets a
-failed handshake instead of the token.
+before it's ready just fails). kube-init's `PatchCDIProxyConfig` reads the
+same cert, publishes it via `ensureProxyCAConfigMap` as a ConfigMap in the
+`cdi` namespace, and points the CDI CR's `importProxy.trustedCAProxy` at it
+— CDI's own importer validates the proxy's certificate against that CA
+before ever sending the CONNECT request, so an ARP-spoofing attacker
+without the private key gets a failed handshake instead of the token.
 
-**Clustered nodes.** `patch_cdi_proxy_config()` patches a single, cluster-wide
+**Clustered nodes.** `PatchCDIProxyConfig` patches a single, cluster-wide
 `cdi` CR, but `169.254.100.1:5443` is link-local, so each importer pod
 reaches only its own node's mgmtproxy. A random per-node token/cert (the
 standalone behavior) would mean only whichever node's kube-init last won

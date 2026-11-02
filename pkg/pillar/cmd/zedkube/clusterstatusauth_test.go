@@ -17,9 +17,8 @@ import (
 
 const testJoinToken = "test-join-token"
 
-// TestClusterStatusCredsKnownAnswer pins the derivation that
-// cluster-status-probe's copy
-// (pkg/kube/cluster-status-probe/statusauth_test.go) pins to the same values.
+// TestClusterStatusCredsKnownAnswer pins the derivation that kube-init's copy
+// (pkg/kube/kube-init/k3s/statusauth_test.go) pins to the same values.
 func TestClusterStatusCredsKnownAnswer(t *testing.T) {
 	creds, err := deriveClusterStatusCreds(testJoinToken)
 	if err != nil {
