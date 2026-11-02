@@ -14,10 +14,15 @@
 #           image with that digest
 #   blobs   files to sign with cosign sign-blob
 # The blob bundles, <file>.sigstore.json, are uploaded as the artifact named
-# by the bundles input.
+# by the bundles input. The issue output is the number of the approval issue;
+# the caller closes it once the release is published.
 name: Release sign
 on:  # yamllint disable-line rule:truthy
   workflow_call:
+    outputs:
+      issue:
+        description: number of the approval issue, empty if none was opened
+        value: ${{ jobs.request.outputs.issue }}
     inputs:
       images:
         description: name pattern of the image list artifacts
@@ -87,6 +92,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       issues: write
+    outputs:
+      issue: ${{ steps.open.outputs.issue }}
     steps:
       - name: Download images
         if: inputs.images != ''
@@ -95,6 +102,7 @@ jobs:
           pattern: ${{ inputs.images }}
           path: images
       - name: Open the approval issue
+        id: open
         env:
           GH_TOKEN: ${{ github.token }}
           APPROVERS: ${{ vars.RELEASE_APPROVERS }}
@@ -111,7 +119,8 @@ jobs:
             find images -name images.txt -exec cat {} + 2> /dev/null | LC_ALL=C sort -u -t@ -k1,1 -k2,2
             echo '```'
           } > "$RUNNER_TEMP/body.md"
-          gh issue create -R "$GITHUB_REPOSITORY" --title "Approve release $tag" --body-file "$RUNNER_TEMP/body.md"
+          url=$(gh issue create -R "$GITHUB_REPOSITORY" --title "Approve release $tag" --body-file "$RUNNER_TEMP/body.md")
+          echo "issue=${url##*/}" >> "$GITHUB_OUTPUT"
 
   sign:
     needs: check

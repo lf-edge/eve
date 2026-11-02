@@ -53,8 +53,10 @@ certificate's Source Repository Ref and Digest.
 When a release waits for approval, `release-sign.yml` opens an issue "Approve
 release `<tag>`" that mentions the approvers, links the Publish run, where the
 `sign / sign` job waits behind "Review deployments", and lists the image
-digests it will sign. Before approving, rebuild the tag independently and
-compare the rebuild with the release images:
+digests it will sign. The run's `close` job closes the issue once the release
+is published, and otherwise comments on it with the run's outcome. Before
+approving, rebuild the tag independently and compare the rebuild with the
+release images:
 
 1. **Find the draft release.** Drafts are visible only to users with push
    access. On <https://github.com/lf-edge/eve/releases> the draft carries the
@@ -120,6 +122,30 @@ compare the rebuild with the release images:
 
 5. **Approve.** On the run page, open "Review deployments", select `release`
    and choose "Approve and deploy".
+
+If a job fails after the approval, "Re-run failed jobs" on the run page
+retries it with the same issue; a re-run of `sign / sign` waits for approval
+again.
+
+## Rejecting a release
+
+Reject a release that should not be published, for instance one whose rebuild
+shows an unexplained difference:
+
+1. On the run page, open "Review deployments", select `release` and choose
+   "Reject". Nothing is signed, tagged or published.
+2. Delete the draft release and its tag:
+
+   ```sh
+   gh release delete <tag> --repo lf-edge/eve --cleanup-tag
+   ```
+
+3. Close the approval issue with the reason.
+
+The images stay on Docker Hub by digest, untagged and unsigned. Because the
+release was never published, the same tag can be pushed again on a fixed
+commit; once a release is published, immutable releases never let its tag be
+created again.
 
 ## Verifying a release
 

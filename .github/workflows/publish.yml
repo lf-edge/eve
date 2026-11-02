@@ -682,3 +682,31 @@ jobs:
             "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")
           jq -e '.draft == false' <<< "$response" > /dev/null || { echo "::error::publishing failed: $response"; exit 1; }
           jq -r .html_url <<< "$response"
+
+  # Closes the approval issue once the release is published. Otherwise, also
+  # on a rejected or cancelled run, it comments and leaves the issue open: a
+  # re-run of the failed jobs reuses it, since it does not re-run the job that
+  # opened it.
+  close:
+    if: ${{ always() && needs.sign.outputs.issue != '' }}
+    needs: [sign, tag, release]
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    steps:
+      - name: Close or comment on the approval issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ needs.sign.outputs.issue }}
+          SIGN: ${{ needs.sign.result }}
+          TAG: ${{ needs.tag.result }}
+          RELEASE: ${{ needs.release.result }}
+        run: |
+          run="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT"
+          if [ "$RELEASE" = success ]; then
+            gh issue close "$ISSUE" -R "$GITHUB_REPOSITORY" --reason completed \
+              --comment "Released $GITHUB_REF_NAME in $run."
+          else
+            gh issue comment "$ISSUE" -R "$GITHUB_REPOSITORY" --body \
+              "$run did not publish $GITHUB_REF_NAME (sign $SIGN, tag $TAG, release $RELEASE). Re-run the failed jobs, or reject the release as docs/SIGNING.md \"Rejecting a release\" describes."
+          fi
