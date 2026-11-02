@@ -77,8 +77,7 @@ range. Note that the sweep also found `resize2fs -P` to predict the achieved
 `-M` floor exactly (never under-estimating) at EVE's 4 KiB blocksize — an option
 for a future, more precise check, at the cost of depending on the `resize2fs`
 binary online (the current check is dependency-free, reading only the
-superblock). See `tests/resize-bench` and `~/notes/ext4-floor-sweep0.md` for the
-harness and analysis.
+superblock). See `tests/resize-bench/README.md` for the harness and analysis.
 
 ### backup / restore / cleanup — surviving a persist wipe
 
