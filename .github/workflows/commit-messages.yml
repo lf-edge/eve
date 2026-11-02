@@ -9,21 +9,29 @@ on:  # yamllint disable-line rule:truthy
       - "master"
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
+      - "[0-9]+.[0-9]+-hotfix"
+
+permissions:
+  contents: read
 
 jobs:
   commitlint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           ref: ${{ github.base_ref }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Fetch the PR's head ref
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          git fetch origin ${{ github.event.pull_request.head.sha }}:${{ github.event.pull_request.head.ref }}
-          git checkout ${{ github.event.pull_request.head.ref }}
+          git fetch origin "$HEAD_SHA:$HEAD_REF"
+          git checkout "$HEAD_REF"
 
       - name: Create virtual environment
         run: |

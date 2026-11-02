@@ -6,6 +6,7 @@ on:  # yamllint disable-line rule:truthy
       - "master"
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
+      - "[0-9]+.[0-9]+-hotfix"
     paths-ignore:
       - '**/*.md'
       - '.github/**'
@@ -14,17 +15,38 @@ on:  # yamllint disable-line rule:truthy
       - "master"
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
-    paths-ignore:
-      - '**/*.md'
-      - '.github/**'
+      - "[0-9]+.[0-9]+-hotfix"
+
+permissions:
+  contents: read
+
+env:
+  # The build and some tests clone from github.com (linuxkit, swtpm, ...).
+  # GitHub throttles anonymous fetches per source IP, which makes those clones
+  # fail in bursts on the shared self-hosted runners, so authenticate every
+  # github.com clone this job makes.
+  GITHUB_TOKEN: ${{ github.token }}
+  GIT_ASKPASS: ${{ github.workspace }}/tools/github-askpass.sh
 
 jobs:
+  changes:
+    uses: ./.github/workflows/pr-paths.yml
+    permissions:
+      pull-requests: read
+    with:
+      match: '.'
+      ignore: '^\.github/|\.md$'
+
   test:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
       - name: Test
         run: |
           make test
@@ -38,9 +60,22 @@ jobs:
           test-results: dist/amd64/results.json
       - name: Store raw test results
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
           name: 'test-report'
           path: ${{ github.workspace }}/dist
       - name: Get code coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
+
+  result:
+    name: Go Tests result
+    if: always()
+    needs: [changes, test]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail if any job failed or was cancelled
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          case " $RESULTS " in *" failure "*|*" cancelled "*) exit 1 ;; esac
