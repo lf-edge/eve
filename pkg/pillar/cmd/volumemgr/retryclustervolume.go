@@ -12,7 +12,7 @@ import (
 
 // Cache for the EVE-k cluster-storage readiness probe (single-threaded volumemgr
 // main loop, so no lock needed). Once ready it stays ready (longhorn/CDI don't
-// un-deploy), except while cluster-init.sh recycles the controllers after a
+// un-deploy), except while kube-init recycles the controllers after a
 // single->cluster datastore migration; while not ready we re-probe at most every
 // clusterStorageProbeTTL.
 var (
