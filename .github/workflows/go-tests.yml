@@ -8,6 +8,7 @@ on:  # yamllint disable-line rule:truthy
       - "master"
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
+      - "[0-9]+.[0-9]+-hotfix"
       - "feature/*"
     paths-ignore:
       - '**/*.md'
@@ -17,14 +18,36 @@ on:  # yamllint disable-line rule:truthy
       - "master"
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
+      - "[0-9]+.[0-9]+-hotfix"
       - "feature/*"
-    paths-ignore:
-      - '**/*.md'
-      - '.github/**'
+
+permissions:
+  contents: read
+
+env:
+  # The build and some tests clone from github.com (linuxkit, swtpm, ...).
+  # GitHub throttles anonymous fetches per source IP, which makes those clones
+  # fail in bursts on the shared self-hosted runners, so authenticate every
+  # github.com clone this job makes.
+  GITHUB_TOKEN: ${{ github.token }}
+  GIT_ASKPASS: ${{ github.workspace }}/tools/github-askpass.sh
 
 jobs:
+  changes:
+    uses: ./.github/workflows/pr-paths.yml
+    permissions:
+      pull-requests: read
+    with:
+      match: '.'
+      ignore: '^\.github/|\.md$'
+
   test:
-    runs-on: ubuntu-24.04
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: zededa-ubuntu-2204
+    timeout-minutes: 1440
+    env:
+      GH_REF: ${{ github.ref }}
     steps:
       - name: Starting Report
         run: |
@@ -43,6 +66,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          persist-credentials: false
+      - name: Login to Docker Hub
+        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
+        run: | # Runners must provide default credentials
+          docker login
       - name: Test
         run: |
           make test
@@ -69,3 +97,16 @@ jobs:
           docker system prune -f -a || :
           docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
           rm -rf ~/.linuxkit || :
+
+  result:
+    name: Go Tests result
+    if: always()
+    needs: [changes, test]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail if any job failed or was cancelled
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          case " $RESULTS " in *" failure "*|*" cancelled "*) exit 1 ;; esac
