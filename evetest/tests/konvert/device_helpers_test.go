@@ -32,7 +32,8 @@ type deviceParams struct {
 
 // defineSharedParameters declares the parameters every test in this package
 // understands, for a test that starts the device on a release. Tests add their
-// own on top.
+// own on top. The release comes from the release repo: the run's own repo (CI
+// points it at the build under test) holds no release tags.
 func defineSharedParameters(extra ...evetest.TestParameterDefinition) {
 	defineParameters(evetest.TestParameterDefinition{
 		Key:          initialEVEVersionParamKey,
@@ -40,6 +41,15 @@ func defineSharedParameters(extra ...evetest.TestParameterDefinition) {
 		Description: evetest.TestParameterDescription{
 			Summary: "Released EVE version the device boots before the conversion",
 			Default: defaultInitialEVEVersion,
+		},
+	}, evetest.TestParameterDefinition{
+		// Hardcoded, not constants.DefaultEVERepo: list-tests can't resolve
+		// cross-package constants and would show "" instead.
+		Key:          initialEVERepoParamKey,
+		DefaultValue: "lfedge/eve",
+		Description: evetest.TestParameterDescription{
+			Summary: "Repository the released initial EVE version is pulled from",
+			Default: "lfedge/eve",
 		},
 	}, extra...)
 }
@@ -56,12 +66,20 @@ func defineCrossFlavorParameters() {
 			Summary: "EVE version the device boots before the flavor switch",
 			Default: "\"\" (the build under test)",
 		},
+	}, evetest.TestParameterDefinition{
+		Key:          initialEVERepoParamKey,
+		DefaultValue: "",
+		Description: evetest.TestParameterDescription{
+			Summary: "Repository the initial EVE version is pulled from",
+			Default: "\"\" (the repo under test)",
+		},
 	}, altParameterDefinitions()...)
 }
 
 // defineParameters declares the shared set around the given initial-version
-// axis, which is the one axis the two entry points above differ on.
-func defineParameters(initialVersion evetest.TestParameterDefinition,
+// and initial-repo axes, which are the axes the two entry points above differ
+// on.
+func defineParameters(initialVersion, initialRepo evetest.TestParameterDefinition,
 	extra ...evetest.TestParameterDefinition) {
 	shared := []evetest.TestParameterDefinition{
 		evetest.EVEVersionParameter(),
@@ -71,14 +89,7 @@ func defineParameters(initialVersion evetest.TestParameterDefinition,
 		evetest.RAMSizeMiBParameter(),
 		evetest.CPUsParameter(),
 		initialVersion,
-		{
-			Key:          initialEVERepoParamKey,
-			DefaultValue: "",
-			Description: evetest.TestParameterDescription{
-				Summary: "Repository the initial EVE version is pulled from",
-				Default: "\"\" (the repo under test)",
-			},
-		},
+		initialRepo,
 		{
 			Key:          initialHypervisorParamKey,
 			DefaultValue: evetest.HypervisorKVM,
