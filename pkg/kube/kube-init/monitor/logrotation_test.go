@@ -20,8 +20,8 @@ func TestLogOwnershipPerRole(t *testing.T) {
 	if got := rotatedLogs(); !slices.Equal(got, []string{"witness.log"}) {
 		t.Errorf("witness rotates %v, want only witness.log", got)
 	}
-	if got := raftLogPrefix(); got != "witness-" {
-		t.Errorf("witness raft prefix = %q, want witness-", got)
+	if got := archivePrefix(); got != "witness-" {
+		t.Errorf("witness archive prefix = %q, want witness-", got)
 	}
 	restore()
 
@@ -36,8 +36,8 @@ func TestLogOwnershipPerRole(t *testing.T) {
 	if slices.Contains(got, "k3s.log") {
 		t.Errorf("node rotates %v, must leave k3s.log to k3s", got)
 	}
-	if got := raftLogPrefix(); got != "k3s-" {
-		t.Errorf("node raft prefix = %q, want k3s-", got)
+	if got := archivePrefix(); got != "k3s-" {
+		t.Errorf("node archive prefix = %q, want k3s-", got)
 	}
 }
 
