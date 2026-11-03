@@ -26,6 +26,7 @@ FROM --platform=linux/amd64 ghcr.io/k8snetworkplumbingwg/sriov-cni@sha256:fce504
 FROM lfedge/eve-alpine:3a8c6b2742af0f1e40d16063fb5ccfb1a1aece6f AS build
 
 ARG TARGETARCH
+ENV BUILD_PKGS="patch"
 ENV PKGS="alpine-baselayout musl-utils iproute2 iptables curl openrc \
          open-iscsi libvirt libvirt-client util-linux grep findutils jq \
          cni-plugins nfs-utils inotify-tools sqlite"
@@ -52,6 +53,17 @@ ADD https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/v
 RUN install /tmp/virtctl /out/usr/bin/virtctl && rm -f /tmp/virtctl
 # Register virtctl in the APK DB, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n virtctl -v "${KUBEVIRT_VERSION}" -l Apache-2.0 -u https://github.com/kubevirt/kubevirt
+
+# kubevirt-operator.yaml of the same release. The patch adds the license
+# header and puts KV_IO_EXTRA_ENV_VIRT_IN_CONTAINER into the env: of the
+# virt-operator container. The hash pins the patched result for this
+# KUBEVIRT_VERSION; on a bump, refresh the patch if it no longer applies and
+# set the hash to the sha256sum of the newly patched manifest.
+ADD https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml /tmp/
+COPY kubevirt-operator.yaml.patch /tmp/
+RUN patch /tmp/kubevirt-operator.yaml /tmp/kubevirt-operator.yaml.patch
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+RUN echo 'c8f600c2cd6679644c6c217f03265835e014ce3ade1b79e293a94415acfbf925 /tmp/kubevirt-operator.yaml' | sha256sum -c
 
 COPY eve-bridge /plugins/eve-bridge
 WORKDIR /plugins/eve-bridge
@@ -108,7 +120,7 @@ COPY cfg-manifests/04-multinode-watch-cache.yaml /etc/kube/
 # Manifests the daemon applies at first boot. Stays under /etc; the
 # Go components/ package reads them by path.
 COPY multus-daemonset.yaml /etc
-COPY kubevirt-operator.yaml /etc
+COPY --from=build /tmp/kubevirt-operator.yaml /etc
 COPY kubevirt-features.yaml /etc
 
 # Longhorn config
