@@ -494,6 +494,11 @@ type deviceState struct {
 	// wasUpgraded is set to true once UpgradeEVE has applied an upgrade config.
 	// Upgraded devices must not be reused across tests.
 	wasUpgraded bool
+
+	// inheritedCluster is set when the device is reused while its config
+	// still holds the cluster block of a previous test, and cleared by the
+	// current test's first ApplyConfig (see there).
+	inheritedCluster bool
 }
 
 // Global test harness instance.

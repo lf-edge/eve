@@ -1487,6 +1487,7 @@ func (th *TestHarness) maybeReuseDevices(
 	errCh := make(chan error, len(th.devices))
 	for devName, devReq := range edgeDevReqs {
 		dev := th.devices[devName]
+		dev.inheritedCluster = dev.config != nil && dev.config.GetCluster() != nil
 		go func(dev deviceState, newReq RequireEdgeDevice) {
 			err := th.reuseDevice(dev, devReq)
 			errCh <- err

@@ -182,11 +182,23 @@ func (d *EdgeDevice) ApplyConfig(config *EdgeDeviceConfig, waitUntilFetched bool
 	}
 	devUUID := devState.ID
 	prevConfig := devState.config
+	inheritedCluster := devState.inheritedCluster
+	devState.inheritedCluster = false
 	d.th.devicesM.Unlock()
 
 	// Set config ID.
 	configVer := d.th.nextConfigVersion(prevConfig)
 	newConfig := config.Clone()
+
+	// A device reused from a test that left it in cluster mode reboots to
+	// leave it once a config without the cluster block arrives. That reboot
+	// is the previous test's doing, so it is expected here instead of in
+	// every test that may run after a cluster test.
+	if inheritedCluster && newConfig.GetCluster() == nil {
+		d.th.log.Infof("Device %q leaves the cluster mode inherited from the "+
+			"previous test, which reboots it", d.devName)
+		d.ExpectReboots(1)
+	}
 	newConfig.Id = &eveconfig.UUIDandVersion{
 		Uuid:    devUUID.String(),
 		Version: configVer,
