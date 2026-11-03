@@ -39,11 +39,12 @@ sudo -E apt-get install -y -qq -o Dpkg::Options::="--force-confdef" \
 sudo -E apt-get remove -y -qq --purge 'libtpms*' 'libzfs*' 'libnvpair*' \
     'libzpool*' 'libzfslinux*' 'zfs*' > /dev/null 2>&1 || true
 
-# Build libtpms, same version as pkg/vtpm/Dockerfile
-echo "[+] Building libtpms v0.10.0 from source ..."
+# Build libtpms from the same commit as pkg/vtpm/Dockerfile
+echo "[+] Building libtpms from source (commit fd5b417) ..."
 LIBTPMS_BUILD=$(mktemp -d)
-git clone --branch v0.10.0 --depth 1 https://github.com/stefanberger/libtpms.git "$LIBTPMS_BUILD"
+git clone --branch stable-0.10 https://github.com/stefanberger/libtpms.git "$LIBTPMS_BUILD"
 cd "$LIBTPMS_BUILD"
+git checkout fd5b4174622032e131b70389b40ec6add4da3237
 ./autogen.sh --prefix=/usr --with-tpm2 > /dev/null
 make -j "$(getconf _NPROCESSORS_ONLN)" > /dev/null
 sudo make install > /dev/null

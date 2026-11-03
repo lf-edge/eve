@@ -20,14 +20,17 @@ RUN eve-alpine-deploy.sh
 
 # build libtpms, it is needed by swtpm
 WORKDIR /libtpms
-ADD https://github.com/stefanberger/libtpms.git#v0.10.0 /libtpms
+# This points to the head of the stable-0.10 branch (0.10.3 pre-release), which
+# carries security and build fixes not yet available in a tagged release.
+# TODO: switch to the v0.10.3 tag once it is released.
+ADD https://github.com/stefanberger/libtpms.git#fd5b4174622032e131b70389b40ec6add4da3237 /libtpms
 RUN ./autogen.sh --prefix=/usr --with-tpm2
 RUN make -j$(nproc)
 RUN make -j$(nproc) install
 RUN cp /usr/lib/libtpms.so.* /out/usr/lib/
 RUN strip --strip-unneeded /out/usr/lib/libtpms.so.*
 # Register libtpms in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n libtpms -v 0.10.0 -l BSD-3-Clause \
+RUN register-sbom-pkg.sh -n libtpms -v 0.10.3-fd5b417 -l BSD-3-Clause \
     -u https://github.com/stefanberger/libtpms \
     -d "TPM 2.0 emulation library (built from source)"
 
