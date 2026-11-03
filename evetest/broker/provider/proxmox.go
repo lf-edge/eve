@@ -65,6 +65,14 @@ type ProxmoxProvider struct {
 	// create call -- not the disk/firmware uploads or waitTask.
 	vmCreateMutex sync.Mutex
 
+	// sdnApplyMutex keeps VM starts from overlapping an SDN apply. Applying
+	// SDN restarts the zone's dnsmasq, and a VM starting meanwhile fails: PVE's
+	// network script reloads that same dnsmasq to add the VM's DHCP mapping,
+	// fails while dnsmasq is stopped, and QEMU exits. applySDN holds it for
+	// writing, VM starts for reading. It is a leaf lock: nothing else is
+	// acquired while holding it.
+	sdnApplyMutex sync.RWMutex
+
 	client *proxmox.Client
 
 	// supportedArchs is the node architecture, learned at construction time.
@@ -768,6 +776,8 @@ func (p *ProxmoxProvider) PowerOnDevice(ctx context.Context, name string) error 
 
 	err = p.setVMPowerState(ctx, dev, "start", vmRunning,
 		func(vm *proxmox.VirtualMachine) error {
+			p.sdnApplyMutex.RLock()
+			defer p.sdnApplyMutex.RUnlock()
 			task, err := vm.Start(ctx)
 			if err != nil {
 				return err
@@ -1980,6 +1990,8 @@ func (p *ProxmoxProvider) applySDN(ctx context.Context, log *logrus.Entry) error
 	if err != nil {
 		return fmt.Errorf("failed to get Proxmox cluster: %w", err)
 	}
+	p.sdnApplyMutex.Lock()
+	defer p.sdnApplyMutex.Unlock()
 	task, err := cluster.SDNApply(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to apply SDN configuration: %w", err)
