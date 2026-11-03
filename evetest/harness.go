@@ -494,6 +494,10 @@ type deviceState struct {
 	// still holds the cluster block of a previous test, and cleared by the
 	// current test's first ApplyConfig (see there).
 	inheritedCluster bool
+
+	// registryMirrors is the registry-mirror setup applied to the device when
+	// it was set up (see applyK3sRegistryMirrorIfConfigured). Reuse keeps it.
+	registryMirrors registryMirrorSetup
 }
 
 // Global test harness instance.
