@@ -782,21 +782,16 @@ func TestLocalNIWithMultiplePorts(test *testing.T) {
 
 	failoverTimeout := 10 * time.Minute
 
+	// One watch and one condition for both routes: they can move in the same
+	// network instance info message, after which no further one may come.
 	niUpdates, stopNIWatch = device.WatchNetworkInstanceInfo(niUUID)
 	t.Eventually(niUpdates, failoverTimeout).Should(Receive(matchers.SatisfyPredicate(
-		"Default route fails over to ethernet3",
+		"Default route fails over to ethernet3 and HTTP server route to ethernet2",
 		func(info *eveinfo.ZInfoNetworkInstance) bool {
-			route := findRoute(info.IpRoutes, "0.0.0.0/0")
-			return route != nil && route.Port == "ethernet3"
-		})))
-	stopNIWatch()
-
-	niUpdates, stopNIWatch = device.WatchNetworkInstanceInfo(niUUID)
-	t.Eventually(niUpdates, failoverTimeout).Should(Receive(matchers.SatisfyPredicate(
-		"HTTP server route fails over to ethernet2",
-		func(info *eveinfo.ZInfoNetworkInstance) bool {
-			route := findRoute(info.IpRoutes, "10.88.88.0/24")
-			return route != nil && route.Port == "ethernet2"
+			dr := findRoute(info.IpRoutes, "0.0.0.0/0")
+			hr := findRoute(info.IpRoutes, "10.88.88.0/24")
+			return dr != nil && dr.Port == "ethernet3" &&
+				hr != nil && hr.Port == "ethernet2"
 		})))
 	stopNIWatch()
 

@@ -290,12 +290,12 @@ func TestSwitchNIWithMultiplePorts(test *testing.T) {
 	t.Expect(appInfo.Network[0].IpAddrMisMatch).To(BeFalse())
 
 	// Wait for the NI to report the app VIF.
-	t.Eventually(niUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
+	niInfo = expectNIInfo(t, niUpdates, niInfo, timeout, matchers.SatisfyPredicate(
 		"NI reports the app VIF",
 		func(info *eveinfo.ZInfoNetworkInstance) bool {
 			niInfo = info
 			return len(niInfo.Vifs) == 1
-		}).StopIf(niHasError)))
+		}).StopIf(niHasError))
 	vifName := niInfo.Vifs[0].VifName
 	t.Expect(vifName).To(Equal("nbu1x1"))
 	t.Expect(niInfo.Vifs[0].MacAddress).To(Equal(appMACAddr))

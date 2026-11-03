@@ -19,6 +19,7 @@ import (
 
 	// revive:disable:dot-imports
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 
 	eveinfo "github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/evetest"
@@ -47,6 +48,26 @@ func niHasError(info *eveinfo.ZInfoNetworkInstance) (string, bool) {
 		return "Network instance is in error state", true
 	}
 	return "", false
+}
+
+// expectNIInfo waits until the network instance info satisfies matcher, and
+// returns the info that did. It first checks last, the newest info an earlier
+// wait already took from updates (nil if none): EVE publishes network instance
+// info only when the network instance's status changes, so the state waited for
+// can be in that message already, with no further message to come.
+func expectNIInfo(t *WithT, updates <-chan *eveinfo.ZInfoNetworkInstance,
+	last *eveinfo.ZInfoNetworkInstance, timeout time.Duration,
+	matcher types.GomegaMatcher) *eveinfo.ZInfoNetworkInstance {
+	if last != nil {
+		// Match also returns an error when a StopIf fires; Expect reports it.
+		if matched, err := matcher.Match(last); matched || err != nil {
+			t.Expect(last).To(matcher)
+			return last
+		}
+	}
+	var info *eveinfo.ZInfoNetworkInstance
+	t.Eventually(updates, timeout).Should(Receive(&info, matcher))
+	return info
 }
 
 // appHasError is a matchers.SatisfyPredicate StopIf callback: it stops an
