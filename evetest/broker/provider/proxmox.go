@@ -221,23 +221,67 @@ const proxmoxHookscriptVolID = "local:snippets/evetest-hook.pl"
 // proxmoxTaskPollInterval / proxmoxTaskTimeout bound how long we wait for
 // asynchronous Proxmox tasks (VM start/stop, SDN apply, ...) to complete.
 const (
-	proxmoxTaskPollInterval = 1 * time.Second
 	proxmoxTaskTimeout      = 5 * time.Minute
 	proxmoxStatusPollPeriod = 2 * time.Second
 	proxmoxConnectTimeout   = 30 * time.Second
 	// proxmoxOrphanSweepTimeout bounds removeOrphans, which stops and deletes
 	// each leftover VM in turn.
 	proxmoxOrphanSweepTimeout = 15 * time.Minute
+	// proxmoxTaskMaxPollErrors is how many task status polls in a row may
+	// fail before waitTask gives up: one lost response must not abort the
+	// wait for an operation that is still running, or already succeeded.
+	proxmoxTaskMaxPollErrors = 5
 )
 
-// waitTask waits for task to complete. go-proxmox returns a nil task (with a
-// nil error) when PVE completes an operation synchronously without queuing an
-// async UPID; treat that as already done instead of calling Wait on it.
+// proxmoxTaskPollInterval is a variable only so that tests can shorten it.
+var proxmoxTaskPollInterval = 1 * time.Second
+
+// errTaskFailed is wrapped by the error of waitTask for a task that PVE ran to
+// completion and reported as failed, as opposed to one whose status could not
+// be read.
+var errTaskFailed = errors.New("task failed on Proxmox")
+
+// waitTask waits for task to complete, and fails if PVE reports that the task
+// failed. go-proxmox's own Task.Wait cannot be used: it reports every finished
+// task as a success, failed ones included, and gives up at the first status
+// poll that fails. A nil task, which go-proxmox returns with a nil error when
+// PVE completed the operation without queuing an async task, is already done.
 func waitTask(ctx context.Context, task *proxmox.Task) error {
 	if task == nil {
 		return nil
 	}
-	return task.Wait(ctx, proxmoxTaskPollInterval, proxmoxTaskTimeout)
+	timeout := time.NewTimer(proxmoxTaskTimeout)
+	defer timeout.Stop()
+	pollErrors := 0
+	for {
+		err := task.Ping(ctx)
+		switch {
+		case err != nil:
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			pollErrors++
+			if pollErrors >= proxmoxTaskMaxPollErrors {
+				return fmt.Errorf("failed to read the status of Proxmox task %s: %w",
+					task.UPID, err)
+			}
+		case task.IsCompleted:
+			if task.IsFailed {
+				return fmt.Errorf("%w: %s (task %s)", errTaskFailed, task.ExitStatus, task.UPID)
+			}
+			return nil
+		default:
+			pollErrors = 0
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeout.C:
+			return fmt.Errorf("timed out after %v waiting for Proxmox task %s",
+				proxmoxTaskTimeout, task.UPID)
+		case <-time.After(proxmoxTaskPollInterval):
+		}
+	}
 }
 
 // NewProxmoxProvider creates a new Proxmox provider instance, verifies
@@ -722,12 +766,16 @@ func (p *ProxmoxProvider) PowerOnDevice(ctx context.Context, name string) error 
 		log.Infof("Cleared netboot MTU cap for device %q", name)
 	}
 
-	task, err := vm.Start(ctx)
+	err = p.setVMPowerState(ctx, dev, "start", vmRunning,
+		func(vm *proxmox.VirtualMachine) error {
+			task, err := vm.Start(ctx)
+			if err != nil {
+				return err
+			}
+			return waitTask(ctx, task)
+		})
 	if err != nil {
 		return fmt.Errorf("failed to start VM %d for device %q: %w", dev.vmID, name, err)
-	}
-	if err := waitTask(ctx, task); err != nil {
-		return fmt.Errorf("failed waiting for VM %d start: %w", dev.vmID, err)
 	}
 
 	p.devMutex.Lock()
@@ -746,16 +794,20 @@ func (p *ProxmoxProvider) PowerOnDevice(ctx context.Context, name string) error 
 // PowerOffDevice performs a hard power-off of the VM. The Stop call and its
 // waitTask run unlocked; see PowerOnDevice's doc for why.
 func (p *ProxmoxProvider) PowerOffDevice(ctx context.Context, name string) error {
-	dev, vm, err := p.lookupVM(ctx, name)
+	dev, err := p.lookupDevice(name)
 	if err != nil {
 		return err
 	}
-	task, err := vm.Stop(ctx)
+	err = p.setVMPowerState(ctx, dev, "stop", vmStopped,
+		func(vm *proxmox.VirtualMachine) error {
+			task, err := vm.Stop(ctx)
+			if err != nil {
+				return err
+			}
+			return waitTask(ctx, task)
+		})
 	if err != nil {
 		return fmt.Errorf("failed to stop VM %d for device %q: %w", dev.vmID, name, err)
-	}
-	if err := waitTask(ctx, task); err != nil {
-		return fmt.Errorf("failed waiting for VM %d stop: %w", dev.vmID, err)
 	}
 	p.devMutex.Lock()
 	p.stopConsoleLogger(dev)
@@ -769,17 +821,27 @@ func (p *ProxmoxProvider) PowerOffDevice(ctx context.Context, name string) error
 // The Shutdown call and its waitTask run unlocked; see PowerOnDevice's doc for
 // why.
 func (p *ProxmoxProvider) ShutdownDevice(ctx context.Context, name string) error {
-	dev, vm, err := p.lookupVM(ctx, name)
+	dev, err := p.lookupDevice(name)
 	if err != nil {
 		return err
 	}
-	task, err := vm.Shutdown(ctx)
+	err = p.setVMPowerState(ctx, dev, "shut down", vmStopped,
+		func(vm *proxmox.VirtualMachine) error {
+			task, err := vm.Shutdown(ctx)
+			if err != nil {
+				return err
+			}
+			// A failed shutdown task means the guest ignored the ACPI
+			// request until PVE gave up; asking again won't change that.
+			err = waitTask(ctx, task)
+			if errors.Is(err, errTaskFailed) {
+				return permanent(err)
+			}
+			return err
+		})
 	if err != nil {
 		return fmt.Errorf("failed to shut down VM %d for device %q: %w",
 			dev.vmID, name, err)
-	}
-	if err := waitTask(ctx, task); err != nil {
-		return fmt.Errorf("failed waiting for VM %d shutdown: %w", dev.vmID, err)
 	}
 	p.devMutex.Lock()
 	p.stopConsoleLogger(dev)
@@ -793,18 +855,50 @@ func (p *ProxmoxProvider) ShutdownDevice(ctx context.Context, name string) error
 // waitTask run unlocked; it touches no shared state, so no lock is needed at
 // all here (unlike PowerOnDevice/PowerOffDevice/ShutdownDevice).
 func (p *ProxmoxProvider) RebootDevice(ctx context.Context, name string) error {
-	dev, vm, err := p.lookupVM(ctx, name)
+	dev, err := p.lookupDevice(name)
 	if err != nil {
 		return err
 	}
-	task, err := vm.Reset(ctx)
+	err = p.setVMPowerState(ctx, dev, "reset", nil,
+		func(vm *proxmox.VirtualMachine) error {
+			task, err := vm.Reset(ctx)
+			if err != nil {
+				return err
+			}
+			return waitTask(ctx, task)
+		})
 	if err != nil {
 		return fmt.Errorf("failed to reset VM %d for device %q: %w", dev.vmID, name, err)
 	}
-	if err := waitTask(ctx, task); err != nil {
-		return fmt.Errorf("failed waiting for VM %d reset: %w", dev.vmID, err)
-	}
 	return nil
+}
+
+func vmRunning(vm *proxmox.VirtualMachine) bool { return vm.Status == "running" }
+func vmStopped(vm *proxmox.VirtualMachine) bool { return vm.Status == "stopped" }
+
+// setVMPowerState runs op, a power operation on the device's VM that also
+// waits for its task, retrying failures. Each attempt first reads the VM, and
+// skips op if inTarget reports the VM already is in the state op leads to: a
+// retry after an attempt that succeeded but whose response was lost then
+// counts as done, and so does starting a VM that already runs. A nil
+// inTarget (reset) always runs op. op returns permanent(err) for a failure
+// that a retry cannot fix.
+func (p *ProxmoxProvider) setVMPowerState(ctx context.Context, dev *proxmoxDevice,
+	desc string, inTarget func(*proxmox.VirtualMachine) bool,
+	op func(*proxmox.VirtualMachine) error) error {
+	log := logger.FromContext(ctx)
+	_, err := retryProxmoxCall(ctx, log, fmt.Sprintf("%s VM %d of device %q", desc, dev.vmID, dev.name),
+		func() (struct{}, error) {
+			vm, err := p.getVM(ctx, dev.vmID)
+			if err != nil {
+				return struct{}{}, err
+			}
+			if inTarget != nil && inTarget(vm) {
+				return struct{}{}, nil
+			}
+			return struct{}{}, op(vm)
+		})
+	return err
 }
 
 // GetDeviceConsoleOutput returns the serial console output captured so far.
@@ -1262,16 +1356,28 @@ func (p *ProxmoxProvider) lookupVM(
 	if err != nil {
 		return nil, nil, err
 	}
-	node, err := p.client.Node(ctx, p.conf.Node)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get Proxmox node %q: %w", p.conf.Node, err)
-	}
-	vm, err := node.VirtualMachine(ctx, dev.vmID)
+	vm, err := retryProxmoxCall(ctx, logger.FromContext(ctx),
+		fmt.Sprintf("get VM %d for device %q", dev.vmID, name),
+		func() (*proxmox.VirtualMachine, error) { return p.getVM(ctx, dev.vmID) })
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get VM %d for device %q: %w",
 			dev.vmID, name, err)
 	}
 	return dev, vm, nil
+}
+
+// getVM reads VM vmID once, marking a VM that does not exist as a permanent
+// failure for retryProxmoxCall.
+func (p *ProxmoxProvider) getVM(ctx context.Context, vmID int) (*proxmox.VirtualMachine, error) {
+	node, err := p.client.Node(ctx, p.conf.Node)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Proxmox node %q: %w", p.conf.Node, err)
+	}
+	vm, err := node.VirtualMachine(ctx, vmID)
+	if isVMNotFoundErr(err) {
+		return nil, permanent(err)
+	}
+	return vm, err
 }
 
 // destroyDevice stops the VM (if running) and deletes it. Safe to call
@@ -2193,12 +2299,28 @@ func (s *muxSubscriber) Close() error {
 // transient failures.
 const proxmoxRetryMaxAttempts = 3
 
-// proxmoxRetryDelay is the pause between retryProxmoxCall attempts.
-const proxmoxRetryDelay = 5 * time.Second
+// proxmoxRetryDelay is the pause between retryProxmoxCall attempts. It is a
+// variable only so that tests can shorten it.
+var proxmoxRetryDelay = 5 * time.Second
+
+// permanentError marks an error that retryProxmoxCall must not retry.
+type permanentError struct{ err error }
+
+func (e permanentError) Error() string { return e.err.Error() }
+func (e permanentError) Unwrap() error { return e.err }
+
+// permanent marks err as a failure that a retry cannot fix.
+func permanent(err error) error {
+	if err == nil {
+		return nil
+	}
+	return permanentError{err: err}
+}
 
 // retryProxmoxCall calls fn up to proxmoxRetryMaxAttempts times, retrying on
-// failure with a proxmoxRetryDelay pause in between. desc names the
-// operation, for the warning logged between attempts.
+// failure with a proxmoxRetryDelay pause in between, unless fn marks the
+// failure permanent. desc names the operation, for the warning logged between
+// attempts.
 func retryProxmoxCall[T any](
 	ctx context.Context, log *logrus.Entry, desc string, fn func() (T, error)) (T, error) {
 	var result T
@@ -2207,6 +2329,9 @@ func retryProxmoxCall[T any](
 		result, err = fn()
 		if err == nil {
 			return result, nil
+		}
+		if errors.As(err, new(permanentError)) {
+			return result, err
 		}
 		if attempt < proxmoxRetryMaxAttempts {
 			log.Warnf("Attempt %d/%d: %s (will retry): %v",
