@@ -6,3 +6,4 @@
 ^.codespellignorelines
 pkg/dom0-ztools/rootfs/usr/bin/rungetty.sh
 pkg/cross-compilers/APKBUILD
+tools/sbom-stamp/suppliers.txt
