@@ -164,6 +164,25 @@ jobs:
           ref: ${{ steps.context.outputs.head-sha }}
           persist-credentials: false
 
+      # The scripts and action the PR is run with come from the base branch, not
+      # from the (possibly fork-controlled) PR checkout: they hold the secrets.
+      - name: Take evetest-run-suite from the base branch
+        if: steps.dedupe.outputs.skip_run == 'false'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ steps.context.outputs.base-branch }}
+          path: .evetest-base
+          sparse-checkout: .github/actions/evetest-run-suite
+          persist-credentials: false
+
+      - name: Replace the PR's evetest-run-suite with the base branch's
+        if: steps.dedupe.outputs.skip_run == 'false'
+        run: |
+          rm -rf .github/actions/evetest-run-suite
+          mv .evetest-base/.github/actions/evetest-run-suite .github/actions/evetest-run-suite
+          rm -rf .evetest-base
+
       - id: list
         name: List evetest test suites
         if: steps.dedupe.outputs.skip_run == 'false'
@@ -510,6 +529,23 @@ jobs:
           ref: ${{ needs.discover-suites.outputs.head-sha }}
           fetch-depth: 0
           persist-credentials: false
+
+      # The scripts and action the PR is run with come from the base branch, not
+      # from the (possibly fork-controlled) PR checkout: they hold the secrets.
+      - name: Take evetest-run-suite from the base branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ needs.discover-suites.outputs.base-branch }}
+          path: .evetest-base
+          sparse-checkout: .github/actions/evetest-run-suite
+          persist-credentials: false
+
+      - name: Replace the PR's evetest-run-suite with the base branch's
+        run: |
+          rm -rf .github/actions/evetest-run-suite
+          mv .evetest-base/.github/actions/evetest-run-suite .github/actions/evetest-run-suite
+          rm -rf .evetest-base
 
       - uses: ./.github/actions/evetest-run-suite
         with:
