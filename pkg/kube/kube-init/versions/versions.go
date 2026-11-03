@@ -25,7 +25,6 @@ package versions
 // these consts are the only declaration kube-init reads.
 const (
 	K3s      = "v1.34.2+k3s1"
-	KubeVirt = "v1.7.3"
 	CDI      = "v1.66.1"
 	Longhorn = "v1.9.1"
 	Multus   = "v3.9.3"
@@ -36,6 +35,11 @@ const (
 	// Alpine is the SUC Plan's upgrade-container image.
 	Alpine = "3.21"
 )
+
+// KubeVirt is set by the linker (-X) from KUBEVIRT_VERSION in
+// pkg/kube/Dockerfile; the placeholder only shows in builds that skip it,
+// such as go test.
+var KubeVirt = "unset"
 
 // Longhorn ships these alongside its own release but they follow the
 // upstream CSI sidecar cadence, so they do not track Longhorn above.
