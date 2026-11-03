@@ -1777,14 +1777,12 @@ func (p *ProxmoxProvider) startConsoleLogger(ctx context.Context, dev *proxmoxDe
 	vmID := dev.vmID
 	logPath := dev.consoleLog
 	mux := dev.consoleMux
-	node := p.conf.Node
-	client := p.client
 
 	go func() {
 		defer close(done)
 		const retryInterval = 2 * time.Second
 		for loggerCtx.Err() == nil {
-			err := runConsoleLogger(loggerCtx, client, node, vmID, logPath, mux)
+			err := p.runConsoleLogger(loggerCtx, vmID, logPath, mux)
 			if err != nil {
 				log.Warnf("Console logger for VM %d stopped (will retry): %v", vmID, err)
 			}
@@ -1801,10 +1799,9 @@ func (p *ProxmoxProvider) startConsoleLogger(ctx context.Context, dev *proxmoxDe
 // output into logPath, and publishes the connection into mux so it can be
 // shared with any interactively attached client (see AttachToDeviceConsole),
 // until ctx is cancelled or the connection breaks.
-func runConsoleLogger(
-	ctx context.Context, client *proxmox.Client, node string, vmID int, logPath string,
-	mux *consoleMux) error {
-	n, err := client.Node(ctx, node)
+func (p *ProxmoxProvider) runConsoleLogger(
+	ctx context.Context, vmID int, logPath string, mux *consoleMux) error {
+	n, err := p.client.Node(ctx, p.conf.Node)
 	if err != nil {
 		return err
 	}
@@ -1812,15 +1809,12 @@ func runConsoleLogger(
 	if err != nil {
 		return err
 	}
-	conn, err := openSerialConsole(vm)
+	conn, err := p.openSerialConsole(ctx, vm)
 	if err != nil {
 		return err
 	}
-	// wsConsole.Close() is not safe to call twice (the underlying library
-	// panics on a double channel-close), and both the ctx watcher below and
-	// the plain defer may try to close it, so guard with sync.Once.
-	var closeOnce sync.Once
-	closeConn := func() { closeOnce.Do(func() { _ = conn.Close() }) }
+	// Close is idempotent; both the ctx watcher below and this defer call it.
+	closeConn := func() { _ = conn.Close() }
 	defer closeConn()
 
 	mux.setConn(conn)
@@ -1993,101 +1987,6 @@ func (s *muxSubscriber) Write(p []byte) (int, error) {
 
 func (s *muxSubscriber) Close() error {
 	s.mux.unsubscribe(s.ch)
-	return nil
-}
-
-// openSerialConsole opens a Proxmox termproxy session to the VM serial console
-// and returns it as an io.ReadWriteCloser.
-func openSerialConsole(vm *proxmox.VirtualMachine) (io.ReadWriteCloser, error) {
-	term, err := vm.TermProxy(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("failed to open termproxy for VM %d: %w", vm.VMID, err)
-	}
-	send, recv, errs, closer, err := vm.TermWebSocket(term)
-	if err != nil {
-		err = fmt.Errorf("failed to open console websocket for VM %d: %w", vm.VMID, err)
-		return nil, err
-	}
-	return &wsConsole{
-		send: send, recv: recv, errs: errs, closer: closer,
-		closing: make(chan struct{}),
-	}, nil
-}
-
-// wsConsole adapts the go-proxmox terminal websocket channels to an
-// io.ReadWriteCloser.
-type wsConsole struct {
-	send    chan []byte
-	recv    chan []byte
-	errs    chan error
-	closer  func() error
-	readBuf []byte
-
-	// closeMu serializes Write against Close: go-proxmox closes send/recv/errs
-	// from inside Close, and would panic if that raced a concurrent Write, so
-	// Close only proceeds once every in-flight Write has returned, and any Write
-	// started after Close begins bails out immediately instead of touching the
-	// channels. closing is closed by Close before it even tries to acquire the
-	// lock, so a Write already blocked in its select wakes up immediately
-	// instead of Close having to wait on it indefinitely.
-	closeMu   sync.RWMutex
-	closed    bool
-	closing   chan struct{}
-	closeOnce sync.Once
-}
-
-func (w *wsConsole) Read(p []byte) (int, error) {
-	if len(w.readBuf) == 0 {
-		select {
-		case b, ok := <-w.recv:
-			if !ok {
-				return 0, io.EOF
-			}
-			w.readBuf = b
-		case err := <-w.errs:
-			if err == nil {
-				err = io.EOF
-			}
-			return 0, err
-		}
-	}
-	n := copy(p, w.readBuf)
-	w.readBuf = w.readBuf[n:]
-	return n, nil
-}
-
-func (w *wsConsole) Write(p []byte) (int, error) {
-	w.closeMu.RLock()
-	defer w.closeMu.RUnlock()
-	if w.closed {
-		return 0, io.ErrClosedPipe
-	}
-	b := make([]byte, len(p))
-	copy(b, p)
-	select {
-	case w.send <- b:
-		return len(p), nil
-	case err := <-w.errs:
-		if err == nil {
-			err = io.ErrClosedPipe
-		}
-		return 0, err
-	case <-w.closing:
-		return 0, io.ErrClosedPipe
-	}
-}
-
-func (w *wsConsole) Close() error {
-	w.closeOnce.Do(func() { close(w.closing) })
-	w.closeMu.Lock()
-	defer w.closeMu.Unlock()
-	if w.closed {
-		return nil
-	}
-	w.closed = true
-	if w.closer != nil {
-		return w.closer()
-	}
 	return nil
 }
 
