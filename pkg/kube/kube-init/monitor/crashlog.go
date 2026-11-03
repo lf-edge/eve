@@ -23,9 +23,10 @@ import (
 const (
 	k3sLogFile       = "k3s.log"
 	maxCrashLogFiles = 10
-	// maxRaftLogFiles caps how many of k3s' own rotated raft log
-	// files (k3s-YYYY-MM-DDTHH-MM-SS.mmm.log.gz) we retain.
-	maxRaftLogFiles = 10
+	// maxK3sArchives caps how many of k3s' own rotated k3s.log
+	// archives (k3s-YYYY-MM-DDTHH-MM-SS.mmm.log.gz) we retain, as a
+	// guard above lumberjack's own MaxBackups inside k3s.
+	maxK3sArchives = 10
 )
 
 // SaveCrashLog gzip-compresses the tail of the previous k3s.log
@@ -179,15 +180,14 @@ func streamLinesFrom(r io.Reader, w io.Writer, startLine int) error {
 	return scanner.Err()
 }
 
-// CleanExcessiveK3sLogs prunes k3s' own rotated raft log files
-// (k3s-YYYY-MM-DDTHH-MM-SS.mmm.log.gz) to maxRaftLogFiles. k3s
-// itself doesn't cap these and they otherwise grow without bound.
+// CleanExcessiveK3sLogs prunes k3s' own rotated k3s.log archives
+// (k3s-YYYY-MM-DDTHH-MM-SS.mmm.log.gz) to maxK3sArchives.
 func CleanExcessiveK3sLogs() {
 	entries, err := os.ReadDir(prereqs.KubeLogDir)
 	if err != nil {
 		return
 	}
-	var raftLogs []string
+	var archives []string
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -197,19 +197,19 @@ func CleanExcessiveK3sLogs() {
 		if strings.HasPrefix(name, "k3s-") &&
 			strings.HasSuffix(name, ".log.gz") &&
 			name != "k3s.log.gz" {
-			raftLogs = append(raftLogs, name)
+			archives = append(archives, name)
 		}
 	}
-	if len(raftLogs) <= maxRaftLogFiles {
+	if len(archives) <= maxK3sArchives {
 		return
 	}
-	sort.Strings(raftLogs)
-	for _, name := range raftLogs[:len(raftLogs)-maxRaftLogFiles] {
+	sort.Strings(archives)
+	for _, name := range archives[:len(archives)-maxK3sArchives] {
 		path := filepath.Join(prereqs.KubeLogDir, name)
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Printf("warning: remove old raft log %s: %v", name, err)
+			log.Printf("warning: remove old k3s archive %s: %v", name, err)
 		}
 	}
-	log.Printf("cleaned %d excessive k3s raft log file(s)",
-		len(raftLogs)-maxRaftLogFiles)
+	log.Printf("pruned %d old k3s archive(s)",
+		len(archives)-maxK3sArchives)
 }
