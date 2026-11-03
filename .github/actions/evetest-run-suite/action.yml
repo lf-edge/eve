@@ -245,6 +245,10 @@ runs:
           WATCHER_PID=$!
         fi
 
+        # The watcher (started above) keeps the secrets; unset them so that make and
+        # evetest, which run PR code, do not inherit them.
+        unset ANTHROPIC_API_KEY GH_TOKEN
+
         EVETEST_OUTPUT_FORMAT=json make -C evetest evetest NAME=${{ inputs.test-suite }} \
           | jq -Rrj --unbuffered '
               if startswith("{") then
