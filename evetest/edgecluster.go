@@ -119,7 +119,7 @@ func (ec *EdgeCluster) waitUntilNodesAreReady(timeout time.Duration, freshOnly b
 		updates, stop := dev.WatchClusterInfo()
 		defer stop()
 		if info := dev.GetClusterInfo(); !freshOnly && info != nil &&
-			allNodesReady(info, expectedNodes) {
+			dev.clusterReportMatches(info) && allNodesReady(info, expectedNodes) {
 			ec.th.log.Infof("All cluster nodes already ready per device %q",
 				dev.devName)
 			closeOnce.Do(func() { close(doneCh) })
@@ -137,7 +137,7 @@ func (ec *EdgeCluster) waitUntilNodesAreReady(timeout time.Duration, freshOnly b
 				if !ok {
 					return
 				}
-				if allNodesReady(info, expectedNodes) {
+				if dev.clusterReportMatches(info) && allNodesReady(info, expectedNodes) {
 					ec.th.log.Infof("All cluster nodes reported as ready by device %q",
 						dev.devName)
 					closeOnce.Do(func() { close(doneCh) })

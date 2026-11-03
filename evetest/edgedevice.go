@@ -3051,7 +3051,9 @@ func (d *EdgeDevice) WatchClusterInfo() (
 // EdgeCluster.WaitUntilNodesAreReady instead.
 //
 // It accepts the last report already received, which after a reboot can
-// predate it. See EdgeCluster.WaitForFreshNodesReady.
+// predate it. See EdgeCluster.WaitForFreshNodesReady. A report for another
+// cluster, such as one a reused device sent during the previous test, is
+// never accepted (see clusterReportMatches).
 func (d *EdgeDevice) WaitForClusterNodeIsReady(timeout time.Duration) {
 	d.th.log.Infof("Waiting for cluster node %q to become ready...", d.devName)
 
@@ -3060,7 +3062,10 @@ func (d *EdgeDevice) WaitForClusterNodeIsReady(timeout time.Duration) {
 	updates, stop := d.WatchClusterInfo()
 	defer stop()
 
-	if info := d.GetClusterInfo(); info != nil && clusterNodeReady(info, d.devName) {
+	ready := func(info *eveinfo.ZInfoKubeCluster) bool {
+		return d.clusterReportMatches(info) && clusterNodeReady(info, d.devName)
+	}
+	if info := d.GetClusterInfo(); info != nil && ready(info) {
 		d.th.log.Infof("Cluster node %q is already ready", d.devName)
 		return
 	}
@@ -3074,7 +3079,7 @@ func (d *EdgeDevice) WaitForClusterNodeIsReady(timeout time.Duration) {
 				d.th.t.Fatalf("Cluster info subscription closed while waiting "+
 					"for node %q to become ready", d.devName)
 			}
-			if clusterNodeReady(info, d.devName) {
+			if ready(info) {
 				d.th.log.Infof("Cluster node %q is now ready", d.devName)
 				return
 			}
@@ -3083,6 +3088,34 @@ func (d *EdgeDevice) WaitForClusterNodeIsReady(timeout time.Duration) {
 				d.devName)
 		}
 	}
+}
+
+// clusterReportMatches reports whether a ZInfoKubeCluster report from the
+// device can describe the cluster its current config puts it in. EVE reports
+// the configured cluster's UUID, or the nil UUID without a cluster config, so a
+// report naming anything else predates that config; on a reused device it can
+// even come from the previous test, whose cluster is gone. A report without a
+// cluster ID, from an EVE version that sends none, is accepted.
+func (d *EdgeDevice) clusterReportMatches(info *eveinfo.ZInfoKubeCluster) bool {
+	configured := ""
+	d.th.devicesM.Lock()
+	if config := d.th.devices[d.devName].config; config != nil {
+		configured = config.GetCluster().GetClusterId()
+	}
+	d.th.devicesM.Unlock()
+	return reportedClusterMatches(info.GetClusterId(), configured)
+}
+
+// reportedClusterMatches is clusterReportMatches for the cluster ID reported
+// and the one configured ("" without a cluster config).
+func reportedClusterMatches(reported, configured string) bool {
+	if reported == "" {
+		return true
+	}
+	if configured == "" {
+		configured = NilUUID.String()
+	}
+	return strings.EqualFold(reported, configured)
 }
 
 // GetClusterUpdateInfo returns the last recorded information regarding the Kubernetes
