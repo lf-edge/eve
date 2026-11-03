@@ -243,7 +243,7 @@ func TestLocalNetInstanceACLs(test *testing.T) {
 	// Wait for the NI to report both VIFs with IP assignments.
 	// Also capture acl-app-2's NI IP for the cross-app ping check.
 	var app2NiIP string
-	t.Eventually(niUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
+	niInfo = expectNIInfo(t, niUpdates, niInfo, timeout, matchers.SatisfyPredicate(
 		"NI reports both VIFs with IP assignments",
 		func(info *eveinfo.ZInfoNetworkInstance) bool {
 			niInfo = info
@@ -262,7 +262,7 @@ func TestLocalNetInstanceACLs(test *testing.T) {
 				}
 			}
 			return app1IPFound && app2NiIP != ""
-		}).StopIf(niHasError)))
+		}).StopIf(niHasError))
 	t.Expect(niInfo.Vifs).To(HaveLen(2))
 
 	evetest.Checkpoint("apps-with-ips")
@@ -642,7 +642,7 @@ func TestSwitchNetInstanceACLs(test *testing.T) {
 	// Wait for both VIFs with IP assignments (learned via DHCP snooping).
 	// Capture app2VifIP for the cross-app ping assertion.
 	var app1VifIP, app2VifIP string
-	t.Eventually(niUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
+	niInfo = expectNIInfo(t, niUpdates, niInfo, timeout, matchers.SatisfyPredicate(
 		"NI reports both VIFs with IP assignments",
 		func(info *eveinfo.ZInfoNetworkInstance) bool {
 			niInfo = info
@@ -662,7 +662,7 @@ func TestSwitchNetInstanceACLs(test *testing.T) {
 				}
 			}
 			return app1VifIP != "" && app2VifIP != ""
-		}).StopIf(niHasError)))
+		}).StopIf(niHasError))
 	t.Expect(niInfo.Vifs).To(HaveLen(2))
 	evetest.Checkpoint("apps-with-ips")
 
