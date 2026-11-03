@@ -15,6 +15,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/google/go-containerregistry v0.21.9
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/lf-edge/eve-api/go v0.0.0-20261015104443-e46e4c3a39ce
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260908064046-68014620df6f
 	github.com/luthermonson/go-proxmox v0.8.0
@@ -67,7 +68,6 @@ require (
 	github.com/go-playground/validator/v10 v10.15.5 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jinzhu/copier v0.4.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
