@@ -80,7 +80,11 @@ write_files:
         -v /root/.evetest/images:/root/.evetest/images \
         -v "$DOCKER_ROOT":"$DOCKER_ROOT":ro \
         __BROKER_IMAGE__'
-      Restart=no
+      # A crashed broker restarts and removes the resources its sessions
+      # left behind. The delay keeps a broker that fails right at startup
+      # from hammering the Proxmox API and Docker Hub in a tight loop.
+      Restart=on-failure
+      RestartSec=30s
 
       [Install]
       WantedBy=multi-user.target
