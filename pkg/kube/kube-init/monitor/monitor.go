@@ -503,16 +503,19 @@ func applyUserOverride() bool {
 // Log rotation
 // ---------------------------------------------------------------------------
 
-// RotateLogs copy-truncates each log file whose writer cannot rotate
-// it itself, then prunes k3s' own rotated archives. k3s.log is
-// deliberately absent: k3s rotates it through its own lumberjack
-// logger (the `log:` entry in config.yaml), and truncating a file
-// lumberjack holds open leaves a NUL-filled hole that trips the size
-// check on every tick.
+// RotateLogs copy-truncates the logs whose writer does not rotate
+// them, then prunes k3s' own rotated archives. k3s and eve-bridge
+// rotate their own file through lumberjack and must not be touched
+// here: truncating a file a long-lived lumberjack holds open leaves
+// a NUL-filled hole that trips the size check on every tick.
+// multus.log is also lumberjack-written but stays here: its limits
+// live in a ConfigMap applied once at first boot, so a 5 MB cap can
+// only be enforced from this side, and each multus invocation is a
+// short-lived process that reopens the file in append mode, which
+// makes the truncate safe.
 func RotateLogs() {
 	for _, name := range []string{
 		"multus.log",
-		"eve-bridge.log",
 		"containerd-user.log",
 	} {
 		rotateLogFile(filepath.Join(prereqs.KubeLogDir, name))
