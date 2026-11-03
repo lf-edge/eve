@@ -103,7 +103,10 @@ COPY cfg-manifests/04-multinode-watch-cache.yaml /etc/kube/
 # Manifests the daemon applies at first boot. Stays under /etc; the
 # Go components/ package reads them by path.
 COPY multus-daemonset.yaml /etc
-COPY kubevirt-operator.yaml /etc
+ADD https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml /etc
+RUN sed -i -e '1i # Copyright (c) 2026 Zededa, Inc.' -e '1i # SPDX-License-Identifier: Apache-2.0' \
+    -e 's/^        env:$/        env:\n        - name: KV_IO_EXTRA_ENV_VIRT_IN_CONTAINER\n          value: "true"/' /etc/kubevirt-operator.yaml
+RUN echo 'c8f600c2cd6679644c6c217f03265835e014ce3ade1b79e293a94415acfbf925 /etc/kubevirt-operator.yaml' | sha256sum -c
 COPY kubevirt-features.yaml /etc
 COPY external-boot-image.tar /etc/
 
