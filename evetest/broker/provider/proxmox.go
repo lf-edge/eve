@@ -1497,6 +1497,16 @@ func (p *ProxmoxProvider) buildVMOptions(dev *proxmoxDevice, diskRefs []string,
 		" -global virtio-net-pci.disable-modern=off" +
 		" -global virtio-net-pci.iommu_platform=on"
 
+	// No KVM async page faults, as in the qemu provider: on an overcommitted
+	// host, a guest task faulting on a page the host swapped out can wait
+	// forever for KVM's "page ready" wakeup. PVE's "cpu" option rejects these
+	// flags, so they go in as -global defaults of the host CPU model, which
+	// leave PVE's own -cpu flags in effect. Async PF is x86-only.
+	if dev.spec.Arch == api.ArchType_ARCH_AMD64 {
+		extraArgs += " -global host-x86_64-cpu.kvm-asyncpf=off" +
+			" -global host-x86_64-cpu.kvm-asyncpf-int=off"
+	}
+
 	// A VGA controller and a USB 3.0 (xHCI) host controller, for tests that
 	// pass either through to an application (EVE treats both classes
 	// specially, see debug.enable.vga and debug.enable.usb). Through args
