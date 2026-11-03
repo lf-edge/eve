@@ -512,17 +512,20 @@ func applyUserOverride() bool {
 // rotatedLogs are the log files this role copy-truncates: those whose
 // writer cannot rotate them itself. The witness shares the log
 // directory with the node's kube role but runs none of the components
-// behind the other files, so it must leave them to that role. k3s.log
-// is deliberately absent: the node's k3s rotates it through its own
-// lumberjack logger (the `log:` entry in config.yaml), and truncating
-// a file lumberjack holds open leaves a NUL-filled hole that trips the
-// size check on every tick. The witness's k3s has no such redirect, so
-// witness.log stays here.
+// behind the other files, so it must leave them to that role. k3s and
+// eve-bridge rotate their own file through lumberjack and must not be
+// touched here: truncating a file a long-lived lumberjack holds open
+// leaves a NUL-filled hole that trips the size check on every tick.
+// multus.log is also lumberjack-written but stays here: its limits
+// live in a ConfigMap applied once at first boot, so a 5 MB cap can
+// only be enforced from this side, and each multus invocation is a
+// short-lived process that reopens the file in append mode, which
+// makes the truncate safe. The witness's k3s has no log redirect, so
+// witness.log stays here too.
 func rotatedLogs() []string {
 	return role.Pick(
 		[]string{
 			"multus.log",
-			"eve-bridge.log",
 			"containerd-user.log",
 		},
 		[]string{"witness.log"},
