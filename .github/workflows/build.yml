@@ -116,9 +116,6 @@ jobs:
         hv: [xen, kvm]
         platform: [generic]
         include:
-          - arch: amd64
-            hv: kvm
-            platform: rt
           - arch: arm64
             hv: kvm
             platform: nvidia-jp5
@@ -149,12 +146,11 @@ jobs:
 
       # Restore the target arch/platform cache. It also contains the tool
       # images we need.
-      # The 'rt' platform has no platform-specific packages, so it uses the generic cache.
       - name: update linuxkit cache for target arch
         uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: ~/.linuxkit/cache
-          key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform == 'rt' && 'generic' || matrix.platform }}-${{ matrix.hv == 'k' && 'k' || 'default' }}
+          key: linuxkit-${{ matrix.arch }}-${{ github.event.pull_request.head.sha }}-${{ matrix.platform }}-${{ matrix.hv == 'k' && 'k' || 'default' }}
           fail-on-cache-miss: true
       # Load tool images from the target cache we just restored.
       - name: load tool images into docker
