@@ -52,10 +52,13 @@ var installLogPath = role.Pick(
 	"/persist/kubelog/k3s-install.log",
 	"/persist/kubelog/witness-install.log")
 
-// supervisorLogFile is where the Supervisor appends k3s server
-// stdout/stderr.
+// supervisorLogFile is where the Supervisor appends the k3s process'
+// own stdout/stderr. The node's k3s redirects the server's output to
+// k3s.log itself (`log:` in config.yaml), so only what the launcher
+// prints before that redirect is in effect lands here. The witness's
+// k3s has no such redirect, so for it this is the whole log.
 var supervisorLogFile = role.Pick(
-	"/persist/kubelog/k3s.log",
+	"/persist/kubelog/k3s-stderr.log",
 	"/persist/kubelog/witness.log")
 
 // supervisorHooksDir holds executable pre-restart hooks the
