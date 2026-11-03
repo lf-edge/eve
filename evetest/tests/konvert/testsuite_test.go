@@ -84,7 +84,9 @@ const (
 	// is a no-op that proves nothing; for the flavor-switch tests it defaults to
 	// the build under test.
 	initialEVEVersionParamKey = "INITIAL_EVE_VERSION"
-	// initialEVERepoParamKey overrides the repo the initial image comes from.
+	// initialEVERepoParamKey overrides the repo the initial image comes from:
+	// the release repo for the repartition tests, the repo under test for the
+	// flavor-switch tests.
 	initialEVERepoParamKey = "INITIAL_EVE_REPO"
 	// initialHypervisorParamKey is the flavor the device starts on.
 	initialHypervisorParamKey = "INITIAL_HYPERVISOR"
