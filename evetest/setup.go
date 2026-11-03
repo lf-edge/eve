@@ -1481,6 +1481,16 @@ func (th *TestHarness) maybeReuseDevices(
 			th.devicesM.Unlock()
 			return false
 		}
+		// Pulling through registry mirrors that the test did not ask for can
+		// break it, e.g. a test of pulls through a proxy, while a device that
+		// lacks mirrors only pulls more slowly.
+		if dev.registryMirrors != registryMirrorsNone &&
+			dev.registryMirrors != th.wantedRegistryMirrors(newReq) {
+			th.devicesM.Unlock()
+			th.log.Infof("Device %q has registry mirrors this test does not "+
+				"want; not reusing devices", devName)
+			return false
+		}
 	}
 
 	// Reuse every device in parallel.
@@ -1757,30 +1767,48 @@ func (th *TestHarness) resetDeviceConfig(dev deviceState) error {
 // allow configuring a registry mirror for K3s (containerd) through device config,
 // so that evetest does not need to directly manipulate files on the EVE device.
 func (th *TestHarness) applyK3sRegistryMirrorIfConfigured() {
-	if th.skipRegistryMirrors {
-		return
-	}
 	mirrors := constants.LoadRegistryMirrors()
-	if len(mirrors) == 0 {
-		return
-	}
-
 	th.devicesM.Lock()
-	var kubevirtDevNames []string
+	wanted := make(map[string]registryMirrorSetup)
 	for _, dev := range th.devices {
-		if dev.requirement.WithHypervisor == HypervisorKubevirt {
-			kubevirtDevNames = append(kubevirtDevNames, dev.name)
+		if setup := th.wantedRegistryMirrors(dev.requirement); setup != registryMirrorsNone {
+			wanted[dev.name] = setup
 		}
 	}
 	th.devicesM.Unlock()
 
-	if len(kubevirtDevNames) == 0 {
-		return
+	for devName, setup := range wanted {
+		if !th.configureContainerdRegistryMirror(devName, mirrors) {
+			continue
+		}
+		th.devicesM.Lock()
+		th.devices[devName].registryMirrors = setup
+		th.devicesM.Unlock()
 	}
+}
 
-	for _, devName := range kubevirtDevNames {
-		th.configureContainerdRegistryMirror(devName, mirrors)
+// registryMirrorSetup is which registry mirrors a device's containerd uses.
+type registryMirrorSetup int
+
+const (
+	registryMirrorsNone registryMirrorSetup = iota
+	registryMirrorsDualStack
+	registryMirrorsIPv6Only
+)
+
+// wantedRegistryMirrors returns the registry-mirror setup the running test
+// wants on a device with the given requirement: mirrors are configured only
+// for kubevirt devices, and only if the broker provided some and the test did
+// not ask for direct pulls.
+func (th *TestHarness) wantedRegistryMirrors(req RequireEdgeDevice) registryMirrorSetup {
+	if th.skipRegistryMirrors || req.WithHypervisor != HypervisorKubevirt ||
+		len(constants.LoadRegistryMirrors()) == 0 {
+		return registryMirrorsNone
 	}
+	if th.ipv6OnlyRegistryMirrors {
+		return registryMirrorsIPv6Only
+	}
+	return registryMirrorsDualStack
 }
 
 // configureContainerdRegistryMirror writes per-registry hosts.toml files under
@@ -1792,9 +1820,10 @@ func (th *TestHarness) applyK3sRegistryMirrorIfConfigured() {
 //
 // Registry mirrors are a pull-through cache used purely to speed up image
 // pulls; they are not required for correctness. So any failure here is logged
-// as a warning and the function just returns, rather than failing the test.
+// as a warning and the function just returns false, rather than failing the
+// test.
 func (th *TestHarness) configureContainerdRegistryMirror(
-	devName string, mirrors map[string][]string) {
+	devName string, mirrors map[string][]string) bool {
 	const (
 		certsD     = "/etc/containerd/certs.d"
 		ctrdConfig = "/etc/containerd/config-k3s.toml"
@@ -1851,13 +1880,13 @@ func (th *TestHarness) configureContainerdRegistryMirror(
 	if err != nil {
 		th.log.Warnf(
 			"configureContainerdRegistryMirror: failed to create temp file: %v", err)
-		return
+		return false
 	}
 	defer os.Remove(tmpFile.Name())
 	if _, err = tmpFile.WriteString(sb.String()); err != nil {
 		th.log.Warnf(
 			"configureContainerdRegistryMirror: failed to write temp file: %v", err)
-		return
+		return false
 	}
 	tmpFile.Close()
 
@@ -1867,7 +1896,7 @@ func (th *TestHarness) configureContainerdRegistryMirror(
 	if err != nil {
 		th.log.Warnf("configureContainerdRegistryMirror: failed to scp script to %q: %v",
 			devName, err)
-		return
+		return false
 	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer
@@ -1879,9 +1908,10 @@ func (th *TestHarness) configureContainerdRegistryMirror(
 		th.log.Warnf("configureContainerdRegistryMirror: script failed on %q: %v "+
 			"(stdout: %s, stderr: %s)", devName, err, stdoutBuf.String(),
 			stderrBuf.String())
-		return
+		return false
 	}
 	th.log.Infof("Containerd registry mirrors configured on device %q", devName)
+	return true
 }
 
 func (th *TestHarness) nextConfigVersion(currentConfig *EdgeDeviceConfig) string {
