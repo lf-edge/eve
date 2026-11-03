@@ -373,25 +373,31 @@ func readVaultStatus(t *WithT, device *evetest.EdgeDevice) vaultStatus {
 // newlogCount returns how many records in the device's on-disk logs contain
 // pattern.
 //
-// The whole of /persist/newlog is swept, not just collect/: collect/ holds only
-// the last few minutes because newlogd rotates on size or a timer, so anything
-// older -- including most of the current boot -- is already in the gzipped
-// queues. One zcat per file keeps the argument list bounded and lets -f cover
-// the plaintext chunks in collect/.
+// newlogd writes every device log record twice, to a keep and an upload
+// stream, and loguploader deletes the upload copy once it is sent, so only the
+// keep stream is counted: its plaintext chunks in collect/ and the gzipped
+// ones in keepSentQueue/. Counting both streams made the count drop whenever an
+// upload went out between two counts. collect/ holds only the last few minutes
+// because newlogd rotates on size or a timer, so anything older -- including
+// most of the current boot -- is already in keepSentQueue/. While a chunk is
+// being compressed it is in both places, so duplicate records are dropped; each
+// record carries a nanosecond timestamp, so two distinct ones never match. One
+// zcat or cat per file keeps the argument list bounded. The plaintext chunks
+// need cat: pillar's zcat is BusyBox's, whose -f does not pass plaintext
+// through.
 func newlogCount(t *WithT, device *evetest.EdgeDevice, pattern string) int {
 	out := runInPillar(t, device,
-		"sh -c 'find /persist/newlog -name \"dev.log.*\" -exec zcat -f {} \\; "+
-			"| grep -a -F -c -- \""+pattern+"\" || true'")
+		"sh -c '{ find /persist/newlog/keepSentQueue -name \"dev.log.*\" -exec zcat {} \\; ; "+
+			"find /persist/newlog/collect -name \"dev.log.keep.*\" -exec cat {} \\; ; } "+
+			"| grep -a -F -- \""+pattern+"\" | sort -u | wc -l'")
 	count, err := strconv.Atoi(strings.TrimSpace(out))
 	t.Expect(err).ToNot(HaveOccurred(),
-		"unexpected grep -c output %q for pattern %q", out, pattern)
+		"unexpected record count %q for pattern %q", out, pattern)
 	return count
 }
 
 // expectNewlogGrew waits until the device has logged pattern more times than
-// base. Records are counted rather than matched by timestamp because newlogd
-// keeps each one in both the keep and upload streams, so absolute counts are not
-// meaningful but growth is.
+// base, i.e. since base was counted.
 func expectNewlogGrew(t *WithT, device *evetest.EdgeDevice, pattern string,
 	base int, description string) {
 	t.Eventually(func() int {
