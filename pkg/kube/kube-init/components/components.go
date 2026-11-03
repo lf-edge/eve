@@ -76,8 +76,6 @@ const (
 	caCertPath = "/var/lib/rancher/k3s/server/tls/client-ca.crt"
 	caKeyPath  = "/var/lib/rancher/k3s/server/tls/client-ca.key"
 
-	kubevirtCRURL = "https://github.com/kubevirt/kubevirt/releases/download/" +
-		versions.KubeVirt + "/kubevirt-cr.yaml"
 	cdiVersion = versions.CDI
 
 	// longhornWaitTimeout is a NO-PROGRESS window, not a wall clock:
@@ -121,6 +119,10 @@ const (
 	// steady-state tick and must not stall it on a hung API server.
 	cdiProbeTimeout = 10 * time.Second
 )
+
+// kubevirtCRURL derives from the linker-set versions.KubeVirt, so not a const.
+var kubevirtCRURL = "https://github.com/kubevirt/kubevirt/releases/download/" +
+	versions.KubeVirt + "/kubevirt-cr.yaml"
 
 // Multus + DHCP-daemon + debug-user paths. Exported because the
 // monitor package re-reads/re-creates these files in its

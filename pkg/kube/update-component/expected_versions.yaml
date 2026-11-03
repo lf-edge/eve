@@ -1,7 +1,8 @@
 # Copyright (c) 2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 ---
+# kubevirt is appended at image build time from KUBEVIRT_VERSION in
+# pkg/kube/Dockerfile.
 multus: "v3.9.3"
-kubevirt: "v1.7.3"
 cdi: "v1.66.1"
 longhorn: "v1.9.1"
