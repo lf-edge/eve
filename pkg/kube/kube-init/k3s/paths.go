@@ -48,9 +48,11 @@ var cniIPAMStateDir = "/var/lib/cni/networks/cbr0"
 // reboots.
 var installLogPath = "/persist/kubelog/k3s-install.log"
 
-// supervisorLogFile is where the Supervisor appends k3s server
-// stdout/stderr.
-var supervisorLogFile = "/persist/kubelog/k3s.log"
+// supervisorLogFile is where the Supervisor appends the k3s
+// process' own stdout/stderr. k3s redirects the server's output to
+// k3s.log itself (`log:` in config.yaml), so only what the k3s
+// launcher prints before that redirect is in effect lands here.
+var supervisorLogFile = "/persist/kubelog/k3s-stderr.log"
 
 // supervisorHooksDir holds executable pre-restart hooks the
 // Supervisor runs when invoked by the FSM (not on crash recovery).

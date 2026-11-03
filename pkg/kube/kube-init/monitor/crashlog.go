@@ -92,8 +92,8 @@ func pruneOldCrashLogs() {
 //
 // Two passes: one to find the last banner line number, one to
 // stream from that line through gzip. Streaming (vs reading into
-// memory) keeps memory bounded even when k3s.log has accumulated
-// to the 5MB rotation threshold over many restarts.
+// memory) keeps memory bounded even when k3s.log has grown to the
+// 50 MB at which k3s' own lumberjack rotates it.
 func gzipLastRestartPart(srcFile, dstFile string) (retErr error) {
 	sf, err := os.Open(srcFile)
 	if err != nil {
