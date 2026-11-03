@@ -342,6 +342,11 @@ func TestPNAC(test *testing.T) {
 	devConfig := evetest.NewEdgeDeviceConfig(devName)
 	cfgProps := pillartypes.NewConfigItemValueMap()
 	cfgProps.SetGlobalValueInt(pillartypes.SCEPRetryInterval, 10)
+	// When PNAC is disabled in phase 7d, the first test of the new DPC can
+	// fail before the port has an IP from the pre-auth VLAN; nim then falls
+	// back to the previous DPC and retries the new one only after this
+	// interval (default 10 minutes, beyond reauthTimeout).
+	cfgProps.SetGlobalValueInt(pillartypes.NetworkTestBetterInterval, 60)
 	devConfig.SetConfigProperties(cfgProps)
 	dhcpNet := devConfig.AddNetwork(
 		evetest.DHCPNetworkConfig{
