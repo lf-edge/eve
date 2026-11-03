@@ -2,6 +2,629 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-03 -- 0.0.0-master-0d924b61 (run #6)](https://github.com/lf-edge/eve/actions/runs/41533378623)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/6/)
+
+### TestApplicationConnectivitySuite: failure analysis
+
+#### TestFlowLog
+
+##### Failure
+
+```
+timed out after 5m0.001271295s (excluding download) waiting for app "41532f6b-eddb-42b1-ab63-bb55158fbc0a" (flowlog-test-app) on device "edge-dev" to reach RUNNING state (last state: RESOLVING_TAG)
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence confirms the app is still wedged in `RESOLVING_TAG`: `evetest eve app-info` shows `flowlog-test-app` (uuid `41532f6b-...`) stuck there, and its `ContentTreeStatus` (`22d7521b-...`) shows `State:101` (RESOLVING_TAG) with `ContentSha256` never populated. The downloader log shows `MaybeAddResolveConfig`/`handleResolveCreate` fired normally at 22:21:35.954 and started a `manifestsDescImg(192.168.170.2:5000/lfedge/evetest-ubuntu-ctr:1.0)` tag-resolution call against the SDN's local registry — but unlike every other resolve/pull in this same log (which complete in well under a second, logging "Resolve config Done"/"download complete"), this one never logs anything further, 6+ minutes later. The registry itself is healthy right now (`curl http://192.168.170.2:5000/v2/` → `200`), and `/proc/net/tcp` on the device shows a live `ESTABLISHED` connection to `192.168.170.2:5000` with a stuck non-empty `tx_queue` and no `rx_queue` progress — consistent with a hung request/goroutine rather than a registry outage or routing failure.
+
+This is the same signature and mechanism already diagnosed in `live-ledger.md` for the **2026-10-31 (run #3)** nightly, where both `TestFlowLog` and `TestSwitchNetInstanceACLsWithFlowLog` (same `TestApplicationConnectivitySuite`) failed identically: a `runResolveHandler` tag-resolution goroutine in the downloader logs `lookupResolveStatus(...) not found` and then hangs forever instead of completing or erroring, while sibling resolves for the same image on the same device proceed fine. That entry concluded it was a newly-appearing (not previously seen before 10-31), unfixed downloader bug — so this is a **known, recurring issue dating back to 2026-10-31**, now recurring again tonight (2026-11-02) with the same `TestFlowLog` test and the same hung-resolve mechanism. No PR diff was supplied for this run to assess relatedness to in-flight code changes.
+
+#### TestLocalNetInstanceACLs
+
+##### Failure
+
+```
+
+Timed out after 300.000s.
+When passed a matcher, ReceiveMatcher's channel *must* receive something.
+```
+
+##### Claude's conclusion
+
+This specific test/condition hasn't appeared in the ledger before, so it's a new occurrence — though it matches a known failure *pattern*.
+
+###### Root cause
+
+The test itself already holds at the state it's waiting for: `evetest eve ni-info` on the live device shows network instance `local-ni` (`6e1ee8a3-...`) already `ZNETINST_STATE_ONLINE` with both VIFs' IP assignments present (`02:16:3e:00:00:01` → `10.11.12.3`, `02:16:3e:00:00:02` → `10.11.12.2`), and the device's own `dnsmasq.leases` file shows these leases were granted at `22:31:38Z` — before the test even began waiting. Adam's on-disk `info/` store for this device confirms this NI's data was published to the controller exactly **once**, in the single message at `22:32:56Z` (file `01793658776244446708`, the same instant apps reached RUNNING and NI went ONLINE) — it never appears in any subsequent periodic info dump through `22:39Z`. This matches `prepareAndPublishNetworkInstanceInfoMsg` in `pkg/pillar/cmd/zedagent/handlenetworkinstance.go`/`reportinfo.go`: zedagent only republishes `ZInfoNetworkInstance` on a `NetworkInstanceStatus` change, never periodically, so once that one message (which already had both IPs) was consumed by the preceding `Eventually(niUpdates).Should(Receive(...ONLINE...))` assertion, the second `Eventually(niUpdates)` at `acls_test.go:246` had no further message to ever receive and timed out after 5 minutes despite the real device state already satisfying the predicate the whole time.
+
+This is the same class of bug already recorded in the ledger for `TestKernelPanicReport` (2026-10-28, `TestTelemetrySuite`): a test-side `Watch*`/`Eventually(Receive(...))` channel subscription silently missing data that was already present before/at the moment the assertion window opened, rather than a pillar regression — but it's a different watch path (NI info vs. log streaming) and hasn't itself appeared in the ledger before, so this is a new instance of a recurring pattern rather than a previously-seen exact issue. It is unrelated to the earlier `TestFlowLog` failure in this same run (that was a downloader tag-resolution hang on a separate, non-reused device).
+
+#### TestLocalNIWithMultiplePorts
+
+##### Failure
+
+```
+
+Timed out after 311.561s.
+The function passed to Eventually failed at /evetest/tests/networking/routing_test.go:841 with:
+Unexpected error:
+    <*fmt.wrapError | 0xfd756b53300>: 
+    unable to reach app "e4ae20a3-cf56-4c56-a7f3-71ef0a4f533e" SSH on device "edge-dev": no reachable endpoint among [172.22.10.15:2222 172.28.20.10:2222 192.168.30.13:2222]
+    {
+        msg: "unable to reach app \"e4ae20a3-cf56-4c56-a7f3-71ef0a4f533e\" SSH on device \"edge-dev\": no reachable endpoint among [172.22.10.15:2222 172.28.20.10:2222 192.168.30.13:2222]",
+        err: <*errors.errorString | 0xfd7567c26d0>{
+            s: "no reachable endpoint among [172.22.10.15:2222 172.28.20.10:2222 192.168.30.13:2222]",
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+No prior occurrences in the ledger. This looks like a new, previously unrecorded issue.
+
+###### Root cause
+
+The `multi-port-app` VM itself is frozen, not a networking/NAT misconfiguration: the NI (`multi-port-ni`) is online, port-forward DNAT rules for port 2222 are correctly programmed on all three `portfwd`-labeled uplinks (eth0/eth1/eth2), yet `ping`/`nc` to the app's own bridge IP `10.50.0.2:22` from the device itself time out. Its qemu process (pid 6434) is stuck in kernel state `D`, blocked in `kvm_async_pf_task_wait_schedule → __kvm_handle_async_pf → exc_page_fault`, and the host kernel has been logging "task qemu-system-x86:6434 blocked for more than N seconds" since 23:15:38 (368s and counting). App metrics confirm the guest stopped making CPU progress (`cpu.total_ns` flatlined at 8797570000 from upTime ~907s onward) while `rxBytes`/`rxPkts` also froze — consistent with the vCPU thread being permanently wedged rather than the guest being slow or the network path being broken. Host memory is healthy (6.4GB free, no swap, PSI ~0), ruling out memory pressure as the trigger, which points to a lost-wakeup/host-kernel KVM async-page-fault bug (kernel `6.18.55-linuxkit-core`) rather than resource exhaustion.
+
+This is unrelated to the two earlier failures already recorded in this run's `live-investigation.md` (`TestFlowLog`'s downloader tag-resolution hang and `TestLocalNetInstanceACLs`'s missed pubsub-info-republish race) — different subsystem and different device/app entirely. It also does not match anything in `live-ledger.md` (no prior `kvm_async_pf`/hung-task entries), so this appears to be a new, not-previously-recorded failure mode: a frozen guest VM due to a stuck host-kernel KVM async page-fault handler, rather than a pillar/EVE code regression.
+
+#### TestAccessVLANs
+
+##### Failure
+
+```
+failed to onboard device "edge-dev": context deadline exceeded
+```
+
+##### Claude's conclusion
+
+This background `evetest sdn status` call (left over from earlier investigation) was killed after reaching its time limit — it never returned, which is consistent with the finding already reported: the SDN VM for this test is unreachable/wedged. No further action needed; analysis above stands.
+
+#### TestNetworkAdapterPassthrough
+
+##### Failure
+
+```
+failed to tear-down all devices: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 10.208.13.244:50221: i/o timeout"
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Teardown for `TestNetworkAdapterPassthrough` failed because it's reusing (and trying to tear down) device `edge-dev` left over from the previous test, and that device's RPC/agent endpoint (`10.208.13.244:50221`) is unreachable — `evetest status`, `evetest eve info`/`console-output` all currently fail or time out dialing that same address, and the device is stuck in `EVE_DEVICE_STATE_UNDEFINED` with no interfaces. Critically, `gotest.json` shows this exact endpoint (`10.208.13.244:50221`) was already failing a minute earlier, during `TestAccessVLANs` at 23:57:48 ("Failed to retrieve console output for device edge-dev ... i/o timeout"), i.e. the outage predates this test and has been continuous.
+
+This chains directly back to `TestLocalNIWithMultiplePorts` (the failure immediately preceding these in this same run), whose root cause in `live-investigation.md` was a frozen qemu guest on `edge-dev` wedged in host-kernel state `D`, blocked in `kvm_async_pf_task_wait_schedule`, with the host logging hung-task warnings starting at 23:15:38. A qemu process stuck in uninterruptible sleep would make the device agent managing it unable to respond to management RPCs (console, teardown, etc.), explaining why every subsequent operation against `edge-dev` — including this teardown — times out dialing the same host/port. So this is the same root cause as the earlier `TestLocalNIWithMultiplePorts` failure in this run, not an independent bug, and its effects cascaded forward through `TestAccessVLANs` into this one. This specific "failed to tear-down all devices"/`i/o timeout` symptom doesn't appear in `live-ledger.md`, so as a distinct symptom it's new tonight, but it's a downstream consequence of the already-known-tonight wedged-qemu/`kvm_async_pf` host kernel issue rather than a separate new bug.
+
+#### TestNetworkAdapterPassthroughChange
+
+##### Failure
+
+```
+failed to tear-down all devices: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 10.208.13.244:50221: i/o timeout"
+```
+
+##### Claude's conclusion
+
+I have enough evidence now.
+
+###### Root cause
+
+This failure is directly cascaded from the same root cause as the immediately preceding `TestNetworkAdapterPassthrough` failure recorded in this run's `live-investigation.md`: both fail dialing the exact same broker/device-agent endpoint, `10.208.13.244:50221`, with `i/o timeout`. The `gotest.json` log shows `TestNetworkAdapterPassthroughChange`'s setup explicitly detected the prior test failure ("Previous test failed; not reusing its devices"), tried to tear down the leftover `edge-dev`/SDN from `TestNetworkAdapterPassthrough`, and hit the identical timeout dialing `10.208.13.244:50221` — i.e. the outage never cleared between the two tests. Live checks right now confirm the endpoint is still dead: `evetest sdn status` → "SDN client is not initialized", `evetest eve info`/`ssh edge-dev` → device not onboarded, "network model not applied", SSH resets the connection — consistent with the broker/SDN host at that address being completely unreachable rather than merely slow.
+
+Per `live-investigation.md`, this traces back further to `TestLocalNIWithMultiplePorts`, where `edge-dev`'s qemu process wedged in host-kernel state `D` (blocked in `kvm_async_pf_task_wait_schedule`) starting at 23:15:38, which cascaded into `TestAccessVLANs` and `TestNetworkAdapterPassthrough` already failing on the same `10.208.13.244:50221` timeout — so this is the same ongoing outage continuing to cascade, not an independent bug. This specific exact failure/endpoint combination isn't itself in `live-ledger.md` as a prior nightly occurrence, but the earlier `kvm_async_pf` hung-task mechanism it stems from is also new to this run (no prior ledger match), so there's no evidence yet that it's a previously-known recurring issue — it looks like one ongoing incident within tonight's run.
+
+#### TestStagedNICChange
+
+##### Failure
+
+```
+failed to tear-down all devices: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 10.208.13.244:50221: connect: network is unreachable"
+```
+
+##### Claude's conclusion
+
+No prior occurrences of either in the ledger — confirms this is new to tonight's run, not a previously-known recurring issue.
+
+**Root cause:** This is the same ongoing cascading outage already diagnosed earlier in this run, not an independent bug. Live checks right now show `edge-dev` still stuck `EVE_DEVICE_STATE_UNDEFINED` with no interfaces, "not onboarded," and SDN reporting "network model not applied, therefore cannot discover IP of device" / "SDN client is not initialized" — identical symptoms to the `TestNetworkAdapterPassthrough`/`TestNetworkAdapterPassthroughChange` failures already recorded in `live-investigation.md`. `gotest.json` confirms `TestStagedNICChange`'s `Setup()` explicitly tried to tear down this same leftover `edge-dev`/SDN state (since the prior test failed, its devices weren't reused) and hit the same broker/device-agent endpoint `10.208.13.244:50221`, this time with `connect: network is unreachable` rather than the earlier `i/o timeout` — i.e. the network path to that endpoint has degraded further (host/route now actively refusing rather than merely stalling), but it's the same unresolved outage, never having cleared. Per `live-investigation.md`, this traces back to `TestLocalNIWithMultiplePorts`'s qemu guest wedging in host-kernel state `D` (blocked in `kvm_async_pf_task_wait_schedule`) starting 23:15:38, which has since cascaded through `TestAccessVLANs`, `TestNetworkAdapterPassthrough`, and `TestNetworkAdapterPassthroughChange` into this failure. Neither this exact endpoint/error nor the underlying `kvm_async_pf` hung-task mechanism appears anywhere in `live-ledger.md`, so this is not a previously-known recurring issue — it's a continuation of the single new incident introduced tonight.
+
+#### TestNICCountChange
+
+##### Failure
+
+```
+failed to tear-down all devices: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 10.208.13.244:50221: connect: network is unreachable"
+```
+
+##### Claude's conclusion
+
+This confirms it: `TestNICCountChange` failed instantly in `Setup()`, trying to tear down the leftover `edge-dev`/SDN from `TestStagedNICChange` (which itself was tearing down the device from `TestNetworkAdapterPassthroughChange`), and hit the identical broker endpoint `10.208.13.244:50221` with "network is unreachable" — the exact same error as `TestStagedNICChange`. Live checks right now still show `edge-dev` stuck `EVE_DEVICE_STATE_UNDEFINED`/not onboarded and the SDN client uninitialized, matching the state left behind since that earlier failure.
+
+###### Root cause
+
+This is the same ongoing cascading outage already diagnosed for `TestStagedNICChange`, `TestNetworkAdapterPassthroughChange`, and `TestNetworkAdapterPassthrough` earlier in this run (`live-investigation.md`), not an independent bug. `TestNICCountChange`'s `Setup()` tried to tear down the leftover `edge-dev`/SDN (since the immediately preceding `TestStagedNICChange` also failed and its devices weren't reused) and hit the identical broker/device-agent endpoint `10.208.13.244:50221`, still "network is unreachable." Live right now confirms `edge-dev` is still `EVE_DEVICE_STATE_UNDEFINED` with no interfaces and `evetest sdn status`/`evetest eve info` both fail ("SDN client is not initialized" / "device is not onboarded"), identical symptoms to those earlier failures. Per `live-investigation.md`, the whole chain traces back to `TestLocalNIWithMultiplePorts`'s qemu guest wedging in host-kernel state `D` (blocked in `kvm_async_pf_task_wait_schedule`) starting at 23:15:38, which made the device agent unresponsive and has since cascaded, unresolved, through every subsequent test in this run including this one. Neither this exact failure nor the underlying `kvm_async_pf` hung-task mechanism appears in `live-ledger.md`, so this is not a previously-known recurring issue — it's the same single new incident from tonight's run continuing to propagate.
+
+#### TestNICCountChangeOrderedInterface
+
+##### Failure
+
+```
+failed to tear-down all devices: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 10.208.13.244:50221: connect: network is unreachable"
+```
+
+##### Claude's conclusion
+
+Confirmed — identical symptoms to the preceding failures.
+
+**Root cause:** This is the same ongoing cascading outage already diagnosed earlier in this run, not an independent bug. `TestNICCountChangeOrderedInterface`'s `Setup()` tried to tear down the leftover `edge-dev`/SDN from `TestNICCountChange` (which itself failed and left its devices un-reused) and hit the identical broker/device-agent endpoint `10.208.13.244:50221` with "network is unreachable" — the exact same error signature. Live right now confirms `edge-dev` is still `EVE_DEVICE_STATE_UNDEFINED` with no interfaces, "not onboarded," and `evetest sdn status` still reports "SDN client is not initialized" — unchanged from the state documented for `TestNICCountChange`. Per `live-investigation.md`, the whole chain traces back to `TestLocalNIWithMultiplePorts`'s qemu guest wedging in host-kernel state `D` (blocked in `kvm_async_pf_task_wait_schedule`) starting at 23:15:38, which made the device agent unresponsive and has cascaded unresolved through every subsequent test in this run (`TestAccessVLANs`, `TestNetworkAdapterPassthrough`, `TestNetworkAdapterPassthroughChange`, `TestStagedNICChange`, `TestNICCountChange`, and now this one). Neither this exact failure nor the underlying `kvm_async_pf` hung-task mechanism appears in `live-ledger.md`, so this is not a previously-known recurring issue — it's the same single new incident from tonight's run continuing to propagate, not a new or separate bug.
+
+#### TestSwitchNIPortConfigRace
+
+##### Failure
+
+```
+failed to tear-down all devices: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 10.208.13.244:50221: connect: network is unreachable"
+```
+
+##### Claude's conclusion
+
+Confirmed: identical symptoms to the already-diagnosed cascade — `edge-dev` is still `EVE_DEVICE_STATE_UNDEFINED` with no interfaces, "not onboarded," and `evetest sdn status` reports "SDN client is not initialized," same as every test since `TestLocalNIWithMultiplePorts`.
+
+**Root cause:** This is the same ongoing cascading outage already recorded in `live-investigation.md` for `TestNICCountChangeOrderedInterface` and every test back to `TestNetworkAdapterPassthrough`, not a new independent bug. `TestSwitchNIPortConfigRace`'s teardown hit the exact same broker/device-agent endpoint `10.208.13.244:50221` with "network is unreachable," and live checks right now confirm `edge-dev` is unchanged: `EVE_DEVICE_STATE_UNDEFINED`, no interfaces, not onboarded, SDN client uninitialized. Per `live-investigation.md`, this chain traces back to `TestLocalNIWithMultiplePorts`'s qemu guest wedging in host-kernel state `D` (blocked in `kvm_async_pf_task_wait_schedule`) starting at 23:15:38, which left the device agent permanently unresponsive and has since propagated unresolved through every subsequent test in this run (`TestAccessVLANs`, `TestNetworkAdapterPassthrough`, `TestNetworkAdapterPassthroughChange`, `TestStagedNICChange`, `TestNICCountChange`, `TestNICCountChangeOrderedInterface`, and now this one). Neither this exact symptom nor the underlying `kvm_async_pf` hung-task mechanism appears in `live-ledger.md`, so this is not a previously-known recurring issue from past nightlies — it's the same single new incident introduced tonight continuing to propagate.
+
+#### TestLocalNIUplinkFlap
+
+##### Failure
+
+```
+failed to tear-down all devices: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 10.208.13.244:50221: connect: network is unreachable"
+```
+
+##### Claude's conclusion
+
+This is the identical, still-unresolved cascading outage already diagnosed throughout this run (`TestAccessVLANs` onward in `live-investigation.md`). Live checks confirm the exact same unchanged symptoms: `edge-dev` is still `EVE_DEVICE_STATE_UNDEFINED` with no interfaces ("not onboarded"), and `evetest sdn status` still reports "SDN client is not initialized" — identical to every test since `TestNetworkAdapterPassthrough`. `TestLocalNIUplinkFlap`'s teardown hit the same broker/device-agent endpoint `10.208.13.244:50221`, now failing with "network is unreachable," matching the error already seen for `TestStagedNICChange`, `TestNICCountChange`, `TestNICCountChangeOrderedInterface`, and `TestSwitchNIPortConfigRace`.
+
+Per `live-investigation.md`, the whole chain traces back to `TestLocalNIWithMultiplePorts`'s qemu guest wedging in host-kernel state `D` (blocked in `kvm_async_pf_task_wait_schedule`) starting at 23:15:38, which left the device agent permanently unresponsive and has propagated unresolved through every subsequent test in this run. Neither this exact failure nor the underlying `kvm_async_pf` hung-task mechanism appears in `live-ledger.md`, so it is not a previously-known recurring issue from past nightlies — this is the same single new incident introduced tonight (2026-11-02), still propagating and not yet recovered.
+
+#### TestSwitchNIDeletedWithAppsAttached
+
+##### Failure
+
+```
+failed to tear-down all devices: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 10.208.13.244:50221: connect: network is unreachable"
+```
+
+##### Claude's conclusion
+
+Confirmed: `edge-dev` is still `EVE_DEVICE_STATE_UNDEFINED` with no interfaces, "not onboarded," and `evetest sdn status` still reports "SDN client is not initialized" — identical, unchanged symptoms to every test since `TestNetworkAdapterPassthrough` earlier in this run.
+
+**Root cause:** This is the same ongoing cascading outage already diagnosed throughout `live-investigation.md` for `TestNetworkAdapterPassthrough` through `TestLocalNIUplinkFlap`, not an independent bug. `TestSwitchNIDeletedWithAppsAttached`'s teardown hit the identical broker/device-agent endpoint `10.208.13.244:50221`, again with "network is unreachable" — the exact same error signature as the preceding six failures. Per `live-investigation.md`, the whole chain traces back to `TestLocalNIWithMultiplePorts`'s qemu guest wedging in host-kernel state `D` (blocked in `kvm_async_pf_task_wait_schedule`) starting at 23:15:38, which left the device agent permanently unresponsive and has propagated unresolved through every subsequent test in this run. Neither this exact symptom nor the underlying `kvm_async_pf` hung-task mechanism appears in `live-ledger.md`, so this is not a previously-known recurring issue from past nightlies — it's the same single new incident introduced tonight (2026-11-02), still ongoing and unrecovered.
+
+### TestAppsSuite: failure analysis
+
+#### TestVGAPassthroughNoHostAccess
+
+##### Failure
+
+```
+Host processes interfered with PCI devices while the VGA controller 0000:00:01.0 was passed through to the application:
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=15855 parent=runc:[1:CHILD]/15854 grandparent=runc:[0:PARENT]/15853
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=15855 parent=runc:[1:CHILD]/15854 grandparent=runc:[0:PARENT]/15853
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=15855 parent=runc:[1:CHILD]/15854 grandparent=runc:[0:PARENT]/15853
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=15855 parent=runc:[1:CHILD]/15854 grandparent=runc:[0:PARENT]/15853
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=15855 parent=runc:[1:CHILD]/15854 grandparent=runc:[0:PARENT]/15853
+  [app-restart] pci_user_write_config_word comm=CPU 0/KVM pid=15855 parent=runc:[1:CHILD]/15854 grandparent=runc:[0:PARENT]/15853
+Kernel messages mentioning 0000:00:01.0:
+[    1.358553] [    T1] pci 0000:00:01.0: [1234:1111] type 00 class 0x030000 conventional PCI endpoint
+[    1.367447] [    T1] pci 0000:00:01.0: BAR 0 [mem 0x80000000-0x80ffffff pref]
+[    1.369504] [    T1] pci 0000:00:01.0: BAR 2 [mem 0x8264d000-0x8264dfff]
+[    1.371388] [    T1] pci 0000:00:01.0: ROM [mem 0xffff0000-0xffffffff pref]
+[    1.374155] [    T1] pci 0000:00:01.0: Video device with shadowed ROM at [mem 0x000c0000-0x000dffff]
+[    2.070285] [    T1] pci 0000:00:01.0: vgaarb: setting as boot VGA device
+[    2.070285] [    T1] pci 0000:00:01.0: vgaarb: bridge control possible
+[    2.071551] [    T1] pci 0000:00:01.0: vgaarb: VGA device added: decodes=io+mem,owns=io+mem,locks=none
+[    2.478235] [    T1] pci 0000:00:01.0: Adding to iommu group 1
+[  279.343413] [ T4752] vfio-pci 0000:00:01.0: vgaarb: deactivate vga console
+[  279.343426] [ T4752] vfio-pci 0000:00:01.0: vgaarb: VGA decodes changed: olddecodes=io+mem,decodes=io+mem:owns=io+mem
+[  360.548332] [ T8150] vfio-pci 0000:00:01.0: Invalid PCI ROM header signature: expecting 0xaa55, got 0x0000
+[  361.418389] [ T8150] vfio-pci 0000:00:01.0: vgaarb: VGA decodes changed: olddecodes=io+mem,decodes=io+mem:owns=io+mem
+[ 1597.591236] [T15879] vfio-pci 0000:00:01.0: Invalid PCI ROM header signature: expecting 0xaa55, got 0x0000
+```
+
+##### Claude's conclusion
+
+This confirms the identical false-positive mechanism already documented in this run's own ledger entry. Live `ps -eLo` shows PID 15855 is this app's own `qemu-system-x86_64` process (domain `c0fb987b-...1.1`, launched by `domainmgr`), and thread TID 15879, named `CPU 0/KVM` by the kernel, is just its vCPU thread — not an external host process touching the passed-through VGA device.
+
+**Root cause:** `pciaccess_helpers_test.go`'s `isViolation()` whitelist only matches `comm` values prefixed `"qemu-system-"`. The kernel renames vCPU threads to `CPU N/KVM`, so this specific thread's own routine config-space writes during `[app-restart]` get misclassified as "host interference," even though it belongs to the passed-through device's own owning process. This is the exact same mechanism — same whitelist gap, same `CPU 0/KVM` thread name, same `[app-restart]` phase — already diagnosed earlier tonight in this very run (ledger run #5, where PID 10207's vCPU thread TID 10239 triggered the identical false positive). This occurrence (PID 15855/TID 15879) is effectively a second, later repeat of that same unfixed test-harness tracer bug within tonight's run, not a new or product-side issue. Per the ledger, this bug has been known/recurring since the 2026-10-29 nightly (and also hit 2026-10-30); no PR diff was supplied to assess relatedness to in-flight code changes.
+
+### TestDeviceConnectivitySuite: failure analysis
+
+#### TestPNACWithProxy
+
+##### Failure
+
+```
+Failed to receive SDN tunnel properties: rpc error: code = Unavailable desc = unable to connect to SDN gRPC service on any of the uplink IPs ([192.168.170.5]): failed to establish tunnel to SDN: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 192.168.170.5:50121: connect: no route to host"
+```
+
+##### Claude's conclusion
+
+**Root cause:** Live evidence confirms the identical infra-flake signature already cataloged repeatedly in the ledger. The broker provisioned a fresh SDN VM (`sdn-297da839`, Proxmox VM 110) for `TestPNACWithProxy` at 22:51:56, which immediately reported a valid uplink IP (`192.168.170.5`) at 22:51:59 — but every gRPC dial from the broker to `192.168.170.5:50121` over the full ~5-minute retry window (22:52:13–22:54:45+) failed with `connect: no route to host`, a routing-layer failure rather than a service-not-ready response. Live `evetest status`/`evetest sdn status` confirm the EVE device never left `EVE_DEVICE_STATE_UNDEFINED` and the SDN client was never initialized, consistent with the failure occurring entirely in `openTunnelToSDN` before any device/network provisioning. Notably, the *preceding* test in this same run (`TestPNACWithoutProxy`) provisioned its own SDN VM under the same device name and connected successfully on the first few retries (`192.168.170.6`, connected by 22:33:57), so this isn't a systemic outage of this run — it's isolated to the second, freshly-reprovisioned SDN VM, matching the pattern of flaky routing to newly-created SDN VMs rather than a lasting network partition.
+
+This is a **known, recurring issue**, not new: per `live-ledger.md`, the identical signature (freshly-provisioned SDN VM reports a valid uplink IP, but broker gets `no route to host` on every gRPC dial to port 50121) was first recorded on **2026-10-29** (`TestAppsSuite/TestPurgeNeverActivatedApp`), and has recurred on nearly every subsequent night: 2026-10-30 (`TestKonvertSuite/TestKvmToKUpgrade`), 2026-10-31 (twice — `TestBootstrapWithAutoDiscoveredProxyUsingOverrideJSON` and `TestKonvertSuite/TestKvmToKUpgrade`), and 2026-11-01 (`TestControllerFaultsSuite/TestInfoRetriedAfterServerError` and `TestDeviceConnectivitySuite/TestDeviceNTPConfig`). Tonight's `TestPNACWithProxy` failure is simply the latest instance of this same mechanism, now hitting a different test in the same suite as last night's occurrence. It points to intermittent networking flakiness between the Proxmox broker host and newly-provisioned SDN VMs, not an EVE/pillar code defect. No PR diff was provided for this investigation to assess relatedness.
+
+### TestKonvertSuite: failure analysis
+
+#### Shrink
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to setup EVE device "edge-dev": failed to create VM 132 for device "eve-27ce5905-edge-dev": 500 got no worker upid - start worker failed
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+The failure happened purely at Proxmox VM-provisioning time, before any EVE device or SDN was ever created (`evetest status` / `evetest eve info` / `evetest sdn status` all confirm "No EVE devices found" / "SDN client is not initialized"). The broker log (`gotest.json`) shows this was actually the test's **second** provisioning attempt in this run — it first tore down a prior EVE/SDN VM pair (IDs 116/118) at 22:59:45–22:59:49, rebuilt fresh EVE/SDN images, and then at 23:00:16 the Proxmox API call to create the new EVE VM (ID 132) returned `500 got no worker upid - start worker failed`. That's a Proxmox-side error meaning the pvedaemon API couldn't even spawn a background task worker for the `qmcreate` call — a transient host-level resource/overload condition, not an EVE/pillar defect.
+
+This `"no worker upid"` signature does not appear anywhere in `live-ledger.md`, so it's a new failure mode rather than a previously-recorded recurring one. However, it fits a well-established *pattern* already logged repeatedly in the ledger: Proxmox broker instability under concurrent multi-VM provisioning load, previously manifesting as TLS-handshake timeouts against the Proxmox host, VM-ID collisions (same ID assigned to two VMs), and truncated/`unexpected end of JSON input` API responses — all attributed to the shared Proxmox host being overloaded, not to EVE/pillar code. It's unrelated to the other `TestKonvertSuite` failures already in tonight's ledger (the `evebuild/nightly:10.1.0` image-tag gap), since those fail during image pull before any VM-create call is attempted at all.
+
+#### TestFirstBootEVEKAppVolume
+
+##### Failure
+
+```
+
+Timed out after 5400.001s.
+volumemgr never reported Initialized
+Expected
+    <string>: 
+to contain substring
+    <string>: "Initialized":true
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence shows `edge-dev` (an eve-k/kubevirt first-boot) onboarded into Adam normally at 23:34:50 and then went completely silent ~50s later: the last info/metrics/log batches the controller ever received are timestamped 23:35:31–23:35:40, and nothing has arrived since — exactly matching the `nim` log's last entry, a route-change L3 reconciliation at 23:35:3x, right before the device vanished. The test then spent the full 5400s polling for volumemgr's `"Initialized":true` with no further signal. Live checks confirm the VM is still completely dead now, ~1.5h later: `evetest eve ssh` gets "no IP address" / connection-reset, `evetest eve console-output` and `evetest eve collect-info` both fail (`i/o timeout` dialing the VM's console/SSH ports), and `evetest sdn status` also times out dialing the SDN VM's gRPC tunnel — i.e. the Proxmox VM itself (not just a slow EVE agent) appears to have hung or become completely unreachable at the hypervisor-network level shortly after first boot, consistent with the device state reported as `EVE_DEVICE_STATE_SUSPECT`.
+
+This does not match the earlier-investigated `Shrink` failure in this same run (an unrelated `INITIAL_EVE_VERSION`/image-tag gap that fails before any VM is even created). It also doesn't match the ledger's prior EVE-K reboot/etcd-overload or "no route to host" SDN-tunnel entries — those show the device/cluster alive but struggling or mid-transition, whereas here the device goes silent entirely within a minute of boot and never recovers. Neither `TestFirstBootEVEKAppVolume` nor this "device goes totally dark almost immediately after first boot" signature appears anywhere in `live-ledger.md`, so this looks like a new failure mode — most consistent with a Proxmox/VM-level hang or host-networking blackout for this specific VM shortly after boot, rather than an EVE/pillar software defect, though I can't fully rule out a kernel/hypervisor-level crash inside the guest given the total silence.
+
+### TestKubeRegistrationSuite: failure analysis
+
+#### TestKubeRegistrationClusterSetup
+
+##### Failure
+
+```
+Timed out waiting for cluster nodes to become ready in cluster "native-k8s-cluster" (device "edge-dev1")
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+`edge-dev1` (one of the three nodes in the `native-k8s-cluster`) went completely silent mid-setup and never recovered. Its own device logs stop dead at **23:05:20.800** (a kernel message about a new `veth`/`cni0` interface entering forwarding state, right after `zedkube`'s `23:05:00.648 applyLonghornDiskReserved: set reserved space to 2 GB on node edge-dev1`) — no further log lines of any kind (no reboot, no panic, no watchdog message) ever arrive after that point. ~5 minutes later the controller marked it `ONLINE -> SUSPECT` (23:10:43), and it has remained unreachable ever since: live `evetest eve ssh`, `kubectl`, and `collect-info` against it all fail with "failed to detect any IP address for EVE device edge-dev1" (SDN-level IP discovery itself fails), and a direct SSH attempt gets `kex_exchange_identification: Connection reset by peer`. This is consistent with the VM/kernel hanging or dying outright while provisioning Longhorn/CNI networking for the k3s node join, not a transient connectivity blip.
+
+Because `edge-dev1` never came back, the cluster-readiness check (`evetest/edgecluster.go:177`, `clusterNodeReady`) could never see a report where storage is healthy and all three expected nodes are simultaneously `Ready` — `evetest cluster info` shows `edge-dev2`/`edge-dev3` storage health flapping `HEALTHY`/`FAILED` (consistent with Longhorn never reaching quorum with one of its three replicas gone), and no node ever leaves `admission_status:NODE_ADMISSION_JOINING`. The test then timed out after ~29 minutes exactly as designed.
+
+This is a single, self-contained failure (not sharing a root cause with any other failure in this run — `edge-dev4` is a separate standalone device not even part of this cluster). `TestKubeRegistrationSuite`/`TestKubeRegistrationClusterSetup` has no prior entries in `live-ledger.md`, so this is a **new** failure, not a known/recurring issue. No PR diff was provided to assess relatedness.
+
+#### TestKubeRegistrationAddNode
+
+##### Failure
+
+```
+failed to tear-down all devices: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 10.208.13.244:50221: i/o timeout"
+```
+
+##### Claude's conclusion
+
+The background SSH attempt to edge-dev1 timed out and was killed after reaching its time limit — it never returned output, which is consistent with edge-dev1 being unreachable (matching the prior investigation's finding of SSH connection resets/no route). This doesn't change my conclusion above; I already had sufficient evidence from `evetest status` and `adam-stdout` to confirm edge-dev1 is still dead and that's the root cause of this teardown-timeout failure.
+
+#### TestKubeRegistrationLonghornDisks
+
+##### Failure
+
+```
+failed to remove device "edge-dev3" from the controller: unknown device UUID "1312a593-2d01-430b-9203-4a0263eceeb8"
+```
+
+##### Claude's conclusion
+
+No prior occurrences in the ledger — this specific teardown-cascade symptom is not a previously known/recurring issue.
+
+**Root cause:** This is a direct downstream cascade of the same root cause already identified for this run: `edge-dev1` went silent/unresponsive mid-`TestKubeRegistrationClusterSetup` (confirmed still `EVE_DEVICE_STATE_SUSPECT` live via `evetest status`, and `evetest cluster info` now errors with `unknown device UUID "aed8d39e-...”` for it). When `TestKubeRegistrationAddNode`'s `Setup` tried to tear down the cluster's 4 devices at 23:39:18, it managed to delete their records from the Adam controller (confirmed: `adam-db/device/` and `adam-db/onboard/*` no longer contain any of the 4 device entries) but the overall teardown call then failed with `failed to tear-down all devices: ... dial tcp 10.208.13.244:50221: i/o timeout` — a VM/console-level RPC to the still-dead `edge-dev1`. Because that failure happened after the controller-side deletions but wasn't surfaced as partial success, the harness retried the *same* "tear down previous test's devices" step at the start of `TestKubeRegistrationLonghornDisks`'s `Setup`, which now immediately fails on `edge-dev3` with "unknown device UUID" since it was already removed. `edge-dev3` itself was healthy and actively polling the controller (`172.20.20.180`, config/metrics/newlogs traffic through 23:35:41) — it's purely a teardown-retry/idempotency bug exposed by `edge-dev1`'s unrelated hang, not a new independent failure.
+
+### TestLPSSuite: failure analysis
+
+#### TestProfile
+
+##### Failure
+
+```
+
+Timed out after 600.000s.
+app-profile-1 is HALTED (LPS profile-2)
+Expected
+    <info.ZSwState>: 8
+to equal
+    <info.ZSwState>: 9
+```
+
+##### Claude's conclusion
+
+The earlier `evetest sdn status` command (launched to probe the SDN tunnel) was killed after hitting its background time limit — it never returned output, which is itself consistent with the finding already reported: the SDN gRPC tunnel to the device is still dead. No action needed; this doesn't change the root-cause analysis already given above.
+
+#### TestRadioSilence
+
+##### Failure
+
+```
+failed to tear-down all devices: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 10.208.13.244:50221: i/o timeout"
+```
+
+##### Claude's conclusion
+
+No match — this exact signature (broker connection itself at port 50221 timing out) doesn't appear in the ledger.
+
+###### Root cause
+
+**TestRadioSilence shares the same root cause as the earlier `TestProfile` failure in this run.** Both fail against the identical broker endpoint `10.208.13.244:50221` with `i/o timeout` — not the usual "SDN VM uplink unreachable" pattern (`192.168.170.x:50121`, "no route to host") seen repeatedly in the ledger, but a timeout reaching the **broker connection itself** that was established at suite start ("Connected to broker at 10.208.13.244:50221" at 23:29:07). Evidence timeline: the SDN tunnel proxy for `edge-dev` died at 23:35:42-44 ("receive from gRPC client stream failed 10 times: EOF"), `edge-dev` flipped ONLINE→SUSPECT at 23:41:07, and by 23:58:00 even *console-output* retrieval against the broker hit the same `10.208.13.244:50221: i/o timeout`. TestRadioSilence then started immediately after and tried to tear down `edge-dev` from the failed TestProfile run via that same broker connection, hitting the identical timeout — it never got far enough to attempt anything of its own. Live `evetest sdn status` still reports "SDN client is not initialized" and `evetest status` still shows `edge-dev` stuck in `EVE_DEVICE_STATE_SUSPECT`, confirming the broker-side connectivity (or the broker process itself) has not recovered. This specific "broker host port 50221 itself timing out" signature doesn't match anything in `live-ledger.md` (which only has recurring entries for SDN-VM-uplink `no route to host` on port 50121, and separate Proxmox-API `farfalle:8006` TLS timeouts) — so while it's clearly infrastructure/broker-side rather than an EVE/pillar code issue, it looks like a new failure mode rather than a previously-recorded recurring one.
+
+#### TestAppLocalInfo
+
+##### Failure
+
+```
+failed to remove device "edge-dev" from the controller: unknown device UUID "9f63eb32-4242-4b15-940d-2657dedab4c6"
+```
+
+##### Claude's conclusion
+
+The background `evetest eve ssh` check timed out without returning (device unreachable), which is consistent with the already-reported finding: `edge-dev` is still stuck in `EVE_DEVICE_STATE_SUSPECT` with the SDN tunnel dead. This doesn't change the root-cause analysis already given.
+
+#### TestDevLocalInfo
+
+##### Failure
+
+```
+failed to remove device "edge-dev" from the controller: unknown device UUID "9f63eb32-4242-4b15-940d-2657dedab4c6"
+```
+
+##### Claude's conclusion
+
+The background SSH check to `edge-dev` was killed after hitting its background time limit without ever returning output — consistent with the device being unreachable, which matches the already-reported finding (SDN tunnel dead, device stuck in `EVE_DEVICE_STATE_SUSPECT`). This doesn't change the root-cause analysis already given for `TestDevLocalInfo`.
+
+#### TestNetworkLocalChanges
+
+##### Failure
+
+```
+failed to remove device "edge-dev" from the controller: unknown device UUID "9f63eb32-4242-4b15-940d-2657dedab4c6"
+```
+
+##### Claude's conclusion
+
+This failure is identical in signature to the already-investigated `TestAppLocalInfo` and `TestDevLocalInfo` failures: `edge-dev` device UUID unknown, status `EVE_DEVICE_STATE_SUSPECT`, and SDN client still "not initialized" — exactly the same broker/SDN-tunnel outage already diagnosed earlier in this run (tied back to the `TestRadioSilence`/`TestProfile` broker timeout at `10.208.13.244:50221`).
+
+**Root cause:** `TestNetworkLocalChanges` shares the same root cause as the earlier failures in this run. Live state confirms `edge-dev` is still stuck in `EVE_DEVICE_STATE_SUSPECT` and `evetest sdn status` still reports "SDN client is not initialized," matching the broker/SDN-tunnel outage first diagnosed under `TestRadioSilence` (connection error to `10.208.13.244:50221`). Since that tunnel never recovered, every subsequent test in this run that tries to tear down/remove `edge-dev` hits the identical cascading error "unknown device UUID 9f63eb32-...". This is not a new or independent bug — it's the same infrastructure-level broker/SDN failure already recorded for `TestProfile`, `TestAppLocalInfo`, and `TestDevLocalInfo` in this same run, and per `live-ledger.md` this specific "broker port 50221 itself timing out" signature is not a previously-recorded recurring pattern (the ledger's recurring entries are for SDN-VM-uplink timeouts on port 50121 instead), so it still looks like a new infra failure mode rather than a known recurring one.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestClusterPVCGCDeletesOnlyOrphans
+
+##### Failure
+
+```
+
+Timed out after 900.001s.
+The function passed to Eventually failed at /evetest/tests/cluster/pvcgc_test.go:115 with:
+node "edge-dev2" has no created VolumeStatus for volume efb4e4cd-2098-4df7-b50b-8a2a0d54805a
+Expected
+    <bool>: false
+to be true
+```
+
+##### Claude's conclusion
+
+This confirms the exact same mechanism as the earlier failure logged tonight for this same test. No need to check further — this is the identical bug on the same node with a different volume UUID.
+
+**Root cause:** `VolumeStatus` for `efb4e4cd-2098-4df7-b50b-8a2a0d54805a` is stuck at `State:109` (`CREATING_VOLUME`) on `edge-dev2`, which live `kubectl get node edge-dev2 --show-labels` confirms is labeled `tie-breaker-node=true` (and `SchedulingDisabled`). The device's own volumemgr log shows an unbroken stream of `WaitForLonghornReady: not ready yet: longhorn daemonset:engine-image-ei-b4bcf0a5 missing on this node` from before the test began through now (22:59:05–23:03:51), because Longhorn's daemonsets are deliberately not scheduled on the `tie-breaker-node=false`-selected witness node — so the wait can never succeed there. This is the identical root cause already diagnosed earlier tonight (2026-11-02, run #5) for the same test/suite with a different volume (`18355a22-1ed4-4837-bcb2-074f3bc715e4`): `volumehandlers/csihandler.go`'s `PrepareVolume` calls `kubeapi.WaitForLonghornReady` unconditionally instead of checking `EdgeNodeClusterConfig.IsTieBreakerNode` as `longhorninfo.go:720-721` says it must. Per the ledger this exact tie-breaker/Longhorn gating bug is new as of tonight's run (first occurrence earlier this same run, not seen on prior nights) — this is effectively a repeat occurrence within the same run, not a new issue. No PR diff was supplied to assess relatedness to in-flight code changes.
+
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 914.700s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:167 with:
+could not list VMIRS objects; k3s may still be starting
+Unexpected error:
+    <*fmt.wrapError | 0x3537db04d2a0>: 
+    kubectl -n eve-kube-app get vmirs -o json: failed to execute script over SSH for EVE device edge-dev3: failed to detect any IP address for EVE device "edge-dev3" (stderr: ) (stderr: )
+    {
+        msg: "kubectl -n eve-kube-app get vmirs -o json: failed to execute script over SSH for EVE device edge-dev3: failed to detect any IP address for EVE device \"edge-dev3\" (stderr: ) (stderr: )",
+        err: <*fmt.wrapError | 0x3537db04d280>{
+            msg: "failed to execute script over SSH for EVE device edge-dev3: failed to detect any IP address for EVE device \"edge-dev3\" (stderr: )",
+            err: <*errors.errorString | 0x3537db74e8d0>{
+                s: "failed to detect any IP address for EVE device \"edge-dev3\"",
+            },
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+I have enough evidence now to write the root cause.
+
+**Likely root cause:** This failure shares the same deadlock mechanism investigated earlier for `TestVMAppPurgeDuringFailover` in this same run (recorded in `live-ledger.md` for run #5, the "expected exactly one VMIRS... not designated" zedmanager/zedkube bug) — but that attempt had already failed and the harness discarded its devices ("Previous test failed; not reusing its devices" at 23:05:53) and retried with a brand-new device/SDN set. This retry's failure is a **different, infrastructure-level** problem: the test's own SDN emulator VM (`sdn-c563e944`, Proxmox-hosted, uplink `192.168.170.10`) worked normally from 23:07:06 through 23:35, but at 23:35:42 its gRPC stream to the harness died with `error reading from server: EOF` ("SDN tunnel proxy ended with error... failed 10 times"), and from that point on every SSH/IP-discovery attempt for **all three** devices (not just edge-dev3) failed. A live check right now confirms the SDN VM is still completely unreachable — `evetest sdn status`/`evetest sdn logs` both time out dialing `192.168.170.10:50121`, and SSH to edge-dev1/2/3 all fail identically with "failed to detect any IP address," so this is not specific to edge-dev3 or to the purge/failover logic under test. I found no matching entry in `live-ledger.md` for this exact signature (a previously-healthy SDN tunnel dying mid-test with gRPC `EOF`, versus the recorded "no route to host at initial connect" pattern seen for freshly-provisioned SDN VMs) — so this looks like a new, previously-unrecorded SDN-emulator/Proxmox-broker reliability issue, not a recurrence of a known bug, and it's unrelated to the zedmanager purge-deadlock bug already diagnosed for this test's prior attempt in this run.
+
+#### TestClusterPVCRedownload
+
+##### Failure
+
+```
+failed to tear-down all devices: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 10.208.13.244:50221: i/o timeout"
+```
+
+##### Claude's conclusion
+
+That background SSH check to edge-dev1 never completed and was killed after its time limit — consistent with the broker/SDN outage still being in effect. It doesn't change the root-cause conclusion already written above, which was based on the gotest.json timeline and the other live checks that did return.
+
+### TestNodeClusterSuite: failure analysis
+
+#### TestNativeKubeAppNetworking
+
+##### Failure
+
+```
+
+kubectl apply manifest:
+apiVersion: v1
+kind: Pod
+metadata:
+  name: native-bare-pod
+  namespace: default
+  annotations:
+    k8s.v1.cni.cncf.io/networks: '[{"name":"ni-local-ni","namespace":"eve-kube-app","interface":"localni","portMappings":[{"hostPort":8022,"containerPort":22,"protocol":"tcp"}]},{"name":"ni-switch-ni","namespace":"eve-kube-app","interface":"switchni","mac":"02:00:00:00:01:01"}]'
+spec:
+  containers:
+  - name: native-bare-pod
+    image: lfedge/evetest-ubuntu-ctr:1.2
+
+Unexpected error:
+    <*fmt.wrapError | 0x66666307a0>: 
+    failed to execute script over SSH for EVE device edge-dev: Process exited with status 1 (stderr: error: error validating "STDIN": error validating data: failed to download openapi: the server is currently unable to handle the request; if you choose to ignore these errors, turn validation off with --validate=false
+    )
+    {
+        msg: "failed to execute script over SSH for EVE device edge-dev: Process exited with status 1 (stderr: error: error validating \"STDIN\": error validating data: failed to download openapi: the server is currently unable to handle the request; if you choose to ignore these errors, turn validation off with --validate=false\n)",
+        err: <*ssh.ExitError | 0x666586efc0>{
+            Waitmsg: {status: 1, signal: "", msg: "", lang: ""},
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence confirms the same race documented in the ledger: at 22:13:12 the test's harness logged `"cluster-is-ready"` (cluster node `edge-dev` already ready), then immediately pushed NI config and ran `kubectl apply` for `native-bare-pod` at 22:13:21 — which failed 3 seconds later (22:13:24) with the openapi-download error. Live inspection of `edge-dev` right after shows the whole single-node k3s cluster (hosting kubevirt, CDI, Longhorn, multus, metrics-server, etc., all on just 4 vCPUs/8GB) still churning through pod (re)creation events seconds old, CPU load ~3.2 on 4 cores, and failing readiness probes (longhorn-manager `connection refused`, metrics-server HTTP 500) — i.e. the apiserver was still under heavy contention from component bring-up at the exact moment the test's `kubectl apply` ran, causing the transient "server is currently unable to handle the request" during OpenAPI schema discovery. The node itself never rebooted (uptime/node age continuous ~7m), so this is a readiness-race, not a crash.
+
+This is a **known, recurring issue** with the identical error signature (`failed to download openapi: the server is currently unable to handle the request`) first recorded for this same test on **2026-11-01 (run #4)**, where it was diagnosed as the `"cluster-is-ready"` checkpoint only checking node-Ready status rather than full apiserver/webhook readiness before the test proceeds to `kubectl apply`. An earlier, related variant (`dial tcp 127.0.0.1:6443: connect: connection refused`) for this same test goes back to **2026-10-29 (run #1)**. Tonight's occurrence is the same unfixed test-harness timing gap reproducing again, not a new regression — no PR diff was supplied to assess code relatedness.
+
+#### TestMgmtProxy
+
+##### Failure
+
+```
+
+wait for the raw container pod to become Ready
+Unexpected error:
+    <*fmt.wrapError | 0x666701d440>: 
+    failed to execute script over SSH for EVE device edge-dev1: Process exited with status 141 (stderr: )
+    {
+        msg: "failed to execute script over SSH for EVE device edge-dev1: Process exited with status 141 (stderr: )",
+        err: <*ssh.ExitError | 0x6665a9d400>{
+            Waitmsg: {status: 141, signal: "", msg: "", lang: ""},
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+This is the exact same recurring failure confirmed live and in the ledger.
+
+**Root cause:** `mgmtproxy-test-container`'s pod on `edge-dev1` is stuck in `ImagePullBackOff` — `kubectl describe` shows the image pull failing with `failed to resolve image: ... dial tcp 192.168.170.2:5000: connect: no route to host`, matching the test's deliberately-poisoned main routing table (`ip route get 192.168.170.2` and `ip route get 1.1.1.1` both resolve via `eth1`/cluster network, not through mgmtproxy). The live `/run/mgmtproxy-containerd-env` shows only `HTTPS_PROXY=http://127.0.0.1:5443` set with no `HTTP_PROXY`, so the plain-`http://` registry-mirror pull bypasses the mgmtproxy loopback listener entirely and falls through to the poisoned table — the SSH exit 141 is just `kubectl wait`'s wrapper hitting SIGPIPE once its timeout expired against this never-Ready pod. This is a **known, recurring issue**, documented in the ledger with the identical `no route to host`/`ImagePullBackOff` signature on `TestMgmtProxy` going back to the first nightly run on 2026-10-29, and recurring repeatedly since (including twice in last night's 2026-11-01 run). It does not share a root cause with the earlier `TestNativeKubeAppNetworking` failure already investigated in this run's `live-investigation.md` (that was an apiserver-readiness race, unrelated to registry-mirror routing).
+
+#### TestTieBreakerCluster
+
+##### Failure
+
+```
+failed to onboard device "edge-dev1": context deadline exceeded
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence shows `edge-dev1`'s Proxmox VM (126) was powered on cleanly alongside `edge-dev2`/`edge-dev3` (124/129, no VM-ID collision), and its console confirms the kernel booted and `containerd` started successfully by `23:12:08` — but boot then silently stalled: SDN's dnsmasq DHCP log shows `edge-dev2` and `edge-dev3` completing DHCPDISCOVER→DHCPACK at `23:12:20`/`23:12:31` and onboarding by `23:13:05`, while `edge-dev1`'s MAC (`26:9f:78:99:86:67`) never sent a single DHCP packet and never appears in `ip neigh` on the SDN at all. The SDN-side tap interface for `edge-dev1` does show `LOWER_UP`, confirming the vNIC was attached at the hypervisor level — so this is a guest-side early-boot hang (something between containerd startup and network bring-up never completed), not an SDN/broker networking problem, and `evetest status` still shows it stuck `EVE_DEVICE_STATE_UNDEFINED` with no interfaces at all ~10 minutes later. This does not share a root cause with the two other `TestNodeClusterSuite` failures already investigated in this run (`TestNativeKubeAppNetworking`'s apiserver-readiness race, `TestMgmtProxy`'s registry-routing bug) — both of those occur well after onboarding, whereas this device never got network at all. The exact "failed to onboard device ... context deadline exceeded" error string has occurred once before, on 2026-11-01 (run #4, `TestClusterPVCRedownload`), where one sibling VM silently never produced further boot output while others onboarded fine — that time attributed to the Proxmox host "farfalle" being under sustained TLS-handshake-timeout stress; tonight shows no such TLS-timeout signature from the broker, so while the general "one concurrently-booted sibling VM silently stalls" mechanism is recurring, it isn't confirmed to be driven by the same infrastructure cause, and no dedicated ledger entry exists yet for this specific pattern.
+
+#### TestClusterToSingleConversion
+
+##### Failure
+
+```
+
+Timed out after 1200.001s.
+Expected to satisfy: Device "edge-dev3" reports itself as the only ready node
+nodes:{name:"edge-dev1" conditions:{type:KUBE_NODE_CONDITION_TYPE_READY set:true last_transition_time:{seconds:1793662081}} role_server:true creation_timestamp:{seconds:1793662081} api_server_sersion:"v1.34.2+k3s1" internal_ip:"10.244.244.2" schedulable:true admission_status:NODE_ADMISSION_JOINED node_id:"fe488167-a3d5-4b2b-8dd6-21b1f82cafc9"} nodes:{name:"edge-dev2" conditions:{type:KUBE_NODE_CONDITION_TYPE_READY set:true last_transition_time:{seconds:1793662415}} role_server:true creation_timestamp:{seconds:1793662415} api_server_sersion:"v1.34.2+k3s1" internal_ip:"10.244.244.3" schedulable:true admission_status:NODE_ADMISSION_JOINED node_id:"a75c8dad-702b-4323-9120-e98ba48be8d3"} nodes:{name:"edge-dev3" conditions:{type:KUBE_NODE_CONDITION_TYPE_READY set:true last_transition_time:{seconds:1793662408}} role_server:true creation_timestamp:{seconds:1793662408} api_server_sersion:"v1.34.2+k3s1" internal_ip:"10.244.244.4" schedulable:true admission_status:NODE_ADMISSION_JOINED node_id:"4fffd2b7-96ae-4398-8183-3698795b264d"} storage:{health:SERVICE_STATUS_HEALTHY transition_time:{seconds:1793662441}} cluster_id:"38616b42-7430-4823-847e-11a73ae616f1"
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence and `gotest.json` show the cluster actually formed successfully (all three nodes ready by `23:34:05`), and the test then began its real work: "Withdrawing cluster config from edge-dev3 to convert it back to a single node." `edge-dev3` rebooted at `23:34:37` to apply that config and confirmed it at `23:35:36` — but seconds later, at `23:35:42`, both the harness's SDN tunnel proxy ("gRPC client stream receive error: ... EOF") and its separate Proxmox broker log stream died simultaneously with the same EOF/Unavailable error, and neither ever reconnected. All three devices flipped `ONLINE→SUSPECT` five minutes later (23:40:52, a heartbeat-timeout consequence of losing the SDN link) and have stayed that way since. Right now, live, `evetest sdn status`/`graph`/`net-model` and all `evetest eve ssh` calls to any of the three devices fail identically with `dial tcp 192.168.170.11:50121: i/o timeout` — the SDN VM's gRPC endpoint is still completely unreachable 20+ minutes later, confirming this isn't a transient blip but a dead/unrecovered SDN control-plane connection, which is why the test could never re-poll node state and timed out waiting for edge-dev3 to be reported as the sole ready node (the nodes shown in the failure message are simply the last-known, now-stale cluster snapshot).
+
+This does **not** share a root cause with the other two failures already investigated in this run: `TestNativeKubeAppNetworking` was an apiserver-readiness race and `TestTieBreakerCluster` was a guest-side boot/DHCP stall on one VM during onboarding (both resolved before this test even started its setup, at 23:21–23:28). This also isn't the recurring "SDN VM never gets a gRPC route" pattern already in the ledger (that one fails at initial SDN bring-up with `no route to host` before any device onboards); here the SDN tunnel was healthy for ~10 minutes and then died mid-test, immediately after a node reboot, with a different signature (`EOF`/stream-receive-error) and simultaneous broker log-stream loss. I found no matching entry for this signature in `live-ledger.md`, so this looks like a new, previously unrecorded failure mode — infrastructure-level loss of the broker/SDN gRPC connection, not an EVE/pillar code defect.
+
+#### TestClusterVMApp
+
+##### Failure
+
+```
+failed to tear-down all devices: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 10.208.13.244:50221: i/o timeout"
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+This failure is a direct continuation of the already-diagnosed `TestClusterToSingleConversion` failure earlier in this same run: the broker's gRPC connection at `10.208.13.244:50221` (the connection the harness uses for all device operations — console, teardown, info, SSH) died mid-test at `23:35:42` and never recovered. `gotest.json` shows console-gathering for all three devices already failing with the identical `dial tcp 10.208.13.244:50221: i/o timeout` at `00:00:28` during `TestClusterToSingleConversion`'s "Resumed after failure" cleanup, and now `TestClusterVMApp`'s own `Setup()` hit the exact same timeout at `00:02:08` while trying to tear down those same leftover devices (`teardown.go:64`). Live checks right now confirm the connection is still dead: `evetest sdn status` reports "SDN client is not initialized," `evetest cluster info`/`evetest eve info` both report "unknown device UUID" for devices that `evetest status` still lists, and `evetest eve ssh` to `edge-dev1` hangs indefinitely with no response.
+
+This is the same root cause as the `TestClusterToSingleConversion` failure already recorded in `live-investigation.md` for this run — not a new, independent bug. That entry found no matching precedent in `live-ledger.md`, so per the ledger this remains a new, previously-unrecorded infrastructure failure mode (broker/SDN gRPC connection dying mid-run and never reconnecting), not a known recurring issue — it is simply now manifesting as a cascading failure on the next test in the suite because the broken connection was never restored between tests.
+
+### TestSecuritySuite: failure analysis
+
+#### TestVaultKeyModeRecoveryOnExt4
+
+##### Failure
+
+```
+Device "edge-dev" failed to fetch the latest config (version 1): context deadline exceeded
+```
+
+##### Claude's conclusion
+
+The earlier background `evetest sdn status` call was killed after hitting its time limit (still no output) — consistent with what I already confirmed via a separate timed check: the SDN tunnel/broker path is still unresponsive. This doesn't change the analysis already given; no further action needed.
+
+#### TestVaultKeyModeRecoveryOnZFS
+
+##### Failure
+
+```
+failed to tear-down all devices: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial tcp 10.208.13.244:50221: i/o timeout"
+```
+
+##### Claude's conclusion
+
+The background SSH attempt to `edge-dev` (`evetest eve ssh -d edge-dev "uptime; ..."`) was ultimately killed after its background time limit without ever producing output — further confirming the device is completely unreachable over the SDN tunnel, consistent with the root cause already reported above. No further action needed; this doesn't change the analysis.
+
 ## [2026-11-02 -- 0.0.0-master-8afd590e (run #5)](https://github.com/lf-edge/eve/actions/runs/41354834539)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/5/)
