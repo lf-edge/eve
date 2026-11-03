@@ -109,9 +109,6 @@ jobs:
           - arch: riscv64
             hv: mini
             platform: "generic"
-          - arch: amd64
-            hv: kvm
-            platform: "rt"
           - arch: arm64
             hv: kvm
             platform: "nvidia-jp5"
