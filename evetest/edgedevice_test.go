@@ -4,6 +4,7 @@
 package evetest
 
 import (
+	"strings"
 	"testing"
 
 	eveinfo "github.com/lf-edge/eve-api/go/info"
@@ -92,5 +93,34 @@ func TestIsAppVolume(t *testing.T) {
 	}
 	if isAppVolume("a", nil) {
 		t.Error("isAppVolume with no refs must be false")
+	}
+}
+
+func TestReportedClusterMatches(t *testing.T) {
+	const (
+		cluster      = "6b2c7d3e-0f4a-4b5c-9d8e-1a2b3c4d5e6f"
+		otherCluster = "0e9a8b7c-6d5e-4f3a-8b2c-1d0e9f8a7b6c"
+		nilCluster   = "00000000-0000-0000-0000-000000000000"
+	)
+	tests := []struct {
+		name                 string
+		reported, configured string
+		want                 bool
+	}{
+		{"same cluster", cluster, cluster, true},
+		{"same cluster, other case", strings.ToUpper(cluster), cluster, true},
+		{"report from a previous test's cluster", otherCluster, cluster, false},
+		{"report from before the cluster config", nilCluster, cluster, false},
+		{"no cluster config, no cluster reported", nilCluster, "", true},
+		{"no cluster config, cluster reported", cluster, "", false},
+		{"EVE that reports no cluster ID", "", cluster, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := reportedClusterMatches(tt.reported, tt.configured); got != tt.want {
+				t.Fatalf("reportedClusterMatches(%q, %q) = %v, want %v",
+					tt.reported, tt.configured, got, tt.want)
+			}
+		})
 	}
 }
