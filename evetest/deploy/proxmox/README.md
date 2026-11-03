@@ -284,7 +284,9 @@ thing the broker cannot do from inside a VM is the host-level xconnect L2-forwar
 (`evetest-hook.pl`) installed on the host and attached to every VM the broker creates; it
 runs on `post-start` and enables forwarding on the `evx*` xconnect bridges. On `post-stop`
 it also cleans up any stale DHCP leases the VM held on the `evu` network, so a later VM
-reusing the same address doesn't collide with an old, not-yet-expired lease.
+reusing the same address doesn't collide with an old, not-yet-expired lease. On
+`pre-start` it removes tap devices that a previous, killed QEMU process of the same VM ID
+left behind, which would otherwise make the VM fail to start.
 
 ### Files
 
