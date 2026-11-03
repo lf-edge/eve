@@ -244,13 +244,7 @@ jobs:
             echo "::error::refs/pull/$PR/head is no longer $SHA"
             exit 1
           fi
-          mb=$(git -C "$src" merge-base "origin/$BASE" HEAD)
-          git -C "$src" diff "$mb" HEAD -- . ":(glob,exclude)**/vendor/**" > "$out/pr.diff"
-          # Vendored modules added, removed or bumped, from vendor/modules.txt.
-          vendored=$(git -C "$src" diff --unified=0 "$mb" HEAD -- ':(glob)**/vendor/modules.txt' \
-              | sed -nE -e 's#^\+\+\+ b/(.*)/modules\.txt$#\n\1:#p' -e 's#^([-+])\# (.*)$#  \1 \2#p')
-          echo "PR diff against merge-base $mb: $(wc -l < "$out/pr.diff") lines" \
-              "($(printf '%s' "$vendored" | grep -c '^  ' || true) vendored module changes omitted)"
+          .github/actions/evetest-run-suite/pr-diff.sh "$src" "origin/$BASE" HEAD "$out"
           {
             gh pr view "$PR" --json title,body,commits \
               -q '"# PR title\n" + .title
@@ -259,9 +253,6 @@ jobs:
                   + ([.commits[] | "- " + .messageHeadline
                       + (if .messageBody != "" then "\n" + .messageBody else "" end)]
                      | join("\n\n"))'
-            if [ -n "$vendored" ]; then
-              printf '\n\n# Vendored modules changed (code omitted from pr.diff)\n%s\n' "$vendored"
-            fi
           } > "$out/pr-context.txt"
 
       # Claude below runs against this fork-controlled tree; strip its
@@ -299,8 +290,9 @@ jobs:
             Read .evetest-skip/pr.diff -- the full diff of this pull request, minus
             vendored code (any **/vendor/** path).
             Read .evetest-skip/pr-context.txt -- the PR title, description and commit
-            messages, for context on the change's intent and scope, followed by the
-            vendored Go modules the PR added, removed or bumped, if any.
+            messages, for context on the change's intent and scope.
+            Read .evetest-skip/pr-vendored.txt -- the vendored Go modules the PR added,
+            removed or bumped, if any (their code is omitted from pr.diff).
             Read .evetest-skip/all-tests.txt -- the full tree of evetest suites, their
             subtests, and (indented further) their variants, one name per line. Also
             feel free to grep/read the suite-level doc comments in evetest/tests/**/*_test.go
