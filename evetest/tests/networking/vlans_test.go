@@ -312,12 +312,12 @@ func TestAccessVLANs(test *testing.T) {
 	log.Infof("App2 received IP: %s", app2IP)
 
 	// Wait for the NI to report both app VIFs.
-	t.Eventually(niUpdates, timeout).Should(Receive(matchers.SatisfyPredicate(
+	niInfo = expectNIInfo(t, niUpdates, niInfo, timeout, matchers.SatisfyPredicate(
 		"NI reports both app VIFs",
 		func(info *eveinfo.ZInfoNetworkInstance) bool {
 			niInfo = info
 			return len(info.Vifs) == 2
-		}).StopIf(niHasError)))
+		}).StopIf(niHasError))
 	var vif1Name, vif2Name string
 	for _, vif := range niInfo.Vifs {
 		switch vif.MacAddress {
