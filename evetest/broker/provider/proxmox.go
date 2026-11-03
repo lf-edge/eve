@@ -225,6 +225,9 @@ const (
 	proxmoxTaskTimeout      = 5 * time.Minute
 	proxmoxStatusPollPeriod = 2 * time.Second
 	proxmoxConnectTimeout   = 30 * time.Second
+	// proxmoxOrphanSweepTimeout bounds removeOrphans, which stops and deletes
+	// each leftover VM in turn.
+	proxmoxOrphanSweepTimeout = 15 * time.Minute
 )
 
 // waitTask waits for task to complete. go-proxmox returns a nil task (with a
@@ -237,9 +240,10 @@ func waitTask(ctx context.Context, task *proxmox.Task) error {
 	return task.Wait(ctx, proxmoxTaskPollInterval, proxmoxTaskTimeout)
 }
 
-// NewProxmoxProvider creates a new Proxmox provider instance and verifies
-// connectivity to the configured Proxmox node.
-func NewProxmoxProvider(conf ProxmoxProviderConf) (*ProxmoxProvider, error) {
+// NewProxmoxProvider creates a new Proxmox provider instance, verifies
+// connectivity to the configured Proxmox node and removes whatever a previous
+// broker run left behind on it (see removeOrphans). ctx carries the logger.
+func NewProxmoxProvider(ctx context.Context, conf ProxmoxProviderConf) (*ProxmoxProvider, error) {
 	if conf.APIURL == "" {
 		return nil, fmt.Errorf("proxmox API URL is not configured (%s)",
 			constants.EnvPrefix+constants.BrokerProxmoxAPIURLEnv)
@@ -271,9 +275,9 @@ func NewProxmoxProvider(conf ProxmoxProviderConf) (*ProxmoxProvider, error) {
 
 	// Query the node architecture. This also verifies API connectivity and that
 	// the configured node exists.
-	ctx, cancel := context.WithTimeout(context.Background(), proxmoxConnectTimeout)
+	connectCtx, cancel := context.WithTimeout(ctx, proxmoxConnectTimeout)
 	defer cancel()
-	archs, err := nodeArchs(ctx, client, conf.Node)
+	archs, err := nodeArchs(connectCtx, client, conf.Node)
 	if err != nil {
 		return nil, err
 	}
@@ -282,9 +286,9 @@ func NewProxmoxProvider(conf ProxmoxProviderConf) (*ProxmoxProvider, error) {
 	// single-node installation has exactly one node, so no configuration is
 	// needed; a multi-node cluster requires the node to be specified explicitly.
 	if conf.Node == "" {
-		ctx, cancel = context.WithTimeout(context.Background(), proxmoxConnectTimeout)
+		connectCtx, cancel := context.WithTimeout(ctx, proxmoxConnectTimeout)
 		defer cancel()
-		node, err := autoDetectNode(ctx, client)
+		node, err := autoDetectNode(connectCtx, client)
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to Proxmox API at %s: %w",
 				conf.APIURL, err)
@@ -292,7 +296,7 @@ func NewProxmoxProvider(conf ProxmoxProviderConf) (*ProxmoxProvider, error) {
 		conf.Node = node
 	}
 
-	return &ProxmoxProvider{
+	p := &ProxmoxProvider{
 		conf:           conf,
 		client:         client,
 		supportedArchs: archs,
@@ -300,7 +304,14 @@ func NewProxmoxProvider(conf ProxmoxProviderConf) (*ProxmoxProvider, error) {
 		devices:        make(map[string]*proxmoxDevice),
 		pending:        make(map[string]*proxmoxDevice),
 		networks:       make(map[string]*proxmoxNetwork),
-	}, nil
+	}
+	sweepCtx, cancel := context.WithTimeout(ctx, proxmoxOrphanSweepTimeout)
+	defer cancel()
+	if err := p.removeOrphans(sweepCtx); err != nil {
+		logger.FromContext(ctx).Warnf(
+			"Failed to remove some resources orphaned by a previous broker run: %v", err)
+	}
+	return p, nil
 }
 
 // autoDetectNode returns the single node of a single-node Proxmox installation.
@@ -544,7 +555,7 @@ func (p *ProxmoxProvider) SetupDevice(
 
 // removeFailedVM removes the VM of a device whose setup failed, retrying
 // transient failures. It is best-effort: a VM it fails to remove is logged
-// and leaked.
+// and left for removeOrphans of the next broker run.
 func (p *ProxmoxProvider) removeFailedVM(ctx context.Context, log *logrus.Entry,
 	node *proxmox.Node, vmID int) {
 	removed, err := retryProxmoxCall(ctx, log, fmt.Sprintf("remove VM %d of failed setup", vmID),
@@ -997,6 +1008,154 @@ func (p *ProxmoxProvider) TeardownAll(ctx context.Context) error {
 		p.devMutex.Unlock()
 	}
 	p.teardownUnusedNetworks(ctx, log)
+	return errors.Join(errs...)
+}
+
+// removeOrphans removes the Proxmox resources left behind by a previous
+// broker run that did not tear down its devices, typically because it
+// crashed: VMs named with namePrefix, xconnect VNets of the evetest SDN zone,
+// and volumes uploaded to the import storage under namePrefix. Client
+// sessions do not survive a broker restart, so all of these are orphans. It
+// also removes the nameless placeholder VMs, holding "lock: create", that PVE
+// leaves behind when it fails to start a create worker (see SetupDevice).
+//
+// This relies on the broker owning every such resource on its Proxmox host,
+// i.e. on running a single broker per host, as the broker installer sets up.
+// Only NewProxmoxProvider calls it, before anyone can use the provider: it
+// neither takes the provider's locks nor spares anything a concurrent
+// SetupDevice creates. It is best-effort and returns all failures joined.
+func (p *ProxmoxProvider) removeOrphans(ctx context.Context) error {
+	log := logger.FromContext(ctx)
+	node, err := p.client.Node(ctx, p.conf.Node)
+	if err != nil {
+		return fmt.Errorf("failed to get Proxmox node %q: %w", p.conf.Node, err)
+	}
+	// VMs go first: the VNets and the firmware volumes may be in use by them.
+	errs := []error{p.removeOrphanedVMs(ctx, log, node)}
+	errs = append(errs, p.removeOrphanedVNets(ctx, log))
+	errs = append(errs, p.removeOrphanedImportVolumes(ctx, log, node))
+	return errors.Join(errs...)
+}
+
+func (p *ProxmoxProvider) removeOrphanedVMs(
+	ctx context.Context, log *logrus.Entry, node *proxmox.Node) error {
+	vms, err := node.VirtualMachines(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list VMs: %w", err)
+	}
+	var errs []error
+	for _, vm := range vms {
+		vmID := int(vm.VMID)
+		switch {
+		case strings.HasPrefix(vm.Name, namePrefix):
+		case vm.Lock == "create":
+			isPlaceholder, err := p.isAbandonedPlaceholderVM(ctx, node, vmID)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			if !isPlaceholder {
+				continue
+			}
+		default:
+			continue
+		}
+		_, err := retryProxmoxCall(ctx, log, fmt.Sprintf("remove orphaned VM %d", vmID),
+			func() (bool, error) { return p.removeVM(ctx, log, node, vmID) })
+		if err != nil {
+			errs = append(errs, fmt.Errorf("failed to remove orphaned VM %d (%q): %w",
+				vmID, vm.Name, err))
+			continue
+		}
+		log.Infof("Removed orphaned Proxmox VM %d (%q)", vmID, vm.Name)
+	}
+	return errors.Join(errs...)
+}
+
+// isAbandonedPlaceholderVM reports whether the VM holding "lock: create" is
+// a placeholder whose create worker never ran: its config holds nothing but
+// the lock (so no name either), and no task is running for it. The task
+// check spares a VM that is being created right now, e.g. from the PVE UI.
+func (p *ProxmoxProvider) isAbandonedPlaceholderVM(
+	ctx context.Context, node *proxmox.Node, vmID int) (bool, error) {
+	vm, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		if isVMNotFoundErr(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to look up VM %d: %w", vmID, err)
+	}
+	if vm.VirtualMachineConfig == nil || vm.VirtualMachineConfig.Name != "" {
+		return false, nil
+	}
+	tasks, err := node.Tasks(ctx, &proxmox.NodeTasksOptions{Source: "active", VMID: vmID})
+	if err != nil {
+		return false, fmt.Errorf("failed to list active tasks of VM %d: %w", vmID, err)
+	}
+	return len(tasks) == 0, nil
+}
+
+func (p *ProxmoxProvider) removeOrphanedVNets(ctx context.Context, log *logrus.Entry) error {
+	cluster, err := p.client.Cluster(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get Proxmox cluster: %w", err)
+	}
+	vnets, err := cluster.SDNVNets(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list SDN VNets: %w", err)
+	}
+	var errs []error
+	var removed []string
+	for _, vnet := range vnets {
+		// The uplink VNet is installer-owned and must stay.
+		if vnet.Zone != sdnZone || !strings.HasPrefix(vnet.Name, xconnectBridgePrefix) {
+			continue
+		}
+		if err := cluster.DeleteSDNVNet(ctx, vnet.Name); err != nil {
+			errs = append(errs, fmt.Errorf("failed to delete orphaned SDN VNet %q: %w",
+				vnet.Name, err))
+			continue
+		}
+		removed = append(removed, vnet.Name)
+	}
+	if len(removed) > 0 {
+		if err := p.applySDN(ctx, log); err != nil {
+			errs = append(errs, err)
+		} else {
+			log.Infof("Removed %d orphaned SDN VNets: %s", len(removed),
+				strings.Join(removed, ", "))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (p *ProxmoxProvider) removeOrphanedImportVolumes(
+	ctx context.Context, log *logrus.Entry, node *proxmox.Node) error {
+	storage, err := p.getStorageWithRetry(ctx, log, node, p.conf.ImportStorage)
+	if err != nil {
+		return fmt.Errorf("failed to get import storage %q: %w", p.conf.ImportStorage, err)
+	}
+	content, err := storage.GetContent(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list import storage %q: %w", p.conf.ImportStorage, err)
+	}
+	prefix := fmt.Sprintf("%s:import/%s", p.conf.ImportStorage, namePrefix)
+	var errs []error
+	removed := 0
+	for _, item := range content {
+		if !strings.HasPrefix(item.Volid, prefix) {
+			continue
+		}
+		if err := p.deleteImportVolume(ctx, log, node, item.Volid); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		removed++
+	}
+	if removed > 0 {
+		log.Infof("Removed %d orphaned volumes from import storage %q",
+			removed, p.conf.ImportStorage)
+	}
 	return errors.Join(errs...)
 }
 
