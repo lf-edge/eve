@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -469,16 +468,7 @@ func (p *ProxmoxProvider) SetupDevice(
 			p.deleteImportVolumes(ctx, log, node, dev.firmwareVolIDs)
 		}
 		if vmCreated {
-			if vm, vmErr := node.VirtualMachine(ctx, dev.vmID); vmErr != nil {
-				log.Warnf("failed to lookup VM %d for cleanup: %v", dev.vmID, vmErr)
-			} else if task, delErr := vm.Delete(ctx, &proxmox.VirtualMachineDeleteOptions{
-				Purge:                    true,
-				DestroyUnreferencedDisks: true,
-			}); delErr != nil {
-				log.Warnf("failed to delete VM %d during cleanup: %v", dev.vmID, delErr)
-			} else if waitErr := waitTask(ctx, task); waitErr != nil {
-				log.Warnf("failed waiting for cleanup deletion of VM %d: %v", dev.vmID, waitErr)
-			}
+			p.removeFailedVM(ctx, log, node, dev.vmID)
 		}
 	}()
 
@@ -517,15 +507,16 @@ func (p *ProxmoxProvider) SetupDevice(
 	}
 	task, err := node.NewVirtualMachine(ctx, vmID, options...)
 	if err != nil {
-		// The create call can fail client-side (e.g. a truncated Proxmox API
-		// response) even though the VM was actually created server-side --
-		// observed in practice as an orphaned VM after a bare "unexpected
-		// end of JSON input" error here. Verify before concluding nothing
-		// was created, so the failure cleanup below still deletes it instead
-		// of leaving a real VM that nothing will ever track or remove.
-		if _, lookupErr := node.VirtualMachine(ctx, vmID); lookupErr == nil {
-			vmCreated = true
-		}
+		// The create call can fail even though PVE created the VM, or at
+		// least its config. Both have been observed: a fully created VM
+		// after a truncated API response ("unexpected end of JSON input"),
+		// and a placeholder config holding "lock: create" after PVE failed
+		// to fork the create worker on a host out of memory ("got no
+		// worker upid - start worker failed"). Remove whatever exists
+		// before releasing vmCreateMutex: once released, the VMID can be
+		// allocated again, and removing it later could hit another
+		// device's VM.
+		p.removeFailedVM(ctx, log, node, vmID)
 		p.vmCreateMutex.Unlock()
 		return fmt.Errorf("failed to create VM %d for device %q: %w", vmID, name, err)
 	}
@@ -549,6 +540,21 @@ func (p *ProxmoxProvider) SetupDevice(
 	success = true
 	log.Infof("Device %q prepared as Proxmox VM %d in powered-off state", name, vmID)
 	return nil
+}
+
+// removeFailedVM removes the VM of a device whose setup failed, retrying
+// transient failures. It is best-effort: a VM it fails to remove is logged
+// and leaked.
+func (p *ProxmoxProvider) removeFailedVM(ctx context.Context, log *logrus.Entry,
+	node *proxmox.Node, vmID int) {
+	removed, err := retryProxmoxCall(ctx, log, fmt.Sprintf("remove VM %d of failed setup", vmID),
+		func() (bool, error) { return p.removeVM(ctx, log, node, vmID) })
+	switch {
+	case err != nil:
+		log.Warnf("Failed to remove VM %d of failed setup, leaking it: %v", vmID, err)
+	case removed:
+		log.Infof("Removed VM %d of failed setup", vmID)
+	}
 }
 
 // unreserve removes name from p.pending. Safe to call even if name was never
@@ -1123,49 +1129,73 @@ func (p *ProxmoxProvider) destroyDevice(
 	if err != nil {
 		return fmt.Errorf("failed to get Proxmox node %q: %w", p.conf.Node, err)
 	}
-	vm, err := node.VirtualMachine(ctx, dev.vmID)
+	removed, err := p.removeVM(ctx, log, node, dev.vmID)
 	if err != nil {
-		// go-proxmox wraps a transport-level failure (EOF, timeout, ...) as
-		// *url.Error, which doesn't mean the VM is gone -- only a genuine API
-		// error means that. Otherwise this leaks the VM on a transient error.
-		var urlErr *url.Error
-		if errors.As(err, &urlErr) {
-			return fmt.Errorf("failed to look up VM %d for device %q during teardown: %w",
-				dev.vmID, dev.name, err)
-		}
-		// VM already gone; still remove any uploaded firmware and scratch
-		// image volumes.
-		log.Warnf("VM %d for device %q not found during teardown: %v",
-			dev.vmID, dev.name, err)
-		p.deleteImportVolumes(ctx, log, node, p.volumesToRemove(dev))
-		return nil
+		return fmt.Errorf("failed to remove VM %d for device %q: %w", dev.vmID, dev.name, err)
 	}
-	if mapProxmoxStatus(vm.Status, vm.QMPStatus, log) == DeviceStatusRunning {
+	if removed {
+		log.Infof("Removed Proxmox VM %d for device %q", dev.vmID, dev.name)
+	} else {
+		log.Warnf("VM %d for device %q not found during teardown", dev.vmID, dev.name)
+	}
+	// Remove the uploaded custom-firmware and scratch image volumes now that
+	// the VM is gone.
+	p.deleteImportVolumes(ctx, log, node, p.volumesToRemove(dev))
+	return nil
+}
+
+// isVMNotFoundErr reports whether err, returned by a VM lookup, means that the
+// VM does not exist. PVE reports that as an HTTP 500, like any other
+// server-side failure ("500 Configuration file
+// 'nodes/<node>/qemu-server/<vmid>.conf' does not exist"), so only the message
+// tells it apart from e.g. a failure to fork an API worker on a host that is
+// out of memory. Mistaking such a failure for a missing VM leaks the VM.
+func isVMNotFoundErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "qemu-server/") && strings.Contains(msg, "does not exist")
+}
+
+// removeVM stops VM vmID if it is running, then deletes it together with its
+// disks. It returns false, and no error, if the VM does not exist. Any lock
+// left on the VM is overridden. In particular, a create that PVE accepted but
+// failed to start a worker for leaves behind a placeholder config holding
+// "lock: create", which a plain delete refuses to touch. The caller handles
+// retries.
+func (p *ProxmoxProvider) removeVM(ctx context.Context, log *logrus.Entry,
+	node *proxmox.Node, vmID int) (bool, error) {
+	vm, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		if isVMNotFoundErr(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to look up VM %d: %w", vmID, err)
+	}
+	// Stop on PVE status, not mapProxmoxStatus: a paused VM is "running" too,
+	// and PVE refuses to delete it.
+	if vm.Status == "running" {
 		task, err := vm.Stop(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to stop VM %d during teardown: %w", dev.vmID, err)
+			return false, fmt.Errorf("failed to stop VM %d: %w", vmID, err)
 		}
 		if err := waitTask(ctx, task); err != nil {
-			return fmt.Errorf("failed waiting for VM %d stop during teardown: %w",
-				dev.vmID, err)
+			return false, fmt.Errorf("failed waiting for VM %d to stop: %w", vmID, err)
 		}
 	}
 	task, err := vm.Delete(ctx, &proxmox.VirtualMachineDeleteOptions{
 		Purge:                    true,
 		DestroyUnreferencedDisks: true,
+		SkipLock:                 vm.Lock != "",
 	})
 	if err != nil {
-		return fmt.Errorf("failed to delete VM %d for device %q: %w",
-			dev.vmID, dev.name, err)
+		return false, fmt.Errorf("failed to delete VM %d: %w", vmID, err)
 	}
 	if err := waitTask(ctx, task); err != nil {
-		return fmt.Errorf("failed waiting for VM %d deletion: %w", dev.vmID, err)
+		return false, fmt.Errorf("failed waiting for VM %d deletion: %w", vmID, err)
 	}
-	// Remove the uploaded custom-firmware and scratch image volumes now that
-	// the VM is gone.
-	p.deleteImportVolumes(ctx, log, node, p.volumesToRemove(dev))
-	log.Infof("Removed Proxmox VM %d for device %q", dev.vmID, dev.name)
-	return nil
+	return true, nil
 }
 
 // nicOptions builds the per-interface VM options and the QEMU args fragment
