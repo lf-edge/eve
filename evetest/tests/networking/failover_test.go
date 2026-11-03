@@ -448,9 +448,9 @@ func TestPortFailover(test *testing.T) {
 //  3. Recovery: UpdateNetworkModel clones netmodels.TwoMgmtPorts and rewrites
 //     ethernet0's SDN subnet/gateway to 10.99.99.0/24 / 10.99.99.1, matching
 //     the broken config -- so it is not actually broken anymore. Once EVE's
-//     periodic testbetterinterval retest picks this up, SystemAdapterInfo
-//     eventually reports CurrentIndex=0 again, with LastSucceeded advancing
-//     past the recovery instant and LastError cleared.
+//     periodic retest (testbetterinterval or testinterval) picks this up,
+//     SystemAdapterInfo eventually reports CurrentIndex=0 again, with
+//     LastSucceeded advancing past the recovery instant and LastError cleared.
 //
 // Future extension
 // ----------------
@@ -499,6 +499,11 @@ func TestNetworkConfigFallback(test *testing.T) {
 	// another test to its allowed minimum, so Phase 3's recovery wait
 	// (below) does not need to budget for the default 5 minutes.
 	cfgProps.SetGlobalValueInt(pillartypes.NetworkTestFailInterval, pillartypes.MinuteInSec)
+	// Lower the regular retest interval too: a DPC verification that finds
+	// nothing testable yet (every entry still within its failure cooldown)
+	// re-arms this timer instead of the testbetterinterval one, and its
+	// 5-minute default then delays Phase 3's retest past the wait's budget.
+	cfgProps.SetGlobalValueInt(pillartypes.NetworkTestInterval, pillartypes.MinuteInSec)
 
 	devConfig := evetest.NewEdgeDeviceConfig(devName)
 	devConfig.SetConfigProperties(cfgProps)
@@ -621,13 +626,14 @@ func TestNetworkConfigFallback(test *testing.T) {
 	// (NetworkTestFailInterval) has passed since its own LastFailed instant
 	// -- lowered to its 1 min floor above, same as testduration/
 	// testbetterinterval. Budget from the broken DPC's LastFailed, not from
-	// when we fix the network here, plus one testbetterinterval tick and a
-	// safety margin -- otherwise the retest can still be within its cooldown
-	// by the time a timeout measured from recoveryStart elapses.
+	// when we fix the network here, plus one retest tick and a safety margin
+	// -- otherwise the retest can still be within its cooldown by the time a
+	// timeout measured from recoveryStart elapses. The retest comes from the
+	// testbetterinterval or the testinterval timer, both lowered to 1 min.
 	const dpcMinTimeSinceFailure = time.Minute
-	const testBetterInterval = 60 * time.Second
+	const retestTick = time.Minute
 	phase3Timeout := time.Until(brokenDPCLastFailed.Add(
-		dpcMinTimeSinceFailure + testBetterInterval + 2*time.Minute))
+		dpcMinTimeSinceFailure + retestTick + 2*time.Minute))
 	if phase3Timeout < 3*time.Minute {
 		phase3Timeout = 3 * time.Minute
 	}
