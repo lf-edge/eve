@@ -63,9 +63,9 @@ const (
 const (
 	logfileDir    = "/persist/kubelog/"
 	logfile       = logfileDir + "eve-bridge.log"
-	logMaxSize    = 100 // 100 Mbytes in size
-	logMaxBackups = 3   // old log files to retain
-	logMaxAge     = 30  // days to retain old log files
+	logMaxSize    = 10 // Mbytes before rotation
+	logMaxBackups = 3  // old log files to retain
+	logMaxAge     = 28 // days to retain old log files
 )
 
 var logFile *lumberjack.Logger
