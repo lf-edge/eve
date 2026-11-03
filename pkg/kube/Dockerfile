@@ -103,7 +103,16 @@ COPY cfg-manifests/04-multinode-watch-cache.yaml /etc/kube/
 # Manifests the daemon applies at first boot. Stays under /etc; the
 # Go components/ package reads them by path.
 COPY multus-daemonset.yaml /etc
-COPY kubevirt-operator.yaml /etc
+ADD https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml /etc
+# Add the license header and, only in the container that runs virt-operator,
+# KV_IO_EXTRA_ENV_VIRT_IN_CONTAINER at the head of env:. The range anchors on
+# the `- virt-operator` command item because the container's name: key sorts
+# after env:. The hash pins the result for this KUBEVIRT_VERSION; on a bump,
+# re-check the anchor and regenerate it with
+# curl -sL <ADD URL above> | sed <same -e flags> | sha256sum
+RUN sed -i -e '1i # Copyright (c) 2026 Zededa, Inc.' -e '1i # SPDX-License-Identifier: Apache-2.0' \
+    -e '/^        - virt-operator$/,/^        env:$/ s/^        env:$/&\n        - name: KV_IO_EXTRA_ENV_VIRT_IN_CONTAINER\n          value: "true"/' /etc/kubevirt-operator.yaml
+RUN echo 'c8f600c2cd6679644c6c217f03265835e014ce3ade1b79e293a94415acfbf925 /etc/kubevirt-operator.yaml' | sha256sum -c
 COPY kubevirt-features.yaml /etc
 COPY external-boot-image.tar /etc/
 
