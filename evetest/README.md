@@ -533,6 +533,23 @@ Run a suite like any other test:
 make evetest NAME=TestBootstrapSuite
 ```
 
+### Tagging Tests and Suites
+
+A test or suite can be tagged through an option of its `Init` call:
+
+```go
+evetest.Init(test, evetest.WithTags(evetest.TagHeavyTest))
+```
+
+`list-tests` (`make list-tests`) shows the tags next to the name. `make list-test-suites`
+prints the same `<tags>` after each suite name, for CI to read. CI schedules whole suites, so it only reads the tags of
+suites; tags of individual tests are informational. `WithTags` does nothing at run time:
+the tags are read from the source, so pass constants from the `evetest` package directly.
+
+`TagHeavyTest` marks a test or suite that needs a powerful host. The nightly and PR workflows
+run suites tagged so only on runners labelled `evetest-runner`; all other suites may also
+use runners labelled only `evetest-runner-light`.
+
 ### Rerunning Only Failed Subtests
 
 `EVETEST_RESTART_ONLY_FAILED=true` reruns a suite while skipping every subtest that
