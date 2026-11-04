@@ -46,6 +46,9 @@ type EdgeDeviceConfig struct {
 	*eveconfig.EdgeDevConfig
 	th  *TestHarness
 	log *logrus.Entry
+	// clusterToken is the plaintext join token encrypted into Cluster, kept so
+	// that a later test reusing the cluster can keep the token too.
+	clusterToken string
 }
 
 func (th *TestHarness) newUUID(label string) uuid.UUID {
@@ -1640,6 +1643,7 @@ func (dc *EdgeDeviceConfig) Clone() *EdgeDeviceConfig {
 		EdgeDevConfig: proto.CloneOf(dc.EdgeDevConfig),
 		th:            dc.th,
 		log:           dc.log,
+		clusterToken:  dc.clusterToken,
 	}
 }
 
