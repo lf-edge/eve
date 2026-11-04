@@ -7,6 +7,7 @@ self-hosted-runner:
     - zededa-ubuntu-2204
     - zededa-ubuntu-2204-arm64
     - evetest-runner
+    - evetest-runner-light
 # Shellcheck codes that flag boilerplate quoting and globbing across many
 # run: blocks; reviewdog annotates each finding, and enough of them exceed
 # GitHub's per-check annotation cap and fail the job on transport.

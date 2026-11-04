@@ -563,6 +563,7 @@ type InitOption func(*initOptions)
 
 type initOptions struct {
 	controllerFaults bool
+	tags             []Tag
 }
 
 // Init initializes the test harness and must be called exactly once per test.

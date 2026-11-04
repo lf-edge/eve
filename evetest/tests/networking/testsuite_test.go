@@ -346,7 +346,7 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 //     hanging when a Switch NI with a busy packet capture and continuously
 //     expiring ARP-learned app IPs is deleted together with its apps.
 func TestApplicationConnectivitySuite(test *testing.T) {
-	evetest.Init(test)
+	evetest.Init(test, evetest.WithTags(evetest.TagHeavyTest))
 	defer evetest.Close()
 
 	// Define parameters for the entire test suite.
