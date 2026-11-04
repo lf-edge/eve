@@ -424,7 +424,6 @@ func (s *Publisher) sendUpdate(sock net.Conn, key string,
 func (s *Publisher) updateMessage(key string, val []byte) []byte {
 	n := s.updateMessageLen(key, val)
 	s.stats.AllocMessage.Add(n)
-	s.stats.AllocMessage.AddTemp(len(key))
 	buf := make([]byte, 0, n)
 	buf = append(buf, "update "...)
 	buf = append(buf, s.topic...)
@@ -444,9 +443,8 @@ func (s *Publisher) sendDelete(sock net.Conn, key string) error {
 	// base64-encode to avoid having spaces in the key
 	sendKey := base64.StdEncoding.EncodeToString([]byte(key))
 	buf := fmt.Sprintf("delete %s %s", s.topic, sendKey)
-	s.stats.AllocMessage.AddTemp(len(key))
-	s.stats.AllocMessage.Add(len(sendKey)) // EncodeToString: buffer
-	s.stats.AllocMessage.Add(len(sendKey)) // and string
+	s.stats.AllocMessage.AddTemp(len(sendKey)) // EncodeToString: buffer
+	s.stats.AllocMessage.Add(len(sendKey))     // and string
 	s.stats.AllocMessage.Add(len(buf))
 	s.stats.AllocMessage.Add(len(buf))
 	return s.send(sock, []byte(buf), key)

@@ -318,7 +318,7 @@ func (s *Subscriber) read() (string, string, []byte) {
 	case "hello", "complete":
 		s.log.Tracef("connectAndRead(%s) Got message %s type %s\n", s.name, msg, t)
 		if msg == "hello" && count >= 3 {
-			s.stats.AllocDecode.AddTemp(len(reply[2]))
+			addString(&s.stats.AllocDecode, len(reply[2]))
 			s.checkPublisherPersistence(string(reply[2]))
 		}
 		return msg, "", nil

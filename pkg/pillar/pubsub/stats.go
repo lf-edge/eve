@@ -24,7 +24,6 @@ type PubStats struct {
 
 	AllocMarshal Alloc // JSON of published items
 	AllocMessage Alloc // wire messages built for subscribers
-	AllocLarge   Alloc // fields tagged pubsub-large moved out to files
 }
 
 // SubStats counts what the subscriptions to a publication received, over
@@ -43,7 +42,6 @@ type SubStats struct {
 
 	AllocReadBuf Alloc // read buffers: pool misses, one-off and decompressed buffers
 	AllocDecode  Alloc // copies and decoding of received messages
-	AllocLarge   Alloc // fields tagged pubsub-large read back from files
 }
 
 var (
@@ -51,15 +49,22 @@ var (
 	subStats sync.Map // publication name -> *SubStats
 )
 
-// PublicationStats returns the counters of the named publication.
+// PublicationStats returns the counters of the named publication. It
+// allocates only the first time a name is seen.
 func PublicationStats(name string) *PubStats {
+	if s, ok := pubStats.Load(name); ok {
+		return s.(*PubStats)
+	}
 	s, _ := pubStats.LoadOrStore(name, &PubStats{})
 	return s.(*PubStats)
 }
 
 // SubscriptionStats returns the counters of the subscriptions to the named
-// publication.
+// publication. It allocates only the first time a name is seen.
 func SubscriptionStats(name string) *SubStats {
+	if s, ok := subStats.Load(name); ok {
+		return s.(*SubStats)
+	}
 	s, _ := subStats.LoadOrStore(name, &SubStats{})
 	return s.(*SubStats)
 }
@@ -101,7 +106,6 @@ func (s *PubStats) snapshot() map[string]int64 {
 	}
 	s.AllocMarshal.snapshot("marshal", m)
 	s.AllocMessage.snapshot("message", m)
-	s.AllocLarge.snapshot("large", m)
 	return m
 }
 
@@ -119,12 +123,13 @@ func (s *SubStats) snapshot() map[string]int64 {
 	}
 	s.AllocReadBuf.snapshot("readbuf", m)
 	s.AllocDecode.snapshot("decode", m)
-	s.AllocLarge.snapshot("large", m)
 	return m
 }
 
 // StatsJSON returns all counters as one line of JSON:
-// {"publications": {name: {counter: n}}, "subscriptions": {...}}.
+// {"publications": {name: {counter: n}}, "subscriptions": {...},
+// "process": {"DeepCopy": {...}}}. DeepCopy does not know the topic of what
+// it copies, so its counters are for the whole process.
 func StatsJSON() []byte {
 	collect := func(m *sync.Map) map[string]map[string]int64 {
 		out := make(map[string]map[string]int64)
@@ -139,13 +144,12 @@ func StatsJSON() []byte {
 		})
 		return out
 	}
-	pubs := collect(&pubStats)
 	deepCopy := make(map[string]int64)
 	deepCopyAlloc.snapshot("deepcopy", deepCopy)
-	pubs["(DeepCopy)"] = deepCopy
 	b, _ := json.Marshal(map[string]map[string]map[string]int64{
-		"publications":  pubs,
+		"publications":  collect(&pubStats),
 		"subscriptions": collect(&subStats),
+		"process":       {"DeepCopy": deepCopy},
 	})
 	return b
 }
