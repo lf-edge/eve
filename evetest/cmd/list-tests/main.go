@@ -56,6 +56,7 @@ type testCaseInfo struct {
 // suiteInfo describes a test suite function.
 type suiteInfo struct {
 	name   string
+	tags   []string
 	params []paramInfo
 	cases  []testCaseInfo
 }
@@ -63,6 +64,8 @@ type suiteInfo struct {
 // testInfo describes an individual (non-suite) test function.
 type testInfo struct {
 	name   string
+	tags   []string
+	label  string // name with its tags, for display
 	params []paramInfo
 }
 
@@ -79,6 +82,8 @@ type pkgContext struct {
 func main() {
 	suitesOnly := flag.Bool("suites-only", false, "print only test suite names, one per line "+
 		"(for scripting, e.g. generating a CI job matrix), instead of the full annotated listing")
+	withTags := flag.Bool("tags", false, "with -suites-only, follow each suite name by its "+
+		"comma-separated tags in angle brackets (see evetest.WithTags), as in the full listing")
 	flag.Parse()
 
 	testsDir := "./tests"
@@ -142,11 +147,12 @@ func main() {
 				if cases != nil {
 					suites = append(suites, suiteInfo{
 						name:   name,
+						tags:   extractTags(fd, ctx),
 						params: params,
 						cases:  cases,
 					})
 				} else {
-					allTests = append(allTests, testInfo{name: name, params: params})
+					allTests = append(allTests, testInfo{name: name, tags: extractTags(fd, ctx), params: params})
 				}
 			}
 		}
@@ -157,26 +163,32 @@ func main() {
 
 	if *suitesOnly {
 		for _, s := range suites {
-			fmt.Println(s.name)
+			if *withTags {
+				fmt.Println(tagged(s.name, s.tags))
+			} else {
+				fmt.Println(s.name)
+			}
 		}
 		return
 	}
 
 	// Compute column width for individual tests with parameters.
 	maxTestLen := 0
-	for _, t := range allTests {
-		if len(t.params) > 0 && len(t.name) > maxTestLen {
-			maxTestLen = len(t.name)
+	for i := range allTests {
+		allTests[i].label = tagged(allTests[i].name, allTests[i].tags)
+		if len(allTests[i].params) > 0 && len(allTests[i].label) > maxTestLen {
+			maxTestLen = len(allTests[i].label)
 		}
 	}
 
 	fmt.Println("Test suites:")
 	fmt.Println()
 	for _, s := range suites {
+		header := tagged(s.name, s.tags)
 		if len(s.params) > 0 {
-			fmt.Printf("  %s  [%s]\n", s.name, formatParams(s.params))
+			fmt.Printf("  %s  [%s]\n", header, formatParams(s.params))
 		} else {
-			fmt.Printf("  %s\n", s.name)
+			fmt.Printf("  %s\n", header)
 		}
 		for _, c := range s.cases {
 			fmt.Printf("    - %s\n", c.testName)
@@ -205,11 +217,19 @@ func main() {
 	fmt.Println()
 	for _, t := range allTests {
 		if len(t.params) > 0 {
-			fmt.Printf("  %-*s  [%s]\n", maxTestLen, t.name, formatParams(t.params))
+			fmt.Printf("  %-*s  [%s]\n", maxTestLen, t.label, formatParams(t.params))
 		} else {
-			fmt.Printf("  %s\n", t.name)
+			fmt.Printf("  %s\n", t.label)
 		}
 	}
+}
+
+// tagged returns name followed by its tags in angle brackets, if it has any.
+func tagged(name string, tags []string) string {
+	if len(tags) == 0 {
+		return name
+	}
+	return name + "  <" + strings.Join(tags, ",") + ">"
 }
 
 func formatParams(params []paramInfo) string {
@@ -821,6 +841,45 @@ func resolveStringExpr(expr ast.Expr, ctx pkgContext) string {
 		}
 	}
 	return ""
+}
+
+// extractTags returns the tags passed to evetest.WithTags among the options of
+// the evetest.Init calls in fd. A tag is an evetest.Tag constant, resolved to
+// the value it is declared with in the framework.
+func extractTags(fd *ast.FuncDecl, ctx pkgContext) []string {
+	var tags []string
+	if fd.Body == nil {
+		return nil
+	}
+	ast.Inspect(fd.Body, func(n ast.Node) bool {
+		init, ok := n.(*ast.CallExpr)
+		if !ok || !isEvetestCall(init, "Init") {
+			return true
+		}
+		for _, opt := range init.Args {
+			withTags, ok := opt.(*ast.CallExpr)
+			if !ok || !isEvetestCall(withTags, "WithTags") {
+				continue
+			}
+			for _, arg := range withTags.Args {
+				if tag := resolveStringExpr(arg, ctx); tag != "" {
+					tags = append(tags, tag)
+				}
+			}
+		}
+		return false
+	})
+	return tags
+}
+
+// isEvetestCall reports whether call is evetest.<name>(...).
+func isEvetestCall(call *ast.CallExpr, name string) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != name {
+		return false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	return ok && pkg.Name == "evetest"
 }
 
 // extractSuiteCases returns the test cases listed in the evetest.RunTestSuite

@@ -193,7 +193,7 @@ const (
 // framework reuse a device where it can: the flavor-switch tests need no
 // repartition, so they share one device.
 func TestKonvertSuite(test *testing.T) {
-	evetest.Init(test)
+	evetest.Init(test, evetest.WithTags(evetest.TagHeavyTest))
 	defer evetest.Close()
 
 	evetest.DefineTestParameters(
