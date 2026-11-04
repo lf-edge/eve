@@ -42,7 +42,7 @@ RUN apk update
 
 FROM lfedge/eve-alpine-base:17217d430af556ba0ddfb6a938c3b3ef93c9b512 AS compactor
 ARG TARGETARCH
-ARG GO_VERSION=1.24.6
+ARG GO_VERSION=1.26.10
 
 COPY --from=cache-build /etc/apk/repositories* /etc/apk/
 COPY --from=cache-build /etc/apk/keys /etc/apk/keys/
