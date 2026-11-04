@@ -142,7 +142,10 @@ When a process wants to retrieve information stored by a publishing process, it 
 The [Subscription](https://pkg.go.dev/github.com/lf-edge/eve/pkg/pillar@v0.0.0-20220603153046-23f5ce4eb5ee/pubsub#Subscription) is responsible for:
 
 1. Being informed of updates from the driver.
-1. Unmarshaling the raw json bytes into the correct object type.
+1. Unmarshaling the raw json bytes into the correct object type. While a persistent
+   subscription starts, it keeps the SHA-256 of the bytes each object was unmarshaled from,
+   so the bytes the publisher sends again for what it loaded from the checkpoint are
+   recognised as unchanged without unmarshaling them.
 1. Saving the data to its own in-memory copy of the table.
 1. Calling appropriate handlers for state changes.
 
