@@ -52,7 +52,7 @@ import (
 // a build that does not bound them, since each failure leaves the device
 // rebooting until its configuration is reset for the next subtest.
 func TestLimitsSuite(test *testing.T) {
-	evetest.Init(test)
+	evetest.Init(test, evetest.WithTags(evetest.TagHeavyTest))
 	defer evetest.Close()
 
 	evetest.DefineTestParameters(
