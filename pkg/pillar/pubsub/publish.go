@@ -94,7 +94,8 @@ func (pub *PublicationImpl) CheckMaxSize(key string, item interface{}) error {
 		pub.log.Fatal("json Marshal in CheckMaxSize", err)
 	}
 	PublicationStats(name).AllocMarshal.Add(len(b))
-	return pub.driver.CheckMaxSize(key, b)
+	_, err = pub.driver.CheckMaxSize(key, b)
+	return err
 }
 
 // Publish publish a key-value pair
@@ -132,7 +133,8 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 	// Refuse a value which does not fit in a message before it is stored or
 	// checkpointed: sending it would fail on every connection, and after
 	// every reboot if checkpointed.
-	if err := pub.driver.CheckMaxSize(key, b); err != nil {
+	wire, err := pub.driver.CheckMaxSize(key, b)
+	if err != nil {
 		PublicationStats(name).Refused.Add(1)
 		pub.log.Errorf("Publish(%s/%s) refused: %v", name, key, err)
 		return err
@@ -154,7 +156,7 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 			loggable.LogCreate(pub.log)
 		}
 	}
-	pub.km.key.Store(key, &published{item: newItem, value: &Value{JSON: b}})
+	pub.km.key.Store(key, &published{item: newItem, value: &Value{JSON: b, Wire: wire}})
 
 	if pub.logger.GetLevel() == logrus.TraceLevel {
 		pub.dump("after Publish")
@@ -322,7 +324,13 @@ func (pub *PublicationImpl) populate() {
 			pub.log.Fatal("json Marshal in populate", err)
 		}
 		PublicationStats(name).AllocMarshal.Add(len(b))
-		pub.km.key.Store(key, &published{item: item, value: &Value{JSON: b}})
+		// A value which does not fit is kept, as before, and skipped by
+		// the driver when it would be sent.
+		wire, err := pub.driver.CheckMaxSize(key, b)
+		if err != nil {
+			pub.log.Errorf("populate(%s/%s): %v", name, key, err)
+		}
+		pub.km.key.Store(key, &published{item: item, value: &Value{JSON: b, Wire: wire}})
 	}
 	pub.km.restartCounter.Store(int64(restartCounter))
 	pub.log.Tracef("populate(%s) done\n", name)

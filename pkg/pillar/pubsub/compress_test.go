@@ -120,3 +120,69 @@ func TestLargeDevicePortConfigList(t *testing.T) {
 		t.Error("the DevicePortConfigList was not sent compressed")
 	}
 }
+
+type bigItem struct {
+	Text string
+}
+
+// TestCompressedOnce checks that a value above the frame size is compressed
+// once when it is published, and that frame is what every subscriber gets.
+func TestCompressedOnce(t *testing.T) {
+	logger := logrus.StandardLogger()
+	logger.SetLevel(logrus.ErrorLevel)
+	log := base.NewSourceLogObject(logger, "test", 1234)
+	ps := pubsub.New(&socketdriver.SocketDriver{Logger: logger, Log: log, RootDir: t.TempDir()},
+		logger, log)
+	pub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: "testonce", TopicType: bigItem{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats := pubsub.PublicationStats("testonce/bigItem")
+	compressions, compressed := stats.Compressions.Load(), stats.CompressedMessages.Load()
+	const nsubs = 3
+	received := make(chan string, nsubs)
+	for i := 0; i < nsubs; i++ {
+		sub, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+			AgentName: "testonce", TopicImpl: bigItem{}, Activate: true,
+			CreateHandler: func(_ interface{}, _ string, item interface{}) {
+				received <- item.(bigItem).Text
+			},
+			ModifyHandler: func(_ interface{}, _ string, item, _ interface{}) {
+				received <- item.(bigItem).Text
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		go func() {
+			for change := range sub.MsgChan() {
+				sub.ProcessChange(change)
+			}
+		}()
+		defer sub.Close()
+	}
+	for round := 1; round <= 2; round++ {
+		text := strings.Repeat(fmt.Sprintf("round %d of a large value. ", round), 100000)
+		if err := pub.Publish("key", bigItem{Text: text}); err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < nsubs; i++ {
+			select {
+			case got := <-received:
+				if got != text {
+					t.Fatalf("round %d: received %d bytes, published %d", round, len(got), len(text))
+				}
+			case <-time.After(30 * time.Second):
+				t.Fatalf("round %d: %d of %d subscribers received the value", round, i, nsubs)
+			}
+		}
+		if n := stats.Compressions.Load() - compressions; n != int64(round) {
+			t.Errorf("round %d: compressed %d times", round, n)
+		}
+		if n := stats.CompressedMessages.Load() - compressed; n != int64(round*nsubs) {
+			t.Errorf("round %d: sent %d compressed messages", round, n)
+		}
+	}
+}

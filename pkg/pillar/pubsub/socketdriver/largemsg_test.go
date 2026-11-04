@@ -150,7 +150,7 @@ func TestRefusedMessage(t *testing.T) {
 	if n := refused.Load() - before; n != 1 {
 		t.Errorf("refused %d messages, expected 1", n)
 	}
-	if err := publisher.CheckMaxSize("big", big); err == nil {
+	if _, err := publisher.CheckMaxSize("big", big); err == nil {
 		t.Error("CheckMaxSize accepted the incompressible value")
 	}
 }
