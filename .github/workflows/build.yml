@@ -6,23 +6,45 @@ on:  # yamllint disable-line rule:truthy
       - "master"
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
+      - "[0-9]+.[0-9]+-hotfix"
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+env:
+  # The build and some tests clone from github.com (linuxkit, swtpm, ...).
+  # GitHub throttles anonymous fetches per source IP, which makes those clones
+  # fail in bursts on the shared self-hosted runners, so authenticate every
+  # github.com clone this job makes.
+  GITHUB_TOKEN: ${{ github.token }}
+  GIT_ASKPASS: ${{ github.workspace }}/tools/github-askpass.sh
+
 jobs:
+  changes:
+    uses: ./.github/workflows/pr-paths.yml
+    permissions:
+      pull-requests: read
+    with:
+      match: '.'
+      ignore: '^\.github/|\.md$'
+
   packages:
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: buildjet-4vcpu-ubuntu-2204-arm
+          - os: zededa-ubuntu-2204-arm64
             arch: arm64
-          - os: buildjet-4vcpu-ubuntu-2004
+          - os: zededa-ubuntu-2204
             arch: amd64
-          - os: buildjet-4vcpu-ubuntu-2004
+          - os: zededa-ubuntu-2204
             arch: riscv64
     steps:
       - name: Starting Report
@@ -38,13 +60,14 @@ jobs:
           sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
           rm -fr ~/.linuxkit
           docker system prune --all --force --volumes
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
-      - name: ensure zstd for cache  # this should be removed once the arm64 VM includes zstd
-        if: ${{ matrix.os == 'buildjet-4vcpu-ubuntu-2204-arm' || matrix.os == 'arm64-secure' }}
-        run: |
-          sudo apt install -y zstd
+          persist-credentials: false
+      - name: Login to Docker Hub
+        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
+        run: | # Runners must provide default credentials
+          docker login
       - name: ensure packages for cross-arch build
         if: ${{ matrix.arch == 'riscv64' }}
         run: |
@@ -52,8 +75,11 @@ jobs:
           # the following weird statement is here to speed up the happy path
           # if the default server is responding -- we can skip apt update
           $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
+      # The next step explicitly use actions/cache, rather than actions/cache/save at the end.
+      # If we rerun a job without changing the sha, we should not have to rebuild anything.
+      # Since the cache is keyed on the sha, it will retrieve it.
       - name: update linuxkit cache if available
-        uses: actions/cache@v3
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.sha }}
@@ -71,7 +97,7 @@ jobs:
 
   eve:
     needs: packages  # all packages for all platforms must be built first
-    runs-on: buildjet-4vcpu-ubuntu-2004
+    runs-on: zededa-ubuntu-2204
     strategy:
       fail-fast: false
       matrix:
@@ -81,27 +107,50 @@ jobs:
           - arch: riscv64
             hv: mini
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: false
+      - name: Login to Docker Hub
+        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
+        run: | # Runners must provide default credentials
+          docker login
+      - name: Arch Runner is Matrix
+        id: arch_runner_equals_matrix
+        run: |
+          RUNNER_ARCH=${{ runner.arch }}
+          [ "$RUNNER_ARCH" = "X64" ] && RUNNER_ARCH="amd64"
+          [ "$RUNNER_ARCH" = "ARM64" ] && RUNNER_ARCH="arm64"
+          MATCHED="false"
+          [ "$RUNNER_ARCH" = "${{ matrix.arch }}" ] && MATCHED="true"
+          echo "runner_arch=${RUNNER_ARCH}" >> "$GITHUB_OUTPUT"
+          echo "matched=${MATCHED}" >> "$GITHUB_OUTPUT"
+          echo "runner_arch=${RUNNER_ARCH} matrix_arch=${{ matrix.arch }} matched=${MATCHED}"
+      # The next three steps - cache_for_docker, load images, and cache_for_packages -
+      # have nothing to do with the content of the final eve image. We need the
+      # tool images (mkimage-*, mkrootfs-*, ...) for the runner arch in order to
+      # compose the final eve image for the target arch, and on this branch they
+      # are only in the cache of the runner arch. So restore that cache first,
+      # load the tools into docker, then clear it and restore the cache of the
+      # target arch.
       - name: update linuxkit cache for runner arch so we can get desired images
         id: cache_for_docker
-        uses: actions/cache/restore@v3
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: ~/.linuxkit/cache
-          key: linuxkit-amd64-${{ github.sha }}
+          key: linuxkit-${{ steps.arch_runner_equals_matrix.outputs.runner_arch }}-${{ github.sha }}
           fail-on-cache-miss: true
       - name: load images we need from linuxkit cache into docker
         run: |
           make cache-export-docker-load-all
       - name: clear linuxkit cache so we can load for target arch
-        if: ${{ matrix.arch != 'amd64' }}  # because our runner arch is amd64; if that changes, this will have to change
+        if: ${{ steps.arch_runner_equals_matrix.outputs.matched != 'true' }}
         run: |
           rm -rf ~/.linuxkit
       - name: update linuxkit cache for our arch
         id: cache_for_packages
-        if: ${{ matrix.arch != 'amd64' }}  # because our runner arch is amd64; if that changes, this will have to change
-        uses: actions/cache/restore@v3
+        if: ${{ steps.arch_runner_equals_matrix.outputs.matched != 'true' }}
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
         with:
           path: ~/.linuxkit/cache
           key: linuxkit-${{ matrix.arch }}-${{ github.sha }}
@@ -130,7 +179,7 @@ jobs:
         run: |
           make cache-export ZARCH=${{ matrix.arch }} IMAGE=lfedge/eve:$VERSION-${{ matrix.hv }} OUTFILE=eve-${{ matrix.hv }}-${{ matrix.arch }}.tar IMAGE_NAME=$TAG-${{ matrix.hv }}-${{ matrix.arch }}
       - name: Upload EVE ${{ matrix.hv }}-${{ matrix.arch }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
           name: eve-${{ matrix.hv }}-${{ matrix.arch }}
           path: eve-${{ matrix.hv }}-${{ matrix.arch }}.tar
@@ -152,3 +201,19 @@ jobs:
           make clean
           docker system prune -f -a --volumes
           rm -rf ~/.linuxkit
+
+  result:
+    name: PR build result
+    if: always()
+    needs:
+      - changes
+      - packages
+      - eve
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail if any job failed or was cancelled
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          case " $RESULTS " in *" failure "*|*" cancelled "*) exit 1 ;; esac

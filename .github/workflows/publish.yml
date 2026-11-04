@@ -6,10 +6,25 @@ on:  # yamllint disable-line rule:truthy
       - "master"
       - "[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+-stable"
+      - "[0-9]+.[0-9]+-hotfix"
+    paths-ignore:
+      - '**/*.md'
+      - '.github/**'
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
       - "[0-9]+.[0-9]+.[0-9]+-lts"
       - "[0-9]+.[0-9]+.[0-9]+-rc[0-9]+"
+
+permissions:
+  contents: read
+
+env:
+  # The build and some tests clone from github.com (linuxkit, swtpm, ...).
+  # GitHub throttles anonymous fetches per source IP, which makes those clones
+  # fail in bursts on the shared self-hosted runners, so authenticate every
+  # github.com clone this job makes.
+  GITHUB_TOKEN: ${{ github.token }}
+  GIT_ASKPASS: ${{ github.workspace }}/tools/github-askpass.sh
 
 jobs:
   packages:
@@ -19,11 +34,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: arm64-secure
+          - os: zededa-ubuntu-2204-arm64
             arch: arm64
-          - os: ubuntu-24.04
+          - os: zededa-ubuntu-2204
             arch: amd64
-          - os: ubuntu-latest
+          - os: zededa-ubuntu-2204
             arch: riscv64
     steps:
       - name: Starting Report
@@ -34,7 +49,7 @@ jobs:
           df -h
           echo Memory
           free -m
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
       - name: Force fetch annotated tags (workaround)
@@ -56,17 +71,21 @@ jobs:
           fi
           echo "ARCH=${{ matrix.arch }}" >> "$GITHUB_ENV"
           echo "TAG=$(echo "$REF" | sed -e 's#^.*/##' -e 's#master#snapshot#' -e 's#main#snapshot#')" >> "$GITHUB_ENV"
-      - name: Login to DockerHUB
-        run: |
-          echo "${{ secrets.RELEASE_DOCKERHUB_TOKEN }}" |\
-             docker login -u "${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}" --password-stdin
+
+      - name: Login to Docker Hub
+        if: ${{ github.event.repository.full_name == 'lf-edge/eve' }}
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+
       - name: Build packages
         run: |
           SUCCESS=
           # sadly, our build sometimes times out on network access
           # and running out of disk space: re-trying for 3 times
           for i in 1 2 3; do
-             if make -e V=1 LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
+             if make -e V=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push PRUNE=1 pkgs; then
                 SUCCESS=true
                 break
              else
@@ -75,7 +94,8 @@ jobs:
                 # disk space. So the following can't hurt before we
                 # retry:
                 docker rmi -f `docker image ls -q` || :
-                docker system prune -f || :
+                docker system prune -f -a || :
+                docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
              fi
           done
           if [ -z "$SUCCESS" ]; then echo "::error::failed to build and push packages" && exit 1; fi
@@ -88,17 +108,19 @@ jobs:
           docker system df
           docker system df -v
       - name: Clean
+        if: ${{ always() }}
         run: |
-          make clean
-          docker system prune -f -a
-          rm -rf ~/.linuxkit
+          make clean || :
+          docker system prune -f -a || :
+          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+          rm -rf ~/.linuxkit || :
 
   # eve composition can run as a separate job, even on a separate runner, because the packages job
   # published everything. Which means all images are already on the OCI registry.
   eve:
     if: github.event.repository.full_name == 'lf-edge/eve'
     needs: packages
-    runs-on: ubuntu-latest
+    runs-on: zededa-ubuntu-2204
     strategy:
       fail-fast: false
       matrix:
@@ -108,7 +130,7 @@ jobs:
           - arch: riscv64
             hv: mini
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
       - uses: ./.github/actions/run-make
@@ -122,18 +144,25 @@ jobs:
           command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push sbom collected_sources compare_sbom_collected_sources publish_sources"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          make clean || :
+          docker system prune -f -a || :
+          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+          rm -rf ~/.linuxkit || :
 
   verification:
     if: github.event.repository.full_name == 'lf-edge/eve'
     needs: packages
-    runs-on: ubuntu-latest
+    runs-on: zededa-ubuntu-2204
     strategy:
       fail-fast: false
       matrix:
         arch: [arm64, amd64]
         hv: [kvm, xen]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
       - uses: ./.github/actions/run-make
@@ -141,13 +170,20 @@ jobs:
           command: "V=1 HV=${{ matrix.hv }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push verification"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          make clean || :
+          docker system prune -f -a || :
+          docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
+          rm -rf ~/.linuxkit || :
 
   manifest:
     if: github.event.repository.full_name == 'lf-edge/eve'
-    runs-on: ubuntu-latest
+    runs-on: zededa-ubuntu-2204
     needs: packages
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
       - uses: ./.github/actions/run-make
@@ -159,6 +195,8 @@ jobs:
   trigger_assets:
     if: ${{ (startsWith(github.ref, 'refs/tags/')) && (github.event.repository.full_name == 'lf-edge/eve') }}
     needs: [manifest, verification, eve]
+    permissions:
+      contents: write
     uses: lf-edge/eve/.github/workflows/assets.yml@11.0-stable
     with:
-      tag_ref: ${{ github.ref }}
+      tag_ref: ${{ github.ref_name }}
