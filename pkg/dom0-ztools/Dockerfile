@@ -49,7 +49,7 @@ RUN register-sbom-pkg.sh -n zfs -v "${ZFS_VERSION}" -l CDDL-1.0 -u https://githu
 # Add directory for CDI files
 RUN mkdir -p /out/etc/cdi
 
-FROM lfedge/eve-getty:1e095fad34365004a32f3d47d9a66dbf52f78b1e AS getty
+FROM lfedge/eve-getty:bb6413c720994bccf4089522ff1ac3404f6fdccf AS getty
 FROM scratch
 COPY --from=zfs /out/ /
 # hadolint ignore=DL3020
