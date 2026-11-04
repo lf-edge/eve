@@ -39,6 +39,7 @@ type SubStats struct {
 
 	CompressedFrames  atomic.Int64 // compressed frames received
 	DecompressedBytes atomic.Int64 // the size of their messages
+	RejectedFrames    atomic.Int64 // frames above the frame size, or above the message size decompressed
 
 	AllocReadBuf Alloc // read buffers: pool misses, one-off and decompressed buffers
 	AllocDecode  Alloc // copies and decoding of received messages
@@ -119,6 +120,7 @@ func (s *SubStats) snapshot() map[string]int64 {
 		"oversized_frames":   s.OversizedFrames.Load(),
 		"compressed_frames":  s.CompressedFrames.Load(),
 		"decompressed_bytes": s.DecompressedBytes.Load(),
+		"rejected_frames":    s.RejectedFrames.Load(),
 		"buf_taken_bytes":    s.BufTakenBytes.Load(),
 	}
 	s.AllocReadBuf.snapshot("readbuf", m)

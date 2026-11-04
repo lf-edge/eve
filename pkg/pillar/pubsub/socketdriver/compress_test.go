@@ -6,6 +6,7 @@ package socketdriver
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/binary"
 	"testing"
 
 	"github.com/klauspost/compress/zstd"
@@ -83,8 +84,32 @@ func TestDecompressRefusesOversizedMessage(t *testing.T) {
 	if err := writeFrame(&stream, frame.Bytes(), true, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewFrameReader(&stream).ReadFrame(); err == nil {
+	stats := &pubsub.SubStats{}
+	if _, err := NewFrameReaderWithStats(&stream, stats).ReadFrame(); err == nil {
 		t.Fatalf("a %d byte frame of %d MB of zeros was accepted",
 			frame.Len(), maxMessageSize()>>20+16)
+	}
+	if n := stats.RejectedFrames.Load(); n != 1 {
+		t.Errorf("%d frames counted as rejected, expected 1", n)
+	}
+}
+
+// TestRejectedFrameCounted checks that a frame above the frame size is
+// refused before its payload is read, and counted.
+func TestRejectedFrameCounted(t *testing.T) {
+	var stream bytes.Buffer
+	var hdr [4]byte
+	binary.LittleEndian.PutUint32(hdr[:], uint32(maxFrameSize()+1))
+	stream.Write(hdr[:])
+	stats := &pubsub.SubStats{}
+	fr := NewFrameReaderWithStats(&stream, stats)
+	if _, err := fr.ReadFrame(); err == nil {
+		t.Fatal("a frame above the frame size was accepted")
+	}
+	if n := stats.RejectedFrames.Load(); n != 1 {
+		t.Errorf("%d frames counted as rejected, expected 1", n)
+	}
+	if fr.buf != nil {
+		t.Error("a buffer was taken for the rejected frame")
 	}
 }
