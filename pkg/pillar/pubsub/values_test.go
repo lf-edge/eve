@@ -4,6 +4,7 @@
 package pubsub
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"testing"
@@ -199,5 +200,79 @@ func TestHandlerGetsCopy(t *testing.T) {
 	}
 	if item := got.(valueItem); item.Name != "a2" || item.Tags["k"] != "v" {
 		t.Errorf("the subscription holds %v", item)
+	}
+}
+
+// countedItem counts how often it is decoded.
+type countedItem struct {
+	Name string
+}
+
+var countedDecodes int
+
+func (c *countedItem) UnmarshalJSON(b []byte) error {
+	countedDecodes++
+	type plain countedItem
+	return json.Unmarshal(b, (*plain)(c))
+}
+
+// TestIdenticalNotDecoded checks that a persistent subscription, until it
+// is synchronized, does not decode the JSON it holds an item for already,
+// nor call a handler for it; that afterwards it decodes and compares as
+// before; and that it never calls a handler for JSON which decodes to the
+// item it holds.
+func TestIdenticalNotDecoded(t *testing.T) {
+	logger := logrus.StandardLogger()
+	log := base.NewSourceLogObject(logger, "test", 1234)
+	var calls int
+	sub, err := New(&EmptyDriver{}, logger, log).NewSubscription(SubscriptionOptions{
+		AgentName: "testsum", TopicImpl: countedItem{}, Persistent: true,
+		CreateHandler: func(interface{}, string, interface{}) { calls++ },
+		ModifyHandler: func(interface{}, string, interface{}, interface{}) { calls++ },
+		DeleteHandler: func(interface{}, string, interface{}) { calls++ },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	impl := sub.(*SubscriptionImpl)
+	unchanged := &SubscriptionStats("testsum/countedItem").Unchanged
+	for _, step := range []struct {
+		json           string
+		delete, sync   bool
+		decodes, calls int
+		unchanged      int64
+	}{
+		{json: `{"Name":"a"}`, decodes: 2, calls: 1},                  // decoded, and copied for the handler
+		{json: `{"Name":"a"}`, unchanged: 1},                          // the same JSON
+		{json: `{"Name":"a", "Unknown":1}`, decodes: 1, unchanged: 1}, // other JSON, the same item
+		{json: `{"Name":"a", "Unknown":1}`, unchanged: 1},
+		{json: `{"Name":"b"}`, decodes: 2, calls: 1},
+		{delete: true, calls: 1},
+		{json: `{"Name":"b"}`, decodes: 2, calls: 1}, // created again
+		{sync: true},
+		{json: `{"Name":"b"}`, decodes: 1, unchanged: 1}, // synchronized: decoded and compared
+		{json: `{"Name":"c"}`, decodes: 2, calls: 1},
+	} {
+		decodes, before, unchangedBefore := countedDecodes, calls, unchanged.Load()
+		switch {
+		case step.sync:
+			handleSynchronized(impl, true)
+			if impl.sums != nil {
+				t.Error("the sums are kept after the subscription is synchronized")
+			}
+		case step.delete:
+			handleDelete(impl, "key")
+		default:
+			handleModify(impl, "key", []byte(step.json))
+		}
+		if d := countedDecodes - decodes; d != step.decodes {
+			t.Errorf("%s: decoded %d times, expected %d", step.json, d, step.decodes)
+		}
+		if c := calls - before; c != step.calls {
+			t.Errorf("%s: %d handler calls, expected %d", step.json, c, step.calls)
+		}
+		if u := unchanged.Load() - unchangedBefore; u != step.unchanged {
+			t.Errorf("%s: counted %d unchanged, expected %d", step.json, u, step.unchanged)
+		}
 	}
 }
