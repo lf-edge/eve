@@ -81,6 +81,7 @@ jobs:
             echo "run-mode=$(jq -r .evetest_run_mode evetest-run-context.json)"
             echo "run-args=$(jq -r .evetest_run_args evetest-run-context.json)"
             echo "gate-reason=$(jq -r .evetest_gate_reason evetest-run-context.json)"
+            echo "comment-id=$(jq -r '.evetest_comment_id // ""' evetest-run-context.json)"
           } >> "$GITHUB_OUTPUT"
 
       - name: Report the evetest gate as satisfied
@@ -137,6 +138,7 @@ jobs:
               if [ "$marker" = "evetest-active-$PR-$SHA" ]; then
                 echo "Run $run is already testing $SHA of PR #$PR; ignoring this trigger."
                 echo "skip_run=true" >> "$GITHUB_OUTPUT"
+                echo "consume_request=true" >> "$GITHUB_OUTPUT"
                 exit 0
               fi
               stale="$stale $run"
@@ -147,7 +149,32 @@ jobs:
             gh run cancel "$run" --repo "$GH_REPO" || echo "::warning::Could not cancel run $run"
           done
           echo "skip_run=false" >> "$GITHUB_OUTPUT"
+          echo "consume_request=true" >> "$GITHUB_OUTPUT"
           echo "active run of PR #$PR at $SHA" > evetest-active.txt
+
+      # The /evetest comment has been acted on (by this run or an active one for
+      # the same commit): react to it and collapse it, so that it does not
+      # trigger a run for a later push and does not linger on the PR. A request
+      # for a commit that is no longer the head is left for the next gate run.
+      - name: Consume the CODEOWNER's /evetest comment
+        if: ${{ !cancelled() && steps.dedupe.outputs.consume_request == 'true' && steps.context.outputs.comment-id != '' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE: ${{ steps.context.outputs.comment-id }}
+        run: |
+          # shellcheck disable=SC2016 # $id is a GraphQL variable
+          gh api graphql -f id="$NODE" -f query='
+            mutation($id: ID!) {
+              addReaction(input: {subjectId: $id, content: ROCKET}) { reaction { content } }
+            }' >/dev/null
+          # shellcheck disable=SC2016 # $id is a GraphQL variable
+          gh api graphql -f id="$NODE" -f query='
+            mutation($id: ID!) {
+              minimizeComment(input: {subjectId: $id, classifier: RESOLVED}) {
+                minimizedComment { isMinimized }
+              }
+            }' >/dev/null
 
       - name: Mark this run as the active evetest run of the PR
         if: steps.dedupe.outputs.skip_run == 'false'
