@@ -166,21 +166,39 @@ jobs:
           # own (possibly fork-controlled) tree.
           requested=false
           args=""
+          comment_id=""
+          # shellcheck disable=SC2016 # $owner etc. are GraphQL variables
           if raw=$(gh api "repos/$GH_REPO/contents/.github/CODEOWNERS?ref=$BASE_REF" \
                   -H "Accept: application/vnd.github.raw") \
-              && comments=$(gh pr view "$PR" --json comments); then
+              && comments=$(gh api graphql --paginate -F pr="$PR" \
+                  -f owner="${GH_REPO%/*}" -f name="${GH_REPO#*/}" -f query='
+                  query($owner: String!, $name: String!, $pr: Int!, $endCursor: String) {
+                    repository(owner: $owner, name: $name) {
+                      pullRequest(number: $pr) {
+                        comments(first: 100, after: $endCursor) {
+                          pageInfo { hasNextPage endCursor }
+                          nodes { id isMinimized body author { login } }
+                        }
+                      }
+                    }
+                  }' --jq '.data.repository.pullRequest.comments.nodes[]' | jq -s '{comments: .}'); then
             owners=$(printf '%s\n' "$raw" \
                 | awk '{for(i=1;i<=NF;i++) if($i ~ /^@/) print substr($i,2)}' \
                 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
-            body=$(jq -r --argjson owners "$owners" \
+            # Comments already consumed by an evetest run are minimized and
+            # must not trigger another one.
+            latest=$(jq -c --argjson owners "$owners" \
                 '[.comments[]
+                  | select(.isMinimized | not)
                   | select(.author.login | IN($owners[]))
-                  | select(.body | test("^/evetest([ \\t\\r\\n]|$)"))][-1].body // ""' <<<"$comments")
+                  | select(.body | test("^/evetest([ \\t\\r\\n]|$)"))][-1] // {}' <<<"$comments")
+            body=$(jq -r '.body // ""' <<<"$latest")
             if [[ -n "$body" ]]; then
               line=$(printf '%s\n' "$body" | head -n1 | tr -d '\r')
               args=$(sed -E 's|^/evetest[[:space:]]*||; s/[[:space:]]+$//' <<<"$line")
               if [[ "$args" =~ ^[A-Za-z0-9_.\ -]*$ ]]; then
                 requested=true
+                comment_id=$(jq -r '.id' <<<"$latest")
               else
                 echo "::warning::Ignoring /evetest comment with invalid characters: $args"
                 args=""
@@ -201,6 +219,7 @@ jobs:
             echo "requested=$requested"
             echo "mode=$mode"
             echo "args=$args"
+            echo "comment_id=$comment_id"
           } >> "$GITHUB_OUTPUT"
 
       - name: Check Build Result
@@ -333,6 +352,7 @@ jobs:
           EVETEST_REQUESTED: ${{ steps.evetest_comment.outputs.requested }}
           EVETEST_RUN_MODE: ${{ steps.evetest_comment.outputs.mode }}
           EVETEST_RUN_ARGS: ${{ steps.evetest_comment.outputs.args }}
+          EVETEST_COMMENT_ID: ${{ steps.evetest_comment.outputs.comment_id }}
           BUILD_OK: ${{ steps.build.outputs.build_ok }}
           ORIGINAL_RUN_ID: ${{ steps.meta.outputs.original_run_id }}
           PR_SHA: ${{ steps.meta.outputs.pr_sha }}
@@ -376,10 +396,12 @@ jobs:
                 --arg pr_sha "$PR_SHA" --arg pr_base_ref "$PR_BASE_REF" \
                 --arg head_repo "$HEAD_REPO" --arg mode "${EVETEST_RUN_MODE:-claude}" \
                 --arg args "$EVETEST_RUN_ARGS" --arg how "$how" \
+                --arg comment_id "$EVETEST_COMMENT_ID" \
                 '{pr_id: $pr_id, original_run_id: $original_run_id, pr_sha: $pr_sha,
                   pr_base_ref: $pr_base_ref, head_repo: $head_repo,
                   evetest_run_mode: $mode, evetest_run_args: $args,
-                  evetest_gate_reason: $how}' > "$EVETEST_CONTEXT_FILE"
+                  evetest_gate_reason: $how,
+                  evetest_comment_id: $comment_id}' > "$EVETEST_CONTEXT_FILE"
             echo "passed=true" >> "$GITHUB_OUTPUT"
           fi
 
