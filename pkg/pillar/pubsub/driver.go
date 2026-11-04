@@ -85,3 +85,14 @@ type Restarted interface {
 type Differ interface {
 	DetermineDiffs(localCollection LocalCollection) []string
 }
+
+// Value is a published value as subscribers are sent it: its JSON, which
+// Publish marshals once. All subscriber connections share it, and nobody
+// modifies it: a new value of a key is a new Value.
+type Value struct {
+	JSON []byte
+}
+
+// LocalCollection is what a subscriber connection was sent: the Value of
+// each key.
+type LocalCollection map[string]*Value

@@ -43,29 +43,31 @@ var (
 
 // WriteFrame writes payload as a single frame.
 func WriteFrame(w io.Writer, payload []byte) error {
-	return writeFrame(w, payload, false, nil)
+	return writeFrame(w, nil, payload, false, nil)
 }
 
-// writeFrame writes payload as a single frame, flagged as compressed if
-// it is, counting its allocations in a: the header and the two-element
-// net.Buffers, which escape to the heap.
-func writeFrame(w io.Writer, payload []byte, compressed bool, a *pubsub.Alloc) error {
-	if maxFrame := maxFrameSize(); len(payload) > maxFrame {
+// writeFrame writes prefix and payload as a single frame, flagged as
+// compressed if it is, in one write: the payload, which can be large and is
+// shared by all connections, is not copied. It counts its allocations in a:
+// the header and the three-element net.Buffers, which escape to the heap.
+func writeFrame(w io.Writer, prefix, payload []byte, compressed bool, a *pubsub.Alloc) error {
+	size := len(prefix) + len(payload)
+	if maxFrame := maxFrameSize(); size > maxFrame {
 		return fmt.Errorf("frame of %d bytes exceeds max %d",
-			len(payload), maxFrame)
+			size, maxFrame)
 	}
 	if a != nil {
 		a.Add(4)
 		a.Add(24)
-		a.Add(48)
+		a.Add(72)
 	}
-	n := uint32(len(payload))
+	n := uint32(size)
 	if compressed {
 		n |= compressedFlag
 	}
 	var hdr [4]byte
 	binary.LittleEndian.PutUint32(hdr[:], n)
-	bufs := net.Buffers{hdr[:], payload}
+	bufs := net.Buffers{hdr[:], prefix, payload}
 	_, err := bufs.WriteTo(w)
 	return err
 }
