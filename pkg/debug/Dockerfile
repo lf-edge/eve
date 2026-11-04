@@ -8,9 +8,9 @@
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
-FROM lfedge/eve-recovertpm:f16576787578ed0b41745306552d6d42307f2e4e AS recovertpm
-FROM lfedge/eve-bpftrace:d1458ba0ca975e44a974dd79ea4dcc4e79944feb AS bpftrace
-FROM lfedge/eve-alpine:b1b51db20be9651c521bf5ba14eb5c6d7481eed7 AS build
+FROM lfedge/eve-recovertpm:a82b3e3b39d11c2c9a06a7735f3cc4149a16ff47 AS recovertpm
+FROM lfedge/eve-bpftrace:7da6fa3df8218a15c892bfa7dddcca8563531506 AS bpftrace
+FROM lfedge/eve-alpine:8c9af5568049068f10bc630065793c15d52fa931 AS build
 ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg gettext gettext-static ncurses-dev jq autoconf openssl-dev zlib-dev zlib-static gpg-agent pciutils usbutils lsblk"
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
