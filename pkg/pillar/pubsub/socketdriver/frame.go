@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"unsafe"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -79,6 +80,10 @@ type FrameReader struct {
 	alloc *pubsub.Alloc // counts buffers when there are no stats
 }
 
+// sliceHeaderSize is the size of a slice header, which a buffer kept as a
+// *[]byte moves to the heap.
+const sliceHeaderSize = int(unsafe.Sizeof([]byte{}))
+
 func (fr *FrameReader) countAlloc(n int) {
 	if fr.stats != nil {
 		fr.stats.AllocReadBuf.Add(n)
@@ -135,7 +140,7 @@ func (fr *FrameReader) acquire(size int) []byte {
 			b := make([]byte, bufClasses[fr.class])
 			fr.buf = &b
 			fr.countAlloc(len(b))
-			fr.countAlloc(8) // the *[]byte kept in the pool
+			fr.countAlloc(sliceHeaderSize) // b, moved to the heap by &b
 		}
 	} else {
 		b := make([]byte, size)
@@ -144,6 +149,7 @@ func (fr *FrameReader) acquire(size int) []byte {
 			fr.stats.OversizedFrames.Add(1)
 		}
 		fr.countAlloc(size)
+		fr.countAlloc(sliceHeaderSize)
 	}
 	if fr.stats != nil {
 		fr.stats.RetainedBufBytes.Add(int64(cap(*fr.buf)))
@@ -193,6 +199,7 @@ func (fr *FrameReader) decompress(buf []byte) ([]byte, error) {
 	}
 	fr.buf, fr.class = &msg, -1
 	fr.countAlloc(cap(msg))
+	fr.countAlloc(sliceHeaderSize)
 	if fr.stats != nil {
 		fr.stats.RetainedBufBytes.Add(int64(cap(msg)))
 		fr.stats.CompressedFrames.Add(1)
