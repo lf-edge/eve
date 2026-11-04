@@ -819,6 +819,11 @@ func (ac *AdamClient) GetDeviceECDHCert(ctx context.Context,
 	}
 	defer resp.Body.Close()
 
+	// Adam answers 400 for a known device until it posts its certificates:
+	// its file backend reports the missing certs file as a generic error.
+	if resp.StatusCode == http.StatusBadRequest {
+		return nil, nil
+	}
 	if resp.StatusCode != http.StatusOK {
 		err = fmt.Errorf("unexpected status from GET %s: %d", url, resp.StatusCode)
 		return nil, err
