@@ -75,15 +75,15 @@ const (
 	// for it to acquire IP addresses via DHCP.
 	brokerSetupDevicesTimeout = 15 * time.Minute
 
-	// Timeout for powering on an EVE VM (not for waiting for it to boot).
-	brokerPowerOnEVEDeviceTimeout = time.Minute
-
-	// Timeout for powering off an EVE VM. The broker RPC blocks until the
-	// provider confirms the VM is stopped, so this must accommodate a
-	// graceful ACPI-less hard power-off, not just issuing the request.
-	brokerPowerOffEVEDeviceTimeout = time.Minute
+	// Timeouts for powering an EVE VM on, off, or rebooting it (not for waiting
+	// for it to boot). The broker RPC returns once the provider confirms the
+	// new power state. On Proxmox that is a task which can wait a minute on a
+	// busy host (e.g. for a storage lock held by a parallel VM create), and the
+	// broker retries a failed one up to 3 times, so 1 minute is not enough.
+	brokerPowerOnEVEDeviceTimeout  = 5 * time.Minute
+	brokerPowerOffEVEDeviceTimeout = 5 * time.Minute
 	// Editing a disk rewrites megabytes through qemu-img/qemu-io on a
-	// possibly busy host, so it gets more room than a power operation.
+	// possibly busy host.
 	brokerEditDeviceDiskTimeout = 5 * time.Minute
 	// brokerExecuteQMPTimeout bounds one QMP command, including the SSH and QMP
 	// connection setup the proxmox provider may have to do first.
@@ -92,8 +92,9 @@ const (
 	// which on proxmox uploads up to 1 GiB to the PVE host.
 	brokerScratchImageTimeout = 5 * time.Minute
 
-	// Timeout for triggering an EVE VM reboot (not for waiting for it to boot).
-	brokerRebootEVEDeviceTimeout = time.Minute
+	// Timeout for triggering an EVE VM reboot (not for waiting for it to
+	// boot). See brokerPowerOnEVEDeviceTimeout.
+	brokerRebootEVEDeviceTimeout = 5 * time.Minute
 
 	// Timeout for retrieving the full console output for a single EVE device.
 	brokerGetConsoleOutputTimeout = 30 * time.Second
