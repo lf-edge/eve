@@ -11,7 +11,7 @@ fi
 
 if [ -z "$EVETEST_NAME" ]; then
     if [ "$EVETEST_LIST_SUITES_ONLY" = "true" ]; then
-        exec /usr/local/bin/list-tests -suites-only
+        exec /usr/local/bin/list-tests -suites-only -tags
     fi
     exec /usr/local/bin/list-tests
 fi

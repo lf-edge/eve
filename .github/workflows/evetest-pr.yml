@@ -31,6 +31,7 @@ jobs:
     outputs:
       suites: ${{ steps.decide.outputs.suites }}
       skip: ${{ steps.decide.outputs.skip }}
+      heavy-suites: ${{ steps.list.outputs.heavy-suites }}
       skip-run: ${{ steps.dedupe.outputs.skip_run }}
       pr-number: ${{ steps.context.outputs.pr-number }}
       base-branch: ${{ steps.context.outputs.base-branch }}
@@ -214,15 +215,23 @@ jobs:
         name: List evetest test suites
         if: steps.dedupe.outputs.skip_run == 'false'
         run: |
-          SUITES_JSON=$(make -C evetest list-test-suites \
-              | grep -E '^Test[A-Za-z0-9_]+$' \
+          # One suite per line: its name, then its tags in <angle brackets>, if any.
+          LISTING=$(make -C evetest list-test-suites | grep -E '^Test[A-Za-z0-9_]+( +<[a-z,]+>)?$' || :)
+          SUITES_JSON=$(echo "$LISTING" | awk '{print $1}' \
               | jq -R -s -c 'split("\n") | map(select(length > 0))')
           if [ "$SUITES_JSON" = "[]" ]; then
             echo "::error::no test suites discovered; check the raw 'make -C evetest list-test-suites' output above"
             exit 1
           fi
+          # Suites tagged "heavy" (evetest.WithTags) need a runner labelled
+          # evetest-runner; any other suite also runs on evetest-runner-light
+          # runners (see runs-on of the evetest job).
+          HEAVY_JSON=$(echo "$LISTING" | grep -E '<([a-z]+,)*heavy(,[a-z]+)*>' | awk '{print $1}' \
+              | jq -R -s -c 'split("\n") | map(select(length > 0))')
           echo "Discovered suites: $SUITES_JSON"
+          echo "Heavy suites: $HEAVY_JSON"
           echo "suites=$SUITES_JSON" >> "$GITHUB_OUTPUT"
+          echo "heavy-suites=$HEAVY_JSON" >> "$GITHUB_OUTPUT"
 
       - name: List every evetest test/variant name for Claude
         if: steps.dedupe.outputs.skip_run == 'false' && steps.context.outputs.run-mode == 'claude'
@@ -518,7 +527,7 @@ jobs:
     name: Run suite ${{ matrix.test-suite }}
     needs: discover-suites
     if: needs.discover-suites.outputs.skip-run == 'false'
-    runs-on: [self-hosted, evetest-runner]
+    runs-on: ${{ fromJSON(contains(fromJSON(needs.discover-suites.outputs.heavy-suites || '[]'), matrix.test-suite) && '["self-hosted","evetest-runner"]' || '["self-hosted","evetest-runner-light"]') }}
     permissions:
       contents: read
       actions: read
