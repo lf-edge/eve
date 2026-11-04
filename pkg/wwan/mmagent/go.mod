@@ -1,6 +1,6 @@
 module github.com/lf-edge/eve/pkg/wwan/mmagent
 
-go 1.26.0
+go 1.26.10
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0
@@ -85,7 +85,7 @@ require (
 	go.opentelemetry.io/otel v1.45.0 // indirect
 	go.opentelemetry.io/otel/metric v1.45.0 // indirect
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
-	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/crypto v0.58.1-0.20261009181718-2f1f834330b2 // indirect
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect

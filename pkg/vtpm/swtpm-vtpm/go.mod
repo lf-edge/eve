@@ -1,6 +1,6 @@
 module github.com/lf-edge/eve/pkg/vtpm
 
-go 1.26.0
+go 1.26.10
 
 require (
 	github.com/google/go-tpm v0.9.1
@@ -32,7 +32,7 @@ require (
 	github.com/vishvananda/netlink v1.3.1 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/crypto v0.58.1-0.20261009181718-2f1f834330b2 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect

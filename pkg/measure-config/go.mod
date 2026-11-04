@@ -1,6 +1,6 @@
 module github.com/lf-edge/eve/pkg/measure-config
 
-go 1.26.0
+go 1.26.10
 
 require github.com/google/go-tpm v0.3.3
 
