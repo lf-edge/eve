@@ -49,8 +49,7 @@ func TestAllocCountsSend(t *testing.T) {
 		s := &Publisher{topic: "DevicePortConfig", stats: &pubsub.PubStats{}}
 		val := []byte(`"` + strings.Repeat("x", tt.size) + `"`)
 		runtime, counted := countedAllocs(&s.stats.AllocMessage, func() {
-			msg := s.updateMessage(tt.key, val)
-			_ = writeFrame(io.Discard, msg, false, &s.stats.AllocMessage)
+			_ = writeFrame(io.Discard, s.updatePrefix(tt.key), val, false, &s.stats.AllocMessage)
 		})
 		if runtime != math.Floor(counted) {
 			t.Errorf("%s: %v allocations per message, %v counted", tt.name, runtime, counted)

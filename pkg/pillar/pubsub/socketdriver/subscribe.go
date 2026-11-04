@@ -252,7 +252,7 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 			req := fmt.Sprintf("request %s", s.topic)
 			s.stats.AllocDecode.Add(len(req))
 			s.stats.AllocDecode.Add(len(req))
-			err = writeFrame(sock, []byte(req), false, &s.stats.AllocDecode)
+			err = writeFrame(sock, nil, []byte(req), false, &s.stats.AllocDecode)
 			if err != nil {
 				errStr := fmt.Sprintf("connectAndRead(%s): sock write failed %s",
 					s.name, err)

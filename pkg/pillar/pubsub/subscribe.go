@@ -254,18 +254,28 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 	if sub.logger.GetLevel() == logrus.TraceLevel {
 		sub.dump("after handleModify")
 	}
-	// Need a copy in case the caller will modify e.g., embedded maps
-	newItem := DeepCopy(sub.log, item)
+	// A handler gets a copy in case it modifies e.g. embedded maps, decoded
+	// from the JSON again.
 	if created {
 		if sub.CreateHandler != nil {
-			(sub.CreateHandler)(sub.userCtx, key, newItem)
+			(sub.CreateHandler)(sub.userCtx, key, sub.copyOf(itemcb))
 		}
 	} else {
 		if sub.ModifyHandler != nil {
-			(sub.ModifyHandler)(sub.userCtx, key, newItem, m)
+			(sub.ModifyHandler)(sub.userCtx, key, sub.copyOf(itemcb), m)
 		}
 	}
 	sub.log.Tracef("pubsub.handleModify(%s) done for key %s\n", name, key)
+}
+
+// copyOf returns a new item decoded from itemcb, which has been decoded
+// once already.
+func (sub *SubscriptionImpl) copyOf(itemcb []byte) interface{} {
+	item, err := parseTemplate(sub.log, itemcb, sub.topicType)
+	if err != nil {
+		sub.log.Fatalf("json Unmarshal of %s: %v", sub.nameString(), err)
+	}
+	return item
 }
 
 func handleDelete(ctxArg interface{}, key string) {

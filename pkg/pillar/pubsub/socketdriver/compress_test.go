@@ -26,7 +26,7 @@ func TestCompressedFrameRoundTrip(t *testing.T) {
 		t.Fatalf("frame of %d bytes", len(frame))
 	}
 	var stream bytes.Buffer
-	if err := writeFrame(&stream, frame, true, nil); err != nil {
+	if err := writeFrame(&stream, nil, frame, true, nil); err != nil {
 		t.Fatal(err)
 	}
 	stats := &pubsub.SubStats{}
@@ -81,7 +81,7 @@ func TestDecompressRefusesOversizedMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stream bytes.Buffer
-	if err := writeFrame(&stream, frame.Bytes(), true, nil); err != nil {
+	if err := writeFrame(&stream, nil, frame.Bytes(), true, nil); err != nil {
 		t.Fatal(err)
 	}
 	stats := &pubsub.SubStats{}

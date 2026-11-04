@@ -411,26 +411,37 @@ func (s *Publisher) serialize(sock net.Conn, keys []string,
 }
 
 func (s *Publisher) sendUpdate(sock net.Conn, key string,
-	val []byte) error {
+	val *pubsub.Value) error {
 
 	s.log.Tracef("sendUpdate(%s): key %s\n", s.name, key)
-	return s.send(sock, s.updateMessage(key, val), key)
+	return s.sendMessage(sock, s.updatePrefix(key), val.JSON, key)
 }
 
-// updateMessage returns "update topic key val" with key base64-encoded to
+// An update message is "update topic key val" with key base64-encoded to
 // avoid having spaces in it. val is sent as is; it is the last field, so it
-// may contain spaces. The message is built in a single allocation since
-// val can be large.
-func (s *Publisher) updateMessage(key string, val []byte) []byte {
-	n := s.updateMessageLen(key, val)
-	s.stats.AllocMessage.Add(n)
-	buf := make([]byte, 0, n)
+// may contain spaces.
+func (s *Publisher) appendUpdatePrefix(buf []byte, key string) []byte {
 	buf = append(buf, "update "...)
 	buf = append(buf, s.topic...)
 	buf = append(buf, ' ')
 	buf = base64.StdEncoding.AppendEncode(buf, []byte(key))
-	buf = append(buf, ' ')
-	return append(buf, val...)
+	return append(buf, ' ')
+}
+
+// updatePrefix returns the update message of key up to its value, which
+// follows it in the frame without being copied.
+func (s *Publisher) updatePrefix(key string) []byte {
+	n := s.updateMessageLen(key, nil)
+	s.stats.AllocMessage.Add(n)
+	return s.appendUpdatePrefix(make([]byte, 0, n), key)
+}
+
+// updateMessage returns the update message of key and val in a single
+// allocation, since val can be large.
+func (s *Publisher) updateMessage(key string, val []byte) []byte {
+	n := s.updateMessageLen(key, val)
+	s.stats.AllocMessage.Add(n)
+	return append(s.appendUpdatePrefix(make([]byte, 0, n), key), val...)
 }
 
 func (s *Publisher) updateMessageLen(key string, val []byte) int {
@@ -466,15 +477,20 @@ func (s *Publisher) sendComplete(sock net.Conn) error {
 	return s.send(sock, []byte(buf), "")
 }
 
-// send writes msg as one frame, compressed if it is larger than maxFrameSize. A
-// message which does not fit even compressed is not sent: Publish refuses
-// such values, so only a checkpoint written by another version of EVE can
-// bring one here, and it must not make the publisher exit on every boot. A
-// message larger than warnSize is logged whenever the publication reaches
-// a new largest size.
+// send writes msg as one frame.
 func (s *Publisher) send(sock net.Conn, msg []byte, key string) error {
-	size := int64(len(msg))
-	s.stats.AddMessage(len(msg))
+	return s.sendMessage(sock, nil, msg, key)
+}
+
+// sendMessage writes the message prefix+body as one frame, compressed if it
+// is larger than maxFrameSize. A message which does not fit even compressed
+// is not sent: Publish refuses such values, so only a checkpoint written by
+// another version of EVE can bring one here, and it must not make the
+// publisher exit on every boot. A message larger than warnSize is logged
+// whenever the publication reaches a new largest size.
+func (s *Publisher) sendMessage(sock net.Conn, prefix, body []byte, key string) error {
+	size := int64(len(prefix) + len(body))
+	s.stats.AddMessage(int(size))
 	if size > warnSize {
 		s.stats.LargeWarnings.Add(1)
 	}
@@ -490,8 +506,10 @@ func (s *Publisher) send(sock net.Conn, msg []byte, key string) error {
 		}
 	}
 	if size <= int64(maxFrameSize()) {
-		return writeFrame(sock, msg, false, &s.stats.AllocMessage)
+		return writeFrame(sock, prefix, body, false, &s.stats.AllocMessage)
 	}
+	msg := append(append(make([]byte, 0, size), prefix...), body...)
+	s.stats.AllocMessage.Add(int(size))
 	frame, err := compress(msg)
 	if err != nil {
 		s.stats.Refused.Add(1)
@@ -502,7 +520,7 @@ func (s *Publisher) send(sock net.Conn, msg []byte, key string) error {
 	s.stats.AllocMessage.Add(cap(frame))
 	s.stats.CompressedMessages.Add(1)
 	s.stats.CompressedBytes.Add(int64(len(frame)))
-	return writeFrame(sock, frame, true, &s.stats.AllocMessage)
+	return writeFrame(sock, nil, frame, true, &s.stats.AllocMessage)
 }
 
 // CheckMaxSize returns an error if the value does not fit in a message:

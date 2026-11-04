@@ -27,7 +27,7 @@ func (d staticDiffer) DetermineDiffs(local pubsub.LocalCollection) []string {
 	var keys []string
 	for key, val := range d.items {
 		if _, ok := local[key]; !ok {
-			local[key] = val
+			local[key] = &pubsub.Value{JSON: val}
 			keys = append(keys, key)
 		}
 	}

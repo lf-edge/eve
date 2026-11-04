@@ -20,9 +20,6 @@ const (
 	Global = "global"
 )
 
-// LocalCollection represents an entire local copy of a set of key-value pairs
-type LocalCollection map[string][]byte
-
 // Notify simple struct to pass notification messages
 type Notify struct{}
 
@@ -57,6 +54,14 @@ type PublicationImpl struct {
 	log         *base.LogObject
 
 	driver DriverPublisher
+}
+
+// published is what a publication holds for a key: the item, which Iterate
+// hands out, and the value subscribers are sent, from which Get makes
+// copies.
+type published struct {
+	item  interface{}
+	value *Value
 }
 
 // IsRestarted has this publication been set to "restarted"
@@ -105,19 +110,25 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 	if val.Kind() == reflect.Ptr {
 		pub.log.Fatalf("Publish got a pointer for %s", name)
 	}
-	// Perform a deepCopy in case the caller might change a map etc
-	newItem := DeepCopy(pub.log, item)
-	m, ok := pub.km.key.Load(key)
-	if ok && cmp.Equal(m, newItem) {
-		pub.log.Tracef("Publish(%s/%s) unchanged\n", name, key)
-		return nil
-	}
-	// marshal to json bytes to send to the driver
+	// The JSON is what is checkpointed and sent to every subscriber. An
+	// item which marshals to the JSON published is unchanged; so is one
+	// equal to the item published by the Equal methods of its type.
 	b, err := json.Marshal(item)
 	if err != nil {
 		pub.log.Fatal("json Marshal in Publish", err)
 	}
 	PublicationStats(name).AllocMarshal.Add(len(b))
+	old, ok := pub.load(key)
+	if ok && bytes.Equal(old.value.JSON, b) {
+		pub.log.Tracef("Publish(%s/%s) unchanged\n", name, key)
+		return nil
+	}
+	// Keep a copy, made from the JSON, in case the caller changes a map etc.
+	newItem := pub.decode(b, reflect.TypeOf(item))
+	if ok && cmp.Equal(old.item, newItem) {
+		pub.log.Tracef("Publish(%s/%s) unchanged\n", name, key)
+		return nil
+	}
 	// Refuse a value which does not fit in a message before it is stored or
 	// checkpointed: sending it would fail on every connection, and after
 	// every reboot if checkpointed.
@@ -133,7 +144,7 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 
 		loggable, ok := newItem.(base.LoggableObject)
 		if ok {
-			loggable.LogModify(pub.log, m)
+			loggable.LogModify(pub.log, old.item)
 		}
 	} else {
 		// DO NOT log Values. They may contain sensitive information.
@@ -143,7 +154,7 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 			loggable.LogCreate(pub.log)
 		}
 	}
-	pub.km.key.Store(key, newItem)
+	pub.km.key.Store(key, &published{item: newItem, value: &Value{JSON: b}})
 
 	if pub.logger.GetLevel() == logrus.TraceLevel {
 		pub.dump("after Publish")
@@ -155,10 +166,10 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 // Unpublish delete a key from the key-value map
 func (pub *PublicationImpl) Unpublish(key string) error {
 	name := pub.nameString()
-	if m, ok := pub.km.key.Load(key); ok {
+	if p, ok := pub.load(key); ok {
 		// DO NOT log Values. They may contain sensitive information.
 		pub.log.Tracef("Unpublish(%s/%s) removing Item", name, key)
-		loggable, ok := m.(base.LoggableObject)
+		loggable, ok := p.item.(base.LoggableObject)
 		if ok {
 			loggable.LogDelete(pub.log)
 		}
@@ -189,41 +200,47 @@ func (pub *PublicationImpl) ClearRestarted() error {
 	return pub.restartImpl(false)
 }
 
-// Get the value for a given key
+// Get returns a copy of the item of a given key.
 func (pub *PublicationImpl) Get(key string) (interface{}, error) {
-	m, ok := pub.km.key.Load(key)
-	if ok {
-		newIntf := DeepCopy(pub.log, m)
-		return newIntf, nil
-	} else {
+	p, ok := pub.load(key)
+	if !ok {
 		name := pub.nameString()
 		errStr := fmt.Sprintf("Get(%s) unknown key %s", name, key)
 		return nil, errors.New(errStr)
 	}
+	return pub.copyOf(p), nil
 }
 
-// GetAll enumerate all the key-value pairs for the collection
+// GetAll returns a copy of every item, by key.
 func (pub *PublicationImpl) GetAll() map[string]interface{} {
-	result := make(map[string]interface{})
-	assigner := func(key string, val interface{}) bool {
-		newVal := DeepCopy(pub.log, val)
-		result[key] = newVal
+	all := make(map[string]*published)
+	pub.km.key.Range(func(key string, val interface{}) bool {
+		all[key] = val.(*published)
 		return true
+	})
+	result := make(map[string]interface{}, len(all))
+	for key, p := range all {
+		result[key] = pub.copyOf(p)
 	}
-	pub.km.key.Range(assigner)
 	return result
 }
 
 // Iterate - performs some callback function on all items
 func (pub *PublicationImpl) Iterate(function base.StrMapFunc) {
-	pub.km.key.Range(function)
+	pub.km.key.Range(func(key string, val interface{}) bool {
+		return function(key, val.(*published).item)
+	})
 }
 
 // Close the publisher
 func (pub *PublicationImpl) Close() error {
-	items := pub.GetAll()
+	var keys []string
+	pub.km.key.Range(func(key string, _ interface{}) bool {
+		keys = append(keys, key)
+		return true
+	})
 	if !pub.persistent {
-		for key := range items {
+		for _, key := range keys {
 			pub.log.Functionf("Close(%s) unloading key %s",
 				pub.nameString(), key)
 			pub.Unpublish(key)
@@ -235,6 +252,28 @@ func (pub *PublicationImpl) Close() error {
 }
 
 // methods just for this implementation of Publisher
+
+func (pub *PublicationImpl) load(key string) (*published, bool) {
+	p, ok := pub.km.key.Load(key)
+	if !ok {
+		return nil, false
+	}
+	return p.(*published), true
+}
+
+// decode returns a new item of type t decoded from b.
+func (pub *PublicationImpl) decode(b []byte, t reflect.Type) interface{} {
+	item, err := parseTemplate(pub.log, b, t)
+	if err != nil {
+		pub.log.Fatalf("json Unmarshal of %s: %v", pub.nameString(), err)
+	}
+	return item
+}
+
+// copyOf returns a copy of the item of p, decoded from its JSON.
+func (pub *PublicationImpl) copyOf(p *published) interface{} {
+	return pub.decode(p.value.JSON, reflect.TypeOf(p.item))
+}
 
 // updatersNotify send a notification to all the matching channels which does not yet
 // have one queued.
@@ -276,7 +315,14 @@ func (pub *PublicationImpl) populate() {
 			pub.log.Error(err)
 			continue
 		}
-		pub.km.key.Store(key, item)
+		// Send the item as this version of its type marshals it, not as
+		// the checkpoint, maybe of an older version, has it.
+		b, err := json.Marshal(item)
+		if err != nil {
+			pub.log.Fatal("json Marshal in populate", err)
+		}
+		PublicationStats(name).AllocMarshal.Add(len(b))
+		pub.km.key.Store(key, &published{item: item, value: &Value{JSON: b}})
 	}
 	pub.km.restartCounter.Store(int64(restartCounter))
 	pub.log.Tracef("populate(%s) done\n", name)
@@ -287,47 +333,34 @@ func (pub *PublicationImpl) publisher() {
 	pub.driver.Start()
 }
 
-// DetermineDiffs update a provided LocalCollection to the current state,
-// and return the deleted keys before the added/modified ones
+// DetermineDiffs updates a provided LocalCollection to the current state,
+// and returns the deleted keys before the added/modified ones. A key is
+// modified if its Value is not the one in the collection: every Publish
+// which changes a key makes a new Value, so nothing is marshalled or
+// compared here, and every collection holds the same Values.
 func (pub *PublicationImpl) DetermineDiffs(localCollection LocalCollection) []string {
-	var keys []string
-	name := pub.nameString()
-	items := pub.GetAll()
-	// Look for deleted
-	for localKey := range localCollection {
-		_, ok := items[localKey]
-		if !ok {
-			pub.log.Tracef("determineDiffs(%s): key %s deleted\n",
-				name, localKey)
-			delete(localCollection, localKey)
-			keys = append(keys, localKey)
+	var deleted, changed []string
+	current := 0
+	pub.km.key.Range(func(key string, val interface{}) bool {
+		current++
+		value := val.(*published).value
+		if localCollection[key] != value {
+			localCollection[key] = value
+			changed = append(changed, key)
+		}
+		return true
+	})
+	// The collection now holds every current key, so it holds more only if
+	// some were deleted.
+	if len(localCollection) > current {
+		for key := range localCollection {
+			if _, ok := pub.km.key.Load(key); !ok {
+				delete(localCollection, key)
+				deleted = append(deleted, key)
+			}
 		}
 	}
-	// Look for new/changed
-	for originKey, origin := range items {
-		originb, err := json.Marshal(origin)
-		if err != nil {
-			pub.log.Fatalf("json Marshal in DetermineDiffs for origin key %s: %v", originKey, err)
-		}
-		PublicationStats(name).AllocMarshal.Add(len(originb))
-
-		local := lookupLocal(localCollection, originKey)
-		if local == nil {
-			pub.log.Tracef("determineDiffs(%s): key %s added\n",
-				name, originKey)
-			localCollection[originKey] = originb
-			keys = append(keys, originKey)
-		} else if bytes.Compare(originb, local) != 0 {
-			pub.log.Tracef("determineDiffs(%s): key %s replacing due to diff\n",
-				name, originKey)
-			localCollection[originKey] = originb
-			keys = append(keys, originKey)
-		} else {
-			pub.log.Tracef("determineDiffs(%s): key %s unchanged\n",
-				name, originKey)
-		}
-	}
-	return keys
+	return append(deleted, changed...)
 }
 
 func (pub *PublicationImpl) nameString() string {
@@ -371,11 +404,7 @@ func (pub *PublicationImpl) dump(infoStr string) {
 
 	name := pub.nameString()
 	pub.log.Tracef("dump(%s) %s\n", name, infoStr)
-	dumper := func(key string, val interface{}) bool {
-		_, err := json.Marshal(val)
-		if err != nil {
-			pub.log.Fatal("json Marshal in dump", err)
-		}
+	dumper := func(key string, _ interface{}) bool {
 		// DO NOT log Values. They may contain sensitive information.
 		pub.log.Tracef("\tkey %s", key)
 		return true

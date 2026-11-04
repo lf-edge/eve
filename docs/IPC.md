@@ -104,8 +104,11 @@ When a process wants to store information, it does the following:
 Upon publishing changes, the [Publication](https://pkg.go.dev/github.com/lf-edge/eve/pkg/pillar@v0.0.0-20220603153046-23f5ce4eb5ee/pubsub#Publication) is responsible for:
 
 1. [Validating that the topic and types fit the `Publication`](https://github.com/lf-edge/eve/blob/23f5ce4eb5ee/pkg/pillar/pubsub/publish.go#L100-L110)
-1. [Saving the data in memory](https://github.com/lf-edge/eve/blob/23f5ce4eb5ee/pkg/pillar/pubsub/publish.go#L134)
-1. [Marshaling the go object into json bytes](https://github.com/lf-edge/eve/blob/23f5ce4eb5ee/pkg/pillar/pubsub/publish.go#L141).
+1. Marshaling the go object into json bytes, once. An object which marshals to the bytes
+   already published for its key is unchanged, and nothing else happens; so is one which
+   `cmp.Equal`, honouring the `Equal` methods of its types, finds equal to the one published.
+1. Saving the object and its json bytes in memory. The bytes are never modified: every
+   subscriber is sent the same bytes, and `Get()` and `GetAll()` decode their copies from them.
 1. [Updating the driver with the key and updated bytes](https://github.com/lf-edge/eve/blob/23f5ce4eb5ee/pkg/pillar/pubsub/publish.go#L148)
 
 Note that there is nothing about notifications, subscriptions, or persistence. The `Publication` is solely responsible for
@@ -288,6 +291,10 @@ and then removes the file.
 `socketdriver.Publisher` has one listener on the socket file; for each connection, representing each `socketdriver.Publisher`,
 it starts [a new goroutine](https://github.com/lf-edge/eve/blob/71a6ed0790a8f786859c76172bed521c774f57ec/pkg/pillar/pubsub/socketdriver/publish.go#L220)
 to handle the requests. Each subscriber has a long-running connection, over the socket, to the publisher, with a dedicated long-running goroutine.
+On every change, each connection asks the `Publication` which keys changed since it last sent
+them (`DetermineDiffs`). It is handed the json bytes the `Publication` holds for each key, the
+same bytes for every connection, and a key changed if its bytes are not the ones it sent last:
+nothing is marshaled or compared per connection.
 
 The `socketdriver.Subscriber` sends requests to the publisher, primarily to do one of:
 

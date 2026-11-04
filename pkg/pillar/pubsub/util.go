@@ -55,16 +55,6 @@ func parseTemplate(log *base.LogObject, sb []byte, targetType reflect.Type) (int
 	return val.Interface(), nil
 }
 
-func lookupLocal(localCollection LocalCollection, key string) []byte {
-	for localKey := range localCollection {
-		if localKey == key {
-			res := localCollection[localKey]
-			return res
-		}
-	}
-	return nil
-}
-
 // TypeToName given a particular object, get the desired name for it
 func TypeToName(something interface{}) string {
 	t := reflect.TypeOf(something)
