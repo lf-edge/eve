@@ -14,7 +14,10 @@ RUN eve-alpine-deploy.sh
 
 # build libtpms, it is needed by swtpm
 WORKDIR /libtpms
-ADD https://github.com/stefanberger/libtpms.git#v0.10.0 /libtpms
+# This points to the head of the stable-0.10 branch (0.10.3 pre-release), which
+# carries security and build fixes not yet available in a tagged release.
+# TODO: switch to the v0.10.3 tag once it is released.
+ADD https://github.com/stefanberger/libtpms.git#fd5b4174622032e131b70389b40ec6add4da3237 /libtpms
 RUN ./autogen.sh --prefix=/usr --with-tpm2
 RUN make -j$(nproc)
 RUN make -j$(nproc) install
