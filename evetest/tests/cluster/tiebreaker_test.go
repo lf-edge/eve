@@ -158,8 +158,9 @@ func expectKubectlFields(t *WithT, device *evetest.EdgeDevice,
 //
 // Device configuration
 // --------------------
-//   - clusterDeviceRequirements (top of cluster_test.go), three devices.
-//     edge-dev3 is the tie-breaker; edge-dev1 is the bootstrap node.
+//   - clusterDeviceRequirements (top of cluster_test.go), three devices,
+//     always created from scratch. edge-dev3 is the tie-breaker; edge-dev1 is
+//     the bootstrap node.
 //
 // Test params
 // -----------
@@ -189,7 +190,14 @@ func TestTieBreakerCluster(test *testing.T) {
 	var devName [3]string
 	for i := 0; i < 3; i++ {
 		devName[i] = fmt.Sprintf("edge-dev%d", i+1)
-		requiredDevices[i] = clusterDeviceRequirements(devName[i], withTPM, filesystem, false)
+		req := clusterDeviceRequirements(devName[i], withTPM, filesystem, false)
+		// Reused devices would bring the cluster formed by the previous test,
+		// turning this test into converting a running cluster to one with a
+		// tie-breaker. That should work, but is unlikely in practice and
+		// currently breaks cross-node pod networking, while this test is
+		// about forming a cluster with a tie-breaker.
+		req.DeviceReusePolicy = evetest.CreateFromScratchWithLiveImage
+		requiredDevices[i] = req
 	}
 
 	requiredNetModel := evetest.RequireNetworkModel{
