@@ -140,16 +140,21 @@ COPY --from=dnsmasq /usr/sbin/dnsmasq /out/opt/zededa/bin/dnsmasq
 # to avoid conflicts and speedup re-builds
 COPY --from=build /final /out
 
-# We have to make sure configs survive in some location, but they don't pollute
-# the default /config (since that is expected to be an empty mount point)
-ADD conf/root-certificate.pem conf/server conf/server.production /out/opt/zededa/examples/config/
 ADD scripts/device-steps.sh \
+    scripts/run-fdo.sh \
+    scripts/fdo-demo-clean.sh \
     scripts/onboot.sh \
     scripts/handlezedserverconfig.sh \
     scripts/veth.sh \
     scripts/dhcpcd.sh \
   /out/opt/zededa/bin/
 ADD conf/lisp.config.base /out/var/tmp/zededa/lisp.config.base
+
+# For FDO demo
+ADD fdo-alpine-3.16/linux-client /out/opt/zededa/bin/fdo-alpine-3.16/
+ADD fdo-alpine-3.16/data/* /out/opt/zededa/bin/fdo-alpine-3.16/data/
+
+RUN ls -lR /out/opt/zededa/bin/fdo-alpine-3.16
 
 # And now a few local tweaks
 COPY rootfs/ /out
