@@ -456,7 +456,7 @@ go.opentelemetry.io/otel/trace
 go.opentelemetry.io/otel/trace/embedded
 go.opentelemetry.io/otel/trace/internal/telemetry
 go.opentelemetry.io/otel/trace/noop
-# golang.org/x/crypto v0.58.0
+# golang.org/x/crypto v0.58.1-0.20261009181718-2f1f834330b2
 ## explicit; go 1.26.0
 golang.org/x/crypto/sha3
 # golang.org/x/mod v0.41.0
