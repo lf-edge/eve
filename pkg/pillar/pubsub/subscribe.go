@@ -229,7 +229,7 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 	created := false
 	m, ok := sub.km.key.Load(key)
 	if ok {
-		if cmp.Equal(m, item) {
+		if cmp.Equal(m, item, equalOpts) {
 			sub.log.Tracef("pubsub.handleModify(%s/%s) unchanged\n",
 				name, key)
 			return
