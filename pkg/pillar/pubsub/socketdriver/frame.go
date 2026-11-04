@@ -170,6 +170,7 @@ func (fr *FrameReader) ReadFrame() ([]byte, error) {
 	compressed := n&compressedFlag != 0
 	n &^= compressedFlag
 	if maxFrame := maxFrameSize(); n > uint32(maxFrame) {
+		fr.reject()
 		return nil, fmt.Errorf("frame of %d bytes exceeds max %d", n, maxFrame)
 	}
 	buf := fr.acquire(int(n))
@@ -189,12 +190,20 @@ func (fr *FrameReader) ReadFrame() ([]byte, error) {
 	return buf, nil
 }
 
+// reject counts a frame refused as too large, or as not decompressing.
+func (fr *FrameReader) reject() {
+	if fr.stats != nil {
+		fr.stats.RejectedFrames.Add(1)
+	}
+}
+
 // decompress replaces the compressed frame in buf by its message, in a
 // buffer of its own.
 func (fr *FrameReader) decompress(buf []byte) ([]byte, error) {
 	msg, err := decompress(buf)
 	fr.Release()
 	if err != nil {
+		fr.reject()
 		return nil, fmt.Errorf("frame of %d bytes: %w", len(buf), err)
 	}
 	fr.buf, fr.class = &msg, -1

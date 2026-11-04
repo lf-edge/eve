@@ -331,7 +331,10 @@ before the value is stored or checkpointed, logs it and counts it in the
 `refused` counter of `/debug/pubsub/stats`, and the publisher skips such a
 value if it reaches it otherwise, e.g. from a checkpoint. The publisher also
 logs a warning for every new largest message above 64 KiB, so that a value
-growing towards the limit is noticed before it hits it.
+growing towards the limit is noticed before it hits it. A subscriber which
+reads a frame above its frame size, or one which does not decompress within
+its message size, counts it in `rejected_frames`, drops the connection and
+connects again.
 
 The messages are space-separated plain text. Keys are base64-encoded so that
 they cannot contain spaces. A value is the JSON encoding of the table entry,
