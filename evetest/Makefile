@@ -79,7 +79,9 @@ list-tests: ensure-evetest-image
 		-v $(REPO_ROOT)/evetest/tests:/evetest/tests \
 		$(EVETEST_IMAGE)
 
-# Plain list of test suite names, one per line -- e.g. for a CI job matrix.
+# Plain list of test suites, one per line -- e.g. for a CI job matrix. A suite
+# name is followed by its comma-separated tags in angle brackets, if it has any (see
+# evetest.WithTags).
 list-test-suites: ensure-evetest-image
 	@docker run --rm $(DOCKER_IT) \
 		-v $(REPO_ROOT)/evetest/tests:/evetest/tests \

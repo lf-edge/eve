@@ -265,7 +265,7 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 //     DNS server); its dnsmasq instance must not restart and a connected
 //     app must keep its DHCP-assigned IP throughout.
 func TestApplicationConnectivitySuite(test *testing.T) {
-	evetest.Init(test)
+	evetest.Init(test, evetest.WithTags(evetest.TagHeavyTest))
 	defer evetest.Close()
 
 	// Define parameters for the entire test suite.

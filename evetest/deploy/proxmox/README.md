@@ -236,8 +236,12 @@ It fetches a runner registration token from the GitHub API and registers the VM
 against `<gh-username>/eve`, installs Docker/git/make, and creates a Linux user named
 after `--gh-username` (key-only SSH via `--ssh-pubkey`, passwordless sudo). The
 runner's GitHub label defaults to its VM name (unique per runner) but can be set with
-`--gh-label` -- pass the same label to multiple runners so a workflow's `runs-on` can
-pick any free one of them. The runner process picks up `EVETEST_BROKER_ADDRESS`
+`--gh-label` (comma-separated, or repeat the flag, for several labels) -- pass the same
+label to multiple runners so a workflow's `runs-on` can pick any free one of them. CI
+uses two labels: `evetest-runner` (can run every suite) and `evetest-runner-light` (can
+run only the suites not tagged `evetest.TagHeavyTest`). Register a strong host's runners
+with `--gh-label evetest-runner,evetest-runner-light` and a weak host's with
+`--gh-label evetest-runner-light`. The runner process picks up `EVETEST_BROKER_ADDRESS`
 (defaulting to the LAN IP of the `evetest-broker` VM installed above, if one is found
 running on this host), `EVETEST_COLLECT_ARTIFACTS=/home/<gh-username>/artifacts`,
 `EVETEST_SUITE_MAX_FAILURES=-1` and `EVETEST_LOG_LEVEL=debug`. Run with `--help` to
