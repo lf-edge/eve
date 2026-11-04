@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
-FROM lfedge/eve-alpine:80c5dbe1085d0650030be8a110eaec66ef532672 as zfs
+FROM lfedge/eve-alpine:a5885b38222df4ba5add4acca2d219c85741bf79 as zfs
 ENV BUILD_PKGS git patch ca-certificates util-linux build-base gettext-dev libtirpc-dev automake autoconf \
     libtool linux-headers attr-dev e2fsprogs-dev glib-dev openssl-dev util-linux-dev coreutils
 ENV PKGS ca-certificates util-linux libintl libuuid libtirpc libblkid libcrypto3 zlib
