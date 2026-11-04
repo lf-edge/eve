@@ -102,7 +102,7 @@ const (
 	deviceOnboardTimeout = 10 * time.Minute
 
 	// Timeout for a device to attest (or at least to publish its certificates).
-	deviceAttestTimeout = 2 * time.Minute
+	deviceAttestTimeout = 5 * time.Minute
 
 	// Timeout for a device to fetch the latest configuration from Adam.
 	deviceApplyConfigTimeout = 2 * time.Minute
