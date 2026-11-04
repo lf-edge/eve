@@ -126,7 +126,7 @@ func (pub *PublicationImpl) Publish(key string, item interface{}) error {
 	}
 	// Keep a copy, made from the JSON, in case the caller changes a map etc.
 	newItem := pub.decode(b, reflect.TypeOf(item))
-	if ok && cmp.Equal(old.item, newItem) {
+	if ok && cmp.Equal(old.item, newItem, equalOpts) {
 		pub.log.Tracef("Publish(%s/%s) unchanged\n", name, key)
 		return nil
 	}
