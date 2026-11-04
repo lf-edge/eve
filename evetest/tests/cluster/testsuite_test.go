@@ -25,7 +25,7 @@ import (
 //   - TPM (bool) via evetest.TPMParameter(). The suite passes the same
 //     TPM choice to all subtests.
 func TestNodeClusterSuite(test *testing.T) {
-	evetest.Init(test)
+	evetest.Init(test, evetest.WithTags(evetest.TagHeavyTest))
 	defer evetest.Close()
 
 	// Define configurable parameters available for the test suite.
@@ -81,7 +81,7 @@ func TestNodeClusterSuite(test *testing.T) {
 //   - TPM (bool) via evetest.TPMParameter(). The suite passes the same
 //     TPM choice to all subtests.
 func TestNodeClusterResilienceSuite(test *testing.T) {
-	evetest.Init(test)
+	evetest.Init(test, evetest.WithTags(evetest.TagHeavyTest))
 	defer evetest.Close()
 
 	// Define configurable parameters available for the test suite.

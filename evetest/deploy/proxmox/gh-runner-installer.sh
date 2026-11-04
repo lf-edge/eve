@@ -31,9 +31,11 @@ GH_USERNAME=""
 GH_PAT=""
 GH_REGISTRATION_TOKEN=""
 BROKER_ADDRESS=""
-# Runner label registered with GitHub. Defaults to the VM name (unique per
-# runner) if left empty; pass the same --gh-label across multiple runners so
-# a CI workflow can target "any free runner" via that shared label.
+# Runner labels registered with GitHub (comma-separated; --gh-label may be
+# repeated). Defaults to the VM name (unique per runner) if left empty; pass
+# the same labels across multiple runners so a CI workflow can target "any
+# free runner" via a shared label. A job runs on a runner that has all the
+# labels its runs-on lists.
 VM_NAME=""
 GH_LABEL=""
 IMAGE_URL="https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
@@ -90,10 +92,11 @@ Required:
 
   --vm-name VM_NAME         Proxmox VM name. Default: NAME. Pass the same
                              value with --destroy.
-  --gh-label LABEL          GitHub Actions runner label. Default: NAME
-                             (the runner name). Pass the same label on
-                             multiple runners so a workflow's "runs-on" can
-                             pick any free one of them.
+  --gh-label LABEL[,LABEL]  GitHub Actions runner label(s); may be repeated
+                             and/or comma-separated. Default: NAME (the
+                             runner name). Pass the same labels on multiple
+                             runners so a workflow's "runs-on" can pick any
+                             free one of them.
 
 VM shape (all optional):
   --image-url URL           Ubuntu cloud image to boot from. Default:
@@ -131,7 +134,7 @@ while [ $# -gt 0 ]; do
         --registration-token) GH_REGISTRATION_TOKEN="$2"; shift 2 ;;
         --broker-address)     BROKER_ADDRESS="$2"; shift 2 ;;
         --vm-name)            VM_NAME="$2"; shift 2 ;;
-        --gh-label)           GH_LABEL="$2"; shift 2 ;;
+        --gh-label)           GH_LABEL="${GH_LABEL:+${GH_LABEL},}$2"; shift 2 ;;
         --image-url)          IMAGE_URL="$2"; shift 2 ;;
         --vm-memory)          VM_MEMORY="$2"; shift 2 ;;
         --vm-disk)            VM_DISK="$2"; shift 2 ;;
@@ -448,7 +451,7 @@ Runner VM ${VMID} (${VM_NAME}) is up at ${RUNNER_IP}.
   SSH: ssh ${GH_USERNAME}@${RUNNER_IP}   (key-only; see --ssh-pubkey)
 
 It will finish installing Docker and self-register as a GitHub Actions
-runner on ${GH_REPO} shortly (name: ${RUNNER_NAME}, label: ${GH_LABEL}).
+runner on ${GH_REPO} shortly (name: ${RUNNER_NAME}, labels: ${GH_LABEL}).
 EOF
 else
     cat <<EOF
