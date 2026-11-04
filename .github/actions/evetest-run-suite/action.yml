@@ -149,8 +149,31 @@ runs:
           echo "No Docker registry credentials configured on this runner; skipping login (pulls will be unauthenticated)."
         fi
 
+    # download-artifact retries only briefly, and a failed download of the
+    # (up to 1.7 GB) images would fail the whole suite before any test runs,
+    # so try once more after a pause. A uses: step can't be retried in a loop.
     - name: Download EVE image artifacts
+      id: download_eve_images
       if: inputs.download-image-artifacts == 'true'
+      continue-on-error: true
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        pattern: eve-*-${{ env.EVE_ARCH }}-${{ env.EVE_PLATFORM }}
+        run-id: ${{ inputs.source-run-id }}
+        github-token: ${{ github.token }}
+        path: /tmp/eve-image
+        merge-multiple: true
+
+    - name: Wait before retrying the EVE image download
+      if: steps.download_eve_images.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::Downloading the EVE image artifacts failed; retrying in 60s"
+        rm -rf /tmp/eve-image
+        sleep 60
+
+    - name: Download EVE image artifacts (retry)
+      if: steps.download_eve_images.outcome == 'failure'
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
       with:
         pattern: eve-*-${{ env.EVE_ARCH }}-${{ env.EVE_PLATFORM }}
@@ -186,11 +209,14 @@ runs:
 
     - name: Install gotestfmt
       shell: bash
-      run: go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@v2.5.0
+      run: |
+        "${GITHUB_ACTION_PATH}/retry.sh" \
+          go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@v2.5.0
 
     - name: Install evetest CLI
       shell: bash
-      run: make -C evetest install-cli
+      run: |
+        "${GITHUB_ACTION_PATH}/retry.sh" make -C evetest install-cli
 
     # On a workflow re-run, restore the previous attempt's artifacts (if
     # any were uploaded -- see "Upload artifacts" below) under their
@@ -318,7 +344,7 @@ runs:
           echo "No gotest.json found, skipping JUnit conversion."
           exit 0
         fi
-        go install gotest.tools/gotestsum@v1.13.0
+        "${GITHUB_ACTION_PATH}/retry.sh" go install gotest.tools/gotestsum@v1.13.0
         "$(go env GOPATH)/bin/gotestsum" --raw-command \
           --junitfile "${ARTIFACT_DIR}/${{ inputs.test-suite }}.xml" \
           -- cat "$JSON"
