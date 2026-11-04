@@ -414,6 +414,11 @@ func (s *Publisher) sendUpdate(sock net.Conn, key string,
 	val *pubsub.Value) error {
 
 	s.log.Tracef("sendUpdate(%s): key %s\n", s.name, key)
+	if val.Wire != nil {
+		size := s.updateMessageLen(key, val.JSON)
+		s.countMessage(int64(size), key)
+		return s.sendCompressed(sock, val.Wire)
+	}
 	return s.sendMessage(sock, s.updatePrefix(key), val.JSON, key)
 }
 
@@ -490,6 +495,32 @@ func (s *Publisher) send(sock net.Conn, msg []byte, key string) error {
 // whenever the publication reaches a new largest size.
 func (s *Publisher) sendMessage(sock net.Conn, prefix, body []byte, key string) error {
 	size := int64(len(prefix) + len(body))
+	s.countMessage(size, key)
+	if size <= int64(maxFrameSize()) {
+		return writeFrame(sock, prefix, body, false, &s.stats.AllocMessage)
+	}
+	msg := append(append(make([]byte, 0, size), prefix...), body...)
+	s.stats.AllocMessage.Add(int(size))
+	frame, err := s.compress(msg)
+	if err != nil {
+		s.stats.Refused.Add(1)
+		s.log.Errorf("Not sending to %s topic %s key %s: %v",
+			s.name, s.topic, key, err)
+		return nil
+	}
+	return s.sendCompressed(sock, frame)
+}
+
+// sendCompressed writes a compressed message as one frame.
+func (s *Publisher) sendCompressed(sock net.Conn, frame []byte) error {
+	s.stats.CompressedMessages.Add(1)
+	s.stats.CompressedBytes.Add(int64(len(frame)))
+	return writeFrame(sock, nil, frame, true, &s.stats.AllocMessage)
+}
+
+// countMessage counts a message sent, and logs it if it is the largest
+// above warnSize so far.
+func (s *Publisher) countMessage(size int64, key string) {
 	s.stats.AddMessage(int(size))
 	if size > warnSize {
 		s.stats.LargeWarnings.Add(1)
@@ -505,35 +536,30 @@ func (s *Publisher) sendMessage(sock net.Conn, prefix, body []byte, key string) 
 			break
 		}
 	}
-	if size <= int64(maxFrameSize()) {
-		return writeFrame(sock, prefix, body, false, &s.stats.AllocMessage)
-	}
-	msg := append(append(make([]byte, 0, size), prefix...), body...)
-	s.stats.AllocMessage.Add(int(size))
+}
+
+// compress compresses msg, see compress in frame.go, counting it.
+func (s *Publisher) compress(msg []byte) ([]byte, error) {
+	s.stats.Compressions.Add(1)
 	frame, err := compress(msg)
-	if err != nil {
-		s.stats.Refused.Add(1)
-		s.log.Errorf("Not sending to %s topic %s key %s: %v",
-			s.name, s.topic, key, err)
-		return nil
+	if err == nil {
+		s.stats.AllocMessage.Add(cap(frame))
 	}
-	s.stats.AllocMessage.Add(cap(frame))
-	s.stats.CompressedMessages.Add(1)
-	s.stats.CompressedBytes.Add(int64(len(frame)))
-	return writeFrame(sock, nil, frame, true, &s.stats.AllocMessage)
+	return frame, err
 }
 
 // CheckMaxSize returns an error if the value does not fit in a message:
-// one larger than maxFrameSize must compress into maxFrameSize bytes.
-func (s *Publisher) CheckMaxSize(key string, val []byte) error {
+// one larger than maxFrameSize must compress into maxFrameSize bytes. It
+// returns the compressed message, which is sent as it is to every
+// subscriber, or nil if the message is sent uncompressed.
+func (s *Publisher) CheckMaxSize(key string, val []byte) ([]byte, error) {
 	s.log.Tracef("CheckMaxSize(%s): key %s\n", s.name, key)
 	if s.updateMessageLen(key, val) <= maxFrameSize() {
-		return nil
+		return nil, nil
 	}
-	frame, err := compress(s.updateMessage(key, val))
+	frame, err := s.compress(s.updateMessage(key, val))
 	if err != nil {
-		return fmt.Errorf("key %s: %w", key, err)
+		return nil, fmt.Errorf("key %s: %w", key, err)
 	}
-	s.stats.AllocMessage.Add(cap(frame))
-	return nil
+	return frame, nil
 }

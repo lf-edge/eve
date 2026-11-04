@@ -20,6 +20,7 @@ type PubStats struct {
 
 	CompressedMessages atomic.Int64 // messages above the frame size, sent compressed
 	CompressedBytes    atomic.Int64 // their size on the wire
+	Compressions       atomic.Int64 // messages compressed: once per published value, not per subscriber
 	Refused            atomic.Int64 // values too large even compressed
 
 	AllocMarshal Alloc // JSON of published items
@@ -103,6 +104,7 @@ func (s *PubStats) snapshot() map[string]int64 {
 
 		"compressed_messages": s.CompressedMessages.Load(),
 		"compressed_bytes":    s.CompressedBytes.Load(),
+		"compressions":        s.Compressions.Load(),
 		"refused":             s.Refused.Load(),
 	}
 	s.AllocMarshal.snapshot("marshal", m)

@@ -325,7 +325,8 @@ The socket is a stream (`SOCK_STREAM`) socket. Each message is sent as a frame:
 a 4-byte little-endian length followed by that many bytes of message. A frame
 carries at most 1 MiB. A message up to 1 MiB is sent as it is; a larger one is
 compressed with zstd and sent with the top bit of the length set, and it must
-compress into 1 MiB and be at most 30 MiB uncompressed. The kernel command line
+compress into 1 MiB and be at most 30 MiB uncompressed. It is compressed once,
+when it is published, and every subscriber is sent the same compressed frame. The kernel command line
 parameters `eve_pubsub_max_frame` and `eve_pubsub_max_message` change these two
 sizes (see [BOOTING.md](BOOTING.md)); every process reads them before it sends
 or receives anything, so both ends of a connection use the same. Values which repeat
