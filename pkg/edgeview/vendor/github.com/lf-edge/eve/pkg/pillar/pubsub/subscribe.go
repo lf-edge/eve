@@ -1,6 +1,7 @@
 package pubsub
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,6 +42,12 @@ type SubscriptionImpl struct {
 	log          *base.LogObject
 	myAgentName  string // For logging
 	ps           *PubSub
+	// sums holds, while a persistent subscription starts, the SHA-256 of
+	// the JSON each item was decoded from: the publisher then sends again
+	// every key the subscription has just loaded from the checkpoint, which
+	// is recognised without decoding and comparing it. Once synchronized,
+	// the publisher sends only changes and sums is dropped.
+	sums map[string][sha256.Size]byte
 }
 
 // MsgChan return the Message Channel for the Subscription.
@@ -219,6 +226,16 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 	sub := ctxArg.(*SubscriptionImpl)
 	name := sub.nameString()
 	sub.log.Tracef("pubsub.handleModify(%s) key %s\n", name, key)
+	var sum [sha256.Size]byte
+	starting := sub.Persistent && !sub.synchronized
+	if starting {
+		sum = sha256.Sum256(itemcb)
+		if held, ok := sub.sums[key]; ok && held == sum {
+			sub.log.Tracef("pubsub.handleModify(%s/%s) unchanged\n", name, key)
+			SubscriptionStats(name).Unchanged.Add(1)
+			return
+		}
+	}
 	item, err := parseTemplate(sub.log, itemcb, sub.topicType)
 	if err != nil {
 		errStr := fmt.Sprintf("handleModify(%s): json failed %s",
@@ -229,9 +246,13 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 	created := false
 	m, ok := sub.km.key.Load(key)
 	if ok {
-		if cmp.Equal(m, item) {
+		if cmp.Equal(m, item, equalOpts) {
 			sub.log.Tracef("pubsub.handleModify(%s/%s) unchanged\n",
 				name, key)
+			SubscriptionStats(name).Unchanged.Add(1)
+			if starting {
+				sub.setSum(key, sum)
+			}
 			return
 		}
 		sub.log.Tracef("pubsub.handleModify(%s/%s) replacing due to diff",
@@ -251,21 +272,41 @@ func handleModify(ctxArg interface{}, key string, itemcb []byte) {
 		}
 	}
 	sub.km.key.Store(key, item)
+	if starting {
+		sub.setSum(key, sum)
+	}
 	if sub.logger.GetLevel() == logrus.TraceLevel {
 		sub.dump("after handleModify")
 	}
-	// Need a copy in case the caller will modify e.g., embedded maps
-	newItem := DeepCopy(sub.log, item)
+	// A handler gets a copy in case it modifies e.g. embedded maps, decoded
+	// from the JSON again.
 	if created {
 		if sub.CreateHandler != nil {
-			(sub.CreateHandler)(sub.userCtx, key, newItem)
+			(sub.CreateHandler)(sub.userCtx, key, sub.copyOf(itemcb))
 		}
 	} else {
 		if sub.ModifyHandler != nil {
-			(sub.ModifyHandler)(sub.userCtx, key, newItem, m)
+			(sub.ModifyHandler)(sub.userCtx, key, sub.copyOf(itemcb), m)
 		}
 	}
 	sub.log.Tracef("pubsub.handleModify(%s) done for key %s\n", name, key)
+}
+
+func (sub *SubscriptionImpl) setSum(key string, sum [sha256.Size]byte) {
+	if sub.sums == nil {
+		sub.sums = make(map[string][sha256.Size]byte)
+	}
+	sub.sums[key] = sum
+}
+
+// copyOf returns a new item decoded from itemcb, which has been decoded
+// once already.
+func (sub *SubscriptionImpl) copyOf(itemcb []byte) interface{} {
+	item, err := parseTemplate(sub.log, itemcb, sub.topicType)
+	if err != nil {
+		sub.log.Fatalf("json Unmarshal of %s: %v", sub.nameString(), err)
+	}
+	return item
 }
 
 func handleDelete(ctxArg interface{}, key string) {
@@ -286,6 +327,7 @@ func handleDelete(ctxArg interface{}, key string) {
 	// DO NOT log Values. They may contain sensitive information.
 	sub.log.Tracef("pubsub.handleDelete(%s) key %s", name, key)
 	sub.km.key.Delete(key)
+	delete(sub.sums, key)
 	if sub.logger.GetLevel() == logrus.TraceLevel {
 		sub.dump("after handleDelete")
 	}
@@ -321,6 +363,9 @@ func handleSynchronized(ctxArg interface{}, synchronized bool) {
 		return
 	}
 	sub.synchronized = synchronized
+	if synchronized {
+		sub.sums = nil
+	}
 	if sub.SynchronizedHandler != nil {
 		(sub.SynchronizedHandler)(sub.userCtx, synchronized)
 	}

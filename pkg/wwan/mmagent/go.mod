@@ -6,7 +6,7 @@ toolchain go1.25.11
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261105091144-7cea040d89f9
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261105134359-c22104d6ca14
 	github.com/miekg/dns v1.1.55
 	github.com/sirupsen/logrus v1.9.4
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e

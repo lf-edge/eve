@@ -10,7 +10,7 @@ require (
 	github.com/inconshreveable/go-vhost v1.0.0
 	github.com/lf-edge/eve-libs v0.0.0-20260928172040-a59ba20797d0
 	github.com/lf-edge/eve/evetest v0.0.0-20260820145609-63ab025d6185
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261104204650-27a85cc06c69
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261105134359-c22104d6ca14
 	github.com/sirupsen/logrus v1.9.4
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5

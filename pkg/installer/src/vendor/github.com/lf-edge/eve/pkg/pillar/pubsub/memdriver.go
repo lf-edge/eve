@@ -106,8 +106,8 @@ func (e *MemoryDriverPublisher) Load() (map[string][]byte, int, error) {
 }
 
 // CheckMaxSize function
-func (e *MemoryDriverPublisher) CheckMaxSize(string, []byte) error {
-	return nil
+func (e *MemoryDriverPublisher) CheckMaxSize(string, []byte) ([]byte, error) {
+	return nil, nil
 }
 
 // Publish function

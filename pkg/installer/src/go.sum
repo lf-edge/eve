@@ -51,8 +51,8 @@ github.com/lf-edge/eve-api/go v0.0.0-20261015104443-e46e4c3a39ce h1:rmKaUyMA4frX
 github.com/lf-edge/eve-api/go v0.0.0-20261015104443-e46e4c3a39ce/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20261015084011-20eade920485 h1:UI1G5IeecS+6wwO9LVEwstKkgZ9y9WvdSvwS44Qed6M=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20261015084011-20eade920485/go.mod h1:Vq745ozk94M81lIQlQIQv88kvgYAWvO7/5OnCrRiCQc=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20261104204650-27a85cc06c69 h1:KXs5Zcmh/iftWVmBRxZAGJjvHxxpRI4f7uTJ7XYRL7o=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20261104204650-27a85cc06c69/go.mod h1:zT+D/+vZZET6RrTQmDNYbCUcGnXntvvEMem2tySWs9w=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20261105134359-c22104d6ca14 h1:Lw05cXk7EzkRHcwWv7c1BwBswJgk03WvLf2DLgEXpt8=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20261105134359-c22104d6ca14/go.mod h1:zT+D/+vZZET6RrTQmDNYbCUcGnXntvvEMem2tySWs9w=
 github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd h1:TRLaZ9cD/w8PVh93nsPXa1VrQ6jlwL5oN8l14QlcNfg=
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
