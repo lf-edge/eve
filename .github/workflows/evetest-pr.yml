@@ -388,12 +388,12 @@ jobs:
               {"skip": ["Name1", "Name2"]}
             (an empty "skip" array if nothing qualifies).
 
-            ONLY if "skip" is non-empty, also write a PR comment body (markdown) to
+            ONLY if "skip" is non-empty, also write a report (markdown) to
             .evetest-skip/comment.md (again via the file-writing tool, not Bash)
-            listing every skipped test/suite/variant and why, and mentioning that an
-            engineer can comment "/evetest all" to force the full suite to run instead,
-            or "/evetest <name> <name> ..." to run only specific tests/suites. The
-            workflow posts this file as the PR comment; do not post anything yourself.
+            listing every skipped test/suite/variant and why. The workflow shows
+            this file in the run's job summary and links to it from a short PR
+            comment (which already explains how to force a full run); do not post
+            anything yourself.
 
       - id: decide
         name: Determine EVETEST_SKIP
@@ -474,9 +474,18 @@ jobs:
               });
             }
             if (skip.length > 0 && text) {
+              // The full reasoning lives in the job summary; the PR comment
+              // only points to it to keep the conversation short.
+              await core.summary.addHeading('Skipped evetest tests', 2).addRaw(text, true).write();
+              const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
-                body: `${marker}\n${text}`,
+                body: `${marker}\n` +
+                  `Evetest: Claude chose to skip ${skip.length} test/suite name(s) as ` +
+                  `unrelated to or redundant for this PR. ` +
+                  `Which ones and why: [run summary](${runUrl}).\n\n` +
+                  `Comment \`/evetest all\` to run the full suite, or ` +
+                  `\`/evetest <name> <name> ...\` to run only specific tests/suites.`,
               });
             }
 
