@@ -48,8 +48,8 @@ import (
 //
 // Suite placement
 // ---------------
-//   - Last: it wants the largest cluster the suite builds, including the node
-//     added by TestKubeRegistrationAddNode.
+//   - After TestKubeRegistrationAddNode: it wants the largest cluster the
+//     suite builds, including the node that test adds.
 func TestKubeRegistrationLonghornDisks(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
