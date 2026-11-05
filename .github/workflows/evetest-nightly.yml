@@ -127,7 +127,7 @@ jobs:
       - uses: ./.github/actions/evetest-run-suite
         with:
           test-suite: ${{ matrix.test-suite }}
-          download-image-artifacts: 'false'
+          source-run-id: ${{ github.run_id }}
           post-status: 'false'
           upload-junit-results: 'true'
           analyze-failures: 'true'

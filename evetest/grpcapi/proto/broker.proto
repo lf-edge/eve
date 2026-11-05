@@ -30,6 +30,21 @@ service Broker {
   rpc BuildImage(BuildImageRequest) returns (BuildImageResponse);
   // PushEVEContainerImage streams a pre-built EVE container image to the broker.
   rpc PushEVEContainerImage(stream PushImageChunk) returns (PushImageResponse);
+  // ClaimEVEImageUpload reserves the right to upload an EVE container image that the
+  // broker does not have, so that of the many clients needing it (e.g. CI jobs of
+  // one PR run) only one fetches and uploads it while the others wait. It does
+  // not need a client session. See ImageUploadClaimState.
+  rpc ClaimEVEImageUpload(ClaimEVEImageUploadRequest) returns (ClaimEVEImageUploadResponse);
+  // ReleaseEVEImageUploadClaim gives up a claim granted by ClaimEVEImageUpload, e.g. after
+  // the claimer failed to obtain the image, so that a waiting client can take
+  // over without waiting for the lease to lapse. It does not need a client
+  // session and succeeds for an already released or superseded claim.
+  rpc ReleaseEVEImageUploadClaim(ReleaseEVEImageUploadClaimRequest) returns (ReleaseEVEImageUploadClaimResponse);
+  // PullEVEContainerImage streams an EVE container image that the broker has to
+  // the client, for tests that need the image on the client's side (e.g. as an
+  // upgrade target) when it is not published anywhere the client could pull it
+  // from. Fails with NotFound if the broker does not have the image.
+  rpc PullEVEContainerImage(PullEVEImageRequest) returns (stream PullImageChunk);
   // PushSDNContainerImage streams a locally available SDN container image to the
   // broker, for when the broker can neither find nor pull it (e.g. an SDN image
   // built from an unmerged change). SetupDevices signals that case with a
@@ -224,8 +239,56 @@ message PushImageChunk {
 
 // PushImageRequest contains metadata describing the EVE docker image to be uploaded.
 message PushImageRequest {
+  // Not needed when claim_ticket is set.
+  string client_id = 1;
+  // Not needed when claim_ticket is set: the image is the one claimed.
+  ImageRef image = 2;
+  // Ticket from ClaimEVEImageUpload. When set, the upload is of the claimed
+  // image and accepted only while the ticket is the current claim, the claim's
+  // lease is renewed with every chunk, and the claim is released when the
+  // upload ends.
+  string claim_ticket = 3;
+}
+
+// State of a claim request for an EVE container image.
+enum ImageUploadClaimState {
+  IMAGE_UPLOAD_CLAIM_STATE_UNSPECIFIED = 0;
+  // The broker already has the image; nothing to upload.
+  IMAGE_UPLOAD_CLAIM_PRESENT = 1;
+  // The caller now holds the claim and is expected to upload the image,
+  // presenting `ticket`.
+  IMAGE_UPLOAD_CLAIM_GRANTED = 2;
+  // Another client holds the claim; ask again later.
+  IMAGE_UPLOAD_CLAIM_HELD = 3;
+}
+
+message ClaimEVEImageUploadRequest {
+  ImageRef image = 1;
+}
+
+message ClaimEVEImageUploadResponse {
+  ImageUploadClaimState state = 1;
+  // Set only with IMAGE_UPLOAD_CLAIM_GRANTED.
+  string ticket = 2;
+  // How long a granted claim waits for the upload to start. Once the upload
+  // runs, the claim lapses after a shorter time without upload progress.
+  uint32 lease_seconds = 3;
+}
+
+message ReleaseEVEImageUploadClaimRequest {
+  string ticket = 1;
+}
+
+message ReleaseEVEImageUploadClaimResponse {}
+
+message PullEVEImageRequest {
   string client_id = 1;
   ImageRef image = 2;
+}
+
+// A chunk of the gzipped EVE container image (`docker save | gzip`).
+message PullImageChunk {
+  bytes data_gzip_chunk = 1;
 }
 
 // PushSDNImageChunk represents a single message in the SDN docker image upload stream.
