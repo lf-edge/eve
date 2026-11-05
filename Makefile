@@ -1238,17 +1238,28 @@ cache-export-docker-load-all: $(LINUXKIT) $(addsuffix -cache-export-docker-load,
 proto-vendor:
 	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
 
+# $(1): Go module to bump in every tracked go.mod that requires it.
+# Fails at the end, listing the modules it could not bump.
+define BUMP_GO_DEP
+	@failed=""; \
+	for dir in $$(git ls-files -- '*go.mod' | xargs grep -lF '$(1) v' | xargs -n1 dirname); do \
+		echo "== $$dir"; \
+		(cd "$$dir" && go get -u $(1) && go mod tidy && go mod vendor) || failed="$$failed $$dir"; \
+	done; \
+	if [ -n "$$failed" ]; then echo "ERROR: failed to bump $(1) in:$$failed" >&2; exit 1; fi
+endef
+
 bump-eve-api:
-	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve-api/go' {} \; -execdir go get -u github.com/lf-edge/eve-api/go \; -execdir go mod tidy \; -execdir go mod vendor \;
+	$(call BUMP_GO_DEP,github.com/lf-edge/eve-api/go)
 
 bump-eve-libs:
-	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve-libs' {} \; -execdir go get -u github.com/lf-edge/eve-libs \; -execdir go mod tidy \; -execdir go mod vendor \;
+	$(call BUMP_GO_DEP,github.com/lf-edge/eve-libs)
 
 bump-eve-pillar:
-	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve/pkg/pillar' {} \; -execdir go get -u github.com/lf-edge/eve/pkg/pillar \; -execdir go mod tidy \; -execdir go mod vendor \;
+	$(call BUMP_GO_DEP,github.com/lf-edge/eve/pkg/pillar)
 
 bump-edge-containers:
-	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/edge-containers' {} \; -execdir go get -u github.com/lf-edge/edge-containers \; -execdir go mod tidy \; -execdir go mod vendor \;
+	$(call BUMP_GO_DEP,github.com/lf-edge/edge-containers)
 
 .PHONY: proto-api-%
 
