@@ -136,13 +136,16 @@ jobs:
     if: ${{ inputs.collect-coverage }}
     needs: build-cover-pkgs
     runs-on: zededa-ubuntu-2204
+    outputs:
+      version: ${{ steps.build.outputs.version }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: ./.github/actions/build-eve
+      - id: build
+        uses: ./.github/actions/build-eve
         with:
           arch: amd64
           platform: generic
@@ -156,13 +159,16 @@ jobs:
     if: ${{ inputs.collect-coverage }}
     needs: build-cover-pkgs
     runs-on: zededa-ubuntu-2204
+    outputs:
+      version: ${{ steps.build.outputs.version }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: ./.github/actions/build-eve
+      - id: build
+        uses: ./.github/actions/build-eve
         with:
           arch: amd64
           platform: generic
@@ -203,8 +209,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # Skipped when collecting coverage: evetest-run-suite loads the
-      # COVER=y image built above instead (download-image-artifacts).
+      # Skipped when collecting coverage: evetest-run-suite stages the COVER=y
+      # images built above on the broker instead (eve-version).
       - name: Set the EVE version to test
         if: ${{ !inputs.collect-coverage }}
         run: echo "EVETEST_EVE_VERSION=${{ needs.discover-suites.outputs.version }}" >> "$GITHUB_ENV"
@@ -212,7 +218,8 @@ jobs:
       - uses: ./.github/actions/evetest-run-suite
         with:
           test-suite: ${{ matrix.test-suite }}
-          download-image-artifacts: ${{ inputs.collect-coverage && 'true' || 'false' }}
+          eve-version: ${{ inputs.collect-coverage && needs.build-cover-eve-kvm.outputs.version || '' }}
+          eve-repo: ${{ inputs.collect-coverage && 'evebuild/nightly' || '' }}
           source-run-id: ${{ github.run_id }}
           collect-coverage: ${{ inputs.collect-coverage && 'true' || 'false' }}
           post-status: 'false'

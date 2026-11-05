@@ -599,7 +599,7 @@ func (d *EdgeDevice) upgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 	defer cancel()
 
 	logger := d.th.log.WithField("component", "upgrade")
-	err = utils.PullDockerImage(ctx, logger, imageName)
+	err = d.th.pullEVEImage(ctx, logger, targetImageRef)
 	if err != nil {
 		d.th.t.Fatalf("Failed to pull EVE image %s: %v", imageName, err)
 	}

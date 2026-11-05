@@ -29,6 +29,7 @@ import (
 	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/vishvananda/netlink"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -475,6 +476,82 @@ func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
 				closeAndRecv: stream.CloseAndRecv,
 			}, nil
 		})
+}
+
+// pullEVEImageFromBroker loads an EVE container image that the broker has into
+// the local Docker daemon. It reports false if the broker does not have it.
+func (th *TestHarness) pullEVEImageFromBroker(
+	ctx context.Context, log *logrus.Entry, imageRef *api.ImageRef) (bool, error) {
+	dockerImageName, err := utils.EVEDockerImageName(imageRef)
+	if err != nil {
+		return false, err
+	}
+	stream, err := th.brokerClient.PullEVEContainerImage(ctx, &api.PullEVEImageRequest{
+		ClientId: th.brokerClientID,
+		Image:    imageRef,
+	})
+	if err != nil {
+		return false, err
+	}
+	// The first message tells whether the broker has the image at all.
+	first, err := stream.Recv()
+	if status.Code(err) == codes.NotFound {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	pr, pw := io.Pipe()
+	go func() {
+		chunk := first
+		for {
+			if _, err := pw.Write(chunk.GetDataGzipChunk()); err != nil {
+				return
+			}
+			var err error
+			if chunk, err = stream.Recv(); err != nil {
+				if err == io.EOF {
+					err = nil
+				}
+				pw.CloseWithError(err)
+				return
+			}
+		}
+	}()
+	defer func() {
+		if closeErr := pr.Close(); closeErr != nil {
+			log.Warnf("failed to close the pipe of image %s: %v", dockerImageName, closeErr)
+		}
+	}()
+	if err := utils.LoadDockerImageFromReader(ctx, log, pr, dockerImageName); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// pullEVEImage makes an EVE container image available in the local Docker
+// daemon: pulled from its registry, or, if that fails (a PR build is published
+// nowhere), loaded from the broker, which has the image the tests run.
+func (th *TestHarness) pullEVEImage(
+	ctx context.Context, log *logrus.Entry, imageRef *api.ImageRef) error {
+	dockerImageName, err := utils.EVEDockerImageName(imageRef)
+	if err != nil {
+		return err
+	}
+	pullErr := utils.PullDockerImage(ctx, log, dockerImageName)
+	if pullErr == nil {
+		return nil
+	}
+	log.Infof("Could not pull %s (%v), trying the broker", dockerImageName, pullErr)
+	found, err := th.pullEVEImageFromBroker(ctx, log, imageRef)
+	if err != nil {
+		return fmt.Errorf("failed to pull %s: %w; and to get it from the broker: %v",
+			dockerImageName, pullErr, err)
+	}
+	if !found {
+		return pullErr
+	}
+	return nil
 }
 
 // isMissingSDNImageErr tells whether err is the broker's SetupDevices failure
