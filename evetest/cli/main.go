@@ -88,6 +88,7 @@ func main() {
 	rootCmd.AddCommand(
 		instancesCommand(),
 		useCommand(),
+		brokerCommand(),
 		logsCommand(&instanceFlag),
 		stopCommand(&instanceFlag),
 		runCommand(),
