@@ -241,8 +241,11 @@ label to multiple runners so a workflow's `runs-on` can pick any free one of the
 uses two labels: `evetest-runner` (can run every suite) and `evetest-runner-light` (can
 run only the suites not tagged `evetest.TagHeavyTest`). Register a strong host's runners
 with `--gh-label evetest-runner,evetest-runner-light` and a weak host's with
-`--gh-label evetest-runner-light`. The runner process picks up `EVETEST_BROKER_ADDRESS`
-(defaulting to the LAN IP of the `evetest-broker` VM installed above, if one is found
+`--gh-label evetest-runner-light`. If a host has many light runners but very few
+full-size ones, consider registering the full-size runners with
+`--gh-label evetest-runner` only, so they are kept for heavy suites and never take
+light work. The runner process picks up `EVETEST_BROKER_ADDRESS` (defaulting to the
+LAN IP of the `evetest-broker` VM installed above, if one is found
 running on this host), `EVETEST_COLLECT_ARTIFACTS=/home/<gh-username>/artifacts`,
 `EVETEST_SUITE_MAX_FAILURES=-1` and `EVETEST_LOG_LEVEL=debug`. Run with `--help` to
 see all flags, including VM shape (`--vm-memory`, `--vm-disk`, `--vm-cores`,
