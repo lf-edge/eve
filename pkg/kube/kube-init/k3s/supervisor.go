@@ -85,6 +85,7 @@ type Supervisor struct {
 	k3sCmd   *exec.Cmd     // nil iff no live k3s process
 	done     chan struct{} // closed by wait goroutine on process exit
 	lastExit error         // exit error captured before done is closed
+	logStart int64         // log file size when the current/last run started
 }
 
 // SupervisorOption configures a Supervisor at construction time.
@@ -191,6 +192,55 @@ func (s *Supervisor) LastExit() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.lastExit
+}
+
+// tokenMismatchFatal is the k3s startup fatal for a datastore whose
+// bootstrap data was encrypted with a token other than the configured one.
+const tokenMismatchFatal = "bootstrap data already found and encrypted with different token"
+
+// lastRunLogTailMax bounds how much of the last run's log is scanned.
+// The fatal is the last thing k3s writes, so the tail is enough.
+const lastRunLogTailMax = 64 * 1024
+
+// LastRunTokenMismatch reports whether the most recent k3s run, now
+// exited, died on the bootstrap-data token mismatch. False while k3s is
+// running, before the first run, or when the log cannot be read.
+func (s *Supervisor) LastRunTokenMismatch() bool {
+	s.mu.Lock()
+	running, started, start := s.k3sCmd != nil, s.done != nil, s.logStart
+	s.mu.Unlock()
+	if running || !started {
+		return false
+	}
+	return logTailContains(s.logFile, start, tokenMismatchFatal)
+}
+
+// logTailContains reports whether needle appears in path past offset
+// start, scanning at most lastRunLogTailMax bytes from the end. A file
+// shorter than start was rotated mid-run and is scanned from its head.
+func logTailContains(path string, start int64, needle string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	size := fi.Size()
+	if start > size {
+		start = 0
+	}
+	if size-start > lastRunLogTailMax {
+		start = size - lastRunLogTailMax
+	}
+	buf := make([]byte, size-start)
+	n, err := f.ReadAt(buf, start)
+	if err != nil && n == 0 {
+		return false
+	}
+	return bytes.Contains(buf[:n], []byte(needle))
 }
 
 // IsRunning reports whether the k3s process is still alive. The
@@ -356,6 +406,13 @@ func (s *Supervisor) startK3s() error {
 	// reaching children that didn't create their own process group.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
+	// Taken before Start: k3s may log its fatal and exit before a later
+	// Stat, which would then skip past it.
+	var logStart int64
+	if fi, err := lf.Stat(); err == nil {
+		logStart = fi.Size()
+	}
+
 	if err := cmd.Start(); err != nil {
 		_ = lf.Close()
 		return fmt.Errorf("start k3s: %w", err)
@@ -366,6 +423,7 @@ func (s *Supervisor) startK3s() error {
 	s.k3sCmd = cmd
 	s.done = done
 	s.lastExit = nil
+	s.logStart = logStart
 	s.mu.Unlock()
 
 	pid := cmd.Process.Pid

@@ -2097,6 +2097,14 @@ func (d *daemon) enterStartingK3s(ctx context.Context) {
 		log.Printf("WARNING: restore node password: %v", err)
 	}
 
+	// Configure is not re-run on a crash restart, so a k3s that died on
+	// a cluster token mismatch would otherwise retry the same token forever.
+	if d.supervisor != nil && d.supervisor.LastRunTokenMismatch() {
+		if err := k3s.RecoverTokenMismatch(ctx); err != nil {
+			log.Printf("WARNING: recover k3s token mismatch: %v", err)
+		}
+	}
+
 	if d.supervisor != nil && d.supervisor.IsRunning() {
 		log.Printf("stopping stale k3s instance before restart")
 		if err := d.supervisor.Stop(); err != nil {
@@ -2938,6 +2946,9 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 		if ctrlErr := clustermode.RestartStaleControllers(ctx, cs,
 			state.ToK8sName(d.deviceName)); ctrlErr != nil {
 			log.Printf("WARNING: restart stale controllers: %v", ctrlErr)
+		}
+		if tokErr := clustermode.ReconcileClusterToken(ctx, cs); tokErr != nil {
+			log.Printf("WARNING: reconcile cluster token: %v", tokErr)
 		}
 	}
 
