@@ -252,7 +252,7 @@ func (s *Subscriber) connectAndRead() (string, string, []byte) {
 			req := fmt.Sprintf("request %s", s.topic)
 			s.stats.AllocDecode.Add(len(req))
 			s.stats.AllocDecode.Add(len(req))
-			err = writeFrame(sock, []byte(req), false, &s.stats.AllocDecode)
+			err = writeFrame(sock, nil, []byte(req), false, &s.stats.AllocDecode)
 			if err != nil {
 				errStr := fmt.Sprintf("connectAndRead(%s): sock write failed %s",
 					s.name, err)
@@ -318,7 +318,7 @@ func (s *Subscriber) read() (string, string, []byte) {
 	case "hello", "complete":
 		s.log.Tracef("connectAndRead(%s) Got message %s type %s\n", s.name, msg, t)
 		if msg == "hello" && count >= 3 {
-			s.stats.AllocDecode.AddTemp(len(reply[2]))
+			addString(&s.stats.AllocDecode, len(reply[2]))
 			s.checkPublisherPersistence(string(reply[2]))
 		}
 		return msg, "", nil

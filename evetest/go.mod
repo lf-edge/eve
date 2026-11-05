@@ -17,7 +17,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/lf-edge/eve-api/go v0.0.0-20261015104443-e46e4c3a39ce
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261104204650-27a85cc06c69
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261105134359-c22104d6ca14
 	github.com/luthermonson/go-proxmox v0.8.0
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.1

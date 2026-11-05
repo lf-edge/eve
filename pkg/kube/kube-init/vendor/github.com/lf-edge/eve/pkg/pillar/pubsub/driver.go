@@ -69,8 +69,11 @@ type DriverPublisher interface {
 	// This is expected to return immediately.
 	Stop() error
 
-	// CheckMaxSize to see if it will fit
-	CheckMaxSize(key string, val []byte) error
+	// CheckMaxSize returns an error if val does not fit in a message. To
+	// find out, it may have to prepare what it sends for val, e.g. the
+	// message compressed: it returns that, so that Publish keeps it in
+	// Value.Wire and it is not made again for every subscriber.
+	CheckMaxSize(key string, val []byte) ([]byte, error)
 }
 
 // Restarted interface that lets you determine if a Publication has been restarted
@@ -85,3 +88,18 @@ type Restarted interface {
 type Differ interface {
 	DetermineDiffs(localCollection LocalCollection) []string
 }
+
+// Value is a published value as subscribers are sent it: its JSON, which
+// Publish marshals once, and what the driver prepared from it to send it.
+// All subscriber connections share it, and nobody modifies it: a new value
+// of a key is a new Value.
+type Value struct {
+	JSON []byte
+	// Wire is what CheckMaxSize prepared to send JSON, e.g. the message
+	// compressed, or nil.
+	Wire []byte
+}
+
+// LocalCollection is what a subscriber connection was sent: the Value of
+// each key.
+type LocalCollection map[string]*Value

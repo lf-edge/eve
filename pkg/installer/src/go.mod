@@ -6,7 +6,7 @@ toolchain go1.25.11
 
 require (
 	github.com/google/go-tpm v0.9.1
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261104204650-27a85cc06c69
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261105134359-c22104d6ca14
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/sirupsen/logrus v1.9.4
 )
