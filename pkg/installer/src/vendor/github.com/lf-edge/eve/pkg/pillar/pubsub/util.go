@@ -5,11 +5,8 @@ package pubsub
 
 import (
 	"encoding/json"
-	"fmt"
-	"net"
 	"reflect"
 	"strings"
-	"syscall"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 )
@@ -29,6 +26,7 @@ func DeepCopy(log *base.LogObject, in interface{}) interface{} {
 	if err != nil {
 		log.Fatal("json Marshal in deepCopy", err)
 	}
+	deepCopyAlloc.Add(len(b))
 	p := reflect.New(reflect.TypeOf(in))
 	output := p.Interface()
 	if err := json.Unmarshal(b, output); err != nil {
@@ -72,39 +70,6 @@ func TypeToName(something interface{}) string {
 	t := reflect.TypeOf(something)
 	out := strings.Split(t.String(), ".")
 	return out[len(out)-1]
-}
-
-// ConnReadCheck waits till conn's fd is readable
-func ConnReadCheck(conn net.Conn) error {
-	var sysErr error
-
-	sysConn, ok := conn.(syscall.Conn)
-	if !ok {
-		return fmt.Errorf("Not syscall.Conn")
-	}
-	rawConn, err := sysConn.SyscallConn()
-	if err != nil {
-		return fmt.Errorf("Exception while getting rawConn: %s",
-			err)
-	}
-
-	err = rawConn.Read(func(fd uintptr) bool {
-		_, _, err := syscall.Recvfrom(int(fd), []byte{}, syscall.MSG_PEEK)
-		if err != nil {
-			if err == syscall.EAGAIN {
-				return false
-			}
-			//assign unknown error to syserr which will be handled later.
-			sysErr = fmt.Errorf("Unknown error from syscall.Recvfrom: %s",
-				err)
-		}
-		return true
-	})
-	if err != nil {
-		return fmt.Errorf("Exception from rawConn.Read: %s",
-			err)
-	}
-	return sysErr
 }
 
 // ChannelWatch describe a channel to watch and the callback to call
