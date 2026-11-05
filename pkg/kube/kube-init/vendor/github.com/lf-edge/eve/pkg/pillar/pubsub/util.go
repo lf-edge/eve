@@ -26,6 +26,7 @@ func DeepCopy(log *base.LogObject, in interface{}) interface{} {
 	if err != nil {
 		log.Fatal("json Marshal in deepCopy", err)
 	}
+	deepCopyAlloc.Add(len(b))
 	p := reflect.New(reflect.TypeOf(in))
 	output := p.Interface()
 	if err := json.Unmarshal(b, output); err != nil {

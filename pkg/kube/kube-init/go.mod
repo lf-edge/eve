@@ -5,7 +5,7 @@ go 1.25.12
 require (
 	github.com/containerd/containerd/v2 v2.2.9
 	github.com/containerd/errdefs v1.0.0
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261103090849-1d275e6fd307
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261105091144-7cea040d89f9
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/sirupsen/logrus v1.9.4
 	github.com/vishvananda/netlink v1.3.1

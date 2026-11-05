@@ -9,7 +9,7 @@ require (
 	github.com/golang/protobuf v1.5.4
 	github.com/google/go-cmp v0.7.0
 	github.com/lf-edge/eve-api/go v0.0.0-20261015104443-e46e4c3a39ce
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261103090849-1d275e6fd307
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261105091144-7cea040d89f9
 	github.com/onsi/gomega v1.36.1
 	github.com/sirupsen/logrus v1.9.4
 )

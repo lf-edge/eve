@@ -145,8 +145,8 @@ github.com/lf-edge/eve-api/go v0.0.0-20261015104443-e46e4c3a39ce h1:rmKaUyMA4frX
 github.com/lf-edge/eve-api/go v0.0.0-20261015104443-e46e4c3a39ce/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20261015084011-20eade920485 h1:UI1G5IeecS+6wwO9LVEwstKkgZ9y9WvdSvwS44Qed6M=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20261015084011-20eade920485/go.mod h1:Vq745ozk94M81lIQlQIQv88kvgYAWvO7/5OnCrRiCQc=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20261103090849-1d275e6fd307 h1:kK3ONjurEJdlGSNAPsVWFMQ3kEEPXMPstjbbN+eCLiQ=
-github.com/lf-edge/eve/pkg/pillar v0.0.0-20261103090849-1d275e6fd307/go.mod h1:zT+D/+vZZET6RrTQmDNYbCUcGnXntvvEMem2tySWs9w=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20261105091144-7cea040d89f9 h1:2nCBk514KvCIl2D84RauovaIyRjCww4zHDBxd7B9D34=
+github.com/lf-edge/eve/pkg/pillar v0.0.0-20261105091144-7cea040d89f9/go.mod h1:zT+D/+vZZET6RrTQmDNYbCUcGnXntvvEMem2tySWs9w=
 github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee h1:ASS39H/5OkVqkGSOR2xtcIsu3EZH4aDQOKhE1OfazUo=
 github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee/go.mod h1:UMA/+cd1QZElFCZAhuGv0TEEdWP9AgcRSXSI6S+r/KA=
 github.com/miekg/dns v1.1.55 h1:GoQ4hpsj0nFLYe+bWiCToyrBEJXkQfOOIvFGFy0lEgo=
