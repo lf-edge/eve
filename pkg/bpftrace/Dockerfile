@@ -42,6 +42,12 @@ COPY --from=build /usr/lib/libz.so.1 /bpftrace-aotrt/usr/lib/libz.so.1
 COPY --from=build /usr/lib/libbcc_bpf.so.0 /bpftrace-aotrt/usr/lib/libbcc_bpf.so.0
 COPY --from=build /usr/lib/libstdc++.so.6 /bpftrace-aotrt/usr/lib/libstdc++.so.6
 COPY --from=build /usr/lib/libgcc_s.so.1 /bpftrace-aotrt/usr/lib/libgcc_s.so.1
+# bpftrace >= 0.23 links the AOT runtime against binutils' libbfd/libopcodes
+# (and libbfd against libsframe); ship them or bpftrace-aotrt fails to load.
+COPY --from=build /usr/lib/libbfd-2.44.so /bpftrace-aotrt/usr/lib/libbfd-2.44.so
+COPY --from=build /usr/lib/libopcodes-2.44.so /bpftrace-aotrt/usr/lib/libopcodes-2.44.so
+COPY --from=build /usr/lib/libsframe.so.1.0.0 /bpftrace-aotrt/usr/lib/libsframe.so.1.0.0
+COPY --from=build /usr/lib/libsframe.so.1 /bpftrace-aotrt/usr/lib/libsframe.so.1
 
 FROM bin AS bin-amd64
 FROM bin AS bin-arm64
