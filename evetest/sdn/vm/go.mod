@@ -10,7 +10,7 @@ require (
 	github.com/inconshreveable/go-vhost v1.0.0
 	github.com/lf-edge/eve-libs v0.0.0-20260928172040-a59ba20797d0
 	github.com/lf-edge/eve/evetest v0.0.0-20260820145609-63ab025d6185
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20260421125048-8d3825045e4e
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261104204650-27a85cc06c69
 	github.com/sirupsen/logrus v1.9.4
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
@@ -25,7 +25,7 @@ require (
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/cli v29.6.2+incompatible // indirect
+	github.com/docker/cli v29.7.2+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
@@ -57,5 +57,5 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260720211330-0afa2a65878a // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d // indirect
 )
