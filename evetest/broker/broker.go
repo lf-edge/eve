@@ -88,6 +88,7 @@ type broker struct {
 	mutex             sync.Mutex
 	sessions          map[string]*session      // key: client ID
 	imageUploads      map[string]chan struct{} // key: docker image name; closed on completion
+	imageClaims       *imageClaims             // internally synchronized, not guarded by mutex
 	usedSDNUplinkMACs map[string]struct{}      // key: MAC address
 }
 
@@ -222,6 +223,7 @@ func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 		tmplMinFreeGiB:       tmplMinFreeGiB,
 		sessions:             make(map[string]*session),
 		imageUploads:         make(map[string]chan struct{}),
+		imageClaims:          newImageClaims(imageClaimStartLease, imageClaimProgressLease),
 		usedSDNUplinkMACs:    make(map[string]struct{}),
 	}
 	// Claim the image directory before the cleanup goroutine starts: it reads
@@ -779,43 +781,104 @@ func (b *broker) PushEVEContainerImage(
 		return err
 	}
 
-	// Lookup client session
-	b.mutex.Lock()
-	clientSession, exists := b.sessions[req.ClientId]
-	b.mutex.Unlock()
-	if !exists {
-		err = clientNotFoundErr(req.ClientId)
-		b.globalLog.Error(err)
-		return err
-	}
-	log := clientSession.log
-
-	// Validate architecture
-	imageArch := req.GetImage().GetArch()
-	if !generics.ContainsItem(b.supportedArchs, imageArch) {
-		err = fmt.Errorf("unsupported architecture: %s", imageArch)
-		log.Error(err)
-		return err
+	// A client holding a claim ticket needs no session: the ticket is what
+	// entitles it to upload this one image.
+	claimTicket := req.GetClaimTicket()
+	log := logrus.NewEntry(b.globalLog)
+	if claimTicket == "" {
+		b.mutex.Lock()
+		clientSession, exists := b.sessions[req.ClientId]
+		b.mutex.Unlock()
+		if !exists {
+			err = clientNotFoundErr(req.ClientId)
+			b.globalLog.Error(err)
+			return err
+		}
+		log = clientSession.log
 	}
 
-	// Resolve Docker image name
-	dockerImageName, err := utils.EVEDockerImageName(req.Image)
-	if err != nil {
-		err = fmt.Errorf("invalid image reference: %w", err)
-		log.Error(err)
-		return err
+	var dockerImageName string
+	if claimTicket != "" {
+		// The claim, which ClaimEVEImageUpload only grants for a valid image of
+		// a supported architecture, tells the image: the request carries none.
+		var found bool
+		dockerImageName, found = b.imageClaims.imageOf(claimTicket)
+		if !found {
+			err = errInvalidImageClaim("")
+			log.Error(err)
+			return err
+		}
+	} else {
+		// Validate architecture
+		imageArch := req.GetImage().GetArch()
+		if !generics.ContainsItem(b.supportedArchs, imageArch) {
+			err = fmt.Errorf("unsupported architecture: %s", imageArch)
+			log.Error(err)
+			return err
+		}
+
+		// Resolve Docker image name
+		dockerImageName, err = utils.EVEDockerImageName(req.Image)
+		if err != nil {
+			err = fmt.Errorf("invalid image reference: %w", err)
+			log.Error(err)
+			return err
+		}
 	}
 
-	alreadyExists, err := b.receiveDockerImage(ctx, log, dockerImageName,
-		func() ([]byte, error) {
-			chunk, err := stream.Recv()
-			if err != nil {
-				return nil, err
+	recv := func() ([]byte, error) {
+		chunk, err := stream.Recv()
+		if err != nil {
+			return nil, err
+		}
+		return chunk.GetDataGzipChunk(), nil
+	}
+	if claimTicket != "" {
+		log = log.WithField("image", dockerImageName)
+		if !b.imageClaims.renew(dockerImageName, claimTicket) {
+			err = errInvalidImageClaim(dockerImageName)
+			log.Error(err)
+			return err
+		}
+		// Released on success and on failure alike, so that a waiting client
+		// can take over at once instead of when the lease lapses.
+		defer b.imageClaims.release(dockerImageName, claimTicket)
+		// A client that takes the claim over aborts this upload, which may be
+		// stalled without ever returning.
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
+		b.imageClaims.attach(dockerImageName, claimTicket, cancel)
+		plainRecv := recv
+		recv = func() ([]byte, error) {
+			data, err := plainRecv()
+			if err == nil && !b.imageClaims.renew(dockerImageName, claimTicket) {
+				return nil, errInvalidImageClaim(dockerImageName)
 			}
-			return chunk.GetDataGzipChunk(), nil
-		})
+			return data, err
+		}
+	}
+
+	// The claim already serializes the uploads of this image, so the
+	// concurrent-upload wait of receiveDockerImage must not apply: it would make
+	// a client that took over a stalled holder's claim wait for that holder.
+	alreadyExists, err := b.receiveDockerImage(ctx, log, dockerImageName,
+		claimTicket != "", recv)
 	if err != nil {
 		return err
+	}
+	if claimTicket != "" {
+		// The uploaded archive is not trusted to carry the claimed name (or it
+		// may have been another client's upload that was waited for).
+		haveImage, err := utils.HaveDockerImage(ctx, log, dockerImageName)
+		if err == nil && !haveImage {
+			err = fmt.Errorf("image %q is not present after the upload "+
+				"(does the archive carry that tag?)", dockerImageName)
+		}
+		if err != nil {
+			log.Error(err)
+			return err
+		}
 	}
 	if !alreadyExists {
 		log.Infof("Loaded EVE docker image: %s", dockerImageName)
@@ -823,6 +886,123 @@ func (b *broker) PushEVEContainerImage(
 	return stream.SendAndClose(&api.PushImageResponse{
 		AlreadyExists: alreadyExists,
 	})
+}
+
+// errInvalidImageClaim is returned for an upload with a claim ticket that was
+// released or taken over by another client after its lease lapsed.
+func errInvalidImageClaim(image string) error {
+	if image == "" {
+		return status.Error(codes.FailedPrecondition,
+			"the claim ticket is not valid (released or taken over)")
+	}
+	return status.Errorf(codes.FailedPrecondition,
+		"the claim ticket for image %q is no longer valid", image)
+}
+
+// ClaimEVEImageUpload tells the caller whether the broker has the EVE container image
+// and, if not, whether the caller is the one who should upload it (see the
+// Broker service documentation). No client session is needed.
+func (b *broker) ClaimEVEImageUpload(
+	ctx context.Context, req *api.ClaimEVEImageUploadRequest) (*api.ClaimEVEImageUploadResponse, error) {
+	imageArch := req.GetImage().GetArch()
+	if !generics.ContainsItem(b.supportedArchs, imageArch) {
+		return nil, status.Errorf(codes.InvalidArgument,
+			"unsupported architecture: %s", imageArch)
+	}
+	dockerImageName, err := utils.EVEDockerImageName(req.GetImage())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid image reference: %v", err)
+	}
+	resp := &api.ClaimEVEImageUploadResponse{LeaseSeconds: uint32(imageClaimStartLease.Seconds())}
+	haveImage, err := utils.HaveDockerImage(ctx, logrus.NewEntry(b.globalLog), dockerImageName)
+	if err != nil {
+		err = fmt.Errorf("failed to check for image %q presence: %w", dockerImageName, err)
+		b.globalLog.Error(err)
+		return nil, err
+	}
+	if haveImage {
+		// Keep it out of the age-based cleanup until the claimer's tests used it.
+		b.imageUsage.touch(dockerImageName)
+		resp.State = api.ImageUploadClaimState_IMAGE_UPLOAD_CLAIM_PRESENT
+		return resp, nil
+	}
+	ticket, granted := b.imageClaims.claim(dockerImageName)
+	if !granted {
+		resp.State = api.ImageUploadClaimState_IMAGE_UPLOAD_CLAIM_HELD
+		return resp, nil
+	}
+	b.globalLog.Infof("Granted the claim of image %q", dockerImageName)
+	resp.State = api.ImageUploadClaimState_IMAGE_UPLOAD_CLAIM_GRANTED
+	resp.Ticket = ticket
+	return resp, nil
+}
+
+// ReleaseEVEImageUploadClaim gives up a claim granted by ClaimEVEImageUpload.
+func (b *broker) ReleaseEVEImageUploadClaim(
+	ctx context.Context, req *api.ReleaseEVEImageUploadClaimRequest) (*api.ReleaseEVEImageUploadClaimResponse, error) {
+	if dockerImageName, found := b.imageClaims.imageOf(req.GetTicket()); found {
+		b.imageClaims.release(dockerImageName, req.GetTicket())
+	}
+	return &api.ReleaseEVEImageUploadClaimResponse{}, nil
+}
+
+// PullEVEContainerImage streams an EVE container image from the broker's
+// Docker image store to the client, the reverse of PushEVEContainerImage.
+func (b *broker) PullEVEContainerImage(
+	req *api.PullEVEImageRequest, stream grpc.ServerStreamingServer[api.PullImageChunk]) error {
+	ctx := stream.Context()
+	b.mutex.Lock()
+	clientSession, exists := b.sessions[req.GetClientId()]
+	b.mutex.Unlock()
+	if !exists {
+		err := clientNotFoundErr(req.GetClientId())
+		b.globalLog.Error(err)
+		return err
+	}
+	log := clientSession.log
+	dockerImageName, err := utils.EVEDockerImageName(req.GetImage())
+	if err != nil {
+		return status.Errorf(codes.InvalidArgument, "invalid image reference: %v", err)
+	}
+	haveImage, err := utils.HaveDockerImage(ctx, log, dockerImageName)
+	if err != nil {
+		err = fmt.Errorf("failed to check for image %q presence: %w", dockerImageName, err)
+		log.Error(err)
+		return err
+	}
+	if !haveImage {
+		return status.Errorf(codes.NotFound, "image %q is not on the broker", dockerImageName)
+	}
+	b.imageUsage.touch(dockerImageName)
+
+	reader, err := utils.StreamDockerImageGzip(ctx, dockerImageName)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	defer func() {
+		if closeErr := reader.Close(); closeErr != nil {
+			log.Warnf("failed to close the stream of image %q: %v", dockerImageName, closeErr)
+		}
+	}()
+	log.Infof("Streaming image %q to the client", dockerImageName)
+	buf := make([]byte, 1024*1024)
+	for {
+		n, readErr := reader.Read(buf)
+		if n > 0 {
+			if err := stream.Send(&api.PullImageChunk{DataGzipChunk: buf[:n]}); err != nil {
+				return err
+			}
+		}
+		if readErr == io.EOF {
+			return nil
+		}
+		if readErr != nil {
+			err = fmt.Errorf("failed to read image %q: %w", dockerImageName, readErr)
+			log.Error(err)
+			return err
+		}
+	}
 }
 
 // PushSDNContainerImage receives and imports a pre-built SDN container image
@@ -862,7 +1042,7 @@ func (b *broker) PushSDNContainerImage(
 		return err
 	}
 
-	alreadyExists, err := b.receiveDockerImage(ctx, log, dockerImageName,
+	alreadyExists, err := b.receiveDockerImage(ctx, log, dockerImageName, false,
 		func() ([]byte, error) {
 			chunk, err := stream.Recv()
 			if err != nil {
@@ -885,9 +1065,12 @@ func (b *broker) PushSDNContainerImage(
 // recv returns the next gzipped chunk of `docker save | gzip` output, or io.EOF
 // at the end of the upload. If the image is already present, or is being
 // uploaded by another client (in which case this waits for that upload),
-// nothing is received and alreadyExists is returned.
+// nothing is received and alreadyExists is returned. A caller that serializes
+// the uploads of the image by other means (claimed) neither waits for nor
+// registers an upload.
 func (b *broker) receiveDockerImage(ctx context.Context, log *logrus.Entry,
-	dockerImageName string, recv func() ([]byte, error)) (alreadyExists bool, err error) {
+	dockerImageName string, claimed bool,
+	recv func() ([]byte, error)) (alreadyExists bool, err error) {
 	// Check if image already exists locally. This is a Docker-daemon query, so
 	// it must not run under b.mutex -- that's the broker-wide lock every RPC
 	// handler also takes just to look up a session, and a stalled daemon would
@@ -907,39 +1090,54 @@ func (b *broker) receiveDockerImage(ctx context.Context, log *logrus.Entry,
 		return true, nil
 	}
 
-	// Check if it's already being uploaded by another client, and reserve this
-	// upload otherwise. Only the map access needs b.mutex.
-	// SendAndClose without draining is safe — the client handles the early
-	// close by breaking out of its send loop and calling CloseAndRecv.
-	b.mutex.Lock()
-	if uploadDone, uploading := b.imageUploads[dockerImageName]; uploading {
-		b.mutex.Unlock()
-		log.Infof("Image %q is already being uploaded by another client, waiting...",
-			dockerImageName)
-		select {
-		case <-uploadDone:
-			log.Infof("Concurrent upload of image %q finished", dockerImageName)
-		case <-ctx.Done():
-			return false, fmt.Errorf("context cancelled while waiting for concurrent "+
-				"upload of image %q: %w", dockerImageName, ctx.Err())
-		}
-		return true, nil
-	}
-
-	// Register this upload.
-	uploadDone := make(chan struct{})
-	b.imageUploads[dockerImageName] = uploadDone
-	b.mutex.Unlock()
-
-	defer func() {
+	if !claimed {
+		// Check if it's already being uploaded by another client, and reserve this
+		// upload otherwise. Only the map access needs b.mutex.
+		// SendAndClose without draining is safe — the client handles the early
+		// close by breaking out of its send loop and calling CloseAndRecv.
 		b.mutex.Lock()
-		delete(b.imageUploads, dockerImageName)
+		if uploadDone, uploading := b.imageUploads[dockerImageName]; uploading {
+			b.mutex.Unlock()
+			log.Infof("Image %q is already being uploaded by another client, waiting...",
+				dockerImageName)
+			select {
+			case <-uploadDone:
+				log.Infof("Concurrent upload of image %q finished", dockerImageName)
+			case <-ctx.Done():
+				return false, fmt.Errorf("context cancelled while waiting for concurrent "+
+					"upload of image %q: %w", dockerImageName, ctx.Err())
+			}
+			return true, nil
+		}
+
+		// Register this upload.
+		uploadDone := make(chan struct{})
+		b.imageUploads[dockerImageName] = uploadDone
 		b.mutex.Unlock()
-		close(uploadDone)
-	}()
+
+		defer func() {
+			b.mutex.Lock()
+			delete(b.imageUploads, dockerImageName)
+			b.mutex.Unlock()
+			close(uploadDone)
+		}()
+	}
 
 	// Create streaming pipeline: gRPC → gunzip → docker.ImageLoad
 	pr, pw := io.Pipe()
+
+	// Reading the pipe blocks for as long as the client sends nothing, which
+	// the context alone does not interrupt (e.g. while the gzip header is
+	// awaited); an abort, such as a takeover of the claim, must end the upload.
+	stopWatch := make(chan struct{})
+	defer close(stopWatch)
+	go func() {
+		select {
+		case <-ctx.Done():
+			pr.CloseWithError(ctx.Err())
+		case <-stopWatch:
+		}
+	}()
 
 	go func() {
 		defer pw.Close()
