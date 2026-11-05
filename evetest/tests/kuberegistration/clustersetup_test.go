@@ -103,7 +103,8 @@ func TestKubeRegistrationClusterSetup(test *testing.T) {
 	clusterConfig := evetest.NewEdgeClusterConfig(
 		eveconfig.ClusterType_CLUSTER_TYPE_REPLICATED_STORAGE, nodes...)
 	clusterConfig.SetNativeK8SOrchestration(true)
-	clusterConfig.SetRegistrationManifest([]byte(kubeRegManifest))
+	clusterConfig.SetRegistrationManifest(
+		[]byte(kubeRegManifest(registrationValueInitial)))
 
 	// Configure networks and adapters (applied to all cluster members).
 	dhcpNet := clusterConfig.AddNetwork(
@@ -151,7 +152,8 @@ func TestKubeRegistrationClusterSetup(test *testing.T) {
 	// publishKubeConfigStatus gates on BootstrapNode), so the staged AddOn is
 	// recorded there. The ConfigMap it creates is visible from any node.
 	log.Infof("Waiting for the registration manifest to be applied by k3s...")
-	expectRegistrationApplied(t, bootstrap, 10*time.Minute)
+	expectRegistrationApplied(t, bootstrap, registrationValueInitial,
+		10*time.Minute)
 	evetest.Checkpoint("registration-manifest-applied")
 
 	// Phase 5. Configure the spare devices as standalone nodes, after the
