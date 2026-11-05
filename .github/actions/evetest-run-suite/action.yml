@@ -187,7 +187,9 @@ runs:
       shell: bash
       run: |
         for TARFILE in /tmp/eve-image/*.tar; do
-          LOADED=$(docker load -i "$TARFILE" | sed -n 's/^Loaded image: //p')
+          # The tar carries the per-build version tag (0.0.0-pr...) and the
+          # PR-number tag Eden uses; only the former identifies the build.
+          LOADED=$(docker load -i "$TARFILE" | sed -n 's/^Loaded image: //p' | grep -E ':0\.0\.0-pr' | head -n1 || :)
           [ -n "$LOADED" ] || { echo "::error::'docker load' did not report a loaded image for $TARFILE"; exit 1; }
           echo "Loaded EVE image: $LOADED"
           REPO="${LOADED%%:*}"
