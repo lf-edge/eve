@@ -95,7 +95,7 @@ import (
 //
 // Suite placement
 // ---------------
-//   - TestApplicationConnectivitySuite (deploys an app, hence
+//   - TestLocalNetworkInstanceSuite (deploys an app, hence
 //     hypervisor-parameterized).
 func TestLocalNI(test *testing.T) {
 	evetestT := evetest.Init(test)
@@ -502,7 +502,7 @@ func TestLocalNI(test *testing.T) {
 //
 // Suite placement
 // ---------------
-//   - TestApplicationConnectivitySuite.
+//   - TestSwitchNetworkInstanceSuite.
 func TestSwitchNI(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -857,7 +857,7 @@ func TestSwitchNI(test *testing.T) {
 //
 // Suite placement
 // ---------------
-//   - TestApplicationConnectivitySuite.
+//   - TestLocalNetworkInstanceSuite.
 func TestNIReplace(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -1045,7 +1045,7 @@ func TestNIReplace(test *testing.T) {
 //
 // Suite placement
 // ---------------
-//   - TestApplicationConnectivitySuite.
+//   - TestLocalNetworkInstanceSuite.
 func TestMoveAppBetweenNIs(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -1347,7 +1347,7 @@ func TestMoveAppBetweenNIs(test *testing.T) {
 //
 // Suite placement
 // ---------------
-//   - TestApplicationConnectivitySuite.
+//   - TestLocalNetworkInstanceSuite.
 func TestPortForwarding(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -1673,7 +1673,7 @@ func TestPortForwarding(test *testing.T) {
 //
 // Suite placement
 // ---------------
-//   - TestApplicationConnectivitySuite.
+//   - TestSwitchNetworkInstanceSuite.
 func TestAirGapSwitchNI(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -1998,7 +1998,7 @@ true
 //
 // Suite placement
 // ---------------
-//   - TestApplicationConnectivitySuite.
+//   - TestLocalNetworkInstanceSuite.
 func TestLimitedIPSpace(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)

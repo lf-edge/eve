@@ -224,48 +224,20 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 	)
 }
 
-// TestApplicationConnectivitySuite drives every application-side
-// networking scenario. All subtests deploy at least one application and
+// TestLocalNetworkInstanceSuite drives the application-side behavior of
+// Local (L3/NAT) Network Instances: the NI life-cycle, DHCP/DNS
+// service to apps, IP allocation limits, rapid NI replacement, moving an app
+// between NIs, per-VIF ACLs, port-forwarding (D-NAT), flow logging and the
+// NI's resilience to uplink flaps. All subtests deploy at least one application and
 // therefore share the HYPERVISOR parameter -- the suite declares
 // evetest.HypervisorParameter() once and every subtest reads it via
 // evetest.GetHypervisorParameterValue() (defaults to KVM).
 //
-// Subtests
-// --------
-//   - TestLocalNI / TestSwitchNI -- canonical Local-NI / Switch-NI
-//     life-cycles plus connected-app smoke tests.
-//   - TestNIReplace -- rapid NI delete+recreate (and subnet reuse across
-//     NIs) within single config applies.
-//   - TestMoveAppBetweenNIs -- moving an app's VIF from one Local NI to
-//     another at runtime.
-//   - TestAirGapSwitchNI -- portless Switch NI IP-detection via packet
-//     snooping: statically-assigned IPs and multiple IPs per VIF MAC
-//     (e.g. via VLAN sub-interfaces).
-//   - TestLimitedIPSpace -- app deployment/replacement on a NI with only a
-//     single free IP address available.
-//   - TestFlowLog -- per-app flow log + DNS log assertions
-//     (skipped; depends on GetAppFlowLogs / GetAppDNSLogs which are not
-//     yet wired up in evetest).
-//   - TestLocalNetInstanceACLs / TestSwitchNetInstanceACLs -- ACL
-//     filtering on Local / Switch NIs (variants: ENABLE_FLOWLOG=false / =true).
-//   - TestPropagatedRoutes / TestLocalNIWithMultiplePorts /
-//     TestApplicationGateway -- IP-routing-related scenarios mirroring
-//     the eden app-routing examples (stub scenarios).
-//   - TestPortForwarding -- port-forwarding (D-NAT) hairpin connectivity,
-//     including across two different uplink adapters, and changing a
-//     port-fwd rule's external port at runtime.
-//   - TestSwitchNIWithMultiplePorts -- STP / BPDU-guard on a Switch NI
-//     with redundant L2 links (stub scenario).
-//   - TestAccessVLANs -- VLAN-aware Switch NI (stub scenario).
-//   - TestNetworkAdapterPassthrough -- direct assignment (PCI passthrough)
-//     of a physical NIC to an app; the guest must fully own the adapter
-//     (see it under its MAC, DHCP through it over the SDN network).
-//   - TestLocalNIUplinkFlap -- a Local NI's own uplink port flaps (put
-//     down, address cleared, then brought back up with a changed advertised
-//     DNS server); its dnsmasq instance must not restart and a connected
-//     app must keep its DHCP-assigned IP throughout.
-func TestApplicationConnectivitySuite(test *testing.T) {
-	evetest.Init(test, evetest.WithTags(evetest.TagHeavyTest))
+// Part of the application-side networking scenarios, together with
+// TestSwitchNetworkInstanceSuite, TestAppRoutingSuite and TestAppNICsSuite,
+// which were split from one suite to keep each job short.
+func TestLocalNetworkInstanceSuite(test *testing.T) {
+	evetest.Init(test)
 	defer evetest.Close()
 
 	// Define parameters for the entire test suite.
@@ -278,16 +250,10 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 			Test: TestLocalNI,
 		},
 		evetest.TestCase{
-			Test: TestSwitchNI,
-		},
-		evetest.TestCase{
 			Test: TestNIReplace,
 		},
 		evetest.TestCase{
 			Test: TestMoveAppBetweenNIs,
-		},
-		evetest.TestCase{
-			Test: TestAirGapSwitchNI,
 		},
 		evetest.TestCase{
 			Test: TestLimitedIPSpace,
@@ -313,6 +279,38 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 			},
 		},
 		evetest.TestCase{
+			Test: TestPortForwarding,
+		},
+		evetest.TestCase{
+			Test: TestLocalNIUplinkFlap,
+		},
+	)
+}
+
+// TestSwitchNetworkInstanceSuite drives the application-side behavior of
+// Switch (L2-only) Network Instances: the NI life-cycle, IP learning by packet
+// snooping (including air-gapped NIs), per-VIF ACLs,
+// STP/BPDU guard on redundant links, and VLAN isolation. All subtests deploy at least one application and
+// therefore share the HYPERVISOR parameter -- the suite declares
+// evetest.HypervisorParameter() once and every subtest reads it via
+// evetest.GetHypervisorParameterValue() (defaults to KVM).
+func TestSwitchNetworkInstanceSuite(test *testing.T) {
+	evetest.Init(test)
+	defer evetest.Close()
+
+	// Define parameters for the entire test suite.
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+
+	evetest.RunTestSuite(
+		evetest.TestCase{
+			Test: TestSwitchNI,
+		},
+		evetest.TestCase{
+			Test: TestAirGapSwitchNI,
+		},
+		evetest.TestCase{
 			Test: TestSwitchNetInstanceACLs,
 			Variants: []evetest.TestVariant{
 				{
@@ -330,6 +328,32 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 			},
 		},
 		evetest.TestCase{
+			Test: TestSwitchNIWithMultiplePorts,
+		},
+		evetest.TestCase{
+			Test: TestAccessVLANs,
+		},
+	)
+}
+
+// TestAppRoutingSuite drives application IP routing: connected and static
+// routes delivered to apps over DHCP, multi-path routes across several uplink
+// ports of one Local NI, and the "application gateway" topology in which one
+// app routes, NATs and filters traffic for others. All subtests deploy at least one application and
+// therefore share the HYPERVISOR parameter -- the suite declares
+// evetest.HypervisorParameter() once and every subtest reads it via
+// evetest.GetHypervisorParameterValue() (defaults to KVM).
+func TestAppRoutingSuite(test *testing.T) {
+	evetest.Init(test)
+	defer evetest.Close()
+
+	// Define parameters for the entire test suite.
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+
+	evetest.RunTestSuite(
+		evetest.TestCase{
 			Test: TestPropagatedRoutes,
 		},
 		evetest.TestCase{
@@ -338,20 +362,27 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 		evetest.TestCase{
 			Test: TestApplicationGateway,
 		},
-		evetest.TestCase{
-			Test: TestPortForwarding,
-		},
-		evetest.TestCase{
-			Test: TestSwitchNIWithMultiplePorts,
-		},
-		evetest.TestCase{
-			Test: TestAccessVLANs,
-		},
+	)
+}
+
+// TestAppNICsSuite drives the network adapters (VIFs and directly assigned
+// physical NICs) of an application: PCI passthrough of a physical NIC.
+// All subtests deploy at least one application and
+// therefore share the HYPERVISOR parameter -- the suite declares
+// evetest.HypervisorParameter() once and every subtest reads it via
+// evetest.GetHypervisorParameterValue() (defaults to KVM).
+func TestAppNICsSuite(test *testing.T) {
+	evetest.Init(test)
+	defer evetest.Close()
+
+	// Define parameters for the entire test suite.
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+	)
+
+	evetest.RunTestSuite(
 		evetest.TestCase{
 			Test: TestNetworkAdapterPassthrough,
-		},
-		evetest.TestCase{
-			Test: TestLocalNIUplinkFlap,
 		},
 	)
 }
