@@ -343,9 +343,18 @@ func ClusterStatusPresent() (bool, error) {
 // until the bootstrap server is reachable and reports a matching
 // cluster UUID.
 func ProvisionClusterConfig(ctx context.Context, isFirstBoot bool) error {
+	return provisionClusterConfig(ctx, isFirstBoot, "")
+}
+
+// provisionClusterConfig is ProvisionClusterConfig with the token
+// written to the drop-in overridden by token when it is non-empty.
+func provisionClusterConfig(ctx context.Context, isFirstBoot bool, token string) error {
 	cs, err := GetClusterStatus()
 	if err != nil {
 		return fmt.Errorf("get cluster status: %w", err)
+	}
+	if token != "" {
+		cs.EncryptedToken = token
 	}
 	if err := provisionDisableLocalPath(); err != nil {
 		return fmt.Errorf("provision disable-local-path: %w", err)
