@@ -5,12 +5,14 @@ ARG EVE_KERNEL
 # hadolint ignore=DL3006
 FROM ${EVE_KERNEL} AS kernel
 
-FROM lfedge/eve-bpftrace:49b22c5e0daaf4e380fa18ffafdba7cfbdfb9f43 AS eve-bpftrace
+FROM lfedge/eve-bpftrace:8db4576f7b225983e126b6506dab23e289cb5331 AS eve-bpftrace
 
-FROM lfedge/eve-alpine:80c5dbe1085d0650030be8a110eaec66ef532672 AS bpftrace
+FROM lfedge/eve-alpine:a5885b38222df4ba5add4acca2d219c85741bf79 AS bpftrace
 
+# Runtime libraries of the bpftrace 0.23.3 build in pkg/bpftrace (LLVM 20),
+# copied into the compile VM by copy-out.sh (which needs ldd from musl-utils).
 # hadolint ignore=DL3018
-RUN apk add --no-cache --initdb make gcc g++ git perl musl-dev cmake zlib-dev bcc-dev libbpf-dev cereal flex bison llvm13-libs llvm13-dev llvm13-static clang-dev clang-static pahole gtest-dev bash
+RUN apk add --no-cache --initdb musl-utils llvm20-libs clang20-libs clang20-libclang bcc libbpf libpcap binutils libelf zlib libstdc++ libgcc
 WORKDIR /
 COPY copy-out.sh /
 RUN mkdir /out
