@@ -98,21 +98,21 @@ To generate the SBoM, run `make sbom`. This does the following:
 1. Rewrite that document in place in the tar with [tools/sbom-stamp](../tools/sbom-stamp/)
 1. Extract it to `dist/<arch>/<release>/installer/rootfs-<platform>.spdx.json`
 
-linuxkit writes a random `documentNamespace`, a fixed 2017 `created` time and an
-anonymous root per image. `sbom-stamp` replaces them so that the document identifies
+linuxkit writes a random `documentNamespace`, a fixed 2017 `created` time and one
+root per image, named after the image's repository and versioned with its tag, with
+every SPDX ID scoped to the image. `sbom-stamp` replaces the document fields so that the document identifies
 the EVE-OS build and two builds of the same commit produce the same bytes:
 
 * `name` is `eve-<version>`
 * `created` is `SOURCE_DATE_EPOCH`, defaulting to the commit's committer date
 * `documentNamespace` is `https://github.com/lf-edge/eve/spdx/eve-<version>-<hash>`, where the hash covers the document's content
 * the document `DESCRIBES` a root package `SPDXRef-Package-EVE-OS` carrying the version, the source commit and a `pkg:docker/lfedge/eve` purl; each image's root is `CONTAINED` in it
-* byte-identical duplicate packages, files and relationships, one copy per image that ships them, are dropped
 
 It also fills in what the scanner leaves out, using the rest of the rootfs tar:
 
-* each image's root is named and versioned after the image linuxkit unpacked in its directory, with a `pkg:docker` purl; the root for the images at the top of the rootfs gets the EVE-OS version
+* each image's root gets the image's `pkg:docker` purl, and `Organization: LF Edge` or `Organization: LinuxKit` as supplier for `lfedge/` and `linuxkit/` images
 * every file gets the SHA1 checksum SPDX 2.3 requires, computed from the tar
-* a package that the scanner left without a purl gets the purl of the other copies of it (same SPDX ID, name and version) when they all agree on one
+* a package that the scanner left without a purl gets the purl of the other copies of it (same scanner-assigned SPDX ID, name and version) when they all agree on one
 * packages the scanner left with a `NOASSERTION` supplier get `Organization: LF Edge` if EVE builds them (packages recorded by `pkg/alpine/register-sbom-pkg.sh`, and `github.com/lf-edge` Go modules) and `Organization: Alpine Linux` if they are Alpine `-r<N>` apk packages
 * packages recorded by `register-sbom-pkg.sh` get a `pkg:generic/<name>@<version>` purl in place of the `pkg:apk` one the scanner gives them, since EVE builds them from source
 * a file whose checksum matches nothing in the tar is matched by path: dropped with its relationships if the tar does not contain it, as for the `etc/hostname` linuxkit leaves out, or given the checksums of what linuxkit wrote there, as for `etc/hosts`

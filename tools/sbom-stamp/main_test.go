@@ -7,6 +7,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,25 +18,25 @@ import (
 )
 
 // merged mimics linuxkit's merge of two image SBoMs: a random namespace, one
-// DESCRIBES edge per image, and the shared busybox package, its file and its
-// edges repeated once per image.
+// DESCRIBES edge per image, and the busybox package and file that both images
+// ship, under IDs scoped to each image.
 func merged(uuid string) []byte {
 	return []byte(`{"spdxVersion":"SPDX-2.3","dataLicense":"CC0-1.0","SPDXID":"SPDXRef-DOCUMENT","name":"sbom",` +
 		`"documentNamespace":"https://github.com/linuxkit/linuxkit/sbom-` + uuid + `",` +
 		`"creationInfo":{"licenseListVersion":"3.20","creators":["Organization: LinuxKit","Tool: linuxkit"],"created":"2017-04-18T16:30:00Z"},` +
 		`"packages":[` +
-		`{"name":"sbom","SPDXID":"SPDXRef-DocumentRoot-Directory-a","downloadLocation":"NOASSERTION"},` +
-		`{"name":"busybox","SPDXID":"SPDXRef-Package-apk-busybox-1","versionInfo":"1.37.0-r19"},` +
-		`{"name":"sbom","SPDXID":"SPDXRef-DocumentRoot-Directory-b","downloadLocation":"NOASSERTION"},` +
-		`{"name":"busybox","SPDXID":"SPDXRef-Package-apk-busybox-1","versionInfo":"1.37.0-r19"}],` +
-		`"files":[{"fileName":"bin/busybox","SPDXID":"SPDXRef-File-bin-busybox-1"},` +
-		`{"fileName":"bin/busybox","SPDXID":"SPDXRef-File-bin-busybox-1"}],` +
+		`{"name":"docker.io/lfedge/eve-a","SPDXID":"SPDXRef-a-DocumentRoot-Directory-sbom","versionInfo":"0123abcd","downloadLocation":"NOASSERTION","packageFileName":"./a"},` +
+		`{"name":"busybox","SPDXID":"SPDXRef-a-Package-apk-busybox-1","versionInfo":"1.37.0-r19"},` +
+		`{"name":"docker.io/lfedge/eve-b","SPDXID":"SPDXRef-b-DocumentRoot-Directory-sbom","versionInfo":"4567ef01","downloadLocation":"NOASSERTION","packageFileName":"./b"},` +
+		`{"name":"busybox","SPDXID":"SPDXRef-b-Package-apk-busybox-1","versionInfo":"1.37.0-r19"}],` +
+		`"files":[{"fileName":"a/bin/busybox","SPDXID":"SPDXRef-a-File-bin-busybox-1"},` +
+		`{"fileName":"b/bin/busybox","SPDXID":"SPDXRef-b-File-bin-busybox-1"}],` +
 		`"relationships":[` +
-		`{"spdxElementId":"SPDXRef-DOCUMENT","relatedSpdxElement":"SPDXRef-DocumentRoot-Directory-a","relationshipType":"DESCRIBES"},` +
-		`{"spdxElementId":"SPDXRef-DocumentRoot-Directory-a","relatedSpdxElement":"SPDXRef-Package-apk-busybox-1","relationshipType":"CONTAINS"},` +
-		`{"spdxElementId":"SPDXRef-DOCUMENT","relatedSpdxElement":"SPDXRef-DocumentRoot-Directory-b","relationshipType":"DESCRIBES"},` +
-		`{"spdxElementId":"SPDXRef-Package-apk-busybox-1","relatedSpdxElement":"SPDXRef-File-bin-busybox-1","relationshipType":"CONTAINS"},` +
-		`{"spdxElementId":"SPDXRef-Package-apk-busybox-1","relatedSpdxElement":"SPDXRef-File-bin-busybox-1","relationshipType":"CONTAINS"}]}`)
+		`{"spdxElementId":"SPDXRef-DOCUMENT","relatedSpdxElement":"SPDXRef-a-DocumentRoot-Directory-sbom","relationshipType":"DESCRIBES"},` +
+		`{"spdxElementId":"SPDXRef-a-DocumentRoot-Directory-sbom","relatedSpdxElement":"SPDXRef-a-Package-apk-busybox-1","relationshipType":"CONTAINS"},` +
+		`{"spdxElementId":"SPDXRef-DOCUMENT","relatedSpdxElement":"SPDXRef-b-DocumentRoot-Directory-sbom","relationshipType":"DESCRIBES"},` +
+		`{"spdxElementId":"SPDXRef-a-Package-apk-busybox-1","relatedSpdxElement":"SPDXRef-a-File-bin-busybox-1","relationshipType":"CONTAINS"},` +
+		`{"spdxElementId":"SPDXRef-b-Package-apk-busybox-1","relatedSpdxElement":"SPDXRef-b-File-bin-busybox-1","relationshipType":"CONTAINS"}]}`)
 }
 
 var opts = Options{
@@ -115,11 +116,11 @@ func TestDocument(t *testing.T) {
 	if len(d.DocumentDescribes) != 1 || d.DocumentDescribes[0] != rootID {
 		t.Errorf("documentDescribes %q", d.DocumentDescribes)
 	}
-	if len(d.Packages) != 4 || d.Packages[0]["SPDXID"] != rootID ||
+	if len(d.Packages) != 5 || d.Packages[0]["SPDXID"] != rootID ||
 		d.Packages[0]["supplier"] != "Organization: LF Edge" {
 		t.Errorf("packages %v", d.Packages)
 	}
-	if len(d.Files) != 1 {
+	if len(d.Files) != 2 {
 		t.Errorf("files %v", d.Files)
 	}
 	var describes, contains []string
@@ -134,14 +135,20 @@ func TestDocument(t *testing.T) {
 	if strings.Join(describes, ",") != documentID+">"+rootID {
 		t.Errorf("DESCRIBES %v", describes)
 	}
-	if strings.Join(contains, ",") != "SPDXRef-DocumentRoot-Directory-a,SPDXRef-DocumentRoot-Directory-b" {
+	if strings.Join(contains, ",") != "SPDXRef-a-DocumentRoot-Directory-sbom,SPDXRef-b-DocumentRoot-Directory-sbom" {
 		t.Errorf("%s CONTAINS %v", rootID, contains)
 	}
-	if len(d.Relationships) != 5 {
-		t.Errorf("%d relationships, want 5: %v", len(d.Relationships), d.Relationships)
+	if len(d.Relationships) != 6 {
+		t.Errorf("%d relationships, want 6: %v", len(d.Relationships), d.Relationships)
 	}
-	if st.DroppedDuplicates != 3 || st.Reparented != 2 || st.ConflictingIDs != 0 {
+	if st.Reparented != 2 || st.ConflictingIDs != 0 {
 		t.Errorf("stats %+v", st)
+	}
+
+	// A linuxkit that does not scope IDs to their image repeats them.
+	unscoped := bytes.ReplaceAll(merged("adf56734-4194-464a-b5f5-483d845251de"), []byte("SPDXRef-b-Package"), []byte("SPDXRef-a-Package"))
+	if _, st, err := Stamp(unscoped, opts, Content{}); err != nil || st.ConflictingIDs != 1 {
+		t.Errorf("repeated ID: %d conflicting IDs reported, want 1 (err %v)", st.ConflictingIDs, err)
 	}
 }
 
@@ -231,29 +238,36 @@ func TestStampTar(t *testing.T) {
 // scanned mimics the packages and files of two scanned images: one root with
 // the image's directory in the tar, one at the top of the rootfs, and the
 // package kinds whose supplier the scanner leaves as NOASSERTION, among them
-// a copy of a Go module without its purl.
+// a copy of a Go module without its purl in the other image.
 func scanned() []byte {
 	pkg := func(id, name, version, supplier, description, purl string) string {
 		return `{"name":"` + name + `","SPDXID":"` + id + `","versionInfo":"` + version + `","supplier":"` + supplier +
 			`","description":"` + description + `","externalRefs":[{"referenceCategory":"PACKAGE-MANAGER","referenceType":"purl","referenceLocator":"` + purl + `"}]}`
 	}
 	return []byte(`{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-DOCUMENT","name":"sbom","creationInfo":{"creators":["Tool: linuxkit"]},"packages":[` +
-		`{"name":"sbom","SPDXID":"SPDXRef-DocumentRoot-Directory-sbom","packageFileName":"containers/onboot/000-rngd/rootfs"},` +
-		`{"name":"core","SPDXID":"SPDXRef-DocumentRoot-Directory-core"},` +
-		pkg("SPDXRef-Package-apk-libtpms-1", "libtpms", "0.10.0", "NOASSERTION", "TPM 2.0 emulation library (built from source)", "pkg:apk/busybox/libtpms@0.10.0") + `,` +
-		pkg("SPDXRef-Package-apk-busybox-1", "busybox", "1.37.0-r20", "NOASSERTION", "Size optimized toolbox", "pkg:apk/busybox/busybox@1.37.0-r20") + `,` +
-		`{"name":"ssl_client","SPDXID":"SPDXRef-Package-apk-ssl-client-1","versionInfo":"1.37.0-r20","supplier":"NOASSERTION"},` +
-		pkg("SPDXRef-Package-apk-musl-1", "musl", "1.2.5-r10", "Person: Natanael Copa (ncopa@alpinelinux.org)", "", "pkg:apk/busybox/musl@1.2.5-r10") + `,` +
-		pkg("SPDXRef-Package-go-module-pillar-1", "github.com/lf-edge/eve/pkg/pillar", "v0.0.0", "NOASSERTION", "", "pkg:golang/github.com/lf-edge/eve/pkg/pillar@v0.0.0") + `,` +
-		pkg("SPDXRef-Package-go-module-sys-1", "golang.org/x/sys", "v0.30.0", "NOASSERTION", "", "pkg:golang/golang.org/x/sys@v0.30.0") + `,` +
-		`{"name":"golang.org/x/sys","SPDXID":"SPDXRef-Package-go-module-sys-1","versionInfo":"v0.30.0","supplier":"NOASSERTION"},` +
-		pkg("SPDXRef-Package-go-module-unmapped-1", "example.com/unmapped", "v0.9.1", "NOASSERTION", "", "pkg:golang/example.com/unmapped@v0.9.1") + `],` +
+		`{"name":"docker.io/lfedge/eve-rngd","SPDXID":"` + rngdRoot + `","versionInfo":"ba4c5b192f086f3d2dfadc46061b71afc44edd62","packageFileName":"./containers/onboot/000-rngd/rootfs"},` +
+		`{"name":"docker.io/linuxkit/init","SPDXID":"` + initRoot + `","versionInfo":"075ff447b68e23feef95589c90010a039533e5b5"},` +
+		pkg("SPDXRef-r-Package-apk-libtpms-1", "libtpms", "0.10.0", "NOASSERTION", "TPM 2.0 emulation library (built from source)", "pkg:apk/busybox/libtpms@0.10.0") + `,` +
+		pkg("SPDXRef-r-Package-apk-busybox-1", "busybox", "1.37.0-r20", "NOASSERTION", "Size optimized toolbox", "pkg:apk/busybox/busybox@1.37.0-r20") + `,` +
+		`{"name":"ssl_client","SPDXID":"SPDXRef-r-Package-apk-ssl-client-1","versionInfo":"1.37.0-r20","supplier":"NOASSERTION"},` +
+		pkg("SPDXRef-r-Package-apk-musl-1", "musl", "1.2.5-r10", "Person: Natanael Copa (ncopa@alpinelinux.org)", "", "pkg:apk/busybox/musl@1.2.5-r10") + `,` +
+		pkg("SPDXRef-r-Package-go-module-pillar-1", "github.com/lf-edge/eve/pkg/pillar", "v0.0.0", "NOASSERTION", "", "pkg:golang/github.com/lf-edge/eve/pkg/pillar@v0.0.0") + `,` +
+		pkg("SPDXRef-r-Package-go-module-sys-1", "golang.org/x/sys", "v0.30.0", "NOASSERTION", "", "pkg:golang/golang.org/x/sys@v0.30.0") + `,` +
+		`{"name":"golang.org/x/sys","SPDXID":"SPDXRef-i-Package-go-module-sys-1","versionInfo":"v0.30.0","supplier":"NOASSERTION"},` +
+		pkg("SPDXRef-r-Package-go-module-unmapped-1", "example.com/unmapped", "v0.9.1", "NOASSERTION", "", "pkg:golang/example.com/unmapped@v0.9.1") + `],` +
 		`"files":[{"fileName":"bin/busybox","SPDXID":"SPDXRef-File-bin-busybox-1","checksums":[{"algorithm":"SHA256","checksumValue":"9d75f0d7c398df565d7ac04c6819b62d6d8f9560f5eb4672596ecd8f7e96ae91"}]},` +
 		`{"fileName":"etc/gone","SPDXID":"SPDXRef-File-etc-gone-1","checksums":[{"algorithm":"SHA256","checksumValue":"00"}]},` +
 		`{"fileName":"etc/hosts","SPDXID":"SPDXRef-File-etc-hosts-1","checksums":[{"algorithm":"SHA256","checksumValue":"11"}]}],` +
-		`"relationships":[{"spdxElementId":"SPDXRef-Package-apk-busybox-1","relatedSpdxElement":"SPDXRef-File-etc-gone-1","relationshipType":"CONTAINS"},` +
-		`{"spdxElementId":"SPDXRef-Package-apk-busybox-1","relatedSpdxElement":"SPDXRef-File-etc-hosts-1","relationshipType":"CONTAINS"}]}`)
+		`"relationships":[{"spdxElementId":"SPDXRef-DOCUMENT","relatedSpdxElement":"` + rngdRoot + `","relationshipType":"DESCRIBES"},` +
+		`{"spdxElementId":"SPDXRef-DOCUMENT","relatedSpdxElement":"` + initRoot + `","relationshipType":"DESCRIBES"},` +
+		`{"spdxElementId":"SPDXRef-r-Package-apk-busybox-1","relatedSpdxElement":"SPDXRef-File-etc-gone-1","relationshipType":"CONTAINS"},` +
+		`{"spdxElementId":"SPDXRef-r-Package-apk-busybox-1","relatedSpdxElement":"SPDXRef-File-etc-hosts-1","relationshipType":"CONTAINS"}]}`)
 }
+
+const (
+	rngdRoot = "SPDXRef-containers-onboot-000-rngd-rootfs-DocumentRoot-Directory-sbom"
+	initRoot = "SPDXRef-docker.io-linuxkit-init-DocumentRoot-Directory-sbom"
+)
 
 // content is what stampTar collects from tarWithContent.
 var content = Content{
@@ -261,7 +275,6 @@ var content = Content{
 		"9d75f0d7c398df565d7ac04c6819b62d6d8f9560f5eb4672596ecd8f7e96ae91": "2f106f27fa1f28a8a4e02aeb10d73b78f9c9b24a",
 		"4f8a2cc398d8664277a96a7843ab4958ab1d0a347cbe7c071fde0fcb58230793": "abba3508de929934a4e4b5198e00683c2b633bbc",
 	},
-	Images: map[string]string{"containers/onboot/000-rngd/rootfs": "docker.io/lfedge/eve-rngd:ba4c5b192f086f3d2dfadc46061b71afc44edd62"},
 	Paths: map[string]string{
 		"containers/onboot/000-rngd/rootfs":             "",
 		"containers/onboot/000-rngd/rootfs/bin/busybox": "9d75f0d7c398df565d7ac04c6819b62d6d8f9560f5eb4672596ecd8f7e96ae91",
@@ -290,19 +303,22 @@ func TestFill(t *testing.T) {
 		got[p["SPDXID"].(string)] = w
 	}
 	for id, w := range map[string]want{
-		"SPDXRef-DocumentRoot-Directory-sbom": {"lfedge/eve-rngd", "ba4c5b192f086f3d2dfadc46061b71afc44edd62", lfEdge,
+		rngdRoot: {"docker.io/lfedge/eve-rngd", "ba4c5b192f086f3d2dfadc46061b71afc44edd62", lfEdge,
 			"pkg:docker/lfedge/eve-rngd@ba4c5b192f086f3d2dfadc46061b71afc44edd62"},
-		"SPDXRef-DocumentRoot-Directory-core": {"core", opts.Version, lfEdge, ""},
-		"SPDXRef-Package-apk-libtpms-1":       {"libtpms", "0.10.0", lfEdge, "pkg:generic/libtpms@0.10.0"},
-		"SPDXRef-Package-apk-busybox-1":       {"busybox", "1.37.0-r20", alpine, "pkg:apk/busybox/busybox@1.37.0-r20"},
-		"SPDXRef-Package-apk-ssl-client-1":    {"ssl_client", "1.37.0-r20", alpine, ""},
-		"SPDXRef-Package-apk-musl-1": {"musl", "1.2.5-r10", "Person: Natanael Copa (ncopa@alpinelinux.org)",
+		initRoot: {"docker.io/linuxkit/init", "075ff447b68e23feef95589c90010a039533e5b5", linuxKit,
+			"pkg:docker/linuxkit/init@075ff447b68e23feef95589c90010a039533e5b5"},
+		"SPDXRef-r-Package-apk-libtpms-1":    {"libtpms", "0.10.0", lfEdge, "pkg:generic/libtpms@0.10.0"},
+		"SPDXRef-r-Package-apk-busybox-1":    {"busybox", "1.37.0-r20", alpine, "pkg:apk/busybox/busybox@1.37.0-r20"},
+		"SPDXRef-r-Package-apk-ssl-client-1": {"ssl_client", "1.37.0-r20", alpine, ""},
+		"SPDXRef-r-Package-apk-musl-1": {"musl", "1.2.5-r10", "Person: Natanael Copa (ncopa@alpinelinux.org)",
 			"pkg:apk/busybox/musl@1.2.5-r10"},
-		"SPDXRef-Package-go-module-pillar-1": {"github.com/lf-edge/eve/pkg/pillar", "v0.0.0", lfEdge,
+		"SPDXRef-r-Package-go-module-pillar-1": {"github.com/lf-edge/eve/pkg/pillar", "v0.0.0", lfEdge,
 			"pkg:golang/github.com/lf-edge/eve/pkg/pillar@v0.0.0"},
-		"SPDXRef-Package-go-module-sys-1": {"golang.org/x/sys", "v0.30.0", "Organization: The Go Authors",
+		"SPDXRef-r-Package-go-module-sys-1": {"golang.org/x/sys", "v0.30.0", "Organization: The Go Authors",
 			"pkg:golang/golang.org/x/sys@v0.30.0"},
-		"SPDXRef-Package-go-module-unmapped-1": {"example.com/unmapped", "v0.9.1", "NOASSERTION",
+		"SPDXRef-i-Package-go-module-sys-1": {"golang.org/x/sys", "v0.30.0", "Organization: The Go Authors",
+			"pkg:golang/golang.org/x/sys@v0.30.0"},
+		"SPDXRef-r-Package-go-module-unmapped-1": {"example.com/unmapped", "v0.9.1", "NOASSERTION",
 			"pkg:golang/example.com/unmapped@v0.9.1"},
 	} {
 		if got[id] != w {
@@ -349,8 +365,7 @@ func tarWithContent(t *testing.T, path string, members ...[2]string) {
 			t.Fatal(err)
 		}
 	}
-	write(&tar.Header{Name: "containers/onboot/000-rngd/rootfs/", Typeflag: tar.TypeDir, Mode: 0o755, Format: tar.FormatPAX,
-		PAXRecords: map[string]string{"LINUXKIT.source": content.Images["containers/onboot/000-rngd/rootfs"]}}, "")
+	write(&tar.Header{Name: "containers/onboot/000-rngd/rootfs/", Typeflag: tar.TypeDir, Mode: 0o755}, "")
 	write(&tar.Header{Name: "containers/onboot/000-rngd/rootfs/bin/busybox", Typeflag: tar.TypeReg, Mode: 0o755, Size: 7}, "busybox")
 	write(&tar.Header{Name: "etc/hosts", Typeflag: tar.TypeReg, Mode: 0o644, Size: 5}, "hosts")
 	for _, m := range members {
@@ -433,23 +448,31 @@ func TestFillPURLs(t *testing.T) {
 			`","externalRefs":[` + cpe + refs + `]}`)
 	}
 	zlib := "pkg:apk/busybox/zlib@1.3.2-r0?arch=x86_64"
+	zlib2 := "pkg:apk/alpine/zlib@1.3.2-r0?arch=x86_64"
+	zlib3 := "pkg:apk/busybox/zlib@1.3.3-r0?arch=x86_64"
 	pkgs := []json.RawMessage{
-		pkg("SPDXRef-zlib", "1.3.2-r0", ""),
-		pkg("SPDXRef-zlib", "1.3.2-r0", purl(zlib)),
-		pkg("SPDXRef-zlib", "1.3.1-r2", ""),   // another version: not a copy
-		pkg("SPDXRef-zlib-x", "1.3.2-r0", ""), // another ID: not a copy
-		pkg("SPDXRef-zlib-y", "1.3.2-r0", ""), // copies disagree: left alone
-		pkg("SPDXRef-zlib-y", "1.3.2-r0", purl(zlib)),
-		pkg("SPDXRef-zlib-y", "1.3.2-r0", purl(zlib+"&x=1")),
+		pkg("SPDXRef-a-Package-apk-zlib-1", "1.3.2-r0", ""),
+		pkg("SPDXRef-b-Package-apk-zlib-1", "1.3.2-r0", purl(zlib)),
+		pkg("SPDXRef-c-Package-apk-zlib-1", "1.3.1-r2", ""), // another version: not a copy
+		pkg("SPDXRef-a-Package-apk-zlib-2", "1.3.2-r0", ""), // another scanner ID: not a copy of -1
+		pkg("SPDXRef-b-Package-apk-zlib-2", "1.3.2-r0", purl(zlib2)),
+		pkg("SPDXRef-a-Package-apk-zlib-3", "1.3.3-r0", ""), // copies disagree: left alone
+		pkg("SPDXRef-b-Package-apk-zlib-3", "1.3.3-r0", purl(zlib3)),
+		pkg("SPDXRef-c-Package-apk-zlib-3", "1.3.3-r0", purl(zlib3+"&x=1")),
 	}
 	n, err := fillPURLs(pkgs)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := pkg("SPDXRef-zlib", "1.3.2-r0", purl(zlib)); n != 1 || !bytes.Equal(pkgs[0], want) {
-		t.Errorf("filled %d:\n%s\nwant 1:\n%s", n, pkgs[0], want)
+	if n != 2 {
+		t.Errorf("filled %d, want 2", n)
 	}
-	for _, i := range []int{2, 3, 4} {
+	for i, purl := range map[int]string{0: purl(zlib), 3: purl(zlib2)} {
+		if want := pkg(fmt.Sprintf("SPDXRef-a-Package-apk-zlib-%d", i/3+1), "1.3.2-r0", purl); !bytes.Equal(pkgs[i], want) {
+			t.Errorf("package %d:\n%s\nwant\n%s", i, pkgs[i], want)
+		}
+	}
+	for _, i := range []int{2, 5} {
 		if (pkgInfo{ExternalRefs: refsOf(t, pkgs[i])}).purl() != "" {
 			t.Errorf("package %d got a purl: %s", i, pkgs[i])
 		}
