@@ -502,6 +502,7 @@ proxmox-broker-installer:
 	  /@@TEMPLATE_NOTE_END@@/   { skip=0; next } \
 	  skip { next } \
 	  /^@@HOOKSCRIPT@@$$/     { f="$(PROXMOX_DEPLOY)/evetest-hook.pl";             while ((getline l < f) > 0) print l; close(f); next } \
+	  /^@@OOM_HOOKSCRIPT@@$$/ { f="$(PROXMOX_DEPLOY)/evetest-oom-hook.pl";         while ((getline l < f) > 0) print l; close(f); next } \
 	  /^@@CLOUDINIT@@$$/      { f="$(PROXMOX_DEPLOY)/broker-cloudinit.yaml";       while ((getline l < f) > 0) print l; close(f); next } \
 	  /^@@MIRRORS_SCRIPT@@$$/ { f="$(PROXMOX_DEPLOY)/broker-registry-mirrors.sh";  while ((getline l < f) > 0) print l; close(f); next } \
 	  { print }' $(PROXMOX_DEPLOY)/installer.sh.tmpl \
