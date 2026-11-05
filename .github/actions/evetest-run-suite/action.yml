@@ -454,6 +454,9 @@ runs:
                 }' >/dev/null
             done
 
+    # Only failures Claude judged caused by the PR (RELATED: yes|likely) are
+    # worth a PR comment; anything else is visible via the red check and the
+    # job summary.
     - name: Post Claude's analysis as a PR comment
       if: >-
         ${{ failure() && inputs.analyze-failures == 'true' &&
@@ -464,10 +467,18 @@ runs:
         GH_TOKEN: ${{ github.token }}
         GH_REPO: ${{ github.repository }}
       run: |
+        RELATED="${ARTIFACT_DIR}/live-investigation-related.md"
+        if [[ ! -s "$RELATED" ]]; then
+          echo "No failure was judged related to this PR; not commenting."
+          exit 0
+        fi
         {
           echo '<!-- evetest-analysis:${{ inputs.test-suite }} -->'
-          "${GITHUB_ACTION_PATH}/shift-headings.sh" 3 < "${ARTIFACT_DIR}/claude-analysis.md"
-        } | gh pr comment "${{ inputs.pr-number }}" --body-file -
+          echo "# ${{ inputs.test-suite }}: failures likely caused by this PR"
+          echo
+          "${GITHUB_ACTION_PATH}/shift-headings.sh" 2 < "$RELATED"
+        } | "${GITHUB_ACTION_PATH}/shift-headings.sh" 3 \
+          | gh pr comment "${{ inputs.pr-number }}" --body-file -
 
     - name: Upload Claude's failure analysis
       if: ${{ failure() && inputs.analyze-failures == 'true' && env.ARTIFACT_DIR != '' }}
@@ -482,7 +493,7 @@ runs:
       if: ${{ failure() && inputs.analyze-failures == 'true' && env.ARTIFACT_DIR != '' }}
       continue-on-error: true
       shell: bash
-      run: rm -f "${ARTIFACT_DIR}/live-ledger.md" "${ARTIFACT_DIR}/live-investigation.md" "${ARTIFACT_DIR}/live-investigation.log"
+      run: rm -f "${ARTIFACT_DIR}/live-ledger.md" "${ARTIFACT_DIR}/live-investigation.md" "${ARTIFACT_DIR}/live-investigation-related.md" "${ARTIFACT_DIR}/live-investigation.log"
 
     - name: Package artifacts
       if: failure()
