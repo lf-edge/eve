@@ -126,7 +126,7 @@ var alpineCloudImages = map[string]struct {
 //
 // Suite placement
 // ---------------
-//   - TestApplicationConnectivitySuite (deploys an app, hence
+//   - TestLocalNetworkInstanceSuite (deploys an app, hence
 //     hypervisor-parameterized).
 func TestLocalNIUplinkFlap(test *testing.T) {
 	evetestT := evetest.Init(test)
