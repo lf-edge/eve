@@ -27,7 +27,7 @@ ENV PKGS_arm64="procps tar dmidecode iptables dhcpcd tio socat"
 RUN eve-alpine-deploy.sh
 
 ENV LSHW_VERSION="02.19.2"
-ENV OPENSSH_VERSION="9.8p1"
+ENV OPENSSH_VERSION="10.6p2"
 
 # setting up building account
 RUN adduser -G abuild -D builder || :
@@ -70,18 +70,18 @@ RUN tar -C .. -xzvf ../1.5.tar.gz
 RUN ./autogen.sh && ./configure && make DESTDIR=/out install
 
 WORKDIR /usr/src
-ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz /usr/src
+ADD --checksum=sha256:9ae44872090cf2f06b3cf9ff147e7f16f309671340763ed2f99248398ae29d5b https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz /usr/src
 ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz.asc /usr/src
 COPY ssh/RELEASE_KEY.asc /usr/src
 RUN gpg --import RELEASE_KEY.asc || :
 RUN gpg --verify openssh-${OPENSSH_VERSION}.tar.gz.asc openssh-${OPENSSH_VERSION}.tar.gz
 RUN tar xvf openssh-${OPENSSH_VERSION}.tar.gz
 WORKDIR /usr/src/openssh-${OPENSSH_VERSION}
-COPY ssh/fix-utmpx-ipv6.patch .
-RUN git apply fix-utmpx-ipv6.patch
+# The old utmpx IPv6 fix is already included in upstream OpenSSH.
 RUN ./configure \
     --prefix=/usr \
     --sysconfdir=/etc/ssh \
+    --libexecdir=/usr/lib/ssh \
     --mandir=/usr/share/man \
     --with-pid-dir=/run \
     --with-mantype=doc \
@@ -92,26 +92,29 @@ RUN ./configure \
     --with-privsep-path=/var/empty \
     --with-xauth=/usr/bin/xauth \
     --with-default-path='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
-    --with-privsep-user=sshd \
-    --with-ssl-engine
+    --with-privsep-user=sshd
 
 RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 RUN make install
 RUN HARNESS_JOBS="$(getconf _NPROCESSORS_ONLN)" make tests
 
+RUN mkdir -p /out/usr/lib/ssh
 RUN /usr/bin/install -c -m 0755 -s ssh /out/usr/bin/ssh
 RUN /usr/bin/install -c -m 0755 -s scp /out/usr/bin/scp
+RUN /usr/bin/install -c -m 0755 -s ssh-keyscan /out/usr/bin/ssh-keyscan
 RUN /usr/bin/install -c -m 0755 -s ssh-keygen /out/usr/bin/ssh-keygen
 RUN /usr/bin/install -c -m 0755 -s sshd /out/usr/sbin/sshd
-RUN /usr/bin/install -c -m 0755 -s sshd-session /out/usr/libexec/sshd-session
-RUN /usr/bin/install -c -m 4711 -s ssh-keysign /out/usr/libexec/ssh-keysign
-RUN /usr/bin/install -c -m 0755 -s ssh-pkcs11-helper /out/usr/libexec/ssh-pkcs11-helper
-RUN /usr/bin/install -c -m 0755 -s ssh-sk-helper /out/usr/libexec/ssh-sk-helper
+RUN /usr/bin/install -c -m 0755 -s sshd-session /out/usr/lib/ssh/sshd-session
+RUN /usr/bin/install -c -m 0755 -s sshd-auth /out/usr/lib/ssh/sshd-auth
+RUN /usr/bin/install -c -m 0755 -s ssh-pkcs11-helper /out/usr/lib/ssh/ssh-pkcs11-helper
+RUN /usr/bin/install -c -m 0755 -s ssh-sk-helper /out/usr/lib/ssh/ssh-sk-helper
 RUN /usr/bin/install -c -m 0755 -s sftp /out/usr/bin/sftp
-RUN /usr/bin/install -c -m 0755 -s sftp-server /out/usr/libexec/sftp-server
+RUN /usr/bin/install -c -m 0755 -s sftp-server /out/usr/lib/ssh/sftp-server
 RUN mkdir -p /out/etc/ssh
 COPY ssh/* /out/etc/ssh/
 RUN mkdir -p /out/var/empty
+COPY register-sbom-pkg.sh /usr/local/bin/register-sbom-pkg.sh
+RUN register-sbom-pkg.sh -n openssh -v "${OPENSSH_VERSION}" -l SSH-OpenSSH -u https://www.openssh.com/portable.html
 
 # tweaking various bit
 WORKDIR /out
@@ -139,7 +142,14 @@ RUN mkdir -p /bpftrace/bpftrace-aotrt
 WORKDIR /
 COPY --from=recovertpm /usr/bin/recovertpm /out/usr/bin/recovertpm
 
-FROM build AS test
+FROM build AS openssh-test
+COPY tests/openssh.sh /tmp/openssh-test.sh
+RUN sh /tmp/openssh-test.sh
+RUN chroot /out /usr/sbin/sshd -T -h /ssh-test/host_key > /tmp/sshd-effective.conf && \
+    grep -qix 'passwordauthentication no' /tmp/sshd-effective.conf && \
+    grep -qix 'kbdinteractiveauthentication no' /tmp/sshd-effective.conf
+
+FROM openssh-test AS test
 # run collect-info test
 COPY collect-info-test /collect-info-test
 WORKDIR /collect-info-test
