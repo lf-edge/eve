@@ -42,19 +42,22 @@ const (
 // EnableNativeK8SOrchestration=true) has no such delay and the
 // manifest is applied as soon as zedkube writes the source file.
 //
-// Idempotent (RegistrationCheckApply skips when already staged);
-// silent on the no-op path. Called from the health worker's
-// steady-state tick so a late zedkube write is picked up without
-// waiting for the next daemon restart.
-//
-// Mirrors Registration_ApplyIfReady() from upstream commit 234230266.
+// Idempotent and silent on the no-op path: RegistrationCheckApply
+// byte-compares the source against the applied copy, so an
+// unchanged manifest is skipped and a changed one (re-registration,
+// or a move to another registration endpoint) is re-staged for k3s
+// to re-apply. Called from the health worker's steady-state tick so
+// a late or updated zedkube write is picked up without waiting for
+// the next daemon restart.
 func RegistrationApplyIfReady(clusterIsK3sBase bool) error {
-	if !RegistrationConfigExists() {
-		return nil
-	}
-	if RegistrationExists() {
-		// Already staged. Short-circuits the byte-compare in
-		// RegistrationCheckApply on the hot path.
+	return registrationApplyIfReady(clusterIsK3sBase,
+		registrationYamlFilePath, appliedRegistrationYamlFilePath)
+}
+
+// registrationApplyIfReady is the path-parameterised core of
+// RegistrationApplyIfReady, so tests can use t.TempDir() paths.
+func registrationApplyIfReady(clusterIsK3sBase bool, srcPath, dstPath string) error {
+	if _, err := os.Stat(srcPath); err != nil {
 		return nil
 	}
 	if clusterIsK3sBase {
@@ -68,7 +71,7 @@ func RegistrationApplyIfReady(clusterIsK3sBase bool) error {
 			return nil
 		}
 	}
-	return RegistrationCheckApply()
+	return registrationCheckApply(srcPath, dstPath)
 }
 
 // RegistrationCheckApply stages the operator-supplied registration
@@ -81,25 +84,32 @@ func RegistrationApplyIfReady(clusterIsK3sBase bool) error {
 // detected by a byte-compare and skipped without logging. The
 // success path only logs when the staged content actually changes.
 func RegistrationCheckApply() error {
-	src, err := os.ReadFile(registrationYamlFilePath)
+	return registrationCheckApply(registrationYamlFilePath, appliedRegistrationYamlFilePath)
+}
+
+// registrationCheckApply is the path-parameterised core of
+// RegistrationCheckApply. The write is atomic because k3s watches
+// dstPath's directory and must never apply a half-written manifest;
+// 0600 because the manifest carries registration credentials.
+func registrationCheckApply(srcPath, dstPath string) error {
+	src, err := os.ReadFile(srcPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return fmt.Errorf("read %s: %w", registrationYamlFilePath, err)
+		return fmt.Errorf("read %s: %w", srcPath, err)
 	}
-	if dst, err := os.ReadFile(appliedRegistrationYamlFilePath); err == nil {
+	if dst, err := os.ReadFile(dstPath); err == nil {
 		if bytes.Equal(src, dst) {
 			return nil
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("read %s: %w", appliedRegistrationYamlFilePath, err)
+		return fmt.Errorf("read %s: %w", dstPath, err)
 	}
-	if err := copyFile(registrationYamlFilePath, appliedRegistrationYamlFilePath); err != nil {
-		return fmt.Errorf("copy registration manifest from %s to %s: %w",
-			registrationYamlFilePath, appliedRegistrationYamlFilePath, err)
+	if err := state.AtomicWriteFile(dstPath, src, 0600); err != nil {
+		return fmt.Errorf("stage registration manifest %s: %w", dstPath, err)
 	}
-	log.Printf("copied registration manifest to %s", appliedRegistrationYamlFilePath)
+	log.Printf("staged registration manifest at %s", dstPath)
 	return nil
 }
 
