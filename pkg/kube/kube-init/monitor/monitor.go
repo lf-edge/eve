@@ -19,10 +19,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/components"
@@ -59,10 +57,10 @@ var (
 	clusterJoinRetryInterval = 15 * time.Second
 )
 
-// maxLogSize is the rotation threshold for k3s.log and friends.
-// 5 MB is empirical: large enough to capture meaningful context
-// across a restart, small enough that rotation is cheap on a
-// modest persist partition.
+// maxLogSize is the copy-truncate threshold for the log files in
+// RotateLogs. 5 MB is empirical: large enough to capture meaningful
+// context across a restart, small enough that the copy is cheap on
+// a modest persist partition.
 const maxLogSize = 5 * 1024 * 1024
 
 // RestartReason describes why the monitor wants the FSM to bounce
@@ -505,25 +503,30 @@ func applyUserOverride() bool {
 // Log rotation
 // ---------------------------------------------------------------------------
 
-// RotateLogs rotates each known log file if it exceeds maxLogSize,
-// then prunes excess raft logs.
+// RotateLogs copy-truncates the logs whose writer does not rotate
+// them, then prunes k3s' own rotated archives. k3s and eve-bridge
+// rotate their own file through lumberjack and must not be touched
+// here: truncating a file a long-lived lumberjack holds open leaves
+// a NUL-filled hole that trips the size check on every tick.
+// multus.log is also lumberjack-written but stays here: its limits
+// live in a ConfigMap applied once at first boot, so a 5 MB cap can
+// only be enforced from this side, and each multus invocation is a
+// short-lived process that reopens the file in append mode, which
+// makes the truncate safe.
 func RotateLogs() {
 	for _, name := range []string{
-		"k3s.log",
 		"multus.log",
-		"eve-bridge.log",
 		"containerd-user.log",
 	} {
-		rotateLogFile(name)
+		rotateLogFile(filepath.Join(prereqs.KubeLogDir, name))
 	}
 	CleanExcessiveK3sLogs()
 }
 
-// rotateLogFile rotates path → path.1 → path.2 → path.3 when
-// path exceeds maxLogSize. For k3s.log specifically, SIGHUP is
-// sent to the k3s server BEFORE truncation so it releases its fd.
-func rotateLogFile(name string) {
-	path := filepath.Join(prereqs.KubeLogDir, name)
+// rotateLogFile rotates path → path.1 → path.2 → path.3 when path
+// exceeds maxLogSize. The writer must hold path in O_APPEND mode so
+// its next write lands at offset 0 after the truncate.
+func rotateLogFile(path string) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return
@@ -544,11 +547,8 @@ func rotateLogFile(name string) {
 			continue
 		}
 		if i == 0 {
-			// k3s still has the active log open; copy rather
-			// than rename so the fd remains valid. Stream via
-			// io.Copy so we never allocate the full file
-			// content (maxLogSize is 5 MB today but the cap
-			// could grow).
+			// The writer still has the active log open; copy
+			// rather than rename so its fd stays valid.
 			if err := streamCopy(src, dst); err != nil {
 				log.Printf("warning: rotate-copy %s → %s: %v", src, dst, err)
 			}
@@ -557,53 +557,11 @@ func rotateLogFile(name string) {
 		}
 	}
 
-	if name == "k3s.log" {
-		sendSIGHUPToK3s()
-	}
 	if err := os.Truncate(path, 0); err != nil {
 		log.Printf("warning: truncate %s: %v", path, err)
 		return
 	}
-	log.Printf("rotated log file %s (was %d bytes)", name, info.Size())
-}
-
-// sendSIGHUPToK3s scans /proc for `k3s server` and signals it so
-// it releases the log file before we truncate. Best-effort.
-//
-// Match is path-agnostic: argv[0] basename == "k3s" AND argv[1] ==
-// "server". The earlier hard-coded prefix list (/usr/bin/k3s,
-// /var/lib/k3s/bin/k3s) missed e.g. /usr/local/bin/k3s. PID
-// recycling between scan and Kill is harmless — a SIGHUP to a
-// fresh k3s just rotates again.
-func sendSIGHUPToK3s() {
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() || !isNumeric(entry.Name()) {
-			continue
-		}
-		cmdline, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "cmdline"))
-		if err != nil {
-			continue
-		}
-		// argv tokens are NUL-separated; argv[0] is the binary
-		// path and argv[1] is the subcommand.
-		argv := strings.Split(string(cmdline), "\x00")
-		if len(argv) < 2 || filepath.Base(argv[0]) != "k3s" || argv[1] != "server" {
-			continue
-		}
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil {
-			continue
-		}
-		if sErr := syscall.Kill(pid, syscall.SIGHUP); sErr != nil {
-			log.Printf("warning: SIGHUP to k3s pid %d: %v", pid, sErr)
-			continue
-		}
-		log.Printf("sent SIGHUP to k3s server pid %d before log truncation", pid)
-	}
+	log.Printf("rotated log file %s (was %d bytes)", filepath.Base(path), info.Size())
 }
 
 // ---------------------------------------------------------------------------
