@@ -17,9 +17,6 @@ import (
 type Content struct {
 	// SHA1 maps the hex SHA-256 of each regular file to its hex SHA-1.
 	SHA1 map[string]string
-	// Images maps a directory in the tar to the image linuxkit unpacked
-	// there, taken from its LINUXKIT.source PAX record.
-	Images map[string]string
 	// Paths maps each path in the tar to the hex SHA-256 of the last
 	// regular file written there, or to "" for any other entry type. A nil
 	// Paths leaves files whose content is not in the tar untouched.
@@ -38,8 +35,8 @@ const (
 var apkRelease = regexp.MustCompile(`-r[0-9]+$`)
 
 // imageRef splits a reference such as docker.io/lfedge/eve-rngd:<tag> into
-// registry, repository and tag or digest. ok is false for a LINUXKIT.source
-// that names no image, such as linuxkit.volumes.
+// registry, repository and tag or digest. ok is false for a reference that
+// names no image.
 func imageRef(ref string) (registry, repo, version string, ok bool) {
 	name := ref
 	if i := strings.LastIndex(name, "@"); i >= 0 {
@@ -215,16 +212,17 @@ func knownSupplier(p pkgInfo) string {
 	// syft drops an apk maintainer it cannot parse, such as one whose email
 	// domain has a hyphen (anchore/syft#5439), and gives some apk packages,
 	// busybox among them, no purl.
-	case (strings.HasPrefix(purl, "pkg:apk/") || strings.HasPrefix(p.SPDXID, "SPDXRef-Package-apk-")) &&
+	case (strings.HasPrefix(purl, "pkg:apk/") || strings.Contains(p.SPDXID, "-Package-apk-")) &&
 		apkRelease.MatchString(p.VersionInfo):
 		return alpine
 	}
 	return mappedSupplier(suppliers, purl)
 }
 
-// fillPackage names and versions the root linuxkit makes for each image, and
-// fills in suppliers the scanner left as NOASSERTION.
-func fillPackage(raw json.RawMessage, o Options, c Content) (json.RawMessage, error) {
+// fillPackage gives an image root, which linuxkit names after the image's
+// repository and versions with its tag or digest, the image's purl and
+// supplier, and fills in suppliers the scanner left as NOASSERTION.
+func fillPackage(raw json.RawMessage, roots map[string]bool) (json.RawMessage, error) {
 	var p pkgInfo
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return nil, err
@@ -242,23 +240,15 @@ func fillPackage(raw json.RawMessage, o Options, c Content) (json.RawMessage, er
 		}
 	}
 	supplier := p.Supplier
-	if strings.HasPrefix(p.SPDXID, "SPDXRef-DocumentRoot-") {
-		registry, repo, version, ok := imageRef(c.Images[p.PackageFileName])
-		switch {
-		case p.PackageFileName != "" && ok:
-			set("name", repo, "")
-			set("versionInfo", version, "name")
-			set("externalRefs", []externalRef{{"PACKAGE-MANAGER", "purl", dockerPURL(registry, repo, version)}}, "")
-			if s := imageSupplier(repo); s != "" {
-				supplier = s
-				set("supplier", s, "versionInfo")
-			}
-		case p.VersionInfo == "":
-			// The images linuxkit unpacks at the top of the rootfs share
-			// one root, which is part of this EVE-OS build.
-			set("versionInfo", o.Version, "name")
-			supplier = lfEdge
-			set("supplier", lfEdge, "versionInfo")
+	sep := ":"
+	if strings.Contains(p.VersionInfo, ":") {
+		sep = "@"
+	}
+	if registry, repo, version, ok := imageRef(p.Name + sep + p.VersionInfo); roots[p.SPDXID] && ok {
+		set("externalRefs", []externalRef{{"PACKAGE-MANAGER", "purl", dockerPURL(registry, repo, version)}}, "")
+		if s := imageSupplier(repo); s != "" {
+			supplier = s
+			set("supplier", s, "versionInfo")
 		}
 	}
 	if supplier == "" || supplier == "NOASSERTION" {
@@ -277,16 +267,26 @@ func fillPackage(raw json.RawMessage, o Options, c Content) (json.RawMessage, er
 	return json.Marshal(po)
 }
 
+// scannerID strips the image scope linuxkit puts in front of a package ID,
+// leaving the ID the scanner gave it, which ends in a hash of the package.
+func scannerID(id string) string {
+	if i := strings.Index(id, "-Package-"); i >= 0 {
+		return id[i+1:]
+	}
+	return id
+}
+
 // fillPURLs gives a package without a purl the purl of the other copies of
-// it, the copies that share its SPDXID, name and version, when they all agree
-// on one. linuxkit's merge keeps one copy per image, and the scanner leaves
-// the purl off some of them. It returns how many copies it filled.
+// it, the packages with the same scanner ID, name and version, when they all
+// agree on one. The images in the rootfs each carry their own copy of a
+// shared package, and the scanner leaves the purl off some of them. It
+// returns how many copies it filled.
 func fillPURLs(pkgs []json.RawMessage) (int, error) {
 	type key struct{ id, name, version string }
 	keyOf := func(raw json.RawMessage) (key, pkgInfo, error) {
 		var p pkgInfo
 		err := json.Unmarshal(raw, &p)
-		return key{p.SPDXID, p.Name, p.VersionInfo}, p, err
+		return key{scannerID(p.SPDXID), p.Name, p.VersionInfo}, p, err
 	}
 	purls := map[key]map[string]bool{}
 	for _, raw := range pkgs {

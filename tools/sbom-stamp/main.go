@@ -5,11 +5,11 @@
 // that it names EVE-OS as the described product and is reproducible. linuxkit
 // hardcodes the document name ("sbom"), a random documentNamespace, its own
 // fixed reproducible-build date and creators, and leaves one DESCRIBES edge
-// per input image. sbom-stamp replaces those, adds an EVE-OS package that the
-// document describes and that contains the per-image roots, and drops entries
-// that linuxkit's merge duplicated byte for byte. From the rest of the tar it
-// names and versions each image root after its image and adds file SHA1s; it
-// also fills in suppliers it can tell for packages the scanner left without.
+// per input image. sbom-stamp replaces those, and adds an EVE-OS package that
+// the document describes and that contains the per-image roots. It gives each
+// image root the purl and supplier of its image, adds file SHA1s from the rest
+// of the tar, and fills in suppliers it can tell for packages the scanner left
+// without.
 package main
 
 import (
@@ -158,29 +158,31 @@ type relationship struct {
 
 // Stats reports what Stamp changed, and what it could not fix.
 type Stats struct {
-	DroppedDuplicates int
-	Reparented        int
-	ConflictingIDs    int
-	FilledPURLs       int
-	AbsentFiles       int
-	ReplacedFiles     int
-	NoSupplier        int
-	NoSHA1            int
+	Reparented     int
+	ConflictingIDs int
+	FilledPURLs    int
+	AbsentFiles    int
+	ReplacedFiles  int
+	NoSupplier     int
+	NoSHA1         int
 }
 
-// dedup drops byte-identical array entries, keeping the first occurrence.
-func dedup(items []json.RawMessage) ([]json.RawMessage, int) {
-	seen := map[string]bool{}
-	out := items[:0]
-	for _, it := range items {
-		k := string(it)
-		if seen[k] {
-			continue
+// imageRoots returns the IDs of the per-image roots: the packages DOCUMENT
+// DESCRIBES in linuxkit's merge, which EVE-OS CONTAINS once stamped.
+func imageRoots(rels []json.RawMessage) (map[string]bool, error) {
+	roots := map[string]bool{}
+	for _, it := range rels {
+		var r relationship
+		if err := json.Unmarshal(it, &r); err != nil {
+			return nil, err
 		}
-		seen[k] = true
-		out = append(out, it)
+		if (r.SpdxElementID == documentID && r.RelationshipType == "DESCRIBES") ||
+			(r.SpdxElementID == rootID && r.RelationshipType == "CONTAINS") {
+			roots[r.RelatedSpdxElement] = true
+		}
 	}
-	return out, len(items) - len(out)
+	delete(roots, rootID)
+	return roots, nil
 }
 
 func array(doc object, key string) ([]json.RawMessage, error) {
@@ -227,8 +229,12 @@ func Stamp(in []byte, o Options, c Content) ([]byte, Stats, error) {
 	if st.FilledPURLs, err = fillPURLs(pkgs); err != nil {
 		return nil, st, err
 	}
+	roots, err := imageRoots(rels)
+	if err != nil {
+		return nil, st, err
+	}
 	for i := range pkgs {
-		if pkgs[i], err = fillPackage(pkgs[i], o, c); err != nil {
+		if pkgs[i], err = fillPackage(pkgs[i], roots); err != nil {
 			return nil, st, err
 		}
 	}
@@ -270,11 +276,6 @@ func Stamp(in []byte, o Options, c Content) ([]byte, Stats, error) {
 		rels = keptRels
 	}
 
-	var n int
-	pkgs, n = dedup(pkgs)
-	st.DroppedDuplicates += n
-	files, n = dedup(files)
-	st.DroppedDuplicates += n
 	for _, p := range pkgs {
 		var v pkgInfo
 		if err := json.Unmarshal(p, &v); err != nil {
@@ -359,8 +360,6 @@ func Stamp(in []byte, o Options, c Content) ([]byte, Stats, error) {
 		}
 		st.Reparented++
 	}
-	rels, n = dedup(rels)
-	st.DroppedDuplicates += n
 	describes, err := json.Marshal(relationship{documentID, rootID, "DESCRIBES"})
 	if err != nil {
 		return nil, st, err
@@ -461,7 +460,7 @@ func stampTar(path, member string, o Options) (st Stats, err error) {
 	src := io.TeeReader(in, inSum)
 	tr := tar.NewReader(src)
 	tw := tar.NewWriter(io.MultiWriter(tmp, outSum))
-	c := Content{SHA1: map[string]string{}, Images: map[string]string{}, Paths: map[string]string{}}
+	c := Content{SHA1: map[string]string{}, Paths: map[string]string{}}
 	found := false
 	for {
 		hdr, err := tr.Next()
@@ -475,9 +474,6 @@ func stampTar(path, member string, o Options) (st Stats, err error) {
 			return st, fmt.Errorf("%s: %s is not the last entry", path, member)
 		}
 		if hdr.Name != member || hdr.Typeflag != tar.TypeReg {
-			if src, ok := hdr.PAXRecords["LINUXKIT.source"]; ok && hdr.Typeflag == tar.TypeDir {
-				c.Images[strings.Trim(filepath.Clean(hdr.Name), "/")] = src
-			}
 			if err := tw.WriteHeader(hdr); err != nil {
 				return st, err
 			}
@@ -572,10 +568,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	fmt.Fprintf(os.Stderr, "sbom-stamp: %s: %d duplicate entries dropped, %d image roots placed under %s, "+
+	fmt.Fprintf(os.Stderr, "sbom-stamp: %s: %d image roots placed under %s, "+
 		"%d SPDX IDs still not unique, %d purls copied between copies of a package, "+
 		"%d files dropped and %d rehashed as linuxkit wrote them, "+
 		"%d packages without supplier, %d files without SHA1\n",
-		flag.Arg(0), st.DroppedDuplicates, st.Reparented, rootID, st.ConflictingIDs, st.FilledPURLs,
+		flag.Arg(0), st.Reparented, rootID, st.ConflictingIDs, st.FilledPURLs,
 		st.AbsentFiles, st.ReplacedFiles, st.NoSupplier, st.NoSHA1)
 }
