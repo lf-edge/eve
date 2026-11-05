@@ -63,8 +63,9 @@ import (
 // specifically about networking (regression tests for zedmanager/volumemgr
 // bugs, VNC console access, how configuration and data flow between the
 // controller, EVE and a running application) -- kept separate from
-// evetest/tests/networking's TestApplicationConnectivitySuite, which is
-// already large and focused on network connectivity.
+// the application-side networking suites in evetest/tests/networking
+// (TestLocalNetworkInstanceSuite and the like), which are focused on
+// network connectivity.
 //
 // Every subtest deploys at least one application and therefore shares the
 // HYPERVISOR parameter -- the suite declares evetest.HypervisorParameter()
