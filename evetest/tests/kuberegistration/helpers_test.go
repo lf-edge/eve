@@ -71,6 +71,11 @@ const (
 	// registration.go: the AddOn k3s wraps the staged manifest in.
 	registrationAddon          = "persist-registration"
 	registrationAddonNamespace = "kube-system"
+
+	// Mirrors registrationYamlFilePath in kube-init/components/
+	// registration.go: where zedkube writes the decrypted manifest for
+	// kube-init to stage.
+	sourceManifestPath = "/persist/vault/manifests/registration.yaml"
 )
 
 // kubeRegDevName is the evetest name of the i-th device (0-based). It must
@@ -302,33 +307,43 @@ func expectReadyKubeNodes(t *WithT, dev *evetest.EdgeDevice,
 		"Kubernetes should report exactly the nodes %v as Ready", want)
 }
 
-// kubeRegManifest is the manifest the controller hands the
-// cluster. A real one carries a registration agent; this one carries a single
-// ConfigMap, because what is under test is the delivery path -- encrypted with
-// the join token, decrypted by zedkube onto /persist, staged by kube-init,
-// applied by k3s -- and not the contents. A ConfigMap is the smallest object
-// that proves the path ran and carried the right bytes.
-const kubeRegManifest = `apiVersion: v1
+// kubeRegManifest is the manifest the controller hands the cluster, with
+// registered set to value. A real one carries a registration agent; this one
+// carries a single ConfigMap, because what is under test is the delivery path
+// -- encrypted with the join token, decrypted by zedkube onto /persist, staged
+// by kube-init, applied by k3s -- and not the contents. A ConfigMap is the
+// smallest object that proves the path ran and carried the right bytes, and
+// changing value is the smallest change that proves it ran again.
+func kubeRegManifest(value string) string {
+	return fmt.Sprintf(`apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: evetest-registration
-  namespace: default
+  name: %s
+  namespace: %s
 data:
-  registered: "true"
-`
+  %s: %q
+`, registrationConfigMap, registrationConfigMapNamespace,
+		registrationConfigMapKey, value)
+}
 
 const (
 	registrationConfigMap          = "evetest-registration"
 	registrationConfigMapNamespace = "default"
 	registrationConfigMapKey       = "registered"
-	registrationConfigMapValue     = "true"
+
+	// The value the setup test registers with, and the one
+	// TestKubeRegistrationManifestUpdate replaces it with.
+	registrationValueInitial = "true"
+	registrationValueUpdated = "updated"
 )
 
 // expectRegistrationApplied waits until Kubernetes shows the registration
-// manifest applied. Both halves are checked because they fail differently: a
-// missing AddOn points at the delivery path (never decrypted, never staged),
-// a missing ConfigMap at a manifest that was applied but rejected.
-func expectRegistrationApplied(t *WithT, dev *evetest.EdgeDevice, timeout time.Duration) {
+// manifest carrying wantValue applied. Both halves are checked because they
+// fail differently: a missing AddOn points at the delivery path (never
+// decrypted, never staged), a missing or stale ConfigMap at a manifest that
+// was not (re-)applied or was rejected.
+func expectRegistrationApplied(t *WithT, dev *evetest.EdgeDevice,
+	wantValue string, timeout time.Duration) {
 	var addon struct {
 		Metadata struct {
 			Name string `json:"name"`
@@ -341,17 +356,17 @@ func expectRegistrationApplied(t *WithT, dev *evetest.EdgeDevice, timeout time.D
 		"k3s should apply the staged registration manifest as AddOn %q",
 		registrationAddon)
 
-	var configMap struct {
-		Data map[string]string `json:"data"`
-	}
 	t.Eventually(func() (string, error) {
+		var configMap struct {
+			Data map[string]string `json:"data"`
+		}
 		err := kubectlGetJSON(dev, "configmap "+registrationConfigMap+
 			" -n "+registrationConfigMapNamespace, &configMap)
 		if err != nil {
 			return "", err
 		}
 		return configMap.Data[registrationConfigMapKey], nil
-	}, timeout, kubePollInterval).Should(Equal(registrationConfigMapValue),
-		"the registration manifest should have created ConfigMap %q with %s=%q",
-		registrationConfigMap, registrationConfigMapKey, registrationConfigMapValue)
+	}, timeout, kubePollInterval).Should(Equal(wantValue),
+		"the registration manifest should have set ConfigMap %q %s=%q",
+		registrationConfigMap, registrationConfigMapKey, wantValue)
 }

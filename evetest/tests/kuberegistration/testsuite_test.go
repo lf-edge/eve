@@ -21,8 +21,8 @@
 //
 // Layout: helpers_test.go holds the shared environment, the Kubernetes
 // readers and the cluster handed between tests; clustersetup_test.go,
-// addnode_test.go and longhorndisks_test.go hold one test each, in suite
-// order.
+// addnode_test.go, longhorndisks_test.go and manifestupdate_test.go hold one
+// test each, in suite order.
 package kuberegistration_test
 
 import (
@@ -66,6 +66,9 @@ func TestKubeRegistrationSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestKubeRegistrationLonghornDisks,
+		},
+		evetest.TestCase{
+			Test: TestKubeRegistrationManifestUpdate,
 		},
 	)
 }
