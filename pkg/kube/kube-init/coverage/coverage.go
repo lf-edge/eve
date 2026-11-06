@@ -8,8 +8,9 @@
 //
 // On start it installs a SIGUSR2 handler that dumps a live snapshot to
 // GOCOVERDIR without stopping the daemon, then creates Marker so collectors
-// (evetest) can tell this kube-init supports flushing. Flush must be called
-// before any exit that bypasses a normal return from main, e.g. a reboot.
+// (evetest) can tell this kube-init supports flushing. Exits that bypass a
+// normal return from main, such as rebooting the device, must call
+// FlushCoverageAndPeers.
 package coverage
 
 import (
@@ -20,6 +21,7 @@ import (
 	"syscall"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	covutils "github.com/lf-edge/eve/pkg/pillar/utils/coverage"
 )
 
 // Marker exists while this kube-init can flush coverage on SIGUSR2.
@@ -58,4 +60,24 @@ func Flush() {
 		log.Printf("coverage: WriteCountersDir(%s): %v", dir, err)
 	}
 	syscall.Sync()
+}
+
+// FlushCoverageAndPeers flushes this process and asks zedbox and every other
+// kube-init (e.g. the witness) to flush too. Never signals itself.
+func FlushCoverageAndPeers() {
+	dir := os.Getenv("GOCOVERDIR")
+	if dir == "" {
+		return
+	}
+	var pids []int
+	for _, pid := range covutils.FindPidsByComm("kube-init") {
+		if pid != os.Getpid() {
+			pids = append(pids, pid)
+		}
+	}
+	// There is at most one zedbox.
+	if zedbox := covutils.FindPidsByComm("zedbox"); len(zedbox) > 0 {
+		pids = append(pids, zedbox[0])
+	}
+	covutils.FlushWithPeers(dir, pids, Flush, log.Printf)
 }

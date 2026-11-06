@@ -20,3 +20,6 @@ func MaybeInitSigUsr2(sigs chan os.Signal) {
 
 // FlushCoverage is a no-op in non-coverage builds.
 func FlushCoverage(_ *base.LogObject) {}
+
+// FlushCoverageAndPeers is a no-op in non-coverage builds.
+func FlushCoverageAndPeers(_ *base.LogObject) {}
