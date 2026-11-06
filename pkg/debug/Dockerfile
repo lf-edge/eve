@@ -9,7 +9,7 @@
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
 FROM lfedge/eve-recovertpm:3393cbc8d58f4854564f80a742595cfbc4df9652 AS recovertpm
-FROM lfedge/eve-bpftrace:8dbaa31c2b978179a5a39ac7c132c26efc2e9b9f AS bpftrace
+FROM lfedge/eve-bpftrace:bc625d6870b12ba0255555d5f14acd3d3ab7e123 AS bpftrace
 FROM lfedge/eve-alpine:fdd203cfda43dadd2b363ce843e073e9d7d89ea8 AS build
 ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg gettext gettext-static ncurses-dev jq autoconf openssl-dev zlib-dev zlib-static gpg-agent pciutils usbutils lsblk"
 # Feel free to add additional packages here, but be aware that
