@@ -386,3 +386,13 @@ set_global hv_eve_cpu_settings "eve_max_vcpus=1"
 set_global hv_ctrd_mem_settings "ctrd_mem=320M,max:400M"
 set_global hv_ctrd_cpu_settings "ctrd_max_vcpus=1"
 ```
+
+Each CPU setting is a number N, and the cgroup runs on the lowest N CPUs: with
+`dom0_max_vcpus=1`, EVE runs on CPU 0. EVE doesn't own CPU 0 exclusively: applications
+that do not pin their CPUs may run on it too. So that busy applications do not slow EVE
+down there, EVE's cgroups (`/eve`, and `/eve-memory-monitor`, which runs on the same
+CPUs) have the highest CPU weight, `cpu.weight` 10000, while the applications' cgroup
+`/eve-user-apps` keeps the default, 100. When both EVE and applications have work on
+CPU 0, its time is shared in proportion to the weights, heavily in favor of EVE's
+processes: about 99% to EVE (10000 to 100). The weight is not a limit: when EVE is idle,
+applications get all of it.

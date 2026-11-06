@@ -121,12 +121,20 @@ set_cg() { # set_cg <cgroup> <file> <value>
 set_cg eve memory.max "$dom0_cgroup_memory_limit"
 set_cg eve memory.low "$dom0_cgroup_memory_soft_limit"
 set_cg eve cpuset.cpus "0-$((dom0_cgroup_cpus_limit-1))"
+# EVE doesn't own its CPUs exclusively: applications that do not pin their CPUs
+# may run on them too, and with the default cpu.weight (100) busy applications
+# would get as much of them as EVE. A CPU's time is shared in proportion to the
+# weights, so with the highest weight EVE gets about 99% of it while it has
+# work. It is not a limit: when EVE is idle, applications get all of it.
+set_cg eve cpu.weight 10000
 
 # memory-monitor's service (images/rootfs.yml.in) runs beside /eve, so that
 # EVE reaching its memory limit does not stop it, with no memory limit of its
 # own. It gets /eve's CPUs: the root's are every CPU, the applications' too.
+# It gets /eve's CPU weight too.
 mkdir -p "$CGROOT/eve-memory-monitor"
 set_cg eve-memory-monitor cpuset.cpus "$(cat "$CGROOT/eve/cpuset.cpus.effective")"
+set_cg eve-memory-monitor cpu.weight 10000
 
 set_cg eve/containerd memory.max "$ctrd_cgroup_memory_limit"
 set_cg eve/containerd memory.low "$ctrd_cgroup_memory_soft_limit"
