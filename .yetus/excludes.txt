@@ -7,7 +7,7 @@
 ^pkg/debug/abuild/
 ^pkg/pillar/zedpac/
 ^pkg/kube/kubevirt-operator.yaml
-^pkg/kube/nvidia-container-runtime/nvidia-device-plugin-18.0.yml
+^pkg/kube/nvidia-container-runtime/nvidia-device-plugin.yml
 ^api/python/
 ^api/go/
 ^api/images/

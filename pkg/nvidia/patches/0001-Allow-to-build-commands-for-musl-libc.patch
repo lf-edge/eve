@@ -1,6 +1,6 @@
-From ae6ba8002197ca6fcf67b8979e173e1f66dc2157 Mon Sep 17 00:00:00 2001
+From bebe95559cc9ea8da58f1500c6f4e4ca9949b0da Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ren=C3=AA=20de=20Souza=20Pinto?= <rene@renesp.com.br>
-Date: Tue, 11 Jun 2024 15:52:11 +0000
+Date: Thu, 23 Jul 2026 16:06:41 +0200
 Subject: [PATCH] Allow to build commands for musl libc
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -12,37 +12,79 @@ Perform some changes in order to build nvidia-ctk for alpine:
 - Remove RTLD_DEEPBIND (musl doesn't support it), so use RTLD_GLOBAL which
   will make the symbols of the loading object available for symbols
   resolution of subsequently loaded shared objects by dl_open().
+- Remove RTLD_DI_ORIGIN (glibc-only) and implement equivalent function
+  using RTLD_DI_LINKMAP (supported on musl) to get the library's directory
 
 Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
 ---
- Makefile                                            | 2 +-
- vendor/github.com/NVIDIA/go-nvml/pkg/dl/dl_linux.go | 2 +-
- 2 files changed, 2 insertions(+), 2 deletions(-)
+ Makefile                                           |  2 +-
+ .../github.com/NVIDIA/go-nvml/pkg/dl/dl_linux.go   | 14 +++++++-------
+ 2 files changed, 8 insertions(+), 8 deletions(-)
 
 diff --git a/Makefile b/Makefile
-index e694f6c..adaaf78 100644
+index b86c984a..030247e0 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -60,7 +60,7 @@ endif
  cmds: $(CMD_TARGETS)
  
  ifneq ($(shell uname),Darwin)
--EXTLDFLAGS = -Wl,--export-dynamic -Wl,--unresolved-symbols=ignore-in-object-files
-+EXTLDFLAGS = -Wl,--export-dynamic -Wl,--unresolved-symbols=ignore-in-object-files -static
+-EXTLDFLAGS = -Wl,--export-dynamic -Wl,--unresolved-symbols=ignore-in-object-files -Wl,-z,lazy
++EXTLDFLAGS = -Wl,--export-dynamic -Wl,--unresolved-symbols=ignore-in-object-files -Wl,-z,lazy -static
  else
  EXTLDFLAGS = -Wl,-undefined,dynamic_lookup
  endif
 diff --git a/vendor/github.com/NVIDIA/go-nvml/pkg/dl/dl_linux.go b/vendor/github.com/NVIDIA/go-nvml/pkg/dl/dl_linux.go
-index ae3acd0..4900784 100644
+index 6941d08c..f237b6d8 100644
 --- a/vendor/github.com/NVIDIA/go-nvml/pkg/dl/dl_linux.go
 +++ b/vendor/github.com/NVIDIA/go-nvml/pkg/dl/dl_linux.go
-@@ -22,5 +22,5 @@ package dl
+@@ -19,8 +19,8 @@ package dl
+ // #cgo LDFLAGS: -ldl
+ // #define _GNU_SOURCE
+ // #include <dlfcn.h>
++// #include <link.h>
+ // #include <stdlib.h>
+-// #include <linux/limits.h>
  import "C"
+ import (
+ 	"fmt"
+@@ -29,7 +29,7 @@ import (
+ )
  
  const (
 -	RTLD_DEEPBIND = C.RTLD_DEEPBIND
 +	RTLD_DEEPBIND = C.RTLD_GLOBAL
  )
+ 
+ // Path returns the path to the loaded library.
+@@ -39,9 +39,6 @@ func (dl *DynamicLibrary) Path() (string, error) {
+ 		return "", fmt.Errorf("%v not opened", dl.Name)
+ 	}
+ 
+-	libParentPathBuffer := C.CBytes(make([]byte, 0, C.PATH_MAX))
+-	defer C.free(unsafe.Pointer(libParentPathBuffer))
+-
+ 	var libPath string
+ 	if err := withOSLock(func() error {
+ 		if dl.path != "" {
+@@ -50,12 +47,15 @@ func (dl *DynamicLibrary) Path() (string, error) {
+ 		}
+ 		// Call dlError() to clear out any previous errors.
+ 		_ = dlError()
+-		ret := C.dlinfo(dl.handle, C.RTLD_DI_ORIGIN, libParentPathBuffer)
++		// Use RTLD_DI_LINKMAP instead of the glibc-only RTLD_DI_ORIGIN so
++		// this also builds against musl libc.
++		var linkMap *C.struct_link_map
++		ret := C.dlinfo(dl.handle, C.RTLD_DI_LINKMAP, unsafe.Pointer(&linkMap))
+ 		if ret == -1 {
+ 			return fmt.Errorf("dlinfo call failed: %w", dlError())
+ 		}
+ 
+-		libPath = filepath.Join(C.GoString((*C.char)(libParentPathBuffer)), dl.Name)
++		libPath = filepath.Join(filepath.Dir(C.GoString(linkMap.l_name)), dl.Name)
+ 		dl.path = libPath
+ 
+ 		return nil
 -- 
-2.43.0
+2.53.0
 
