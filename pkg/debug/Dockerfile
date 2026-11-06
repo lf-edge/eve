@@ -10,7 +10,7 @@
 # into the package: see abuild/etc/abuild.conf.
 FROM lfedge/eve-recovertpm:f16576787578ed0b41745306552d6d42307f2e4e AS recovertpm
 FROM lfedge/eve-bpftrace:d1458ba0ca975e44a974dd79ea4dcc4e79944feb AS bpftrace
-FROM lfedge/eve-alpine:b1b51db20be9651c521bf5ba14eb5c6d7481eed7 AS build
+FROM lfedge/eve-alpine:b1b51db20be9651c521bf5ba14eb5c6d7481eed7 AS openssh
 ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg gettext gettext-static ncurses-dev jq autoconf openssl-dev zlib-dev zlib-static gpg-agent pciutils usbutils lsblk"
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
@@ -21,6 +21,35 @@ ENV PKGS="openssl openssh-client openssh-server tini util-linux ca-certificates 
 
 RUN eve-alpine-deploy.sh
 
+# Alpine 3.22 backported the upstream password-authentication fix in r11.
+# Install its signed APKs without rebuilding the shared Alpine package cache.
+# Pin every architecture's archives to keep builds reproducible.
+ENV OPENSSH_VERSION="10.0_p1-r11"
+COPY openssh.sha256 /tmp/openssh.sha256
+WORKDIR /tmp/openssh
+# Local APK filenames and SHA-256 checksums pin every package version.
+# hadolint ignore=DL3018
+RUN set -eu; \
+    arch="$(apk --print-arch)"; \
+    mkdir -p "$arch"; \
+    grep "  $arch/" /tmp/openssh.sha256 > checksums; \
+    while read -r _checksum package; do \
+        curl -fsSL "https://dl-cdn.alpinelinux.org/alpine/v3.22/main/$package" -o "$package"; \
+    done < checksums; \
+    sha256sum -c checksums; \
+    apk add --no-network --no-cache --root /out "$arch"/*.apk; \
+    apk --root /out info -v > /tmp/openssh-installed; \
+    grep -Fx "openssh-server-${OPENSSH_VERSION}" /tmp/openssh-installed; \
+    rm -rf /tmp/openssh /tmp/openssh-installed
+WORKDIR /
+
+FROM openssh AS openssh-test
+RUN cp /etc/passwd /etc/group /out/etc/
+COPY tests/openssh.sh /tmp/openssh-test.sh
+RUN sh /tmp/openssh-test.sh
+
+FROM openssh AS build
+WORKDIR /
 ENV LSHW_VERSION="02.20"
 
 # setting up building account
@@ -113,6 +142,11 @@ WORKDIR /
 COPY --from=recovertpm /usr/bin/recovertpm /out/usr/bin/recovertpm
 
 FROM build AS test
+COPY tests/openssh.sh /tmp/openssh-test.sh
+RUN sh /tmp/openssh-test.sh
+RUN chroot /out /usr/sbin/sshd -T -h /ssh-test/host_key > /tmp/sshd-effective.conf && \
+    grep -qix 'passwordauthentication no' /tmp/sshd-effective.conf && \
+    grep -qix 'kbdinteractiveauthentication no' /tmp/sshd-effective.conf
 # run collect-info test
 COPY collect-info-test /collect-info-test
 WORKDIR /collect-info-test
