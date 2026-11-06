@@ -6,7 +6,7 @@ ARG ALPINE_VERSION=3.22
 # this is only needed once, when this package
 # is rebased on the new version of Alpine and
 # you have to have FROM alpine:x.y.z above:
-# Trigger update for go package
+# Refresh the package cache for the OpenSSH password-authentication fix (2026-11).
 RUN apk update && apk upgrade -a
 
 # Copy Dockerfile so we can include it in the hash
