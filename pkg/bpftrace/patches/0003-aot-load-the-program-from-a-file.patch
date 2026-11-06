@@ -1,0 +1,167 @@
+From: EVE build <builder@projecteve.dev>
+Subject: [PATCH] aot: load the program from a file
+
+Between 0.20.3 and 0.23.3, bpftrace --aot stopped producing a payload
+file for the runtime: it now injects the payload into a copy of the
+bpftrace-aotrt shim as an ELF section, and the shim loads that section
+from its own executable, takes no file argument and refuses to run under
+its own name. EVE's debug container ships the plain shim as
+/usr/bin/bpftrace-aotrt, and bpftrace-compiler uploads the raw payload
+(temp_btaot, which 0001-AOT-keep-intermediate-code.patch keeps) and runs
+"bpftrace-aotrt -f json /tmp/bpf.aot", as it does on every EVE release.
+
+Give the runtime its file argument back, read the file as the raw
+payload, and parse the kernel BTF before running the program as the
+bpftrace binary does: run() dereferences it for every program it loads.
+
+diff --git a/src/aot/aot.cpp b/src/aot/aot.cpp
+index f547a97..b770446 100644
+--- a/src/aot/aot.cpp
++++ b/src/aot/aot.cpp
+@@ -234,76 +234,31 @@ int load(BPFtrace &bpftrace, const std::string &in)
+     return 1;
+   }
+ 
+-  // Find .btaot section
+-  Elf *elf = nullptr;
+-  Elf_Scn *scn = nullptr;
+-  GElf_Shdr shdr;
+-  char *secname = nullptr;
+-  Elf_Data *data = nullptr;
++  // The program is the raw .btaot payload that bpftrace --aot leaves behind
++  // as temp_btaot (see 0001-AOT-keep-intermediate-code.patch), not a copy of
++  // the shim carrying the payload in an ELF section: the whole file is the
++  // section.
++  void *map = MAP_FAILED;
+   uint8_t *btaot_section = nullptr;
+   const Header *hdr;
+ 
+-  if (elf_version(EV_CURRENT) == EV_NONE) {
+-    LOG(ERROR) << "Cannot set libelf version: " << elf_errmsg(-1);
++  if (in_file_size < sizeof(Header)) {
++    LOG(ERROR) << "Truncated AOT bpftrace file: " << in;
+     err = 1;
+     goto out;
+   }
+ 
+-  elf = elf_begin(infd, ELF_C_READ, nullptr);
+-  if (!elf) {
+-    LOG(ERROR) << "Cannot read ELF file: " << elf_errmsg(-1);
+-    err = 1;
+-    goto out;
+-  }
+-
+-  size_t strndx;
+-  if (elf_getshdrstrndx(elf, &strndx) < 0) {
+-    LOG(ERROR) << "Failed to get ELF section index of the string table: "
+-               << elf_errmsg(-1);
++  map = ::mmap(nullptr, in_file_size, PROT_READ, MAP_PRIVATE, infd, 0);
++  if (map == MAP_FAILED) {
++    auto saved_err = errno;
++    LOG(ERROR) << "Failed to mmap: " << in << ": " << std::strerror(saved_err);
+     err = 1;
+     goto out;
+   }
+-
+-  int i;
+-  i = 0;
+-  while ((scn = elf_nextscn(elf, scn))) {
+-    i++;
+-    if (!gelf_getshdr(scn, &shdr)) {
+-      LOG(ERROR) << "Failed to get ELF section(" << i
+-                 << ") hdr: " << elf_errmsg(-1);
+-      err = 1;
+-      goto out;
+-    }
+-
+-    secname = elf_strptr(elf, strndx, shdr.sh_name);
+-    if (!secname) {
+-      LOG(ERROR) << "Failed to get ELF section(" << i
+-                 << ") hdr name: " << elf_errmsg(-1);
+-      err = 1;
+-      goto out;
+-    }
+-
+-    if (std::string_view(secname) == AOT_ELF_SECTION) {
+-      data = elf_getdata(scn, nullptr);
+-      if (!data) {
+-        LOG(ERROR) << "Failed to get BTAOT ELF section(" << i
+-                   << ") data: " << elf_errmsg(-1);
+-        err = 1;
+-        goto out;
+-      }
+-
+-      btaot_section = static_cast<uint8_t *>(data->d_buf);
+-      break;
+-    }
+-  }
++  btaot_section = static_cast<uint8_t *>(map);
+ 
+   // Validate .btaot header
+   hdr = reinterpret_cast<const Header *>(btaot_section);
+-  if (!hdr) {
+-    LOG(ERROR) << "Couldn't find " << AOT_ELF_SECTION << " section in " << in;
+-    err = 1;
+-    goto out;
+-  }
+   if (hdr->magic != AOT_MAGIC) {
+     LOG(ERROR) << "Invalid magic in " << in << ": " << hdr->magic;
+     err = 1;
+@@ -345,8 +300,8 @@ int load(BPFtrace &bpftrace, const std::string &in)
+     goto out;
+ 
+ out:
+-  if (elf)
+-    elf_end(elf);
++  if (map != MAP_FAILED)
++    ::munmap(map, in_file_size);
+ 
+   close(infd);
+   return err;
+diff --git a/src/aot/aot_main.cpp b/src/aot/aot_main.cpp
+index 3967b76..0ead6bf 100644
+--- a/src/aot/aot_main.cpp
++++ b/src/aot/aot_main.cpp
+@@ -15,7 +15,7 @@ using namespace bpftrace;
+ void usage(std::ostream& out, std::string_view filename)
+ {
+   // clang-format off
+-  out << "USAGE: " << filename << " [options]" << std::endl;
++  out << "USAGE: " << filename << " [options] PROGRAM" << std::endl;
+   out << std::endl;
+   out << "OPTIONS:" << std::endl;
+   out << "    -f FORMAT      output format ('text', 'json')" << std::endl;
+@@ -73,13 +73,6 @@ int main(int argc, char* argv[])
+     option{ nullptr, 0, nullptr, 0 }, // Must be last
+   };
+ 
+-  std::filesystem::path p(argv[0]);
+-  if (p.filename() == aot::AOT_SHIM_NAME) {
+-    LOG(ERROR) << "Runtime shim should not be run directly, please generate a "
+-                  "binary using --aot option in bpftrace";
+-    return 1;
+-  }
+-
+   while ((c = getopt_long(argc, argv, short_opts, long_opts, nullptr)) != -1) {
+     switch (c) {
+       case 'o':
+@@ -118,7 +111,7 @@ int main(int argc, char* argv[])
+     }
+   }
+ 
+-  if (argv[optind]) {
++  if (!argv[optind] || argv[optind + 1]) {
+     usage(std::cerr, argv[0]);
+     return 1;
+   }
+@@ -132,8 +125,9 @@ int main(int argc, char* argv[])
+     return 1;
+ 
+   BPFtrace bpftrace(std::move(output));
++  bpftrace.parse_btf({});
+ 
+-  int err = aot::load(bpftrace, argv[0]);
++  int err = aot::load(bpftrace, argv[optind]);
+   if (err) {
+     LOG(ERROR) << "Failed to load AOT script";
+     return err;

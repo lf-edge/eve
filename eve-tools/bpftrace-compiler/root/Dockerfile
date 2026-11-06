@@ -5,12 +5,12 @@ ARG EVE_KERNEL
 # hadolint ignore=DL3006
 FROM ${EVE_KERNEL} AS kernel
 
-FROM lfedge/eve-bpftrace:c08d714db34b7cde90d20c56e74d2c11afe483df AS eve-bpftrace
+FROM lfedge/eve-bpftrace:7c4d9eff6f2d72e6da23ff7e31f78e45752306e8 AS eve-bpftrace
 
-FROM lfedge/eve-alpine:745ae9066273c73b0fd879c4ba4ff626a8392d04 AS bpftrace
+FROM lfedge/eve-alpine:a5885b38222df4ba5add4acca2d219c85741bf79 AS bpftrace
 
 # hadolint ignore=DL3018
-RUN apk add --no-cache --initdb make gcc g++ git perl musl-dev cmake zlib-dev bcc-dev libbpf-dev cereal flex bison llvm13-libs llvm13-dev llvm13-static clang-dev clang-static pahole gtest-dev bash
+RUN apk add --no-cache --initdb make gcc g++ git perl musl-dev cmake zlib-dev bcc-dev libbpf-dev cereal flex bison llvm20-libs llvm20-dev llvm20-static clang20-dev clang20-static clang20-libclang pahole gtest-dev bash binutils libpcap
 WORKDIR /
 COPY copy-out.sh /
 RUN mkdir /out

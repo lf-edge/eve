@@ -48,6 +48,14 @@ COPY --from=build /usr/lib/libz.so.1 /bpftrace-aotrt/usr/lib/libz.so.1
 COPY --from=build /usr/lib/libbcc_bpf.so.0 /bpftrace-aotrt/usr/lib/libbcc_bpf.so.0
 COPY --from=build /usr/lib/libstdc++.so.6 /bpftrace-aotrt/usr/lib/libstdc++.so.6
 COPY --from=build /usr/lib/libgcc_s.so.1 /bpftrace-aotrt/usr/lib/libgcc_s.so.1
+# bpftrace 0.23.3 links libbfd and libopcodes (binutils) and libpcap into the
+# AOT runtime as well; libbfd needs libsframe and libzstd. binutils names its
+# libraries by their exact version, hence the wildcards.
+COPY --from=build /usr/lib/libbfd-*.so /bpftrace-aotrt/usr/lib/
+COPY --from=build /usr/lib/libopcodes-*.so /bpftrace-aotrt/usr/lib/
+COPY --from=build /usr/lib/libsframe.so.1 /bpftrace-aotrt/usr/lib/libsframe.so.1
+COPY --from=build /usr/lib/libzstd.so.1 /bpftrace-aotrt/usr/lib/libzstd.so.1
+COPY --from=build /usr/lib/libpcap.so.1 /bpftrace-aotrt/usr/lib/libpcap.so.1
 
 FROM bin AS bin-amd64
 FROM bin AS bin-arm64
