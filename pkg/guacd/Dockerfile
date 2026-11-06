@@ -1,13 +1,15 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
-FROM lfedge/eve-alpine:8c9af5568049068f10bc630065793c15d52fa931 AS build
+FROM lfedge/eve-alpine:61283a3a978a7cdc9073a1ba678717fc3ea1fe97 AS build
 ENV BUILD_PKGS cairo-dev jpeg-dev libpng-dev gcc make libc-dev openssl-dev libvncserver-dev file patch
 ENV PKGS alpine-baselayout musl-utils libtasn1-progs p11-kit cairo jpeg libpng libvncserver
 RUN eve-alpine-deploy.sh
 
 ENV GUACD_VERSION=1.0.0
 
-ADD http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUACD_VERSION}/source/guacamole-server-${GUACD_VERSION}.tar.gz /${GUACD_VERSION}.tar.gz
+# FIXME: Provide guacamole-server locally due to link instabilities
+# ADD http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/${GUACD_VERSION}/source/guacamole-server-${GUACD_VERSION}.tar.gz /${GUACD_VERSION}.tar.gz
+ADD guacamole-server-${GUACD_VERSION}.tar.gz /
 ADD uuid-1.6.2.tar.gz /
 COPY patches /patches
 
@@ -16,8 +18,7 @@ RUN cd /uuid-1.6.2 ; ./configure --prefix=/usr/ && make -j "$(getconf _NPROCESSO
 # Register ossp-uuid in the APK DB, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n ossp-uuid -v 1.6.2 -l MIT -u http://www.ossp.org/pkg/lib/uuid
 
-RUN tar xzvf ${GUACD_VERSION}.tar.gz ;\
-    cd /guacamole-server-${GUACD_VERSION} ;\
+RUN cd /guacamole-server-${GUACD_VERSION} ;\
     [ -d /patches/guacd-"${GUACD_VERSION}" ] && for patch in /patches/guacd-"${GUACD_VERSION}"/*.patch; do \
             echo "Applying $patch"; \
             patch -p1 < "$patch"; \
