@@ -248,6 +248,10 @@ process to flush current counters without restarting:
 # From inside EVE (e.g. via `eden eve ssh`):
 pkill -USR2 zedbox
 
+# On an eve-k (HV=k) image, also flush kube-init. The marker file exists
+# only when kube-init was built with COVER=y and can flush:
+[ -e /run/kube-init-cover ] && pkill -USR2 kube-init
+
 # Then copy the coverage directory off the device:
 scp -r -P 2222 root@127.0.0.1:/persist/coverage/ /local/my-run-cov/
 ```
