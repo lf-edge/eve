@@ -503,7 +503,11 @@ jobs:
             if (skip.length > 0 && text) {
               // The full reasoning lives in the job summary; the PR comment
               // only points to it to keep the conversation short.
-              await core.summary.addHeading('Skipped evetest tests', 2).addRaw(text, true).write();
+              // Nest Claude's headings below our "##" heading.
+              const nested = require('child_process').execFileSync(
+                '.github/actions/evetest-run-suite/shift-headings.sh', ['3'],
+                { input: text, encoding: 'utf8' });
+              await core.summary.addRaw('## Skipped evetest tests\n\n' + nested, true).write();
               const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
