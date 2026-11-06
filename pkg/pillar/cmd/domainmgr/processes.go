@@ -16,6 +16,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/shirou/gopsutil/mem"
 	"github.com/shirou/gopsutil/process"
 )
 
@@ -36,52 +37,62 @@ func gatherProcessMetricList(ctx *domainContext) ([]types.ProcessMetric, map[uin
 		return ret, reportedPids
 	}
 	log.Tracef("watchedPids: %+v", watchedPids)
-	processes, err := process.Processes()
+	pids, err := process.Pids()
 	if err != nil {
-		log.Errorf("process.Processes failed: %s", err)
+		log.Errorf("process.Pids failed: %s", err)
+		return ret, reportedPids
+	}
+	memory, err := mem.VirtualMemory()
+	if err != nil {
+		log.Errorf("mem.VirtualMemory failed: %s", err)
 		return ret, reportedPids
 	}
 	totalStacks := 0
-	for _, p := range processes {
-		pi, err := getProcessMetric(p)
+	for _, pid := range pids {
+		// Not process.NewProcess: it reads the start time, so all of
+		// /proc/stat, of every process, kernel threads included. Only
+		// user processes are reported, and a kernel thread has no
+		// executable: skip it before collecting anything for it.
+		p := &process.Process{Pid: pid}
+		if _, err := p.Exe(); err != nil {
+			continue
+		}
+		pi, err := getProcessMetric(p, memory.Total)
 		if err != nil {
 			// Process might have just exited
 			log.Functionf("getProcessMetric failed: %s", err)
 			continue
 		}
-		if pi.UserProcess {
-			if _, ok := watchedPids[uint32(pi.Pid)]; ok {
-				pi.Watched = true
-			} else if time.Since(pi.CreateTime) > time.Minute {
-				// Report stack for not watched processed which
-				// have been running for a while. This is
-				// a bit of belt and suspenders approach to
-				// catch hung processes which are not watched by
-				// the watchdog process to be able to see them
-				// even when we have no debug ssh access.
-				// We limit the total memory used for stacks for
-				// all the processes.
-				filename := fmt.Sprintf("/proc/%d/stack", pi.Pid)
-				b, err := fileutils.ReadWithMaxSize(log, filename, maxStackStringLen)
-				if err != nil {
-					log.Error(err)
-					continue
-				}
-				pi.Stack = string(b)
-				// Apply size limit
-				if pi.Stack != "" {
-					if totalStacks+len(pi.Stack) > totalMaxStackLen {
-						pi.Stack = "Omitted"
-					} else {
-						totalStacks += len(pi.Stack)
-					}
+		if _, ok := watchedPids[uint32(pi.Pid)]; ok {
+			pi.Watched = true
+		} else if time.Since(pi.CreateTime) > time.Minute {
+			// Report stack for not watched processed which
+			// have been running for a while. This is
+			// a bit of belt and suspenders approach to
+			// catch hung processes which are not watched by
+			// the watchdog process to be able to see them
+			// even when we have no debug ssh access.
+			// We limit the total memory used for stacks for
+			// all the processes.
+			filename := fmt.Sprintf("/proc/%d/stack", pi.Pid)
+			b, err := fileutils.ReadWithMaxSize(log, filename, maxStackStringLen)
+			if err != nil {
+				log.Error(err)
+				continue
+			}
+			pi.Stack = string(b)
+			// Apply size limit
+			if pi.Stack != "" {
+				if totalStacks+len(pi.Stack) > totalMaxStackLen {
+					pi.Stack = "Omitted"
+				} else {
+					totalStacks += len(pi.Stack)
 				}
 			}
-
-			reportedPids[uint32(pi.Pid)] = true
-			ret = append(ret, *pi)
 		}
 
+		reportedPids[uint32(pi.Pid)] = true
+		ret = append(ret, *pi)
 	}
 	return ret, reportedPids
 }
@@ -138,28 +149,31 @@ func getWatchedPidsFromDir(wDirname string, pDirname string) (map[uint32]bool, e
 	return pids, nil
 }
 
-// getProcessMetric gets the metrics for one process
-func getProcessMetric(p *process.Process) (*types.ProcessMetric, error) {
+// getProcessMetric gets the metrics for one user process. totalMemory is the
+// machine's memory, for MemoryPercent.
+func getProcessMetric(p *process.Process, totalMemory uint64) (*types.ProcessMetric, error) {
 	n, err := p.Name()
 	if err != nil {
 		return nil, err
 	}
 	// Ensure we have a copy and not reference into slice
 	n = string([]byte(n))
-	_, err = p.Exe()
-	userProcess := (err == nil) // kernel or user-space?
-
-	c, err := p.CPUPercent()
-	if err != nil {
-		return nil, err
-	}
-	mp, err := p.MemoryPercent()
-	if err != nil {
-		return nil, err
-	}
+	// gopsutil reads all of /proc/stat (for the boot time) in each of
+	// Times and CreateTime, and its CPUPercent and MemoryPercent repeat
+	// them and a read of /proc/meminfo: read each once and derive the
+	// percentages the way gopsutil does.
 	ts, err := p.Times()
 	if err != nil {
 		return nil, err
+	}
+	ct, err := p.CreateTime()
+	if err != nil {
+		return nil, err
+	}
+	createTime := time.UnixMilli(ct)
+	var cpuPercent float64
+	if elapsed := time.Since(createTime).Seconds(); elapsed > 0 {
+		cpuPercent = 100 * ts.Total() / elapsed
 	}
 	// Requires permissions
 	nfd, err := p.NumFDs()
@@ -170,14 +184,6 @@ func getProcessMetric(p *process.Process) (*types.ProcessMetric, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	ct, err := p.CreateTime()
-	if err != nil {
-		return nil, err
-	}
-	ctSec := ct / 1000
-	ctNsec := (ct - ctSec*1000) * 1000000
-	createTime := time.Unix(ctSec, ctNsec)
 	m, err := p.MemoryInfo()
 	if err != nil {
 		return nil, err
@@ -185,9 +191,9 @@ func getProcessMetric(p *process.Process) (*types.ProcessMetric, error) {
 	return &types.ProcessMetric{
 		Pid:           p.Pid,
 		Name:          n,
-		UserProcess:   userProcess,
-		CPUPercent:    c,
-		MemoryPercent: mp,
+		UserProcess:   true,
+		CPUPercent:    cpuPercent,
+		MemoryPercent: 100 * float32(m.RSS) / float32(totalMemory),
 		NumFDs:        nfd,
 		NumThreads:    nt,
 		UserTime:      ts.User,
