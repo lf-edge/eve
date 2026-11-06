@@ -5,9 +5,9 @@ ARG EVE_KERNEL
 # hadolint ignore=DL3006
 FROM ${EVE_KERNEL} AS kernel
 
-FROM lfedge/eve-bpftrace:1ecf8706349de741b1cfc92a726162d8e2492e7f AS eve-bpftrace
+FROM lfedge/eve-bpftrace:bc625d6870b12ba0255555d5f14acd3d3ab7e123 AS eve-bpftrace
 
-FROM lfedge/eve-alpine:a5885b38222df4ba5add4acca2d219c85741bf79 AS bpftrace
+FROM lfedge/eve-alpine:fdd203cfda43dadd2b363ce843e073e9d7d89ea8 AS bpftrace
 
 # Runtime libraries of the bpftrace 0.23.3 build in pkg/bpftrace (LLVM 20),
 # copied into the compile VM by copy-out.sh (which needs ldd from musl-utils).
