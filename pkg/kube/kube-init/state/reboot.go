@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/lf-edge/eve/pkg/kube/kube-init/coverage"
 )
 
 // Boot-reason files consumed by the EVE base-OS telemetry layer.
@@ -92,6 +94,7 @@ func RebootWithReason(reason string) error {
 	if err := prepareReboot(reason, BootReasonFile, RebootReasonFile); err != nil {
 		return err
 	}
+	coverage.Flush()
 	syncFS()
 	if err := rebootCmd(); err != nil {
 		return err
