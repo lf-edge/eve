@@ -1,0 +1,34 @@
+From: EVE build <builder@projecteve.dev>
+Subject: [PATCH] aot: compile without helper error checks
+
+bpftrace 0.23.3 compiles helper error checks into every program by
+default (0.20.3 did not, and refused -k together with --aot), but the
+helper error information is not part of the AOT payload: it is left out
+of RequiredResources::serialize. When a helper fails at run time, for
+example delete() of a key that was never inserted, the runtime formats
+the event with a default HelperErrorInfo, whose helper name is a null
+string, which puts its output stream into the failed state: nothing is
+printed from then on, and the JSON output ends in a broken line.
+
+Compile ahead-of-time programs without helper error checks, as 0.20.3
+did; the runtime has no way to report them anyway.
+
+diff --git a/src/main.cpp b/src/main.cpp
+index 5796a7e..2941986 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -664,6 +664,14 @@ Args parse_args(int argc, char* argv[])
+     exit(1);
+   }
+ 
++  // The same holds for the default level: the helper error information is
++  // not part of the AOT payload (see RequiredResources::serialize), so the
++  // runtime cannot report a failed helper; it would print a broken message
++  // and lose every output after it. Compile ahead-of-time programs without
++  // helper error checks, as bpftrace 0.20.3 did.
++  if (args.build_mode == BuildMode::AHEAD_OF_TIME)
++    args.helper_check_level = 0;
++
+   if (args.listing) {
+     // Expect zero or one positional arguments
+     if (optind == argc) {
