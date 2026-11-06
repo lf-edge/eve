@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # hadolint ignore=DL3006
-FROM lfedge/eve-alpine:8c9af5568049068f10bc630065793c15d52fa931 AS runtime
+FROM lfedge/eve-alpine:61283a3a978a7cdc9073a1ba678717fc3ea1fe97 AS runtime
 ENV PKGS alpine-baselayout musl-utils iproute2 iptables
 RUN eve-alpine-deploy.sh
 
 # hadolint ignore=DL3029
-FROM --platform=$BUILDPLATFORM lfedge/eve-alpine:8c9af5568049068f10bc630065793c15d52fa931 AS build
+FROM --platform=$BUILDPLATFORM lfedge/eve-alpine:61283a3a978a7cdc9073a1ba678717fc3ea1fe97 AS build
 ARG TARGETARCH
 
 COPY src/  /edge-view/.
