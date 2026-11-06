@@ -18,6 +18,7 @@ pkg/newlog/vendor/
 pkg/nvidia/cdi/jp5
 pkg/nvidia/cdi/jp6
 pkg/nvidia/cdi/jp7
+pkg/nvidia/cdi/gb
 pkg/pillar/vendor/
 pkg/recovertpm/src/vendor/
 pkg/rngd/cmd/rngd/vendor/
