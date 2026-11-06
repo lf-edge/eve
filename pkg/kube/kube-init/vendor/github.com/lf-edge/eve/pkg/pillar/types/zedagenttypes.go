@@ -265,7 +265,6 @@ const (
 	BootReasonVaultFailure         // Vault was not ready within the expected time
 	BootReasonPoweroffCmd          // Start after Local Profile Server poweroff
 	BootReasonKubeTransition       // Transition to/from kubernetes single/cluster modes
-	BootReasonHWWatchdog           // Hardware watchdog reset the device; only on drivers reporting WDIOF_CARDRESET
 	BootReasonParseFail      = 255 // BootReasonFromString didn't find match
 )
 
@@ -304,8 +303,6 @@ func (br BootReason) String() string {
 		return "BootReasonPoweroffCmd"
 	case BootReasonKubeTransition:
 		return "BootReasonKubeTransition"
-	case BootReasonHWWatchdog:
-		return "BootReasonHWWatchdog"
 	default:
 		return fmt.Sprintf("Unknown BootReason %d", br)
 	}
@@ -348,8 +345,6 @@ func (br BootReason) StartWithSavedConfig() bool {
 		return true
 	case BootReasonKubeTransition:
 		return true
-	case BootReasonHWWatchdog:
-		return false
 	default:
 		return false
 	}
@@ -393,8 +388,6 @@ func BootReasonFromString(str string) BootReason {
 		return BootReasonPoweroffCmd
 	case "BootReasonKubeTransition":
 		return BootReasonKubeTransition
-	case "BootReasonHWWatchdog":
-		return BootReasonHWWatchdog
 	default:
 		return BootReasonParseFail
 	}

@@ -201,7 +201,6 @@ func (s *SocketDriver) Subscriber(global bool, name, topic string, persistent bo
 	doneChan := make(chan struct{})
 	return &Subscriber{
 		subscribeFromDir: subFromDir,
-		persistent:       persistent,
 		dirName:          dirName,
 		name:             name,
 		topic:            topic,
