@@ -56,7 +56,7 @@ func TestSetStorageReadinessNeverBlocks(t *testing.T) {
 }
 
 // A node that served volumes in single-node mode has storage cached as ready,
-// and pillar survives the single->cluster transition. While cluster-init.sh still has
+// and pillar survives the single->cluster transition. While kube-init still has
 // to recycle the controllers, that cache must not let a volume create through,
 // and it must be dropped so the next probe waits for the recycled controllers.
 func TestClusterStorageReadyDropsCacheWhileRestartPending(t *testing.T) {

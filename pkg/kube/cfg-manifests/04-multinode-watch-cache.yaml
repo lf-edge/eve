@@ -1,0 +1,25 @@
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+# Multi-node clusters only (installed by cluster-init.sh via
+# provision_cluster_config_file, which runs only in edge-node-cluster mode).
+#
+# Disable the kube-apiserver in-memory watch cache so every LIST/WATCH is served
+# straight from etcd. During k3s/etcd churn (the single-node -> multi-node
+# transition, and any later leader election such as a node failover) a
+# transiently-behind watch cache can serve a reconnecting informer a successful
+# but incomplete stream, silently dropping a window of events. With the CoreDNS
+# kubernetes plugin's resync disabled (resyncPeriod = 0) those lost Service
+# events are never re-listed, so Services created in that window stay permanently
+# NXDOMAIN and app deployment (CDI upload) fails. Serving from etcd removes that
+# stale-serve path: a reconnect either resumes cleanly or gets an honest
+# "410 Gone" that forces a re-LIST.
+#
+# The "+" suffix appends to the kube-apiserver-arg list from the base
+# /etc/rancher/k3s/config.yaml rather than replacing it.
+#
+# Cost of disabling the cache on these constrained edge nodes was benchmarked and
+# found negligible at realistic load (no measurable CPU or app-deploy-time impact,
+# slightly lower apiserver memory; only more etcd LIST traffic that etcd absorbs).
+kube-apiserver-arg+:
+  - "watch-cache=false"

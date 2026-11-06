@@ -413,7 +413,7 @@ func (z *zedkube) updateClusterIPReadiness() (changed bool) {
 }
 
 // startClusterStatusServer starts two listeners on ClusterStatusPort. The one
-// on the cluster IP serves /status and /app/ to cluster-init.sh and zedkube on
+// on the cluster IP serves /status and /app/ to kube-init and zedkube on
 // other nodes, over TLS and only to clients presenting the bearer token
 // derived from the cluster join token; the firewall rule that admits it is
 // described in pkg/pillar/docs/zedkube.md, "Cluster Status Server". The one

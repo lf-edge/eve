@@ -25,10 +25,10 @@ import (
 // The cluster-status server on the cluster IP authenticates both ways with
 // credentials every node derives from the cluster join token: a TLS
 // certificate the client pins, and a bearer token the client presents.
-// cluster-init.sh derives the same credentials to probe /status before it
-// joins (pkg/kube/cluster-status-probe/statusauth.go), so the HKDF labels,
-// the server name and the certificate template must match there byte for
-// byte; the known-answer tests in both packages pin that.
+// kube-init derives the same credentials to probe /status before it joins
+// (pkg/kube/kube-init/k3s/statusauth.go), so the HKDF labels, the server
+// name and the certificate template must match there byte for byte; the
+// known-answer tests in both packages pin that.
 const (
 	clusterStatusTokenHKDFInfo     = "eve-zedkube-cluster-status-token-v1"
 	clusterStatusTLSKeyHKDFInfo    = "eve-zedkube-cluster-status-tls-key-v1"

@@ -164,12 +164,13 @@ func TestVirtctlFailure(t *testing.T) {
 	}
 }
 
-// The path is a contract with pkg/kube/cluster-init.sh, which writes it as
-// CONTROLLER_RESTART_PENDING; a rename on either side would disable the gate
-// silently.
+// The path is a contract with kube-init, which writes it from another module
+// (clustermode.ControllerRestartPending); a rename on either side would disable
+// the gate silently. See "Markers shared with pillar" in
+// pkg/kube/kube-init/README.md.
 func TestControllerRestartPending(t *testing.T) {
 	if kubeControllerRestartPending != "/run/kube/controller-restart-pending" {
-		t.Fatalf("marker path changed to %q: keep it in sync with cluster-init.sh",
+		t.Fatalf("marker path changed to %q: keep it in sync with kube-init",
 			kubeControllerRestartPending)
 	}
 	saved := kubeControllerRestartPending
