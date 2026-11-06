@@ -15,8 +15,10 @@ import (
 // --------
 //   - TestAppArmorEnabled -- kernel AppArmor status flag.
 //   - TestVCom -- vcomlink (TPM-over-vsock) request/response from inside a VM app.
-//   - TestAppVTPM -- per-app vTPM: the app's SWTPM instance runs unprivileged
-//     with TPM-sealed state encryption, and the guest can consume the TPM.
+//   - TestAppVTPM -- per-app vTPM: on KVM the app's SWTPM instance runs
+//     unprivileged with TPM-sealed state encryption, on kubevirt the VMI
+//     spec carries the TPM device; the guest can consume the TPM, and
+//     disable_vtpm removes it.
 //   - TestAppVTPMIdentitySurvivesReboots -- guest TPM NV identity across app
 //     and device reboots.
 //   - TestAppVTPMBackupRecoversPrimaryCorruption -- encrypted backup recovery.
