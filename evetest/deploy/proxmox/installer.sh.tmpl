@@ -98,6 +98,7 @@ BROKER_IMAGE_DIR="/root/.evetest/images"
 SDN_ZONE="evetest"
 SNIPPETS_DIR="/var/lib/vz/snippets"
 HOOK_VOLID="local:snippets/evetest-hook.pl"
+OOM_HOOK_VOLID="local:snippets/evetest-oom-hook.pl"
 CLOUDINIT_VOLID="local:snippets/evetest-broker-cloudinit.yaml"
 
 usage() {
@@ -359,6 +360,12 @@ EVETEST_HOOK_EOF
 chmod +x "${SNIPPETS_DIR}/evetest-hook.pl"
 echo "Installed hookscript at ${SNIPPETS_DIR}/evetest-hook.pl (${HOOK_VOLID})"
 
+cat > "${SNIPPETS_DIR}/evetest-oom-hook.pl" <<'EVETEST_OOM_HOOK_EOF'
+@@OOM_HOOKSCRIPT@@
+EVETEST_OOM_HOOK_EOF
+chmod +x "${SNIPPETS_DIR}/evetest-oom-hook.pl"
+echo "Installed OOM hookscript at ${SNIPPETS_DIR}/evetest-oom-hook.pl (${OOM_HOOK_VOLID})"
+
 # ----- 2. build broker.env and render cloud-init ----------------------------
 BROKER_ENV="$(cat <<EOF
 EVETEST_BROKER_DEVICE_PROVIDER=proxmox
@@ -523,6 +530,9 @@ qm set "$VMID" \
     --ipconfig0 "ip=dhcp" \
     --ipconfig1 "ip=${V4_BROKER_IP}/${PREFIX}"
 qm set "$VMID" --cicustom "user=${CLOUDINIT_VOLID}"
+# The OOM hookscript sets the broker VM's OOM-killer priority (tag evetest-broker:
+# the best protected of all evetest VMs) each time it starts.
+qm set "$VMID" --tags evetest-broker --hookscript "${OOM_HOOK_VOLID}"
 [ "$(qm status "$VMID" | awk '{print $2}')" = "running" ] || qm start "$VMID"
 trap - EXIT
 

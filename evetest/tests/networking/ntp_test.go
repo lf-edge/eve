@@ -300,7 +300,7 @@ func ntpSourcesSynced(sources *eveinfo.ZInfoNTPSources, expectedAddrs []string) 
 //
 // Suite placement
 // ---------------
-//   - TestApplicationConnectivitySuite.
+//   - TestLocalNetworkInstanceSuite.
 func TestApplicationNTPConfig(test *testing.T) {
 	const (
 		ntpCloudflarePrimary   = "162.159.200.1"   // DHCP-advertised on eth0

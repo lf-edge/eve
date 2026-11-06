@@ -425,6 +425,16 @@ qm set "$VMID" --ide2 "${STORAGE}:cloudinit"
 qm set "$VMID" --boot "order=scsi0"
 qm set "$VMID" --ipconfig0 "ip=dhcp"
 qm set "$VMID" --cicustom "user=${CLOUDINIT_VOLID}"
+# Make the OOM killer prefer test VMs over this runner (and this runner over
+# the broker). The OOM hookscript is installed by the broker installer.
+qm set "$VMID" --tags evetest-runner
+if [ -f "${SNIPPETS_DIR}/evetest-oom-hook.pl" ]; then
+    qm set "$VMID" --hookscript "local:snippets/evetest-oom-hook.pl"
+else
+    echo "WARNING: ${SNIPPETS_DIR}/evetest-oom-hook.pl not found" >&2
+    echo "  (run the broker installer on this host first);" >&2
+    echo "  OOM-killer priority is not set for this runner." >&2
+fi
 qm start "$VMID"
 trap - EXIT
 

@@ -104,7 +104,7 @@ const arpSnoopExpiryKey pillartypes.GlobalSettingKey = "network.switch.arpsnoop.
 //
 // Suite placement
 // ---------------
-//   - TestApplicationConnectivitySuite.
+//   - TestSwitchNetworkInstanceSuite.
 func TestSwitchNIDeletedWithAppsAttached(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)

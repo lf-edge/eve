@@ -241,8 +241,11 @@ label to multiple runners so a workflow's `runs-on` can pick any free one of the
 uses two labels: `evetest-runner` (can run every suite) and `evetest-runner-light` (can
 run only the suites not tagged `evetest.TagHeavyTest`). Register a strong host's runners
 with `--gh-label evetest-runner,evetest-runner-light` and a weak host's with
-`--gh-label evetest-runner-light`. The runner process picks up `EVETEST_BROKER_ADDRESS`
-(defaulting to the LAN IP of the `evetest-broker` VM installed above, if one is found
+`--gh-label evetest-runner-light`. If a host has many light runners but very few
+full-size ones, consider registering the full-size runners with
+`--gh-label evetest-runner` only, so they are kept for heavy suites and never take
+light work. The runner process picks up `EVETEST_BROKER_ADDRESS` (defaulting to the
+LAN IP of the `evetest-broker` VM installed above, if one is found
 running on this host), `EVETEST_COLLECT_ARTIFACTS=/home/<gh-username>/artifacts`,
 `EVETEST_SUITE_MAX_FAILURES=-1` and `EVETEST_LOG_LEVEL=debug`. Run with `--help` to
 see all flags, including VM shape (`--vm-memory`, `--vm-disk`, `--vm-cores`,
@@ -292,13 +295,22 @@ reusing the same address doesn't collide with an old, not-yet-expired lease. On
 `pre-start` it removes tap devices that a previous, killed QEMU process of the same VM ID
 left behind, which would otherwise make the VM fail to start.
 
+A second hookscript, `evetest-oom-hook.pl`, sets the QEMU process's `oom_score_adj` on
+`post-start`, so that when the host runs out of RAM the kernel kills VMs in this order:
+test VMs created by the broker first (`+500`), then GitHub runner VMs (`-500`, tag
+`evetest-runner`), and the broker VM last (`-900`, tag `evetest-broker`). The broker and
+runner installers attach it directly to their VMs and set the tag (the runner installer needs
+the broker installer to have run on the host first). A VM has only one hookscript, so for
+broker-created test VMs `evetest-hook.pl` runs it.
+
 ### Files
 
 - `evetest-hook.pl` — the host hookscript (installed to `/var/lib/vz/snippets/`).
+- `evetest-oom-hook.pl` — the OOM-priority hookscript (same directory).
 - `broker-cloudinit.yaml` — cloud-init user-data template for the broker VM (installs
   Docker, runs the broker container with host networking).
 - `installer.sh.tmpl` — installer template. `make proxmox-broker-installer` assembles it
-  with the two files above into the self-contained
+  with the files above into the self-contained
   `evetest-broker-proxmox-installer.sh`.
 - `gh-runner-installer.sh` — self-contained installer (no assembly step) for a GitHub
   Actions self-hosted runner VM; see "GitHub Actions self-hosted runners" above.

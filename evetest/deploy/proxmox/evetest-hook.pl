@@ -16,6 +16,9 @@
 # simulated point-to-point links to the SDN VM. These are host-namespace
 # operations that the broker (running inside a VM) cannot perform itself.
 #
+# On guest post-start it also runs evetest-oom-hook.pl (a VM has only one
+# hookscript), which sets the VM's OOM-killer priority.
+#
 # On guest post-stop it removes any dnsmasq DHCP lease belonging to the VM from
 # the evetest SDN zone's lease file and restarts dnsmasq so the cleanup takes
 # effect. dnsmasq's static IPv6 (and IPv4) address reservations are keyed by
@@ -64,6 +67,8 @@ if ($phase eq 'post-stop') {
 # Only act once the VM has started: at post-start its tap devices exist and are
 # enslaved to the SDN VNet bridges (the documented moment for group_fwd_mask).
 exit 0 unless $phase eq 'post-start';
+
+system('/var/lib/vz/snippets/evetest-oom-hook.pl', $vmid, $phase);
 
 # group_fwd_mask 0x4008 = EAPOL (0x4000) + LLDP (0x0008). LACP (0x4) is rejected
 # in the bridge-level mask by the kernel (BR_GROUPFWD_RESTRICTED) and is instead
