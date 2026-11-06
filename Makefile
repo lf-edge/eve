@@ -391,7 +391,7 @@ endif
 
 # For all possible env variable that later can be handle by a Dockerfile as a build-arg-file of
 # a given package, we create a target of the form lk-extra-opt/<pkg-name>/<env-var-name>
-LK_POSSIBLE_PKG_PLUS_BUILD_ARGS := pillar/IMM_PROFILING pillar/ARTIFICIAL_LEAK pillar/COVER pillar/FAULT_INJECTION kube/COVER
+LK_POSSIBLE_PKG_PLUS_BUILD_ARGS := pillar/IMM_PROFILING pillar/ARTIFICIAL_LEAK pillar/COVER pillar/FAULT_INJECTION kube/COVER witness/COVER
 LK_POSSIBLE_BUILD_ARG_TARGETS := $(addprefix lk-extra-opt/,$(LK_POSSIBLE_PKG_PLUS_BUILD_ARGS))
 
 .PHONY: lk-extra-opt/%
@@ -435,7 +435,7 @@ FORCE_BUILD_EVE=
 # rule below). Keyed by name, not a target-specific FORCE_BUILD variable:
 # those propagate to the whole prerequisite subtree in GNU Make, which
 # force-rebuilt their dependencies too (e.g. pkg/pillar via pkg/external-boot-image).
-FORCE_BUILD_PKGS=external-boot-image kube
+FORCE_BUILD_PKGS=external-boot-image kube witness
 
 # ROOTFS_DEPS enforces the scan of all rootfs image dependencies
 ifdef ROOTFS_DEPS
@@ -1104,6 +1104,11 @@ pkg/kernel:
 # existing kube image in cache and skips — keeping the OLD external-boot-image.tar
 # baked in, which the rootfs then ships to the device as /etc/external-boot-image.tar.
 # Forced via FORCE_BUILD_PKGS above, applied by the eve-% rule below.
+
+# Same trap for pkg/witness: it copies kube-init from KUBE_TAG, substituted
+# into the gitignored generated Dockerfile, so its tag does not change when
+# pkg/kube does. Forced via FORCE_BUILD_PKGS above, applied by the eve-% rule
+# below.
 
 pkg/kube/external-boot-image.tar: pkg/external-boot-image
 	$(eval BOOT_IMAGE_TAG := $(shell $(LINUXKIT) pkg show-tag --canonical pkg/external-boot-image))
