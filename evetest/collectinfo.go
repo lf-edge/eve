@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -309,6 +310,7 @@ func (th *TestHarness) collectCoverageFromDevice(ctx context.Context, devName st
 	ctx, cancel := context.WithTimeout(ctx, collectCoverageTimeout)
 	defer cancel()
 	const eveCoverageDir = "/persist/coverage"
+	const kubeInitCoverMarker = "/run/kube-init-cover"
 
 	th.log.Infof("Collecting coverage from device %q...", devName)
 
@@ -327,7 +329,28 @@ func (th *TestHarness) collectCoverageFromDevice(ctx context.Context, devName st
 			"coverage may be incomplete", devName, err)
 	}
 
-	// Wait for a new covcounters file to appear.
+	// kube-init (HV=k) flushes on SIGUSR2 too, but only a COVER=y build that
+	// is new enough announces that with this marker; signalling an older one
+	// would just never produce the extra counters file we would wait for.
+	// There can be several kube-init processes (e.g. the witness), each
+	// writing its own counters file.
+	expectedNew := 1
+	if th.runScriptOnEVEOverSSH(ctx, devName,
+		"test -e "+kubeInitCoverMarker, nil, nil, 0) == nil {
+		var pidsBuf bytes.Buffer
+		if err := th.runScriptOnEVEOverSSH(ctx, devName,
+			`pids=$(pgrep -x kube-init) && kill -USR2 $pids && echo "$pids" | wc -w`,
+			&pidsBuf, nil, 0); err != nil {
+			th.log.Warnf("SIGUSR2 to kube-init on device %q failed: %v; "+
+				"coverage may be incomplete", devName, err)
+		} else if n, convErr := strconv.Atoi(strings.TrimSpace(pidsBuf.String())); convErr == nil {
+			expectedNew += n
+		} else {
+			expectedNew++
+		}
+	}
+
+	// Wait for new covcounters files to appear.
 	if countErr != nil || beforeCount == "" {
 		th.log.Warnf("Failed to snapshot coverage file count on device %q (%v); "+
 			"using fixed 3s sleep", devName, countErr)
@@ -339,9 +362,14 @@ func (th *TestHarness) collectCoverageFromDevice(ctx context.Context, devName st
 	} else {
 		const pollInterval = 5 * time.Second
 		const waitTimeout = 30 * time.Second
+		before, convErr := strconv.Atoi(beforeCount)
+		if convErr != nil {
+			before = 0
+			expectedNew = 1
+		}
 		pollCmd := fmt.Sprintf(
-			`[ $(ls %s/covcounters.* 2>/dev/null | wc -l) -gt %s ]`,
-			eveCoverageDir, beforeCount)
+			`[ $(ls %s/covcounters.* 2>/dev/null | wc -l) -ge %d ]`,
+			eveCoverageDir, before+expectedNew)
 		deadline := time.Now().Add(waitTimeout)
 		for {
 			if th.runScriptOnEVEOverSSH(ctx, devName, pollCmd, nil, nil, 0) == nil {
