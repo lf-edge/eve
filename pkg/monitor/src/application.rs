@@ -459,7 +459,7 @@ impl Application {
                     }
                 };
 
-                let (mut sink, mut stream) = stream.split();
+                let (mut sink, mut stream) = stream.split::<bytes::Bytes>();
                 info!("IPC connection established");
                 has_connected = true;
                 ipc_tx.send(IpcMessage::Ready).unwrap();

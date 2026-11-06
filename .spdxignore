@@ -1,6 +1,6 @@
 eve-tools/bpftrace-compiler/root/bpftrace-helper/vendor/
 eve-tools/bpftrace-compiler/vendor
-pkg/dom0-ztools/rootfs/usr/bin/rungetty.sh
+pkg/getty/usr/bin/rungetty.sh
 pkg/edgeview/vendor/
 pkg/installer/src/vendor/
 pkg/installer/vendor/

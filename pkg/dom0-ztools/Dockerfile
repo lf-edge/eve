@@ -49,10 +49,12 @@ RUN register-sbom-pkg.sh -n zfs -v "${ZFS_VERSION}" -l CDDL-1.0 -u https://githu
 # Add directory for CDI files
 RUN mkdir -p /out/etc/cdi
 
+FROM lfedge/eve-getty:bb6413c720994bccf4089522ff1ac3404f6fdccf AS getty
 FROM scratch
 COPY --from=zfs /out/ /
 # hadolint ignore=DL3020
 ADD rootfs/ /
+COPY --from=getty /usr/bin/rungetty.sh /usr/bin/
 ### Create system-wide groups and users ###
 # add initial root user
 RUN touch /etc/group && touch /etc/passwd
