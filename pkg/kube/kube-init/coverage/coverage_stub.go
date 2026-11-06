@@ -8,3 +8,6 @@ package coverage
 
 // Flush is a no-op in non-coverage builds.
 func Flush() {}
+
+// FlushCoverageAndPeers is a no-op in non-coverage builds.
+func FlushCoverageAndPeers() {}

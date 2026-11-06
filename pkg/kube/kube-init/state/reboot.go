@@ -94,7 +94,7 @@ func RebootWithReason(reason string) error {
 	if err := prepareReboot(reason, BootReasonFile, RebootReasonFile); err != nil {
 		return err
 	}
-	coverage.Flush()
+	coverage.FlushCoverageAndPeers()
 	syncFS()
 	if err := rebootCmd(); err != nil {
 		return err

@@ -345,6 +345,7 @@ github.com/lf-edge/eve/pkg/pillar/sriov
 github.com/lf-edge/eve/pkg/pillar/types
 github.com/lf-edge/eve/pkg/pillar/utils/cgroup
 github.com/lf-edge/eve/pkg/pillar/utils/cloudconfig
+github.com/lf-edge/eve/pkg/pillar/utils/coverage
 github.com/lf-edge/eve/pkg/pillar/utils/file
 github.com/lf-edge/eve/pkg/pillar/utils/generics
 github.com/lf-edge/eve/pkg/pillar/utils/logging
