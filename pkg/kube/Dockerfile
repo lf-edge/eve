@@ -67,7 +67,12 @@ RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /ou
 # operator-facing CLI client that talks to its control socket.
 COPY kube-init /plugins/kube-init
 WORKDIR /plugins/kube-init
-RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /out/usr/bin/kube-init . && \
+ARG COVER=n
+# COVERFLAGS holds several flags, so it must be split into words.
+# hadolint ignore=SC2086
+RUN COVERFLAGS="" && \
+    if [ "$COVER" = "y" ]; then COVERFLAGS="-cover -covermode=atomic -tags cover"; fi && \
+    GO111MODULE=on CGO_ENABLED=0 go build -v $COVERFLAGS -ldflags "-s -w" -mod=vendor -o /out/usr/bin/kube-init . && \
     GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /out/usr/bin/k3s-sctl ./cmd/k3s-sctl
 
 FROM scratch
@@ -159,6 +164,11 @@ ADD https://github.com/kubevirt/kubevirt/releases/download/${VIRTCTL_VERSION}/vi
 RUN install virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH} /usr/bin/virtctl
 # We installed under /usr/bin. Remove the downloaded version
 RUN rm -f ./virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH}
+
+# Where a COVER=y kube-init writes its binary coverage data. Must be in the
+# environment at process start (the Go cover runtime reads it early). Harmless
+# for non-instrumented builds.
+ENV GOCOVERDIR=/persist/coverage
 
 ENTRYPOINT []
 CMD ["/usr/bin/kube-init"]
