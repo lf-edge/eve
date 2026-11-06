@@ -3,7 +3,7 @@
 # Copyright (c) 2023 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:a5885b38222df4ba5add4acca2d219c85741bf79 AS build
+FROM lfedge/eve-alpine:cda433a7600c2486a9011c2de8b7e676483e25ac AS build
 ENV BUILD_PKGS linux-headers musl-dev musl-utils musl-libintl git gcc g++ \
                autoconf autoconf-archive automake libtool make flex bison \
                bash sed gettext
