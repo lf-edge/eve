@@ -43,6 +43,9 @@ import (
 //     from the hard and soft values of dom0_mem, eve_mem and ctrd_mem, and the
 //     CPUs of dom0_max_vcpus, eve_max_vcpus and ctrd_max_vcpus (capped at the
 //     parent's) -- all read from the device's kernel command line.
+//   - /eve has the highest CPU weight (cpu.weight 10000), so that EVE gets its
+//     CPUs whenever it has work although applications whose CPUs are not
+//     pinned share them.
 //   - pillar's cgroup claims the memory.low of /eve/services, so the
 //     aggregate's protection reaches the services.
 //   - EVE never sets memory.high on pillar's cgroup.
@@ -56,10 +59,11 @@ import (
 //     limit; its cpuset.cpus, kept by runc when the service started, and its
 //     effective CPUs are /eve's, and so are the CPUs memory-monitor may run
 //     on. The device has more CPUs than /eve, so that differs from the
-//     root's. The group holds no containerd shim.
+//     root's. Its CPU weight is /eve's. The group holds no containerd shim.
 //   - KVM: the app's QEMU runs in the app's own cgroup under /eve-user-apps
 //     (from the qemu service's rootfs, but not in /eve/services/qemu); that
 //     cgroup has memory.max and the cpu.max of one vCPU ("100000 100000"),
+//     /eve-user-apps keeps the default CPU weight (100),
 //     and the app's DomainMetric reports non-zero memory use and CPU time
 //     (the cgroup v2 stats of its shim decode).
 //   - Kubevirt: kube-init's first-boot CPU loan widened /eve/containerd and
@@ -138,6 +142,7 @@ func TestCgroupTree(test *testing.T) {
 		t.Expect(f["memory.low["+cg+"]"]).To(Equal(strconv.FormatUint(soft, 10)), "%s memory.low", cg)
 		t.Expect(f["cpus["+cg+"]"]).To(Equal(w.cpus), "%s CPUs", cg)
 	}
+	t.Expect(f["weight[/eve]"]).To(Equal("10000"), "/eve cpu.weight")
 	t.Expect(f["memory.low[/eve/services/pillar]"]).To(Equal(f["memory.low[/eve/services]"]),
 		"pillar's memory.low")
 	t.Expect(f["memory.high[/eve/services/pillar]"]).To(Equal("max"))
@@ -155,6 +160,7 @@ func TestCgroupTree(test *testing.T) {
 			"the cgroup of the app's QEMU")
 		t.Expect(f["app.memory.max"]).ToNot(Equal("max"), "the app has no memory limit")
 		t.Expect(f["app.cpu.max"]).To(Equal("100000 100000"), "cpu.max of a 1-vCPU app")
+		t.Expect(f["weight[/eve-user-apps]"]).To(Equal("100"), "/eve-user-apps cpu.weight")
 		var metric struct {
 			CPUTotalNs uint64
 			UsedMemory uint32
@@ -200,6 +206,7 @@ func checkMemoryMonitorCgroup(t *WithT, f map[string]string, nproc, dom0 int) {
 		"/eve-memory-monitor cpuset.cpus is not /eve's CPUs after the service started")
 	t.Expect(f["mm.cpus"]).To(Equal(eveCPUs), "/eve-memory-monitor cpuset.cpus.effective")
 	t.Expect(f["mm.memory.max"]).To(Equal("max"), "/eve-memory-monitor has a memory limit")
+	t.Expect(f["mm.weight"]).To(Equal(f["weight[/eve]"]), "/eve-memory-monitor cpu.weight is not /eve's")
 
 	procs := strings.Fields(f["mm.procs"])
 	for _, pid := range pids {
@@ -235,6 +242,8 @@ for cg in /eve /eve/containerd /eve/services; do
     echo "memory.low[$cg]=$(cat $CG$cg/memory.low)"
     echo "cpus[$cg]=$(cat $CG$cg/cpuset.cpus.effective)"
 done
+echo "weight[/eve]=$(cat $CG/eve/cpu.weight)"
+echo "weight[/eve-user-apps]=$(cat $CG/eve-user-apps/cpu.weight 2>/dev/null)"
 echo "memory.low[/eve/services/pillar]=$(cat $CG/eve/services/pillar/memory.low)"
 echo "memory.high[/eve/services/pillar]=$(cat $CG/eve/services/pillar/memory.high)"
 echo "zedbox=$(tail -1 /proc/$(pgrep -o zedbox)/cgroup | cut -d: -f3)"
@@ -243,6 +252,7 @@ MM=$CG/eve-memory-monitor
 echo "mm.cpuset.cpus=$(cat $MM/cpuset.cpus)"
 echo "mm.cpus=$(cat $MM/cpuset.cpus.effective)"
 echo "mm.memory.max=$(cat $MM/memory.max)"
+echo "mm.weight=$(cat $MM/cpu.weight)"
 echo "mm.frozen=$(awk '$1 == "frozen" {print $2}' $MM/cgroup.events)"
 echo "mm.services-leaf=$(ls -d $CG/eve/services/memory-monitor 2>/dev/null)"
 echo "mm.pids=$(pgrep -x memory-monitor | tr '\n' ' ')"
