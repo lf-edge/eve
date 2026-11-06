@@ -66,6 +66,11 @@ go tool covdata merge -i "$CLEAN_DIRS" -o "$OUT_DIR"
 echo "$HEADING" >> "$GITHUB_STEP_SUMMARY"
 go tool covdata percent -i "$OUT_DIR" | tee -a "$GITHUB_STEP_SUMMARY"
 go tool covdata textfmt -i "$OUT_DIR" -o "$OUT_DIR.txt"
+# "go tool cover" resolves import paths through the module of its working
+# directory (pkg/pillar below), so files of other modules, e.g. kube-init,
+# can't be found that way. Absolute paths are used as is; a caller that renders
+# file names (e.g. an HTML report) maps them back to import paths.
+sed -i "s|^github.com/lf-edge/eve/pkg/kube/kube-init/|$(pwd)/pkg/kube/kube-init/|" "$OUT_DIR.txt"
 TOTAL=$(cd pkg/pillar && go tool cover -func="$OUT_DIR.txt" | tail -1)
 echo "$TOTAL"
 echo "**$TOTAL**" >> "$GITHUB_STEP_SUMMARY"

@@ -240,13 +240,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      # pkg/pillar is only for the coverage summary below.
+      # pkg/pillar and pkg/kube/kube-init are only for the coverage summary below.
       - name: Check out evetest-run-suite's shared scripts
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           sparse-checkout: |
             .github/actions/evetest-run-suite
             pkg/pillar
+            pkg/kube/kube-init
           persist-credentials: false
 
       - name: Compute the test-report subdirectory for this branch
@@ -420,8 +421,11 @@ jobs:
           BANNER+="EVE commit ${{ github.sha }} (${{ github.ref_name }}) -- "
           BANNER+="<a href='$RUN_URL'>nightly run ${{ github.run_number }}</a> -- $(date -u +%Y-%m-%d)</div>"
           (cd pkg/pillar && go tool cover -html=/tmp/overall-coverage.txt -o /tmp/overall-coverage.html)
-          sed "s|<body>|<body>$BANNER|" /tmp/overall-coverage.html \
-            > "gh-pages/$TEST_DIR/coverage/index.html"
+          # Also map the absolute paths merge-and-report-coverage.sh gave the
+          # kube-init files back to their import paths, as pillar's have.
+          sed -e "s|<body>|<body>$BANNER|" \
+              -e "s|$(pwd)/pkg/kube/kube-init/|github.com/lf-edge/eve/pkg/kube/kube-init/|g" \
+            /tmp/overall-coverage.html > "gh-pages/$TEST_DIR/coverage/index.html"
 
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
           COVERAGE_URL="https://${{ github.repository_owner }}.github.io/${REPO_NAME}/$TEST_DIR/coverage/"
