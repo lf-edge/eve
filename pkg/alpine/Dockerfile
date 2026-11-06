@@ -1,6 +1,6 @@
 # DON'T FORGET TO UPDATE THE HASH WHEN SOMETHING CHANGES!
 # please see https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#how-to-update-eve-alpine-package
-FROM lfedge/eve-alpine-base:17217d430af556ba0ddfb6a938c3b3ef93c9b512 AS cache-build
+FROM lfedge/eve-alpine:8c9af5568049068f10bc630065793c15d52fa931 AS cache-build
 
 ARG ALPINE_VERSION=3.22
 # this is only needed once, when this package
