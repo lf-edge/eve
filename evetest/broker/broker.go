@@ -1239,6 +1239,7 @@ func (b *broker) SetupDevices(
 
 		// Build EVE device specification for the provider.
 		dev.CPUs = uint(eveDevice.GetCpus())
+		dev.ThreadsPerCore = uint(eveDevice.GetThreadsPerCore())
 		dev.MemoryBytes = eveDevice.GetMemoryBytes()
 		dev.WithTPM = eveDevice.GetWithTpm()
 		dev.TPMPCRBanks = eveDevice.GetTpmPcrBanks()
