@@ -32,6 +32,7 @@ import (
 	"github.com/lf-edge/edge-containers/pkg/resolver"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/cgroup"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/identity"
 	runtimespecs "github.com/opencontainers/runtime-spec/specs-go"
@@ -702,13 +703,24 @@ func (client *Client) CtrStopContainer(ctx context.Context, containerID string, 
 	// to the err returned is worth anything at this point
 	_ = task.Kill(ctx, signal, containerd.WithKillAll)
 
+	// The domain's cgroup cannot go while the domain's helpers, its shim
+	// above all, still live in it; runc removes only the task's child.
+	if err := evictAppHelpers(cgroup.Root, containerID); err != nil {
+		logrus.Warnf("helpers of %s stay in its cgroup, which then stays behind: %v", containerID, err)
+	}
+
 	if force {
 		_, err = task.Delete(ctx, containerd.WithProcessKill)
 	} else {
 		_, err = task.Delete(ctx)
 	}
-
-	return err
+	if err != nil {
+		return err
+	}
+	if err := removeAppCgroup(cgroup.Root, containerID); err != nil {
+		logrus.Warnf("the cgroup of %s stays behind: %v", containerID, err)
+	}
+	return nil
 }
 
 // CtrDeleteContainer is a simple wrapper around container.Delete()
@@ -1040,6 +1052,12 @@ func StartUserContainerdInstance() error {
 	go func() {
 		err := cmd.Wait()
 		logrus.Fatalf("user containerd stopped: %v", err)
+	}()
+	go func() {
+		err := joinUserContainerdCgroup(cgroup.Root, "/proc", cmd.Process.Pid, userContainerdCgroupTimeout)
+		if err != nil {
+			logrus.Warnf("user containerd stays in its own cgroup: %v", err)
+		}
 	}()
 	return nil
 }

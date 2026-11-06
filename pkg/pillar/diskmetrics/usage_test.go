@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -326,5 +327,41 @@ func TestDom0DiskReservedSizeNewlogTerm(t *testing.T) {
 					tc.deviceDiskSize, tc.quotaMBytes, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestSizeFromDirStaysOnOneFilesystem(t *testing.T) {
+	log := base.NewSourceLogObject(logrus.StandardLogger(), t.Name(), 0) //nolint:staticcheck
+	tmpdir := t.TempDir()
+	for name, size := range map[string]int{
+		"a":         100,
+		"sub/b":     200,
+		"mnt/c":     400,
+		"sub/mnt/d": 800,
+	} {
+		path := filepath.Join(tmpdir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatalf("os.MkdirAll failed: %v", err)
+		}
+		if err := os.WriteFile(path, make([]byte, size), 0644); err != nil {
+			t.Fatalf("os.WriteFile failed: %v", err)
+		}
+	}
+	// A unit test cannot mount anything, so every directory named mnt stands
+	// in for a mount point: it is on device 2, the rest of the tree on 1.
+	defer func(orig func(os.FileInfo) (uint64, bool)) { fileDevice = orig }(fileDevice)
+	fileDevice = func(fi os.FileInfo) (uint64, bool) {
+		if fi.IsDir() && fi.Name() == "mnt" {
+			return 2, true
+		}
+		return 1, true
+	}
+
+	size, err := SizeFromDir(log, tmpdir, nil)
+	if err != nil {
+		t.Fatalf("SizeFromDir failed: %v", err)
+	}
+	if size != 300 {
+		t.Fatalf("SizeFromDir = %d, want 300: files under a mount point must not count", size)
 	}
 }

@@ -63,7 +63,9 @@ The cgroups hierarchy in EVE is as follows:
 │     └── <some services>
 ├── eve-memory-monitor    <--- the memory monitor, outside EVE's memory limit
 └── eve-user-apps
-    ├── <uuid1>           <--- user application 1
+    ├── <uuid1>           <--- user application 1: its memory limit and CPUs
+    │   ├── task          <--- the application itself, runc's cgroup
+    │   └── helpers       <--- its containerd shim and swtpm
     └── <uuid2>           <--- user application 2
 ```
 
@@ -86,7 +88,11 @@ The `eve/services` cgroup also contains services necessary for the EVE OS to
 function properly.
 
 All the user applications are running in the sub-cgroup of the `eve-user-apps`
-cgroup. Each user application has its own sub-cgroup.
+cgroup. Each user application has its own sub-cgroup, which carries its memory
+limit and its CPUs and holds two children: `task`, where runc runs the
+application, and `helpers`, where the processes EVE runs for it, its containerd
+shim and its swtpm, are charged, so that the application's memory limit covers
+them too and they run on the application's CPUs.
 
 ### Memory settings in EVE
 
