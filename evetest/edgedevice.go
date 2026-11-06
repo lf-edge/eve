@@ -1495,6 +1495,25 @@ func (d *EdgeDevice) waitUntilAppState(
 	}
 }
 
+// appStartTimeoutFloor is the least time any wait for an application to
+// reach RUNNING gets, whatever the caller asks for. EVE 14.5 always mounts
+// /persist with dirsync (the set_no_dirsync grub option that Setup adds to
+// every test device only exists from 16.0 on), and with it unpacking a
+// container image into its volume takes 4 to 20 minutes on the QEMU devices
+// evetest creates (measured median 4.6 min, maximum 19.2 min over 70
+// unpacks), while the tests budget 5 to 10 minutes. The price is that an
+// app that never comes up takes this long to fail the test.
+const appStartTimeoutFloor = 30 * time.Minute
+
+// appStartTimeout returns the requested app start timeout raised to
+// appStartTimeoutFloor.
+func appStartTimeout(requested time.Duration) time.Duration {
+	if requested < appStartTimeoutFloor {
+		return appStartTimeoutFloor
+	}
+	return requested
+}
+
 // WaitUntilAppIsRunning waits until the specified application reaches
 // the running state or fails.
 //
@@ -1509,6 +1528,7 @@ func (d *EdgeDevice) waitUntilAppState(
 // function fails immediately regardless of this timeout.
 func (d *EdgeDevice) WaitUntilAppIsRunning(
 	appUUID uuid.UUID, timeoutExcludingDownload time.Duration) {
+	timeoutExcludingDownload = appStartTimeout(timeoutExcludingDownload)
 	devUUID := d.getDevUUID()
 	appUUIDStr := appUUID.String()
 	d.appsBeingWaited.Store(appUUIDStr, struct{}{})
@@ -1817,7 +1837,7 @@ func (d *EdgeDevice) RebootApplication(appUUID uuid.UUID, waitUntilRebooted bool
 	}
 	d.ApplyConfig(config, false, false)
 	if waitUntilRebooted {
-		ctx, cancel := context.WithTimeout(d.th.ctx, timeout)
+		ctx, cancel := context.WithTimeout(d.th.ctx, appStartTimeout(timeout))
 		defer cancel()
 		d.waitUntilAppState(ctx, appUUID,
 			eveinfo.ZSwState_RESTARTING, eveinfo.ZSwState_HALTING)
@@ -1895,7 +1915,7 @@ func (d *EdgeDevice) PurgeApplication(appUUID uuid.UUID, volumeGen VolumeGenerat
 	}
 	d.ApplyConfig(config, false, false)
 	if waitUntilPurged {
-		ctx, cancel := context.WithTimeout(d.th.ctx, timeout)
+		ctx, cancel := context.WithTimeout(d.th.ctx, appStartTimeout(timeout))
 		defer cancel()
 		d.waitUntilAppState(ctx, appUUID,
 			eveinfo.ZSwState_PURGING, eveinfo.ZSwState_HALTING)
