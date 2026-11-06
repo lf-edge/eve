@@ -2,6 +2,323 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-06 -- 0.0.0-master-d87216a0 (run #9)](https://github.com/lf-edge/eve/actions/runs/42117633911)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/9/)
+
+### TestControllerFaultsSuite: failure analysis
+
+#### TestDeferredQueueDropsReported
+
+##### Failure
+
+```
+
+Timed out after 480.001s.
+When passed a matcher, ReceiveMatcher's channel *must* receive something.
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live/log evidence pins this down precisely: at 00:37:03–00:37:35 the device correctly stopped `reported-app` (zedmanager/domainmgr took it from RUNNING → HALTING → HALTED, confirmed by `AppInstanceStatus.State:119`=HALTED still showing on the live device). zedagent generated the corresponding `ZInfoApp{state:HALTED}` report and tried to send it at `00:37:35.169`, but the harness's fault proxy was still answering `POST .../info` with 404 at that moment, so zedagent logged `handleDeferred: ... dropping message, controller responded 404 Not Found` at `00:37:35.181` — exactly the "last message given up on" timestamp the test itself printed. The harness's `ClearControllerFaults()` only ran 3 seconds later (`00:37:38`), by which time that HALTED report was already permanently discarded from the deferred queue (404 is treated as non-retriable, unlike the 503 case). Adam's own log confirms it never received an `/info` POST for this app-UUID after that point, and the app has had no further state transition since, so nothing ever re-triggers a fresh publish — there is no periodic full-info resync for the normal cloud destination (only the LOC destination gets that). `settleApp`'s `Eventually(Receive(HALTED), 8m)` on `appUpdates` was therefore waiting for an event that pillar will structurally never send again, timing out at 480s as observed.
+
+This is a race in the test itself, not device/SDN flakiness: `DeactivateApplication` is issued while the 404 fault is still armed, and the fault is cleared only ~34ms after the HALTED report already got rejected/dropped, so the single terminal-state report is lost for good. Contrast with the sibling `TestDeferredQueueBacklogReported` (503/retriable fault), which passed in this same run — because 503s stay in the deferred queue and get redelivered once the fault clears, unlike 404 drops.
+
+This does not share a root cause with the other `TestControllerFaultsSuite` ledger entries (the `ReceiveMatcher`/"must receive something" signature previously seen for `TestKernelPanicReport` was an evetest `WatchLogs` subscription bug where the data *was* sitting in Adam's store; here the data never reached Adam at all — a different mechanism, confirmed by Adam's log showing no `/info` POST for this app after the drop). I found no prior ledger entry for `TestDeferredQueueDropsReported`/this exact test, so this looks like a new, first-time failure (test introduced 2026-08-28, fault-proxy-on-self enabled 2026-10-15) rather than a known/recurring issue — and because the race is deterministic in the test's own sequencing (deactivate-while-faulted, then clear-fault almost immediately), it should reproduce on every run rather than being infra flakiness.
+
+### TestDeviceConnectivitySuite: failure analysis
+
+#### TestPNACWithoutProxy
+
+##### Failure
+
+```
+
+Unexpected error:
+    <*errors.errorString | 0x3485ac95d5d0>: 
+    curl http://http-server.test/helloworld failed: 
+    {
+        s: "curl http://http-server.test/helloworld failed: ",
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence shows the device itself is healthy: `edge-dev` is `EVE_DEVICE_STATE_ONLINE`, has `172.20.20.123` on the authenticated VLAN, and when I re-ran the exact failing command over SSH (`curl http://http-server.test/helloworld`) it resolved DNS and got `HTTP/1.1 200 OK "Hello world!"` in ~1 second. The device's structured pillar logs for the failure window (22:30:45–22:30:53, from `/persist/newlog/keepSentQueue/dev.log.1793917957249.gz`) show only routine zedagent/zedrouter/watcher metrics activity — no network, DNS, or crash errors — and the console log shows no reboot or service failure around that time.
+
+The actual failure mechanism from `gotest.json`: the test's checkpoint sequence reached `ip-updated` at 22:30:43 (right after the 802.1x port-authentication/VLAN transition), the harness then SSH'd in at 22:30:48, and only 5.7 seconds later killed that SSH session with `"Killing SSH session ... due to stdout inactivity"` — the curl command simply hadn't produced output yet, likely because it was issued essentially immediately after the authenticated-VLAN transition, before DHCP/DNS/ARP had fully converged on that fresh network path, and the harness's inactivity timeout is very tight (~5s).
+
+This does not match the broader known/recurring "SDN VM/gRPC tunnel unreachable, `no route to host`" infrastructure flake documented repeatedly in `live-ledger.md` since 2026-10-29 — that signature involves the *broker* failing to reach the SDN VM's gRPC port, whereas here the SDN tunnel connected and stayed healthy throughout (confirmed by live `evetest sdn status` showing no errors). I found no prior entry in the ledger for `TestPNACWithoutProxy` or this "curl helloworld"/"stdout inactivity" signature, so this appears to be a new, first-occurrence flake — most likely a narrow test-timing race right after the PNAC VLAN transition, similar in spirit to the previously-logged `TestLACPBond` timing-margin flake, rather than an EVE/pillar code defect.
+
+### TestHardwareSuite: failure analysis
+
+#### TestUSBFlashDriveHotplug
+
+##### Failure
+
+```
+timed out after 10m0.002718068s (excluding download) waiting for app "69e7d7c0-8946-4191-a24e-7608a015dc07" (usb-flash) on device "hardware-dev" to reach RUNNING state (last state: HALTING)
+```
+
+##### Claude's conclusion
+
+These are just unrelated device-info blobs matching "Hardware" in product name text, not TestHardwareSuite entries. This confirms TestHardwareSuite/TestUSBFlashDriveHotplug has no prior entries in the ledger — this is new.
+
+Root cause found and confirmed live. Summary:
+
+**Root cause:** On the first boot attempt at 22:31:38, domainmgr launched `qemu-system-x86_64` for app `usb-flash` but the QMP socket and pidfile were never created (`/run/hypervisor/kvm/<uuid>.1.1/` stayed empty), so domainmgr gave up after 5 attempts at 22:32:14 ("Giving up waiting to connect to QEMU Monitor Protocol socket ... connect: no such file or directory") and marked the app HALTING/broken. Domainmgr then entered its standard boot-retry backoff (`maybeRetryBoot` counting down from ~373, consistent with the `timer.boot.retry` 600s-scale retry logic), which only succeeded on a later retry at 22:42 — confirmed live: the containerd task for that domain is now RUNNING (PID 9174, started ~22:42:52), the QMP socket/pidfile now exist, and `app-info` shows the app actually reached `RUNNING` with an IP. The evetest harness's 10-minute wait, however, had already expired before this successful retry landed, so the test timed out despite the app having eventually come up — this looks like a one-off transient QEMU/launch glitch on the first attempt (no kernel OOM, no dmesg errors, no permission denials found) rather than a logic bug in the retry path itself. This is not shared with any other failure in this run and doesn't match anything in the ledger — no entry for `TestHardwareSuite`/`TestUSBFlashDriveHotplug` or this QMP-socket symptom appears there, so this is a new failure, not a previously known recurring one.
+#### TestUSBHubChain
+
+##### Failure
+
+```
+
+Timed out after 180.001s.
+The function passed to Eventually failed at /evetest/tests/hardware/helpers_test.go:345 with:
+Unexpected error:
+    <*fmt.wrapError | 0x3c96481da920>: 
+    failed to execute script over SSH for app 4971c574-aebc-449f-9823-bf4eec05d429: EOF (stderr: )
+    {
+        msg: "failed to execute script over SSH for app 4971c574-aebc-449f-9823-bf4eec05d429: EOF (stderr: )",
+        err: <*errors.errorString | 0x22ac9d0>{s: "EOF"},
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+I have sufficient evidence to form a conclusion.
+
+**Likely root cause:** This is not a device crash/reboot or a repeat of this run's earlier `TestUSBFlashDriveHotplug` failure (that one was a one-off QMP-socket launch glitch at first boot — this device stayed up the whole time, with no panic stacks and the same uptime it had since initial power-on, so I don't believe it shares that root cause). Instead, after domainmgr reported the app `4971c574-aebc-449f-9823-bf4eec05d429` RUNNING at 22:50:04, the harness could not reach the port-forwarded SSH (172.20.20.22:2222 → 10.11.12.2:22) for the next ~2 minutes, cycling through `i/o timeout` / `no route to host` (22:50:07–22:51:53). The `dnsmasq-dhcp` log shows the guest only completed its DHCP exchange at 22:51:35 — about 90s after EVE considered the domain "RUNNING" — meaning the guest OS itself was still booting (kernel/USB enumeration/cloud-init) well past that point. A connection finally succeeded at 22:52:01, but the script execution over it returned `EOF`, consistent with the guest's sshd/network still settling under load, and the `Eventually` block's 180s deadline (from 22:50:04) expired at 22:53:04 before a stable session could be established. The DNAT/portmap rules and qemu process are confirmed correctly configured right now, so this looks like guest-boot/SSH-readiness flakiness (plausibly aggravated by nested-KVM boot jitter and/or the added complexity of enumerating the 4-deep USB hub chain inside the guest) rather than a config or reconciler bug. This exact test/symptom doesn't appear in the ledger, so it's a new failure, not a known recurring one.
+
+### TestLimitsSuite: failure analysis
+
+#### TestManyAppInterfaces
+
+##### Failure
+
+```
+
+Told to stop trying after 70.055s.
+pillar did not survive: the console shows: Rebooting EVE. Reason: panic: send on closed channelWatchdog report for IMGA EVE version 0.0.0-master-d87216a0-kvm-amd64 at 2026-11-05T23:13:43+00:00: 3 /run/zedbox.pid
+At one point, however, the function did return successfully.
+Yet, Eventually failed because the matcher was not satisfied:
+The function passed to Eventually failed at /evetest/tests/limits/helpers_test.go:128 with:
+all 15 applications are reported running has not happened yet
+Expected
+    <bool>: false
+to be true
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+The device crashed with a real pillar panic, not a flaky test: `/persist/reboot-stack` on the live device shows `panic: send on closed channel` in goroutine 10524, at `pkg/pillar/cmd/downloader/download.go:473` inside `objectMetadata`'s helper goroutine (`receiveChan <- nil`), spawned from `objectMetadata` itself (download.go:468). That `receiveChan` is the per-download-object channel created in `downloadHandler.create()` and explicitly `close()`d in `downloadHandler.delete()` (`pkg/pillar/cmd/downloader/handlers.go`). There's no synchronization preventing `delete()` from closing the channel while an in-flight `objectMetadata`/`syncOp` goroutine for that same download object still tries to write to it — a classic close-vs-send race. `TestManyAppInterfaces` provisions 15 apps with many interfaces simultaneously, which drives a burst of concurrent downloader config creates/deletes and makes this race far more likely to trigger than under normal load, consistent with the test's own failure (`all 15 applications are reported running` never became true because zedbox rebooted mid-run).
+
+I checked `live-ledger.md` (2724 lines, back through 2026-10-29) for any prior "panic" or "send on closed channel" entry and found none — all prior ledger failures are infrastructure/SDN-tunnel/broker outages, an unrelated failure class. This also does not share a root cause with anything else in this run (only one suite/test has failed so far). This looks like a newly-surfaced, genuine pillar concurrency bug in the downloader package rather than a known/recurring or infra issue.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestClusterPVCGCDeletesOnlyOrphans
+
+##### Failure
+
+```
+
+Timed out after 900.000s.
+The function passed to Eventually failed at /evetest/tests/cluster/pvcgc_test.go:115 with:
+node "edge-dev2" has no created VolumeStatus for volume badb0d1d-0086-4a85-9188-413b33d9bf8d
+Expected
+    <bool>: false
+to be true
+```
+
+##### Claude's conclusion
+
+Root cause confirmed, no PR diff was provided for this investigation.
+
+**Root cause:** `volumemgr` on `edge-dev2` is permanently stuck logging `WaitForLonghornReady: not ready yet: longhorn daemonset:engine-image-ei-b4bcf0a5 missing on this node` (continuously from before the test started through now, `pkg/pillar/kubeapi/kubeapi.go:396`), which is exactly why no `VolumeStatus` for volume `badb0d1d-0086-4a85-9188-413b33d9bf8d` is ever created on that node. `kubectl get node edge-dev2 --show-labels` shows it's labeled `tie-breaker-node=true`, while the Longhorn `engine-image`/`longhorn-csi-plugin`/`longhorn-manager` DaemonSets all carry `nodeSelector: tie-breaker-node=false` (confirmed live via `kubectl get ds -A -o wide`), so by design none of their pods ever schedule on `edge-dev2` and `WaitForLonghornReady` can never succeed there. The code is still unfixed: `pkg/pillar/volumehandlers/csihandler.go:106` calls `kubeapi.WaitForLonghornReady` unconditionally with no check against `EdgeNodeClusterConfig.IsTieBreakerNode`, exactly as previously documented at `pkg/pillar/kubeapi/longhorninfo.go:761`.
+
+This is a known, recurring issue — the identical "tie-breaker node + `has no created VolumeStatus`" failure and root cause were already diagnosed for this same test on **2026-11-02** (run #5), and it remains unfixed in the current code. It is a distinct mechanism from `TestClusterPVCGCDeletesOnlyOrphans`'s other historical failures (etcd/CDI-overload scheduling timeouts on 2026-11-01 and 2026-11-03), which were separate, unrelated causes. No PR diff was supplied for this investigation.
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.001s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+edge-dev1 (the designated node for this app) is unreachable, confirming it's down/suspect, consistent with the deliberate failover scenario and the known deadlock condition. I have sufficient evidence to conclude.
+
+**Root cause:** This is the same known, recurring zedmanager/zedkube "purge-after-failover" deadlock in `getKubeAppActivateStatus` (`pkg/pillar/cmd/zedmanager/zedmanager.go:2059`) that's already documented for this exact test. Live evidence on edge-dev2 confirms it: `AppInstanceStatus` for `failover-purge-app` (uuid `bce44c38-4b06-437e-924b-ab36473b2a41`) shows `PurgeInprogress:4`, `PurgeStartedAt:2026-11-06T04:31:11Z`, `Activated:false`, `IsDesignatedNodeID:false`, with zedmanager still logging the identical stuck loop "`not designated, node 7a00668e-..., onTheDevice false, statusRunning false`" as recently as 04:46:45Z (minutes ago, live). `evetest status` shows edge-dev1 in `EVE_DEVICE_STATE_SUSPECT` (confirmed unreachable via SSH — "failed to detect any IP address"), the deliberately-downed designated node for this failover scenario, so once the purge tore down the VMIRS nothing in the cluster can recreate it, matching the test's `found []`.
+
+This does not share a root cause with the earlier investigated failure in this same run (`TestClusterPVCGCDeletesOnlyOrphans`, a tie-breaker-node Longhorn scheduling issue) — it's a separate mechanism. Per the ledger, this exact failure in `TestVMAppPurgeDuringFailover` has been a known/recurring issue since **2026-10-29** (run #1) and reproduced in every nightly run through at least **2026-11-05** (run #8) — tonight's occurrence continues an unbroken streak of at least 9 consecutive nights with the identical signature. No PR diff was provided for this investigation.
+
+### TestNodeClusterSuite: failure analysis
+
+#### TestAppInstancePurge
+
+##### Failure
+
+```
+app "dc7e8ee5-9c9a-44e9-93c6-120cb934a7c9" (purge-app) on device "edge-dev" download stalled at 0% for more than 5m0s
+```
+
+##### Claude's conclusion
+
+**Root cause:** On the live `edge-dev`, all 6 `DownloaderStatus` entries for `purge-app`'s image blobs are pinned at `State:DOWNLOADING, Progress:0, TotalSize:0, CurrentSize:0` with no error, and the device logs show *zero* downloader activity (no HTTP/registry request, no `handleSyncOp` log line) for the full 5+ minutes since the configs were created at 07:18:29 — the registry itself is reachable (`curl 192.168.170.2:5000/v2/` returns `200`) and `zedbox` is alive, so this isn't a network/infra stall, it's a silent no-op in pillar. Tracing the code: `doUpdateContentTree` (`cmd/volumemgr/updatestatus.go`) only refreshes a reused root blob's `DatastoreIDList` when its state is `LOADED`, not `VERIFIED` — and the manifest blob (`333e5cba...`) for this image came back already `VERIFIED` (almost certainly a CAS-cached leftover from an earlier pull of the same image in this same purge-app test cycle) with an empty `DatastoreIDList`. That empty list propagates to every child blob created from the manifest (`getBlobChildren`), so each child's `DownloaderConfig.DatastoreIDList` ends up empty; `downloader`'s `prepareDatastoresList`/`doDownload` (`cmd/downloader/downloader.go`) treat zero datastores as "nothing to do, no error" rather than a failure, so the download loop runs zero iterations forever — matching the "stalled at 0%" symptom exactly, including the total absence of errors or retries.
+
+This does not match any prior "download stalled" ledger entry (those were a known registry/manifest-fetch-hang bug that stalls partway through at a nonzero percentage with a live, stuck TCP connection) — this is a distinct, code-level datastore-ID-loss bug, and a search of the ledger turns up no prior `TestAppInstancePurge` failure with this signature, so this looks new rather than recurring. No PR diff was supplied for this investigation.
+#### TestClusterVMApp
+
+##### Failure
+
+```
+Timed out waiting for app "8becf6b7-6bea-49f2-a275-840186bd46d4" to be scheduled in cluster "test-cluster"
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live inspection shows the cluster/SDN are healthy (all 3 k8s nodes `Ready`, no broker/SDN connectivity issues), but `edge-dev3` carries no `tie-breaker-node` label at all, whereas `edge-dev1`/`edge-dev2` are labeled `tie-breaker-node=false` — a leftover from an earlier tie-breaker-mode test on these reused devices. Because the `longhorn-manager`/`longhorn-csi-plugin`/`engine-image` DaemonSets are scoped with `nodeSelector: tie-breaker-node=false`, `edge-dev3` fails that selector too and never got a Longhorn manager pod scheduled on it (`kubectl get nodes.longhorn.io edge-dev3`: `Ready=False`, reason `ManagerPodMissing`). App `8becf6b7`'s root-volume PVC (`da67cfc9...`) got scheduled for its CDI-upload onto `edge-dev3` and has been repeatedly failing `FailedAttachVolume` ("node edge-dev3 is not ready") for 31+ minutes; the corresponding `VolumeStatus` is permanently stuck at `State:109` (`CREATING_VOLUME`) since 08:28:16, so the VM was never even created in kubevirt (`kubectl get vm/vmi` returns nothing) — explaining the 30-minute scheduling timeout.
+
+This is the identical "tie-breaker/Longhorn gating" bug already logged repeatedly in `live-ledger.md`, first seen 2026-11-02 (run #5) and recurring on multiple subsequent nights: `volumehandlers/csihandler.go`'s `PrepareVolume` calls `kubeapi.WaitForLonghornReady` unconditionally instead of skipping nodes Longhorn's daemonsets don't schedule on, per the documented contract in `pkg/pillar/kubeapi/longhorninfo.go:720-721`. Previously this manifested on a node explicitly labeled `tie-breaker-node=true`; tonight it's the same mechanism triggered a different way — `edge-dev3` ended up with no tie-breaker label after being reused/rejoined across this run's earlier cluster tests, which equally excludes it from the Longhorn selector. This is a known, unfixed, standing code gap, not a new bug — and it does not share a root cause with this run's other investigated failure (`TestAppInstancePurge`'s downloader datastore-ID-loss bug, a distinct, unrelated mechanism). No PR diff was supplied for this investigation.
+
+### TestSecuritySuite: failure analysis
+
+#### TestAppVTPMBackupRecoversPrimaryCorruption
+
+##### Failure
+
+```
+
+Timed out after 300.001s.
+The function passed to Eventually failed at /evetest/tests/security/vtpm_helpers_test.go:127 with:
+read guest TPM NV marker: ERROR:tcti:src/tss2-tcti/tcti-device.c:451:Tss2_Tcti_Device_Init() Failed to open specified TCTI device file /dev/tpmrm0: No such file or directory 
+ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-device.so.0 
+ERROR:tcti:src/tss2-tcti/tcti-device.c:451:Tss2_Tcti_Device_Init() Failed to open specified TCTI device file /dev/tpm0: No such file or directory 
+ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-device.so.0 
+WARNING:tcti:src/util/io.c:262:socket_connect() Failed to connect to host 127.0.0.1, port 2321: errno 111: Connection refused 
+ERROR:tcti:src/tss2-tcti/tcti-swtpm.c:613:Tss2_Tcti_Swtpm_Init() Cannot connect to swtpm TPM socket 
+ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-swtpm.so.0 
+WARNING:tcti:src/util/io.c:262:socket_connect() Failed to connect to host 127.0.0.1, port 2321: errno 111: Connection refused 
+ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-mssim.so.0 
+ERROR:tcti:src/tss2-tcti/tctildr-dl.c:269:tctildr_get_default() No standard TCTI could be loaded 
+ERROR:tcti:src/tss2-tcti/tctildr.c:430:Tss2_TctiLdr_Initialize_Ex() Failed to instantiate TCTI 
+ERROR: Could not load tcti, got: "(null)"
+
+Unexpected error:
+    <*fmt.wrapError | 0x2505dc199760>: 
+    failed to execute script over SSH for app 54a464b1-af95-4a57-bf6c-8b174b266b30: Process exited with status 1 (stderr: ERROR:tcti:src/tss2-tcti/tcti-device.c:451:Tss2_Tcti_Device_Init() Failed to open specified TCTI device file /dev/tpmrm0: No such file or directory 
+    ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-device.so.0 
+    ERROR:tcti:src/tss2-tcti/tcti-device.c:451:Tss2_Tcti_Device_Init() Failed to open specified TCTI device file /dev/tpm0: No such file or directory 
+    ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-device.so.0 
+    WARNING:tcti:src/util/io.c:262:socket_connect() Failed to connect to host 127.0.0.1, port 2321: errno 111: Connection refused 
+    ERROR:tcti:src/tss2-tcti/tcti-swtpm.c:613:Tss2_Tcti_Swtpm_Init() Cannot connect to swtpm TPM socket 
+    ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-swtpm.so.0 
+    WARNING:tcti:src/util/io.c:262:socket_connect() Failed to connect to host 127.0.0.1, port 2321: errno 111: Connection refused 
+    ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-mssim.so.0 
+    ERROR:tcti:src/tss2-tcti/tctildr-dl.c:269:tctildr_get_default() No standard TCTI could be loaded 
+    ERROR:tcti:src/tss2-tcti/tctildr.c:430:Tss2_TctiLdr_Initialize_Ex() Failed to instantiate TCTI 
+    ERROR: Could not load tcti, got: "(null)"
+    )
+    {
+        msg: "failed to execute script over SSH for app 54a464b1-af95-4a57-bf6c-8b174b266b30: Process exited with status 1 (stderr: ERROR:tcti:src/tss2-tcti/tcti-device.c:451:Tss2_Tcti_Device_Init() Failed to open specified TCTI device file /dev/tpmrm0: No such file or directory \nERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-device.so.0 \nERROR:tcti:src/tss2-tcti/tcti-device.c:451:Tss2_Tcti_Device_Init() Failed to open specified TCTI device file /dev/tpm0: No such file or directory \nERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-device.so.0 \nWARNING:tcti:src/util/io.c:262:socket_connect() Failed to connect to host 127.0.0.1, port 2321: errno 111: Connection refused \nERROR:tcti:src/tss2-tcti/tcti-swtpm.c:613:Tss2_Tcti_Swtpm_Init() Cannot connect to swtpm TPM socket \nERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-swtpm.so.0 \nWARNING:tcti:src/util/io.c:262:socket_connect() Failed to connect to host 127.0.0.1, port 2321: errno 111: Connection refused \nERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-mssim.so.0 \nERROR:tcti:src/tss2-tcti/tctildr-dl.c:269:tctildr_get_default() No standard TCTI could be loaded \nERROR:tcti:src/tss2-tcti/tctildr.c:430:Tss2_TctiLdr_Initialize_Ex() Failed to instantiate TCTI \nERROR: Could not load tcti, got: \"(null)\"\n)",
+        err: <*ssh.ExitError | 0x2505dd7de540>{
+            Waitmsg: {status: 1, signal: "", msg: "", lang: ""},
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+No vTPM mentions in run #7 (2026-11-04) or run #6 (2026-11-03) sections — only in run #5 (2026-11-02) and now tonight (run #8/9, 2026-11-05).
+
+###### Root cause
+
+The test's `expectGuestTPMMarker` timed out because the guest VM for app `vtpm-backup` (`54a464b1-...`) was launched with **no vTPM device at all**: the live `/run/domainmgr/domains/dom1.cfg` for that domain has zero `tpm`/`tpmdev` entries, so `/dev/tpm0`/`/dev/tpmrm0` never appear in the guest, matching the exact `tcti` "no such file" errors in the failure. Live `domainmgr` logs show why: at `22:51:15.108` it logged `Failed to setup vTPM ... context deadline exceeded` after `vtpmd`'s launch request exceeded domainmgr's fixed `swtpmTimeout = 10s` (`pkg/pillar/hypervisor/kvm.go:42,2320`), but `vtpmd` actually finished launching the `swtpm` process just ~1s later (`22:51:16.000`) — and that `swtpm` process is still alive and healthy on the host right now (`pid 6950`, keyed to the correct `tpm-state-54a464b1-...` dir). So the backend TPM exists and is fine; domainmgr simply gave up on wiring it into the qemu config before `vtpmd` responded.
+
+This is the identical race/timeout mechanism already diagnosed in this same ledger for `TestAppVTPMIdentitySurvivesReboots` (run #5, 2026-11-02): a slow `vtpmd` launch (there attributed to a ~58s PCR-unseal blocking the request handler) racing domainmgr's fixed 10s client timeout, producing a guest with no TPM device despite a perfectly good backend swtpm. It did not recur on 2026-11-03 or 2026-11-04 per the ledger, so this is a known/recurring issue first seen 2026-11-02, reappearing tonight (2026-11-05) on a different test exercising the same vtpmd/domainmgr timeout race, not a new regression. No other failures have been investigated yet in tonight's run to compare against, and no PR diff was supplied to assess code relatedness.
+#### TestVaultKeyModeRecoveryOnExt4
+
+##### Failure
+
+```
+Timed out waiting for device "edge-dev" to reboot
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+The device actually rebooted successfully — it just took too long for the test's fixed 5-minute budget. Live evidence from `gotest.json`: the second reboot was issued at `00:03:45`, state flipped to `REBOOTING` at `00:03:47`, and the test's `rebootAndWait` timed out at exactly `00:08:45` (the 5-minute mark, per `edgedevice.go:1386`/`vault_keymode_test.go:318`). The device then finished rebooting and reported `ONLINE` barely a minute later, at `00:09:51` (`total observed reboots this test: 2`). Live pillar logs on the now-recovered device show a completely clean boot (zboot/zedagent/baseosmgr state transitions with no errors), and `uptime` right after boot shows `load average: 5.48, 2.34, 0.89` on a device configured for 4 CPUs but seeing only 1 via `nproc` inside the guest — consistent with the shared hypervisor host being overcommitted/slow rather than any pillar hang.
+
+This is the identical mechanism already diagnosed for `TestVaultKeyModeRecoveryOnExt4`/`TestVaultKeyModeRecoveryOnZFS` in last night's run (2026-11-04, run #7, recorded in `live-ledger.md`): successful-but-slow VM power-cycles under host contention tipping over the test's fixed 5-minute reboot timeout. It does not share a root cause with the earlier vTPM failure investigated in this run (`live-investigation.md`), which was a domainmgr/vtpmd timeout race producing a guest with no TPM device — unrelated mechanism. Per the ledger, this specific reboot-timeout failure mode first appeared 2026-11-04 and is now recurring a second night in a row, so it's a known/recurring infrastructure-contention issue, not a new regression.
+
+### TestUpgradeSuite: failure analysis
+
+#### TestEVEUpgradeKVMtoKVM
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to reconfigure disks for device "edge-dev" after installation: failed to detach disk virtio0 from device "eve-c2c4fcd9-edge-dev": bad request: 400 Parameter verification failed. - {"virtio0":"unable to apply pending change virtio0 : lvremove 'pve/vm-105-disk-1' error:   Logical volume pve/vm-105-disk-1 in use.\n"}
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+This failure is entirely broker/Proxmox-side, not an EVE/pillar bug — no EVE device ever came up to inspect (`evetest status` shows "No EVE devices found", `evetest sdn status` reports the SDN client was never initialized at the point of failure). The timeline from `gotest.json`/broker logs: the installer completed successfully at 22:28:30, Proxmox VM 105 was removed at 22:28:58, and just 5 seconds later (22:29:03) the broker tried to reconfigure the device's disks (detach `virtio0`) as the next step, but Proxmox rejected it with `lvremove 'pve/vm-105-disk-1' ... Logical volume pve/vm-105-disk-1 in use` — i.e., the LVM logical volume backing the just-removed VM's disk hadn't yet been released (device-mapper node still held open) when the very next Proxmox API call tried to act on it. This is a timing race on the shared Proxmox host between VM teardown and the subsequent disk-reconfigure call, exactly the class of broker-side flakiness already called out in this same night's ledger entry for `TestThreeNodesUpgrade` (run #8), which hit different Proxmox symptoms (`unexpected end of JSON input`, `no worker upid`) from host overload during concurrent VM lifecycle operations — not the identical error signature, but the same underlying mechanism (Proxmox host races/overload under rapid VM create/remove/reconfigure cycles). I found no prior occurrence of this specific `lvremove`/"Logical volume in use" signature anywhere in `live-ledger.md`, so this particular manifestation is new tonight, though it fits the broader recurring Proxmox-infra-flake pattern documented since at least 2026-11-01.
+#### TestEVEUpgradeKubevirtToKubevirt
+
+##### Failure
+
+```
+timed out after 10m0.001913519s (excluding download) waiting for app "47cb8bd0-a71c-43b3-b830-a1b28b0c15a0" (upgrade-test-app) on device "edge-dev" to reach RUNNING state (last state: BOOTING)
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence shows the device itself is severely I/O-starved: `vmstat` on `edge-dev` shows 36–61% iowait and `top`/`uptime` shows load averages of 8.5–10.9 on a 4-vCPU box, 24 minutes after boot. The pod events for the stuck app (`virt-launcher-upgrade-test-app-47cb8-0sxrl5-zmbhz`) confirm this is actively blocking boot: `kubectl get vmi` shows the VMI still stuck in `Scheduled`/`READY: False` 2m13s after scheduling, and each step of container startup (volume attach, mount, image pull-from-cache, container create) took tens of seconds apiece rather than the usual sub-second — exactly the kind of stall severe storage contention causes. The Longhorn volume backing the app is also `DEGRADED` (one replica online, two offline), though that's expected/benign on this single-node cluster rather than the proximate cause.
+
+This is effectively the same root cause already recorded in this run's ledger entry for `TestEVEUpgradeKubevirtToKubevirt` (2026-11-05, run #8): that entry found 54% iowait and storage/control-plane pods flapping on liveness probes, blocking the K3s-node-ready wait; this occurrence shows the identical iowait/load-average signature, just caught at an earlier point in the same test (app never reaching RUNNING rather than the node never reaching fully-joined) — almost certainly the same host storage-contention episode rather than an independent bug. It does not share a root cause with the earlier `TestEVEUpgradeKVMtoKVM` failure in `live-investigation.md` (that one was a broker-side Proxmox `lvremove`/LVM-in-use race during teardown, unrelated to in-guest I/O). Per `live-ledger.md`, this storage-contention/iowait pattern stalling upgrade and other tests past their timeouts is a recurring, well-established infra flake going back to at least 2026-10-29, so this is a known/recurring issue, not a new one.
+#### TestThreeNodesUpgrade
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev1 edge-dev2 edge-dev3]: rpc error: code = Unknown desc = EVE installation timed out or failed for device "edge-dev2"
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+This is the same **Proxmox host overload during concurrent multi-VM provisioning** mechanism already identified for `TestThreeNodesUpgrade` elsewhere in `live-ledger.md`, but manifesting differently tonight. The broker log shows a transient Proxmox API failure during VM setup (`Attempt 1/3: failed to upload ".../OVMF_CODE.fd" to storage "local" (will retry): ... EOF` for edge-dev3 at 23:38:52) and generally slow installer progress: all three installers started "waiting for completion" around 23:41:47–23:41:50, but `edge-dev1` and `edge-dev3` only reported "EVE installation completed" at 23:51:17–23:51:21 — i.e. within seconds of the fixed 10-minute installer timeout — while `edge-dev2` never completed at all and was torn down once its deadline hit (23:51:51/23:51:55). `evetest status`/`sdn status` now confirm no device state survives to inspect further (`No EVE devices found`, `SDN client is not initialized`).
+
+This clearly shares the same root cause as the prior `TestThreeNodesUpgrade` failure already analyzed in this run's `live-investigation.md` (Proxmox host/broker overload during concurrent 3-VM + SDN provisioning causing installer timeouts) — same test, same timeout mechanism — though the specific symptom differs: the earlier occurrence failed immediately with `"unexpected end of JSON input"` during VM creation (no devices ever actually ran), whereas this one got all three VMs created and installers running, with two squeaking in just under the wire and the third missing the deadline, consistent with generalized host slowness rather than an outright API rejection.
+
+Per `live-ledger.md`, `TestThreeNodesUpgrade` installer timeouts under concurrent provisioning are a long-standing, recurring known issue dating back to at least 2026-11-01 (run #4), recurring repeatedly through 2026-11-03/04 and again twice tonight — so this is a continuation of that known recurring infra flake, not a new or EVE/pillar-side bug.
+
 ## [2026-11-05 -- 0.0.0-master-c28c009e (run #8)](https://github.com/lf-edge/eve/actions/runs/41921249629)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/8/)
