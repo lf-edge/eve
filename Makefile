@@ -39,7 +39,7 @@ endif
 EVE_SNAPSHOT_VERSION=0.0.0
 # which language bindings to generate for EVE API
 PROTO_LANGS=go python
-# Use 'make HV=acrn|xen|kvm|kubevirt' to build ACRN images (AMD64 only), Xen or KVM
+# Use 'make HV=xen|kvm|kubevirt' to build Xen, KVM or kubevirt images
 HV=$(HV_DEFAULT)
 # Enable development build (disabled by default)
 DEV=n
@@ -463,10 +463,23 @@ test: $(LINUXKIT) pkg/pillar test-images-patches | $(DIST)
 	make -C pkg/pillar test
 	cp pkg/pillar/results.json $(DIST)/
 	cp pkg/pillar/results.xml $(DIST)/
-	make -C eve-tools/bpftrace-compiler test
 	make -C pkg/dnsmasq test
 	make -C pkg/debug test
 	make -C pkg/vtpm test
+	$(QUIET): $@: Succeeded
+
+# The bpftrace-compiler tests boot QEMU for both amd64 and arm64, so they need
+# the eve-bpftrace package for each. A linuxkit cache entry holding a single
+# architecture shadows the registry's multi-arch manifest for every FROM naming
+# that tag, so --pull is needed to keep the entry complete. Everything reachable
+# from `test` above stays on the host architecture for the same reason.
+test-bpftrace:
+	$(MAKE) LINUXKIT_OPTS="$(strip $(LINUXKIT_OPTS) --pull)" pkg/bpftrace
+	$(MAKE) LINUXKIT_OPTS="$(strip $(LINUXKIT_OPTS) --pull)" ZARCH=arm64 pkg/bpftrace
+	make -C eve-tools/bpftrace-compiler test
+	$(QUIET): $@: Succeeded
+
+test-all: test test-bpftrace
 	$(QUIET): $@: Succeeded
 
 test-profiling:
@@ -491,18 +504,23 @@ $(DOCKERFILE_FROM_CHECKER): $(DOCKERFILE_FROM_CHECKER_DIR)/*.go $(DOCKERFILE_FRO
 # this next section checks that the FROM hashes for any image in any dockerfile anywhere here are consistent.
 # For example, one Dockerfile has foo:abc and the next has foo:def, it will flag them.
 # These are the packages that we are ignoring for now
-IGNORE_DOCKERFILE_HASHES_PKGS=alpine installer
+IGNORE_DOCKERFILE_HASHES_PKGS=alpine
 IGNORE_DOCKERFILE_HASHES_EVE_TOOLS=bpftrace-compiler
 
 IGNORE_DOCKERFILE_DOT_GO_DIR=$(shell find .go/ -name Dockerfile -exec echo "-i {}" \;)
-IGNORE_DOCKERFILE_EVETEST_DIR=$(shell find evetest/ -name Dockerfile -exec echo "-i {}" \;)
+IGNORE_DOCKERFILE_EVETEST_DIR=$(shell find dist/ evetest/ -name Dockerfile -exec echo "-i {}" \;)
+IGNORE_DOCKERFILE_DIST_DIR=$(shell find dist/ -name Dockerfile -exec echo "-i {}" \;)
 IGNORE_DOCKERFILE_HASHES_PKGS_ARGS=$(foreach pkg,$(IGNORE_DOCKERFILE_HASHES_PKGS),-i pkg/$(pkg)/Dockerfile)
 IGNORE_DOCKERFILE_HASHES_EVE_TOOLS_ARGS=$(foreach tool,$(IGNORE_DOCKERFILE_HASHES_EVE_TOOLS),$(addprefix -i ,$(shell find eve-tools/$(tool) -path '*/vendor' -prune -o -name Dockerfile -print)))
 
 .PHONY: check-docker-hashes-consistency
 check-docker-hashes-consistency: $(DOCKERFILE_FROM_CHECKER)
 	@echo "Checking Dockerfiles for inconsistencies"
-	$(DOCKERFILE_FROM_CHECKER) ./ $(IGNORE_DOCKERFILE_HASHES_PKGS_ARGS) $(IGNORE_DOCKERFILE_HASHES_EVE_TOOLS_ARGS) $(IGNORE_DOCKERFILE_DOT_GO_DIR) $(IGNORE_DOCKERFILE_EVETEST_DIR)
+	$(DOCKERFILE_FROM_CHECKER) ./ $(IGNORE_DOCKERFILE_HASHES_PKGS_ARGS) \
+		$(IGNORE_DOCKERFILE_HASHES_EVE_TOOLS_ARGS) \
+		$(IGNORE_DOCKERFILE_DOT_GO_DIR) \
+		$(IGNORE_DOCKERFILE_DIST_DIR) \
+		$(IGNORE_DOCKERFILE_EVETEST_DIR)
 
 yetus:
 	@echo Running yetus
@@ -1132,7 +1150,7 @@ docker-image-clean:
 	docker rmi -f $(shell ./tools/oldimages.sh)
 
 .PRECIOUS: rootfs-% $(ROOTFS)-%.img $(ROOTFS_COMPLETE)
-.PHONY: all clean test run pkgs help build-tools live rootfs config installer live current FORCE $(DIST) HOSTARCH image-set cache-export
+.PHONY: all clean test test-bpftrace test-all run pkgs help build-tools live rootfs config installer live current FORCE $(DIST) HOSTARCH image-set cache-export
 FORCE:
 
 help:
@@ -1151,6 +1169,8 @@ help:
 	@echo "Commonly used maintenance and development targets:"
 	@echo "   build-vm                         prepare a build VM for EVE in qcow2 format"
 	@echo "   test                             run EVE tests"
+	@echo "   test-bpftrace                    run the QEMU-based bpftrace-compiler tests (slow, ~1h)"
+	@echo "   test-all                         run both of the above"
 	@echo "   test-profiling                   run pillar tests with memory profiler"
 	@echo "   clean                            clean build artifacts in a current directory (doesn't clean Docker)"
 	@echo "   release                          prepare branch for a release (VERSION=x.y.z required)"

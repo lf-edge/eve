@@ -8,39 +8,33 @@
 # has a fast path for stack unwinding. This also happens
 # to be a perfect place to put any other kind of debug info
 # into the package: see abuild/etc/abuild.conf.
-FROM lfedge/eve-recovertpm:827a0328180abf4cb365c3d375e6a89a76ddcb39 AS recovertpm
-FROM lfedge/eve-bpftrace:49b22c5e0daaf4e380fa18ffafdba7cfbdfb9f43 AS bpftrace
-FROM lfedge/eve-alpine:80c5dbe1085d0650030be8a110eaec66ef532672 AS build
-ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg ncurses-dev autoconf openssl-dev zlib-dev jq pciutils usbutils lsblk"
+FROM lfedge/eve-recovertpm:7d8f0bf3f6d32269208199a14b82c548a4a80580 AS recovertpm
+FROM lfedge/eve-bpftrace:309ff5f9cc5d018cacda8de4becef0bee001ac24 AS bpftrace
+FROM lfedge/eve-alpine:a5885b38222df4ba5add4acca2d219c85741bf79 AS build
+ENV BUILD_PKGS="abuild curl tar make linux-headers patch g++ git gcc gpg gettext gettext-static ncurses-dev jq autoconf openssl-dev zlib-dev zlib-static gpg-agent pciutils usbutils lsblk"
 # Feel free to add additional packages here, but be aware that
 # EVE's rootfs image can be no larger than 300Mb (and don't
 # forget to check on all supported architectures: e.g. arm64
-# binaries are typically larger and amd64 ones).
+# binaries are typically larger than amd64 ones).
 # RUN apk add --no-cache gdb valgrind
-ENV PKGS="openssl tini util-linux ca-certificates pciutils usbutils vim tcpdump perf strace iproute2-minimal curl zlib"
-
-# These packages are not available on the riscv arch, so I have no idea how
-# deliver those, but still install them on other archs.
-ENV PKGS_amd64="procps tar dmidecode iptables dhcpcd tio socat"
-ENV PKGS_arm64="procps tar dmidecode iptables dhcpcd tio socat"
+ENV PKGS="openssl openssh-client openssh-server tini util-linux ca-certificates pciutils usbutils tcpdump strace iproute2-minimal curl zlib procps-ng tar dmidecode iptables dhcpcd tio socat"
 
 RUN eve-alpine-deploy.sh
 
-ENV LSHW_VERSION="02.19.2"
-ENV OPENSSH_VERSION="9.8p1"
+ENV LSHW_VERSION="02.20"
 
 # setting up building account
 RUN adduser -G abuild -D builder || :
 RUN abuild-keygen -a -n
 
 COPY --chown=builder:abuild abuild/ /
-ENV MUSL_VERSION="1.2.3"
+ENV MUSL_VERSION="1.2.5"
 ENV DISTFILES_MIRROR="/tmp/mirror"
 RUN mkdir -p ${DISTFILES_MIRROR}
 ADD --chown=builder:abuild http://ftp.us.debian.org/debian/pool/main/m/musl/musl_${MUSL_VERSION}.orig.tar.gz /var/cache/distfiles//musl-v${MUSL_VERSION}.tar.gz
 WORKDIR /musl
 RUN abuild -F checksum
-RUN abuild -r -F
+RUN abuild -r -F || :
 
 WORKDIR /
 # now install it locally so we can pick it up later on below
@@ -59,7 +53,7 @@ WORKDIR /lshw-B.${LSHW_VERSION}
 RUN for patch in *.patch; do \
     patch -p1 < "$patch"; \
     done && \
-    make -C src RPM_OPT_FLAGS=-DNONLS static && \
+    make -C src VERSION=B.${LSHW_VERSION} NO_VERSION_CHECK=1  RPM_OPT_FLAGS=-DNONLS ZLIB=1 GZIP="busybox gzip -n9" static && \
     cp src/lshw-static /out/usr/bin/lshw && strip /out/usr/bin/lshw
 
 # building hexedit
@@ -68,50 +62,6 @@ WORKDIR /tmp/hexedit/hexedit-1.5
 ADD https://github.com/pixel/hexedit/archive/refs/tags/1.5.tar.gz ../1.5.tar.gz
 RUN tar -C .. -xzvf ../1.5.tar.gz
 RUN ./autogen.sh && ./configure && make DESTDIR=/out install
-
-WORKDIR /usr/src
-ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz /usr/src
-ADD https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-${OPENSSH_VERSION}.tar.gz.asc /usr/src
-COPY ssh/RELEASE_KEY.asc /usr/src
-RUN gpg --import RELEASE_KEY.asc || :
-RUN gpg --verify openssh-${OPENSSH_VERSION}.tar.gz.asc openssh-${OPENSSH_VERSION}.tar.gz
-RUN tar xvf openssh-${OPENSSH_VERSION}.tar.gz
-WORKDIR /usr/src/openssh-${OPENSSH_VERSION}
-COPY ssh/fix-utmpx-ipv6.patch .
-RUN git apply fix-utmpx-ipv6.patch
-RUN ./configure \
-    --prefix=/usr \
-    --sysconfdir=/etc/ssh \
-    --mandir=/usr/share/man \
-    --with-pid-dir=/run \
-    --with-mantype=doc \
-    --disable-utmp \
-    --disable-wtmp \
-    --disable-lastlog \
-    --disable-strip \
-    --with-privsep-path=/var/empty \
-    --with-xauth=/usr/bin/xauth \
-    --with-default-path='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
-    --with-privsep-user=sshd \
-    --with-ssl-engine
-
-RUN make -j "$(getconf _NPROCESSORS_ONLN)"
-RUN make install
-RUN HARNESS_JOBS="$(getconf _NPROCESSORS_ONLN)" make tests
-
-RUN /usr/bin/install -c -m 0755 -s ssh /out/usr/bin/ssh
-RUN /usr/bin/install -c -m 0755 -s scp /out/usr/bin/scp
-RUN /usr/bin/install -c -m 0755 -s ssh-keygen /out/usr/bin/ssh-keygen
-RUN /usr/bin/install -c -m 0755 -s sshd /out/usr/sbin/sshd
-RUN /usr/bin/install -c -m 0755 -s sshd-session /out/usr/libexec/sshd-session
-RUN /usr/bin/install -c -m 4711 -s ssh-keysign /out/usr/libexec/ssh-keysign
-RUN /usr/bin/install -c -m 0755 -s ssh-pkcs11-helper /out/usr/libexec/ssh-pkcs11-helper
-RUN /usr/bin/install -c -m 0755 -s ssh-sk-helper /out/usr/libexec/ssh-sk-helper
-RUN /usr/bin/install -c -m 0755 -s sftp /out/usr/bin/sftp
-RUN /usr/bin/install -c -m 0755 -s sftp-server /out/usr/libexec/sftp-server
-RUN mkdir -p /out/etc/ssh
-COPY ssh/* /out/etc/ssh/
-RUN mkdir -p /out/var/empty
 
 # tweaking various bit
 WORKDIR /out
@@ -126,10 +76,15 @@ COPY tests/lsusb /tmp/bin
 RUN chmod a+x /tmp/bin/lsusb
 RUN PATH=/tmp/bin:$PATH /out/usr/bin/spec.sh -u 2>/dev/null | jq .
 
-RUN mkdir -p ./etc/ssh ./root/.ssh
-RUN chmod 0700 ./root/.ssh
+RUN mkdir -p ./etc/ssh ./root/.ssh && chmod 0700 ./root/.ssh
 RUN cp /etc/passwd /etc/group ./etc/
 RUN ln -s /run ./var/run
+RUN sed -i -e 's#AllowTcpForwarding.*$#AllowTcpForwarding yes#' ./etc/ssh/sshd_config
+# No account has a password, so key-only login changes nothing that is
+# allowed; it stops sshd from offering password methods to the network.
+RUN mkdir -p ./etc/ssh/sshd_config.d && \
+    printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\n' \
+      > ./etc/ssh/sshd_config.d/10-eve-pubkey-only.conf
 
 RUN mkdir /bpftrace
 COPY --from=bpftrace / /bpftrace
@@ -144,7 +99,6 @@ FROM build AS test
 COPY collect-info-test /collect-info-test
 WORKDIR /collect-info-test
 RUN go test
-
 
 FROM scratch
 ENTRYPOINT []

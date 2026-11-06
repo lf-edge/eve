@@ -1,0 +1,86 @@
+From: Christoph Ostarek <christoph@zededa.com>
+Date: Fri, 6 Nov 2026 13:00:00 +0000
+Subject: [PATCH 4/4] AOT: report helper errors safely
+
+RequiredResources::helper_error_info is not part of the AOT payload, so
+the runtime shim looks every helper error up as func_id -1 and prints
+bpf_func_name[-1]: an out-of-bounds read that puts the output stream
+into a failed state, after which bpftrace prints nothing at all (seen
+with 0.23's new check of map_delete_elem returning -ENOENT, which the
+EVE PCI-access tracer hits on every exit of a process older than the
+tracer). Serialize the helper id (the parser location is not
+serializable and only decorates the message) and make the name lookup
+tolerate ids outside the table.
+
+Signed-off-by: Christoph Ostarek <christoph@zededa.com>
+---
+diff --git a/src/output.cpp b/src/output.cpp
+index 4cf9c51..a969566 100644
+--- a/src/output.cpp
++++ b/src/output.cpp
+@@ -11,6 +11,18 @@ namespace libbpf {
+ #define __BPF_NAME_FN(x) #x
+ const char *bpf_func_name[] = { __BPF_FUNC_MAPPER(__BPF_NAME_FN) };
+ #undef __BPF_NAME_FN
++
++// Name of a helper by id, "unknown" when the id is outside the table (e.g. an
++// AOT payload without helper info reports func_id -1).
++static const char *safe_bpf_func_name(int func_id)
++{
++  if (func_id < 0 ||
++      static_cast<size_t>(func_id) >=
++          sizeof(bpf_func_name) / sizeof(bpf_func_name[0]) ||
++      bpf_func_name[func_id] == nullptr)
++    return "unknown";
++  return bpf_func_name[func_id];
++}
+ } // namespace libbpf
+ 
+ namespace bpftrace {
+@@ -839,7 +851,7 @@ void TextOutput::helper_error(int func_id,
+ {
+   LOG(WARNING, loc, out_) << get_helper_error_msg(func_id, retcode)
+                           << "\nAdditional Info - helper: "
+-                          << libbpf::bpf_func_name[func_id]
++                          << libbpf::safe_bpf_func_name(func_id)
+                           << ", retcode: " << retcode;
+ }
+ 
+@@ -1138,7 +1150,7 @@ void JsonOutput::helper_error(int func_id,
+ {
+   out_ << R"({"type": "helper_error", "msg": ")"
+        << get_helper_error_msg(func_id, retcode) << R"(", "helper": ")"
+-       << libbpf::bpf_func_name[func_id] << R"(", "retcode": )" << retcode
++       << libbpf::safe_bpf_func_name(func_id) << R"(", "retcode": )" << retcode
+        << ", \"line\": " << loc.begin.line << ", \"col\": " << loc.begin.column
+        << "}" << std::endl;
+ }
+diff --git a/src/required_resources.h b/src/required_resources.h
+index 6f77d3b..4556f0c 100644
+--- a/src/required_resources.h
++++ b/src/required_resources.h
+@@ -22,6 +22,14 @@ class BPFtrace;
+ struct HelperErrorInfo {
+   int func_id = -1;
+   location loc;
++
++  // The parser location is not serializable; the AOT runtime only needs the
++  // helper id to report a helper error.
++  template <typename Archive>
++  void serialize(Archive &archive)
++  {
++    archive(func_id);
++  }
+ };
+ 
+ struct LinearHistogramArgs {
+@@ -158,8 +166,7 @@ private:
+             strftime_args,
+             cat_args,
+             non_map_print_args,
+-            // Hard to annotate flex types, so skip
+-            // helper_error_info,
++            helper_error_info,
+             printf_args,
+             probe_ids,
+             maps_info,

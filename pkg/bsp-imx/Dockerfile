@@ -4,10 +4,10 @@
 ARG BUILD_PKGS_BASE="bash binutils-dev build-base bc bison flex openssl-dev util-linux-dev swig gnutls-dev perl python3 python3-dev py3-setuptools py3-pycryptodome py3-elftools"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:80c5dbe1085d0650030be8a110eaec66ef532672
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:a5885b38222df4ba5add4acca2d219c85741bf79
 
 # OPTEE-OS images
-FROM lfedge/eve-optee-os:9823033d4c4168781e6ef4202a7de050c345863d AS optee-os
+FROM lfedge/eve-optee-os:550c597862877f8230bf0108c2ae3d55286435eb AS optee-os
 
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} as build-native
@@ -20,7 +20,7 @@ ARG BUILD_PKGS_BASE
 RUN BUILD_PKGS="${BUILD_PKGS_BASE}" eve-alpine-deploy.sh
 
 # hadolint ignore=DL3029
-FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:384f40eb85fc07443bfbf74e254eef5c887c09d9 AS cross-compilers
+FROM --platform=${BUILDPLATFORM} lfedge/eve-cross-compilers:65d07c4c006c9e78b4351cc8dcab20bfffc085f8 AS cross-compilers
 
 # will use several packages from target arch and copy them to sysroot
 # hadolint ignore=DL3006
@@ -114,6 +114,8 @@ RUN for t in ${ATF_TARGETS}; do \
             IMX_BOOT_UART_BASE="${uartbase}" \
             PLAT=${target} \
             SPD=${spd} \
+            CFLAGS="-Wno-array-bounds" \
+            LDFLAGS="--no-warn-rwx-segments" \
             bl31 ;\
          [ "$spd" = "none" ] && \
             mv build/${target}/release/bl31.bin /uboot-firmwares/${t}-bl31.bin || \

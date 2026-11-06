@@ -81,6 +81,23 @@ func parseYMLfile(fileName string) []string {
 	return deps
 }
 
+type argsEnvGetter struct {
+	args map[string]string
+}
+
+func (aeg *argsEnvGetter) Get(key string) (string, bool) {
+	val, found := aeg.args[key]
+	return val, found
+}
+
+func (aeg *argsEnvGetter) Keys() []string {
+	keys := make([]string, 0, len(aeg.args))
+	for key := range aeg.args {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
 func parseDockerfile(f io.Reader) []string {
 	dt, err := io.ReadAll(f)
 	if err != nil {
@@ -126,7 +143,7 @@ func parseDockerfile(f io.Reader) []string {
 
 	targetsMap := make(map[string]struct{})
 	for _, st := range stages {
-		pResult, err := shlex.ProcessWordWithMatches(st.BaseName, args)
+		pResult, err := shlex.ProcessWordWithMatches(st.BaseName, &argsEnvGetter{args: args})
 		if err != nil {
 			panic(err)
 		}

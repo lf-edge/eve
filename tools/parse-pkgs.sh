@@ -90,14 +90,12 @@ resolve_tags() {
 gen_tags() {
 cat <<EOF
 CURDIR=$(pwd)
-ACRN_KERNEL_TAG=${ACRN_KERNEL_TAG}
 KERNEL_TAG=${KERNEL_TAG}
 FW_TAG=${FW_TAG}
 XENTOOLS_TAG=${XENTOOLS_TAG}
 DOM0ZTOOLS_TAG=${DOM0ZTOOLS_TAG}
 RNGD_TAG=${RNGD_TAG}
 XEN_TAG=${XEN_TAG}
-ACRN_TAG=${ACRN_TAG}
 DNSMASQ_TAG=${DNSMASQ_TAG}
 TESTMSVCS_TAG=${TESTMSVCS_TAG}
 PILLAR_TAG=${PILLAR_TAG}
@@ -123,7 +121,6 @@ DEBUG_TAG=${DEBUG_TAG}
 VTPM_TAG=${VTPM_TAG}
 UEFI_TAG=${UEFI_TAG}
 EVE_TAG=${EVE_TAG:-}
-KVMTOOLS_TAG=${KVMTOOLS_TAG}
 IPXE_TAG=${IPXE_TAG}
 KEXEC_TAG=${KEXEC_TAG}
 KDUMP_TAG=${KDUMP_TAG}
@@ -139,11 +136,9 @@ MONITOR_TAG=${MONITOR_TAG}
 EOF
 }
 
-ACRN_KERNEL_TAG=$(linuxkit_tag pkg/acrn-kernel)
 FW_TAG=$(linuxkit_tag pkg/fw)
 XENTOOLS_TAG=$(linuxkit_tag pkg/xen-tools)
 XEN_TAG=$(linuxkit_tag pkg/xen)
-ACRN_TAG=$(linuxkit_tag pkg/acrn)
 GRUB_TAG=$(linuxkit_tag pkg/grub)
 UBOOT_TAG=$(linuxkit_tag pkg/u-boot)
 DNSMASQ_TAG=$(linuxkit_tag pkg/dnsmasq)
@@ -169,7 +164,6 @@ NVIDIA_TAG=$(linuxkit_tag pkg/nvidia)
 DEBUG_TAG=$(linuxkit_tag pkg/debug)
 VTPM_TAG=$(linuxkit_tag pkg/vtpm)
 UEFI_TAG=$(linuxkit_tag pkg/uefi)
-KVMTOOLS_TAG=$(linuxkit_tag pkg/kvm-tools)
 IPXE_TAG=$(linuxkit_tag pkg/ipxe)
 KEXEC_TAG=$(linuxkit_tag pkg/kexec)
 KDUMP_TAG=$(linuxkit_tag pkg/kdump)
