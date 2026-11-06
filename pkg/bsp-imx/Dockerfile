@@ -4,10 +4,10 @@
 ARG BUILD_PKGS_BASE="bash binutils-dev build-base bc bison flex openssl-dev util-linux-dev swig gnutls-dev perl python3 python3-dev py3-setuptools py3-pycryptodome py3-elftools"
 
 # we use the same image in several places
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:a5885b38222df4ba5add4acca2d219c85741bf79
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:cda433a7600c2486a9011c2de8b7e676483e25ac
 
 # OPTEE-OS images
-FROM lfedge/eve-optee-os:9686414b4b3bee75628fffa00fe96442d4ff0b54 AS optee-os
+FROM lfedge/eve-optee-os:8a7a0e474f0d53246025cce89c364b44daa96ae0 AS optee-os
 
 # hadolint ignore=DL3006
 FROM ${EVE_ALPINE_IMAGE} AS build-native
