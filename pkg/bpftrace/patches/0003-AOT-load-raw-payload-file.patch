@@ -1,0 +1,115 @@
+From: Christoph Ostarek <christoph@zededa.com>
+Date: Fri, 6 Nov 2026 01:00:00 +0000
+Subject: [PATCH 3/3] AOT: load a raw payload file given as argument
+
+EVE ships the AOT payload (the .btaot section data kept by patch 1) to
+the device and runs `bpftrace-aotrt -f json <file>` (pillar's HTTP
+debug handler and eve-tools/bpftrace-compiler). bpftrace 0.23 only
+loads the section from its own executable and refuses to run as
+bpftrace-aotrt, so restore the 0.20 behaviour: an optional positional
+argument names the AOT file, and load() accepts a raw payload (header
+at offset 0) in addition to an ELF carrying a .btaot section.
+
+Signed-off-by: Christoph Ostarek <christoph@zededa.com>
+---
+diff --git a/src/aot/aot.cpp b/src/aot/aot.cpp
+index f547a97..5bcf103 100644
+--- a/src/aot/aot.cpp
++++ b/src/aot/aot.cpp
+@@ -241,8 +241,26 @@ int load(BPFtrace &bpftrace, const std::string &in)
+   char *secname = nullptr;
+   Elf_Data *data = nullptr;
+   uint8_t *btaot_section = nullptr;
++  uint8_t *raw = nullptr;
+   const Header *hdr;
+ 
++  // EVE: a raw .btaot payload (as kept by the AOT-keep-intermediate-code
++  // patch and shipped to the device) starts with the AOT header; load it
++  // directly instead of looking for the section in an ELF binary.
++  if (in_file_size >= sizeof(Header)) {
++    raw = static_cast<uint8_t *>(
++        ::mmap(nullptr, in_file_size, PROT_READ, MAP_PRIVATE, infd, 0));
++    if (raw == MAP_FAILED) {
++      raw = nullptr;
++    } else if (reinterpret_cast<const Header *>(raw)->magic == AOT_MAGIC) {
++      btaot_section = raw;
++    } else {
++      ::munmap(raw, in_file_size);
++      raw = nullptr;
++    }
++  }
++
++  if (btaot_section == nullptr) {
+   if (elf_version(EV_CURRENT) == EV_NONE) {
+     LOG(ERROR) << "Cannot set libelf version: " << elf_errmsg(-1);
+     err = 1;
+@@ -296,6 +314,7 @@ int load(BPFtrace &bpftrace, const std::string &in)
+       break;
+     }
+   }
++  } // ELF lookup
+ 
+   // Validate .btaot header
+   hdr = reinterpret_cast<const Header *>(btaot_section);
+@@ -347,6 +366,8 @@ int load(BPFtrace &bpftrace, const std::string &in)
+ out:
+   if (elf)
+     elf_end(elf);
++  if (raw)
++    ::munmap(raw, in_file_size);
+ 
+   close(infd);
+   return err;
+diff --git a/src/aot/aot_main.cpp b/src/aot/aot_main.cpp
+index 3967b76..5bd7d60 100644
+--- a/src/aot/aot_main.cpp
++++ b/src/aot/aot_main.cpp
+@@ -73,13 +73,6 @@ int main(int argc, char* argv[])
+     option{ nullptr, 0, nullptr, 0 }, // Must be last
+   };
+ 
+-  std::filesystem::path p(argv[0]);
+-  if (p.filename() == aot::AOT_SHIM_NAME) {
+-    LOG(ERROR) << "Runtime shim should not be run directly, please generate a "
+-                  "binary using --aot option in bpftrace";
+-    return 1;
+-  }
+-
+   while ((c = getopt_long(argc, argv, short_opts, long_opts, nullptr)) != -1) {
+     switch (c) {
+       case 'o':
+@@ -118,9 +111,24 @@ int main(int argc, char* argv[])
+     }
+   }
+ 
++  // EVE: the shim may also be run directly with a raw AOT payload file
++  // (the .btaot section data kept by the AOT-keep-intermediate-code patch)
++  // as its only positional argument, as bpftrace-aotrt <= 0.20 allowed.
++  std::string aot_file;
++  std::filesystem::path p(argv[0]);
+   if (argv[optind]) {
+-    usage(std::cerr, argv[0]);
++    if (argv[optind + 1]) {
++      usage(std::cerr, argv[0]);
++      return 1;
++    }
++    aot_file = argv[optind];
++  } else if (p.filename() == aot::AOT_SHIM_NAME) {
++    LOG(ERROR) << "Runtime shim should not be run directly, please generate a "
++                  "binary using --aot option in bpftrace or pass an AOT "
++                  "payload file";
+     return 1;
++  } else {
++    aot_file = argv[0];
+   }
+ 
+   check_is_root();
+@@ -133,7 +141,7 @@ int main(int argc, char* argv[])
+ 
+   BPFtrace bpftrace(std::move(output));
+ 
+-  int err = aot::load(bpftrace, argv[0]);
++  int err = aot::load(bpftrace, aot_file);
+   if (err) {
+     LOG(ERROR) << "Failed to load AOT script";
+     return err;
