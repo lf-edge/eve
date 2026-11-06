@@ -10,10 +10,10 @@
 # and a skew between them would surface as a cluster that half agrees
 # with itself.
 #
-# The tag below must be bumped whenever pkg/kube changes. It is the git
-# tree hash of pkg/kube, printed by `make kube-show-tag`;
-# check-docker-hashes-consistency is what catches a stale one.
-FROM lfedge/eve-kube:058a0e4a517492af06a8f4216cb931d340da1276 AS kube
+# KUBE_TAG is substituted at build time (see %/Dockerfile in the Makefile),
+# so a variant of pkg/kube, e.g. COVER=y, is picked up here too.
+# hadolint ignore=DL3006
+FROM KUBE_TAG AS kube
 
 FROM lfedge/eve-alpine:61283a3a978a7cdc9073a1ba678717fc3ea1fe97 AS build
 ARG TARGETARCH
@@ -54,5 +54,16 @@ COPY --from=kube /usr/bin/k3s-sctl /usr/bin/k3s-sctl
 # No k3s binary and no config.yaml, unlike pkg/kube. The witness reuses
 # the k3s that pkg/kube publishes to the vault, so the rootfs does not
 # carry a second copy, and it renders every drop-in it needs from Go.
+# Not used by the build itself. Passed (via lk-build-arg-COVER) so that the
+# package hash differs for COVER=y, as for pkg/kube: the kube-init copied
+# above is then a different binary, and linuxkit must not reuse a cached or
+# published non-cover witness image under the same tag.
+ARG COVER=n
+
+# Where a COVER=y kube-init writes its binary coverage data. Must be in the
+# environment at process start. Harmless for non-instrumented builds. Same
+# as in pkg/kube, whose ENV is not inherited by this scratch image.
+ENV GOCOVERDIR=/persist/coverage
+
 ENTRYPOINT []
 CMD ["/usr/bin/kube-init"]
