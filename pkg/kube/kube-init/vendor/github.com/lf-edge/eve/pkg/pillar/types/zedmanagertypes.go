@@ -168,6 +168,13 @@ type AppInstanceConfig struct {
 	// Am I Cluster Designated Node Id for this app
 	IsDesignatedNodeID bool
 
+	// DesignatedNodeUUID is the device UUID of the app's designated node,
+	// whichever node that is. IsDesignatedNodeID above answers only whether
+	// it is this node; deciding whether a peer may act in that node's place
+	// needs to ask about that node's health, which needs its identity.
+	// Empty on a single-node device, where this node is always designated.
+	DesignatedNodeUUID string
+
 	// Node Affinity for cluster IsDesignatedNodeID
 	AffinityType Affinity
 
@@ -350,6 +357,17 @@ type AppInstanceStatus struct {
 	NoUploadStatsToController bool
 	// Am I Cluster Designated Node Id for this app
 	IsDesignatedNodeID bool
+}
+
+// TruncateErrors cuts the status's own error and the error of every volume
+// reference down to maxLen bytes each, for a status that would otherwise not
+// fit a pubsub message.
+func (status *AppInstanceStatus) TruncateErrors(maxLen int) {
+	status.Error = TruncateError(status.Error, maxLen)
+	for i := range status.VolumeRefStatusList {
+		status.VolumeRefStatusList[i].Error =
+			TruncateError(status.VolumeRefStatusList[i].Error, maxLen)
+	}
 }
 
 // AppCount is uint8 and it should be sufficient for the number of apps we can support

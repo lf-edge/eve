@@ -45,10 +45,6 @@ const (
 	PersistCachePatchEnvelopes = PersistDir + "/patchEnvelopesCache"
 	// PersistCachePatchEnvelopesUsage - folder to store patch envelopes usage stat per app
 	PersistCachePatchEnvelopesUsage = PersistDir + "/patchEnvelopesUsageCache"
-	// HWWatchdogBootStatusFile holds the hardware watchdog boot status flag
-	// names (one per line) recorded by pkg/watchdog at boot. A "CARDRESET"
-	// entry means the watchdog reset the device on the previous boot.
-	HWWatchdogBootStatusFile = PersistDir + "/hw_watchdog_bootstatus"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"
@@ -84,6 +80,9 @@ const (
 	ITokenFile = "/run/eve.integrity_token"
 	//EveVersionFile contains the running version of EVE
 	EveVersionFile = "/run/eve-release"
+	//EveOriginVersionPattern matches the origin.<date>.<version> file created in
+	//the config partition at install time.
+	EveOriginVersionPattern = IdentityDirname + "/origin.*"
 	//DefaultVaultName is the name of the default vault
 	DefaultVaultName = "Application Data Store"
 

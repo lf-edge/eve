@@ -67,6 +67,21 @@ func (c *Command) CombinedOutput() ([]byte, error) {
 	return c.execCommand()
 }
 
+// ErrorOutput runs the command and returns only its standard error. Standard
+// output is left unset, so os/exec connects it to the null device: use this
+// for commands whose stdout is noise (progress bars, chatter) and whose
+// failure reason is printed on stderr.
+// Waits for the exec call to finish for `defaultTimeout` after which timeout error is returned
+func (c *Command) ErrorOutput() ([]byte, error) {
+	var buf bytes.Buffer
+	c.command.Stderr = &buf
+	c.buffer = &buf
+	if c.timeout == 0 {
+		c.timeout = defaultTimeout
+	}
+	return c.execCommand()
+}
+
 func (c *Command) execCommand() ([]byte, error) {
 	if c.errorMonad != nil {
 		return nil, c.errorMonad
@@ -79,10 +94,8 @@ func (c *Command) execCommand() ([]byte, error) {
 		return nil, fmt.Errorf("execCommand(%v): error while starting command: %s", c.command.Args, err.Error())
 	}
 
-	// Use a channel to signal completion so we can use a select statement.
-	// Buffered so the Wait() goroutine can always deliver its result and exit,
-	// even if execCommand already returned via the ctx-cancel or timeout branch.
-	done := make(chan error, 1)
+	// Use a channel to signal completion so we can use a select statement
+	done := make(chan error)
 	go func() { done <- c.command.Wait() }()
 	stillRunning := time.NewTicker(25 * time.Second)
 	defer stillRunning.Stop()

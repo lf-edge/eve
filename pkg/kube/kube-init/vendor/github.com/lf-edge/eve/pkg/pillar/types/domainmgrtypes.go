@@ -62,6 +62,14 @@ type DomainConfig struct {
 	// if this node is the DNiD of the App
 	IsDNidNode bool
 
+	// DesignatedNodeUUID is the device UUID of the app's actual designated
+	// node, whichever node that is -- copied from AppInstanceConfig's field
+	// of the same name. IsDNidNode above only answers whether *this* node
+	// is it; this is what lets the node creating the domain (e.g. a backup
+	// node standing in during a DNID outage) resolve and encode the true
+	// home's node affinity instead of always encoding its own.
+	DesignatedNodeUUID string
+
 	// Node Affinity for cluster IsDesignatedNodeID
 	AffinityType Affinity
 
@@ -180,6 +188,9 @@ func (config DomainConfig) VirtualizationModeOrDefault() VmMode {
 func (status DiskStatus) GetPVCNameFromVolumeKey() (string, error) {
 	volumeIDAndGeneration := status.VolumeKey
 	generation := strings.Split(volumeIDAndGeneration, "#")
+	if len(generation) < 2 {
+		return "", fmt.Errorf("invalid volume key %q: missing generation", volumeIDAndGeneration)
+	}
 	volUUID, err := uuid.FromString(generation[0])
 	if err != nil {
 		return "", fmt.Errorf("failed to parse volUUID: %w", err)
@@ -394,6 +405,19 @@ type DomainStatus struct {
 	PendingModify  bool
 	PendingDelete  bool
 	DomainName     string // Name of Xen domain
+	// DomainId identifies the running domain, with hypervisor-specific meaning:
+	// for xen/kvm it is the underlying qemu process's pid; for kubevirt (HV=k)
+	// it is a value derived from the app's current VMIRS/ReplicaSet identity
+	// (see hypervisor/kubevirt.go's workloadID), since there is no pid.
+	//
+	// The one invariant every hypervisor backend must uphold, and every
+	// consumer relies on: DomainId is zero if and only if the domain is
+	// confirmed not present (no process for xen/kvm; VMIRS/ReplicaSet
+	// confirmed absent for kubevirt). It must never be zero merely because
+	// the answer is unknown or unattributable - doInactivate's teardown
+	// gates and doCleanup's success test both key on zero meaning "already
+	// gone", so a zero returned for any other reason skips a teardown that
+	// never happened and reports it as done.
 	DomainId       int
 	BootTime       time.Time
 	DiskStatusList []DiskStatus

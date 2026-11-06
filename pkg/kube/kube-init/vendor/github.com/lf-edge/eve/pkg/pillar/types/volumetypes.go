@@ -33,11 +33,33 @@ type VolumeConfig struct {
 	// This volume is container image for native container.
 	// We will find out from NOHYPER flag in appinstanceconfig
 	IsNativeContainer bool
+	// DesignatedNodeUUID is the device UUID of the owning app's actual
+	// designated node, cross-referenced from AppInstanceConfig via the
+	// owning app's VolumeRefList -- IsReplicated only says "not me", not
+	// who. Needed to ask whether a peer may act as backup DNID for this
+	// volume while that node is down.
+	DesignatedNodeUUID string
+	// AffinityType mirrors AppInstanceConfig.AffinityType for the same
+	// reason IsCurrentlyBackupDNID excludes Required-affinity apps from
+	// activation: a Required-affinity app can never run anywhere but its
+	// designated node, so backup-DNID eligibility must exclude it here
+	// too. If more than one app references this volume with different
+	// affinity, treat it as Required if any of them are.
+	AffinityType Affinity
 }
 
 // Key is volume UUID which will be unique
 func (config VolumeConfig) Key() string {
 	return fmt.Sprintf("%s#%d", config.VolumeID.String(),
+		config.GenerationCounter+config.LocalGenerationCounter)
+}
+
+// GetPVCName : returns the kubernetes(longhorn) PVC name for this volume.
+// Must produce the same name as VolumeStatus.GetPVCName() for the same volume
+// and generation; callers rely on the generation being embedded in the name so
+// that a lookup by name can only ever match this exact generation.
+func (config VolumeConfig) GetPVCName() string {
+	return fmt.Sprintf("%s-pvc-%d", config.VolumeID.String(),
 		config.GenerationCounter+config.LocalGenerationCounter)
 }
 
@@ -356,6 +378,13 @@ func (config VolumeRefConfig) VolumeKey() string {
 		config.GenerationCounter+config.LocalGenerationCounter)
 }
 
+// GetPVCName : the kubernetes(longhorn) PVC name of the referenced volume.
+// Must agree with VolumeStatus.GetPVCName, since both name the same object.
+func (config VolumeRefConfig) GetPVCName() string {
+	return fmt.Sprintf("%s-pvc-%d", config.VolumeID.String(),
+		config.GenerationCounter+config.LocalGenerationCounter)
+}
+
 // LogCreate :
 func (config VolumeRefConfig) LogCreate(logBase *base.LogObject) {
 	logObject := base.NewLogObject(logBase, base.VolumeRefConfigLogType, "",
@@ -619,8 +648,14 @@ func (status VolumeCreatePending) LogDelete(logBase *base.LogObject) {
 
 // VolumeMgrStatus :
 type VolumeMgrStatus struct {
-	Name           string
-	Initialized    bool
+	Name        string
+	Initialized bool
+	// UnmetCondition names the readiness gate still outstanding when
+	// Initialized is false, e.g. "longhorn not ready: longhorn missing
+	// daemonset:engine-image". Empty when Initialized is true. Informational:
+	// it exists so an operator can tell a converging cluster from a stuck one
+	// without correlating agent logs.
+	UnmetCondition string
 	RemainingSpace uint64 // In bytes. Takes into account "reserved" for dom0
 }
 
