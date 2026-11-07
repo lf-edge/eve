@@ -851,11 +851,9 @@ func (m *Monitor) reapplyNodeLabels(ctx context.Context) {
 	}
 }
 
-// reimportImages re-imports the EVE-authored external-boot-image
-// tarball on restart if it is somehow no longer present in
-// containerd. Most calls are a no-op (the crictl pre-check finds
-// the image already there); the import only fires when the image
-// has genuinely gone missing (e.g. after a containerd reset).
+// reimportImages rebuilds the external-boot-image if it has gone
+// missing from containerd (e.g. after a containerd reset). Most calls
+// are a single image lookup.
 //
 // RT image re-imports are intentionally not handled in this
 // package; they belong with the RT-specific code path.
@@ -863,39 +861,14 @@ func (m *Monitor) reimportImages(ctx context.Context) {
 	if !m.installKubevirt {
 		return
 	}
-	m.importImageIfNeeded(ctx,
-		images.ExternalBootImageTar,
-		images.ExternalBootImageName,
-		m.eveRelease,
-	)
-}
-
-// importImageIfNeeded imports tarPath into the user-containerd
-// only when the expected image tag is not already present in the
-// kubelet-visible namespace. Consulting containerd directly makes
-// this idempotent across restarts without a persistent marker.
-func (m *Monitor) importImageIfNeeded(ctx context.Context, tarPath, imageName, tag string) {
-	fullRef := imageName + ":" + tag
 	cc, err := m.getContainerd(ctx)
 	if err != nil {
 		log.Printf("warning: containerd client: %v", err)
 		return
 	}
-	exists, err := cc.ImageExists(ctx, fullRef)
-	if err != nil {
-		log.Printf("warning: image existence check %s failed: %v", fullRef, err)
+	if err := images.EnsureExternalBootImage(ctx, cc, m.eveRelease); err != nil {
+		log.Printf("warning: %v", err)
 	}
-	if exists {
-		return
-	}
-	if _, err := os.Stat(tarPath); errors.Is(err, os.ErrNotExist) {
-		return
-	}
-	if _, err := cc.ImportImage(ctx, tarPath); err != nil {
-		log.Printf("warning: image import %s failed: %v", tarPath, err)
-		return
-	}
-	log.Printf("imported image from %s", tarPath)
 }
 
 // getContainerd returns the Monitor's shared containerd client,

@@ -873,8 +873,8 @@ func (d *daemon) handleStartingK3s(ctx context.Context, ev Event) {
 		// returns nearly instantly, so the extra state is cheap.
 		//
 		// Every phase also goes via StateImporting, PhaseSteady
-		// included. ImportAll is per-EVE-release work: it re-tags the
-		// external-boot-image to the running release, which pillar
+		// included. ImportAll is per-EVE-release work: it builds the
+		// external-boot-image for the running release, which pillar
 		// references as :latest with imagePullPolicy Never. The
 		// initialization markers are restored from /persist and so
 		// survive an EVE upgrade, making PhaseSteady the phase on the

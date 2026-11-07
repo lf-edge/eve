@@ -122,7 +122,7 @@ func TestTransitionTable(t *testing.T) {
 		{
 			// PhaseSteady is also the phase on the first boot of a
 			// new EVE release, so it must reach Importing for the
-			// external-boot-image re-tag; WaitK3sReady still follows
+			// external-boot-image build; WaitK3sReady still follows
 			// via EvImagesDone, keeping the health-worker goroutines
 			// in enterRunning off a not-yet-reachable API server.
 			// See the comment in handleStartingK3s.

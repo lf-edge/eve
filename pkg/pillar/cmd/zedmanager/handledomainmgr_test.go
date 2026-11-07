@@ -21,16 +21,16 @@ func TestSetBootDefaults(t *testing.T) {
 		boot, ramdisk         string
 		wantBoot, wantRamdisk string
 	}{
-		{"legacy Xen SeaBIOS path", "amd64", ctr, types.HVM, "/usr/lib/xen/boot/seabios.bin", "", LegacyBIOS, RunxInitrd},
+		{"legacy Xen SeaBIOS path", "amd64", ctr, types.HVM, "/usr/lib/xen/boot/seabios.bin", "", LegacyBIOS, types.RunxInitrd},
 		{"legacy SeaBIOS path", "amd64", vm, types.HVM, "/usr/share/qemu-xen/qemu/bios-256k.bin", "", LegacyBIOS, ""},
 		{"legacy ovmf-pvh.bin path", "amd64", vm, types.HVM, "/usr/lib/xen/boot/ovmf-pvh.bin", "", OVMFBIOSCombined, ""},
 		{"legacy ovmf.bin path", "arm64", vm, types.HVM, "/usr/lib/xen/boot/ovmf.bin", "", OVMFBIOSCombined, ""},
 		{"legacy OVMF_CODE path", "amd64", vm, types.FML, "/usr/lib/xen/boot/OVMF_CODE.fd", "", OVMFBIOSCode, ""},
-		{"legacy runx-initrd path", "amd64", ctr, types.HVM, "", "/usr/lib/xen/boot/runx-initrd", LegacyBIOS, RunxInitrd},
+		{"legacy runx-initrd path", "amd64", ctr, types.HVM, "", "/usr/lib/xen/boot/runx-initrd", LegacyBIOS, types.RunxInitrd},
 		{"unknown paths kept", "amd64", vm, types.HVM, "/persist/fw.fd", "/persist/rd", "/persist/fw.fd", "/persist/rd"},
 		{"pygrub dropped", "amd64", vm, types.HVM, "/usr/bin/pygrub", "", "", ""},
-		{"container on amd64", "amd64", ctr, types.HVM, "", "", LegacyBIOS, RunxInitrd},
-		{"container on arm64", "arm64", ctr, types.HVM, "", "", OVMFBIOSCombined, RunxInitrd},
+		{"container on amd64", "amd64", ctr, types.HVM, "", "", LegacyBIOS, types.RunxInitrd},
+		{"container on arm64", "arm64", ctr, types.HVM, "", "", OVMFBIOSCombined, types.RunxInitrd},
 		{"FML VM", "amd64", vm, types.FML, "", "", OVMFBIOSCode, ""},
 		{"HVM VM on amd64 boots QEMU's own BIOS", "amd64", vm, types.HVM, "", "", "", ""},
 		{"HVM VM on arm64", "arm64", vm, types.HVM, "", "", OVMFBIOSCombined, ""},
