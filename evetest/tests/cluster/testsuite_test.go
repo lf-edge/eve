@@ -108,6 +108,11 @@ func TestNodeClusterResilienceSuite(test *testing.T) {
 			Test: TestClusterPVCGCDeletesOnlyOrphans,
 		},
 		evetest.TestCase{
+			// Same device requirements and network model as the two tests
+			// above; reboots and powers off nodes but leaves them clustered.
+			Test: TestClusterTokenRotation,
+		},
+		evetest.TestCase{
 			Test: TestVMAppPurgeDuringFailover,
 		},
 		evetest.TestCase{
