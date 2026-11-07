@@ -618,6 +618,15 @@ pillar-%: $(GOBUILDER) | $(DIST)
 	$(QUIET)$(DOCKER_GO) "make $*" $(GOTREE)
 	$(QUIET): $@: Succeeded
 
+# Standalone build of the EVE-K Longhorn snapshot revert tool, for nodes
+# whose EVE release does not include it; see
+# pkg/pillar/tools/lh-snap-revert/README.md.
+.PHONY: lh-snap-revert
+lh-snap-revert: $(GOBUILDER) | $(DIST)
+	$(QUIET)$(DOCKER_GO) "make ZARCH=$(ZARCH) lh-snap-revert" $(GOTREE)
+	$(QUIET)cp $(GOTREE)/dist/$(ZARCH)/lh-snap-revert $(DIST)/lh-snap-revert
+	@echo Built $(DIST)/lh-snap-revert
+
 clean:
 	rm -rf $(DIST) images/out pkg-deps*.mk
 
@@ -1543,6 +1552,7 @@ help:
 	@echo "   proto                            generates Go and Python source from protobuf API definitions"
 	@echo "   proto-vendor                     update vendored API in packages that require it (e.g. pkg/pillar)"
 	@echo "   shell                            drop into docker container setup for Go development"
+	@echo "   lh-snap-revert                   build the EVE-K Longhorn snapshot revert tool into dist/$(ZARCH)"
 	@echo "   yetus                            run Apache Yetus to check the quality of the source tree"
 	@echo "   mini-yetus                       run Apache Yetus to check the quality of the source tree"
 	@echo "                                    only on the files that have changed in the source branch"

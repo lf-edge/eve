@@ -151,6 +151,11 @@ RUN --mount=type=cache,target=/root/.cache/go-build mkdir -p /final/opt/zededa/e
       > /final/opt/zededa/etc/non-persistent-pubsub-topics && \
     test -s /final/opt/zededa/etc/non-persistent-pubsub-topics
 
+# EVE-K only: Longhorn snapshot revert tool, see tools/lh-snap-revert/README.md.
+RUN --mount=type=cache,target=/root/.cache/go-build if [ "${HV}" = "k" ]; then \
+      make ZARCH=${TARGETARCH} DISTDIR=/final/opt/zededa/bin lh-snap-revert ; \
+    fi
+
 WORKDIR /
 
 ENV DELVE_VERSION 1.20.1
