@@ -386,3 +386,11 @@ set_global hv_eve_cpu_settings "eve_max_vcpus=1"
 set_global hv_ctrd_mem_settings "ctrd_mem=320M,max:400M"
 set_global hv_ctrd_cpu_settings "ctrd_max_vcpus=1"
 ```
+
+The CPU settings name the CPUs each cgroup may use, the lowest N: `dom0_max_vcpus=1` is
+CPU 0. They reserve nothing: applications whose CPUs are not pinned run on these CPUs
+too. EVE keeps them by its CPU weight instead: `/eve`, and `/eve-memory-monitor` on the
+same CPUs, have the highest `cpu.weight` (10000), far above the applications' cgroups
+(`/eve-user-apps` has the default, 100), so EVE gets its CPUs whenever it has work. A
+weight is not a limit: applications get every cycle EVE leaves, all of them while EVE
+is idle. This is the CPU counterpart of the `memory.low` protection.
