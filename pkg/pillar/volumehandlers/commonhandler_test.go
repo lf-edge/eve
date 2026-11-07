@@ -46,6 +46,10 @@ func (m *mockVolumeMgr) GetNodeName() string {
 	return ""
 }
 
+func (m *mockVolumeMgr) IsTwoNodeHACluster() bool {
+	return false
+}
+
 func newTestLog(t *testing.T) *base.LogObject {
 	t.Helper()
 	logger := logrus.New()

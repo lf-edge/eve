@@ -34,6 +34,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeinitstatus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/prereqs"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/tiebreaker"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/vnc"
@@ -265,6 +266,11 @@ func (m *Monitor) RunHealthChecks(ctx context.Context) {
 		}
 	}
 	m.checkForMultusLinkRequest()
+
+	// Unlike the labels below, this is not one-shot: it carries state
+	// that changes over the node's life, so it is re-stamped whenever
+	// it differs from what was written last.
+	m.StampNodeStatus(ctx)
 
 	labelsMarked, err := state.IsMarked(state.NodeLabelsInitialized)
 	if err != nil {
@@ -505,18 +511,44 @@ func applyUserOverride() bool {
 // Log rotation
 // ---------------------------------------------------------------------------
 
-// RotateLogs rotates each known log file if it exceeds maxLogSize,
-// then prunes excess raft logs.
+// rotatedLogs are the log files this role owns. The witness shares the
+// log directory with the node's kube role but runs none of the
+// components behind the other files, so it must leave them to that role.
+func rotatedLogs() []string {
+	return role.Pick(
+		[]string{
+			"k3s.log",
+			"multus.log",
+			"eve-bridge.log",
+			"containerd-user.log",
+		},
+		[]string{"witness.log"},
+	)
+}
+
+// RotateLogs rotates each of this role's log files if it exceeds
+// maxLogSize, then prunes excess raft logs.
 func RotateLogs() {
-	for _, name := range []string{
-		"k3s.log",
-		"multus.log",
-		"eve-bridge.log",
-		"containerd-user.log",
-	} {
+	for _, name := range rotatedLogs() {
 		rotateLogFile(name)
 	}
 	CleanExcessiveK3sLogs()
+}
+
+// RunLogRotation calls RotateLogs periodically until ctx is cancelled.
+// The node role gets this through the Monitor; the witness has no
+// Monitor and starts it directly.
+func RunLogRotation(ctx context.Context) {
+	ticker := time.NewTicker(healthCheckInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			RotateLogs()
+		}
+	}
 }
 
 // rotateLogFile rotates path → path.1 → path.2 → path.3 when
@@ -557,7 +589,7 @@ func rotateLogFile(name string) {
 		}
 	}
 
-	if name == "k3s.log" {
+	if name == k3sLogFile {
 		sendSIGHUPToK3s()
 	}
 	if err := os.Truncate(path, 0); err != nil {
@@ -740,16 +772,7 @@ func (m *Monitor) monitorUserOverridesLoop(ctx context.Context, restartCh chan<-
 }
 
 func (m *Monitor) logRotationLoop(ctx context.Context) {
-	ticker := time.NewTicker(healthCheckInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			RotateLogs()
-		}
-	}
+	RunLogRotation(ctx)
 }
 
 func (m *Monitor) kubeconfigSyncLoop(ctx context.Context) {

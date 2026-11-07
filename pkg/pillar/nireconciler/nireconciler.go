@@ -151,6 +151,9 @@ type Port struct {
 	// currently bridges this port.
 	UnderlyingIfInstanceID types.IfInstanceID
 	BridgeIfInstanceID     types.IfInstanceID
+	// IsClusterPort is true if this port is the interface designated as the
+	// EVE-k cluster interface (EdgeNodeClusterConfig.ClusterInterface).
+	IsClusterPort bool
 }
 
 // Equal compares two ports for equality.
@@ -167,7 +170,8 @@ func (p Port) Equal(p2 Port) bool {
 		p.IgnoreDhcpIPs == p2.IgnoreDhcpIPs &&
 		generics.EqualSets(p.VLANSubinterfaces, p2.VLANSubinterfaces) &&
 		p.UnderlyingIfInstanceID == p2.UnderlyingIfInstanceID &&
-		p.BridgeIfInstanceID == p2.BridgeIfInstanceID
+		p.BridgeIfInstanceID == p2.BridgeIfInstanceID &&
+		p.IsClusterPort == p2.IsClusterPort
 }
 
 // UsedWithIP returns true if the port is (potentially) used with an IP address.

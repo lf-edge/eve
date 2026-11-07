@@ -96,6 +96,53 @@ func (z *zedrouter) handleGlobalConfigDelete(ctxArg interface{}, key string,
 	z.log.Functionf("handleGlobalConfigDelete done for %s", key)
 }
 
+func (z *zedrouter) handleEdgeNodeClusterStatusCreate(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	z.handleEdgeNodeClusterStatusImpl(ctxArg, key, statusArg)
+}
+
+func (z *zedrouter) handleEdgeNodeClusterStatusModify(ctxArg interface{}, key string,
+	statusArg interface{}, oldStatusArg interface{}) {
+	z.handleEdgeNodeClusterStatusImpl(ctxArg, key, statusArg)
+}
+
+func (z *zedrouter) handleEdgeNodeClusterStatusImpl(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	if key != "global" {
+		z.log.Functionf("handleEdgeNodeClusterStatusImpl: ignoring %s", key)
+		return
+	}
+	status := statusArg.(types.EdgeNodeClusterStatus)
+	newClusterIfName := status.ClusterInterface
+	if z.clusterIfName == newClusterIfName {
+		z.log.Functionf("handleEdgeNodeClusterStatusImpl: no change (%s)",
+			z.clusterIfName)
+		return
+	}
+	z.log.Noticef("handleEdgeNodeClusterStatusImpl: cluster interface changed %q -> %q",
+		z.clusterIfName, newClusterIfName)
+	z.clusterIfName = newClusterIfName
+	// The cluster port must always be bridged by NIM (niBridgeIsCreatedByNIM),
+	// and may no longer be eligible for a multi-port Switch NI (updateNIPorts) -
+	// re-evaluate port selection for every NI now that the designation changed.
+	z.updatePortsForAllNIs()
+}
+
+func (z *zedrouter) handleEdgeNodeClusterStatusDelete(ctxArg interface{}, key string,
+	statusArg interface{}) {
+	if key != "global" {
+		z.log.Functionf("handleEdgeNodeClusterStatusDelete: ignoring %s", key)
+		return
+	}
+	if z.clusterIfName == "" {
+		return
+	}
+	z.log.Noticef("handleEdgeNodeClusterStatusDelete: clearing cluster interface %q",
+		z.clusterIfName)
+	z.clusterIfName = ""
+	z.updatePortsForAllNIs()
+}
+
 func (z *zedrouter) handleDNSCreate(ctxArg interface{}, key string,
 	statusArg interface{}) {
 	z.handleDNSImpl(ctxArg, key, statusArg)

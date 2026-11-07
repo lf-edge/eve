@@ -68,7 +68,7 @@ func DetachOldWorkload(log *base.LogObject, virtLauncherPodName string) error {
 }
 
 // GetSupportedReplicaCountForCluster is an empty implementation for non-kubevirt builds
-func GetSupportedReplicaCountForCluster() (int, error) {
+func GetSupportedReplicaCountForCluster(isTwoNodeHACluster bool) (int, error) {
 	return 0, nil
 }
 
