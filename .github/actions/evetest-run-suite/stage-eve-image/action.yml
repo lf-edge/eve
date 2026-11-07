@@ -1,0 +1,100 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Stage an EVE image on the evetest broker
+description: >-
+  Makes sure the evetest broker has one flavor of the EVE container image built
+  by a workflow run, downloading the build artifact and uploading it only if no
+  other job got there first. Part of evetest-run-suite (it lives below it so
+  that the base branch's copy replaces the PR's, see evetest-pr.yml) and used
+  after "evetest" CLI is installed. The calling job's token needs actions: read.
+
+inputs:
+  hypervisor:
+    description: EVE hypervisor flavor, the "kvm" or "k" of eve-<hv>-<arch>-<platform>.
+    required: true
+  arch:
+    required: true
+  platform:
+    required: true
+  repo:
+    description: Repository the image is tagged under.
+    required: true
+  version:
+    description: EVE version, the tag is <version>-<hypervisor>-<arch>.
+    required: true
+  source-run-id:
+    description: Workflow run that uploaded the eve-<hv>-<arch>-<platform> artifact.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Exits 0 with a ticket if this job has to provide the image, and 10 if the
+    # broker has it (after waiting for another job's upload, if one is under
+    # way); any other exit code is a failure.
+    - id: claim
+      shell: bash
+      env:
+        REPO: ${{ inputs.repo }}
+        VERSION: ${{ inputs.version }}
+        HV: ${{ inputs.hypervisor }}
+        ARCH: ${{ inputs.arch }}
+      run: |
+        rc=0
+        TICKET=$(evetest broker image claim-upload --repo "$REPO" --version "$VERSION" \
+          --hypervisor "$HV" --arch "$ARCH") || rc=$?
+        case $rc in
+          0)  echo "ticket=$TICKET" >> "$GITHUB_OUTPUT" ;;
+          10) echo "ticket=" >> "$GITHUB_OUTPUT" ;;
+          *)  exit "$rc" ;;
+        esac
+
+    # download-artifact retries only briefly, and a failed download of the (up
+    # to 1.7 GB) image would fail the suite before any test runs, so try once
+    # more after a pause. A uses: step can't be retried in a loop.
+    - id: download
+      if: steps.claim.outputs.ticket != ''
+      continue-on-error: true
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        name: eve-${{ inputs.hypervisor }}-${{ inputs.arch }}-${{ inputs.platform }}
+        run-id: ${{ inputs.source-run-id }}
+        github-token: ${{ github.token }}
+        path: /tmp/eve-image/${{ inputs.hypervisor }}
+
+    - name: Wait before retrying the EVE image download
+      if: steps.download.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::Downloading the EVE ${{ inputs.hypervisor }} image failed; retrying in 60s"
+        rm -rf "/tmp/eve-image/${{ inputs.hypervisor }}"
+        sleep 60
+
+    - name: Download the EVE image artifact (retry)
+      if: steps.download.outcome == 'failure'
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        name: eve-${{ inputs.hypervisor }}-${{ inputs.arch }}-${{ inputs.platform }}
+        run-id: ${{ inputs.source-run-id }}
+        github-token: ${{ github.token }}
+        path: /tmp/eve-image/${{ inputs.hypervisor }}
+
+    - name: Upload the EVE image to the broker
+      if: steps.claim.outputs.ticket != ''
+      shell: bash
+      env:
+        TICKET: ${{ steps.claim.outputs.ticket }}
+        TARFILE: /tmp/eve-image/${{ inputs.hypervisor }}/eve-${{ inputs.hypervisor }}-${{ inputs.arch }}-${{ inputs.platform }}.tar
+      run: |
+        evetest broker image upload --ticket "$TICKET" "$TARFILE"
+        rm -rf "$(dirname "$TARFILE")"
+
+    # Lets a job that waits for this one take over right away instead of when
+    # the claim lapses.
+    - name: Release the claim of the EVE image
+      if: failure() && steps.claim.outputs.ticket != ''
+      shell: bash
+      env:
+        TICKET: ${{ steps.claim.outputs.ticket }}
+      run: evetest broker image release-claim --ticket "$TICKET" || true

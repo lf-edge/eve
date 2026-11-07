@@ -22,26 +22,29 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Broker_Connect_FullMethodName                = "/org.lfedge.evetest.Broker/Connect"
-	Broker_Close_FullMethodName                  = "/org.lfedge.evetest.Broker/Close"
-	Broker_KeepAlive_FullMethodName              = "/org.lfedge.evetest.Broker/KeepAlive"
-	Broker_StreamLogs_FullMethodName             = "/org.lfedge.evetest.Broker/StreamLogs"
-	Broker_BuildImage_FullMethodName             = "/org.lfedge.evetest.Broker/BuildImage"
-	Broker_PushEVEContainerImage_FullMethodName  = "/org.lfedge.evetest.Broker/PushEVEContainerImage"
-	Broker_PushSDNContainerImage_FullMethodName  = "/org.lfedge.evetest.Broker/PushSDNContainerImage"
-	Broker_PushEVELiveImage_FullMethodName       = "/org.lfedge.evetest.Broker/PushEVELiveImage"
-	Broker_SetupDevices_FullMethodName           = "/org.lfedge.evetest.Broker/SetupDevices"
-	Broker_TeardownDevices_FullMethodName        = "/org.lfedge.evetest.Broker/TeardownDevices"
-	Broker_PowerOnDevice_FullMethodName          = "/org.lfedge.evetest.Broker/PowerOnDevice"
-	Broker_PowerOffDevice_FullMethodName         = "/org.lfedge.evetest.Broker/PowerOffDevice"
-	Broker_RebootDevice_FullMethodName           = "/org.lfedge.evetest.Broker/RebootDevice"
-	Broker_EditDeviceDisk_FullMethodName         = "/org.lfedge.evetest.Broker/EditDeviceDisk"
-	Broker_ExecuteQMP_FullMethodName             = "/org.lfedge.evetest.Broker/ExecuteQMP"
-	Broker_CreateScratchImage_FullMethodName     = "/org.lfedge.evetest.Broker/CreateScratchImage"
-	Broker_DeleteScratchImage_FullMethodName     = "/org.lfedge.evetest.Broker/DeleteScratchImage"
-	Broker_GetDeviceConsoleOutput_FullMethodName = "/org.lfedge.evetest.Broker/GetDeviceConsoleOutput"
-	Broker_ConnectConsoleToDevice_FullMethodName = "/org.lfedge.evetest.Broker/ConnectConsoleToDevice"
-	Broker_ConnectTunnelToSDN_FullMethodName     = "/org.lfedge.evetest.Broker/ConnectTunnelToSDN"
+	Broker_Connect_FullMethodName                    = "/org.lfedge.evetest.Broker/Connect"
+	Broker_Close_FullMethodName                      = "/org.lfedge.evetest.Broker/Close"
+	Broker_KeepAlive_FullMethodName                  = "/org.lfedge.evetest.Broker/KeepAlive"
+	Broker_StreamLogs_FullMethodName                 = "/org.lfedge.evetest.Broker/StreamLogs"
+	Broker_BuildImage_FullMethodName                 = "/org.lfedge.evetest.Broker/BuildImage"
+	Broker_PushEVEContainerImage_FullMethodName      = "/org.lfedge.evetest.Broker/PushEVEContainerImage"
+	Broker_ClaimEVEImageUpload_FullMethodName        = "/org.lfedge.evetest.Broker/ClaimEVEImageUpload"
+	Broker_ReleaseEVEImageUploadClaim_FullMethodName = "/org.lfedge.evetest.Broker/ReleaseEVEImageUploadClaim"
+	Broker_PullEVEContainerImage_FullMethodName      = "/org.lfedge.evetest.Broker/PullEVEContainerImage"
+	Broker_PushSDNContainerImage_FullMethodName      = "/org.lfedge.evetest.Broker/PushSDNContainerImage"
+	Broker_PushEVELiveImage_FullMethodName           = "/org.lfedge.evetest.Broker/PushEVELiveImage"
+	Broker_SetupDevices_FullMethodName               = "/org.lfedge.evetest.Broker/SetupDevices"
+	Broker_TeardownDevices_FullMethodName            = "/org.lfedge.evetest.Broker/TeardownDevices"
+	Broker_PowerOnDevice_FullMethodName              = "/org.lfedge.evetest.Broker/PowerOnDevice"
+	Broker_PowerOffDevice_FullMethodName             = "/org.lfedge.evetest.Broker/PowerOffDevice"
+	Broker_RebootDevice_FullMethodName               = "/org.lfedge.evetest.Broker/RebootDevice"
+	Broker_EditDeviceDisk_FullMethodName             = "/org.lfedge.evetest.Broker/EditDeviceDisk"
+	Broker_ExecuteQMP_FullMethodName                 = "/org.lfedge.evetest.Broker/ExecuteQMP"
+	Broker_CreateScratchImage_FullMethodName         = "/org.lfedge.evetest.Broker/CreateScratchImage"
+	Broker_DeleteScratchImage_FullMethodName         = "/org.lfedge.evetest.Broker/DeleteScratchImage"
+	Broker_GetDeviceConsoleOutput_FullMethodName     = "/org.lfedge.evetest.Broker/GetDeviceConsoleOutput"
+	Broker_ConnectConsoleToDevice_FullMethodName     = "/org.lfedge.evetest.Broker/ConnectConsoleToDevice"
+	Broker_ConnectTunnelToSDN_FullMethodName         = "/org.lfedge.evetest.Broker/ConnectTunnelToSDN"
 )
 
 // BrokerClient is the client API for Broker service.
@@ -67,6 +70,21 @@ type BrokerClient interface {
 	BuildImage(ctx context.Context, in *BuildImageRequest, opts ...grpc.CallOption) (*BuildImageResponse, error)
 	// PushEVEContainerImage streams a pre-built EVE container image to the broker.
 	PushEVEContainerImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushImageChunk, PushImageResponse], error)
+	// ClaimEVEImageUpload reserves the right to upload an EVE container image that the
+	// broker does not have, so that of the many clients needing it (e.g. CI jobs of
+	// one PR run) only one fetches and uploads it while the others wait. It does
+	// not need a client session. See ImageUploadClaimState.
+	ClaimEVEImageUpload(ctx context.Context, in *ClaimEVEImageUploadRequest, opts ...grpc.CallOption) (*ClaimEVEImageUploadResponse, error)
+	// ReleaseEVEImageUploadClaim gives up a claim granted by ClaimEVEImageUpload, e.g. after
+	// the claimer failed to obtain the image, so that a waiting client can take
+	// over without waiting for the lease to lapse. It does not need a client
+	// session and succeeds for an already released or superseded claim.
+	ReleaseEVEImageUploadClaim(ctx context.Context, in *ReleaseEVEImageUploadClaimRequest, opts ...grpc.CallOption) (*ReleaseEVEImageUploadClaimResponse, error)
+	// PullEVEContainerImage streams an EVE container image that the broker has to
+	// the client, for tests that need the image on the client's side (e.g. as an
+	// upgrade target) when it is not published anywhere the client could pull it
+	// from. Fails with NotFound if the broker does not have the image.
+	PullEVEContainerImage(ctx context.Context, in *PullEVEImageRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[PullImageChunk], error)
 	// PushSDNContainerImage streams a locally available SDN container image to the
 	// broker, for when the broker can neither find nor pull it (e.g. an SDN image
 	// built from an unmerged change). SetupDevices signals that case with a
@@ -199,9 +217,48 @@ func (c *brokerClient) PushEVEContainerImage(ctx context.Context, opts ...grpc.C
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Broker_PushEVEContainerImageClient = grpc.ClientStreamingClient[PushImageChunk, PushImageResponse]
 
+func (c *brokerClient) ClaimEVEImageUpload(ctx context.Context, in *ClaimEVEImageUploadRequest, opts ...grpc.CallOption) (*ClaimEVEImageUploadResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ClaimEVEImageUploadResponse)
+	err := c.cc.Invoke(ctx, Broker_ClaimEVEImageUpload_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *brokerClient) ReleaseEVEImageUploadClaim(ctx context.Context, in *ReleaseEVEImageUploadClaimRequest, opts ...grpc.CallOption) (*ReleaseEVEImageUploadClaimResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReleaseEVEImageUploadClaimResponse)
+	err := c.cc.Invoke(ctx, Broker_ReleaseEVEImageUploadClaim_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *brokerClient) PullEVEContainerImage(ctx context.Context, in *PullEVEImageRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[PullImageChunk], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[3], Broker_PullEVEContainerImage_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[PullEVEImageRequest, PullImageChunk]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Broker_PullEVEContainerImageClient = grpc.ServerStreamingClient[PullImageChunk]
+
 func (c *brokerClient) PushSDNContainerImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushSDNImageChunk, PushImageResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[3], Broker_PushSDNContainerImage_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[4], Broker_PushSDNContainerImage_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +271,7 @@ type Broker_PushSDNContainerImageClient = grpc.ClientStreamingClient[PushSDNImag
 
 func (c *brokerClient) PushEVELiveImage(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushLiveImageChunk, PushLiveImageResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[4], Broker_PushEVELiveImage_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[5], Broker_PushEVELiveImage_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -327,7 +384,7 @@ func (c *brokerClient) GetDeviceConsoleOutput(ctx context.Context, in *DeviceCon
 
 func (c *brokerClient) ConnectConsoleToDevice(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConnectConsoleRequest, ConnectConsoleResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[5], Broker_ConnectConsoleToDevice_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[6], Broker_ConnectConsoleToDevice_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -340,7 +397,7 @@ type Broker_ConnectConsoleToDeviceClient = grpc.BidiStreamingClient[ConnectConso
 
 func (c *brokerClient) ConnectTunnelToSDN(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConnectTunnelToSDNRequest, ConnectTunnelToSDNResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[6], Broker_ConnectTunnelToSDN_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Broker_ServiceDesc.Streams[7], Broker_ConnectTunnelToSDN_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -374,6 +431,21 @@ type BrokerServer interface {
 	BuildImage(context.Context, *BuildImageRequest) (*BuildImageResponse, error)
 	// PushEVEContainerImage streams a pre-built EVE container image to the broker.
 	PushEVEContainerImage(grpc.ClientStreamingServer[PushImageChunk, PushImageResponse]) error
+	// ClaimEVEImageUpload reserves the right to upload an EVE container image that the
+	// broker does not have, so that of the many clients needing it (e.g. CI jobs of
+	// one PR run) only one fetches and uploads it while the others wait. It does
+	// not need a client session. See ImageUploadClaimState.
+	ClaimEVEImageUpload(context.Context, *ClaimEVEImageUploadRequest) (*ClaimEVEImageUploadResponse, error)
+	// ReleaseEVEImageUploadClaim gives up a claim granted by ClaimEVEImageUpload, e.g. after
+	// the claimer failed to obtain the image, so that a waiting client can take
+	// over without waiting for the lease to lapse. It does not need a client
+	// session and succeeds for an already released or superseded claim.
+	ReleaseEVEImageUploadClaim(context.Context, *ReleaseEVEImageUploadClaimRequest) (*ReleaseEVEImageUploadClaimResponse, error)
+	// PullEVEContainerImage streams an EVE container image that the broker has to
+	// the client, for tests that need the image on the client's side (e.g. as an
+	// upgrade target) when it is not published anywhere the client could pull it
+	// from. Fails with NotFound if the broker does not have the image.
+	PullEVEContainerImage(*PullEVEImageRequest, grpc.ServerStreamingServer[PullImageChunk]) error
 	// PushSDNContainerImage streams a locally available SDN container image to the
 	// broker, for when the broker can neither find nor pull it (e.g. an SDN image
 	// built from an unmerged change). SetupDevices signals that case with a
@@ -448,6 +520,15 @@ func (UnimplementedBrokerServer) BuildImage(context.Context, *BuildImageRequest)
 }
 func (UnimplementedBrokerServer) PushEVEContainerImage(grpc.ClientStreamingServer[PushImageChunk, PushImageResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method PushEVEContainerImage not implemented")
+}
+func (UnimplementedBrokerServer) ClaimEVEImageUpload(context.Context, *ClaimEVEImageUploadRequest) (*ClaimEVEImageUploadResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ClaimEVEImageUpload not implemented")
+}
+func (UnimplementedBrokerServer) ReleaseEVEImageUploadClaim(context.Context, *ReleaseEVEImageUploadClaimRequest) (*ReleaseEVEImageUploadClaimResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReleaseEVEImageUploadClaim not implemented")
+}
+func (UnimplementedBrokerServer) PullEVEContainerImage(*PullEVEImageRequest, grpc.ServerStreamingServer[PullImageChunk]) error {
+	return status.Errorf(codes.Unimplemented, "method PullEVEContainerImage not implemented")
 }
 func (UnimplementedBrokerServer) PushSDNContainerImage(grpc.ClientStreamingServer[PushSDNImageChunk, PushImageResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method PushSDNContainerImage not implemented")
@@ -590,6 +671,53 @@ func _Broker_PushEVEContainerImage_Handler(srv interface{}, stream grpc.ServerSt
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Broker_PushEVEContainerImageServer = grpc.ClientStreamingServer[PushImageChunk, PushImageResponse]
+
+func _Broker_ClaimEVEImageUpload_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClaimEVEImageUploadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrokerServer).ClaimEVEImageUpload(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Broker_ClaimEVEImageUpload_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrokerServer).ClaimEVEImageUpload(ctx, req.(*ClaimEVEImageUploadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Broker_ReleaseEVEImageUploadClaim_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReleaseEVEImageUploadClaimRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrokerServer).ReleaseEVEImageUploadClaim(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Broker_ReleaseEVEImageUploadClaim_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrokerServer).ReleaseEVEImageUploadClaim(ctx, req.(*ReleaseEVEImageUploadClaimRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Broker_PullEVEContainerImage_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(PullEVEImageRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(BrokerServer).PullEVEContainerImage(m, &grpc.GenericServerStream[PullEVEImageRequest, PullImageChunk]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Broker_PullEVEContainerImageServer = grpc.ServerStreamingServer[PullImageChunk]
 
 func _Broker_PushSDNContainerImage_Handler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(BrokerServer).PushSDNContainerImage(&grpc.GenericServerStream[PushSDNImageChunk, PushImageResponse]{ServerStream: stream})
@@ -819,6 +947,14 @@ var Broker_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Broker_BuildImage_Handler,
 		},
 		{
+			MethodName: "ClaimEVEImageUpload",
+			Handler:    _Broker_ClaimEVEImageUpload_Handler,
+		},
+		{
+			MethodName: "ReleaseEVEImageUploadClaim",
+			Handler:    _Broker_ReleaseEVEImageUploadClaim_Handler,
+		},
+		{
 			MethodName: "SetupDevices",
 			Handler:    _Broker_SetupDevices_Handler,
 		},
@@ -875,6 +1011,11 @@ var Broker_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "PushEVEContainerImage",
 			Handler:       _Broker_PushEVEContainerImage_Handler,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "PullEVEContainerImage",
+			Handler:       _Broker_PullEVEContainerImage_Handler,
+			ServerStreams: true,
 		},
 		{
 			StreamName:    "PushSDNContainerImage",

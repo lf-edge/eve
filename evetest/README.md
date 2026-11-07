@@ -1065,6 +1065,27 @@ evetest cluster info [-f]               # Kubernetes cluster info
 evetest cluster metrics [-f]            # Kubernetes cluster metrics
 ```
 
+### Broker Commands
+
+These talk to the evetest-broker at `EVETEST_BROKER_ADDRESS`:`EVETEST_BROKER_PORT`
+directly and need no running test. CI uses them to stage the EVE image built by a
+workflow run on the broker once per host, no matter how many suite jobs need it:
+
+```bash
+# Exits 0 and prints a ticket if this job has to provide the image; exits 10 if the broker
+# has it. While another job is uploading it, waits, and takes over if that job fails.
+TICKET=$(evetest broker image claim-upload --repo evebuild/pr --version <version> --hypervisor kvm)
+# A `docker save` archive tagged <repo>:<version>-kvm-amd64; the ticket says which image it is.
+evetest broker image upload --ticket "$TICKET" eve-kvm-amd64-generic.tar
+evetest broker image release-claim --ticket "$TICKET"   # give the claim up after a failed download
+```
+
+A claim lapses after 60 minutes if the upload does not start (time to fetch the
+image) and after 10 minutes without upload progress once it runs, so a job that
+died cannot block the others for long. A test that needs the image on the
+runner's own Docker (an EVE upgrade target) loads it from the broker when it
+cannot pull it.
+
 ## Configuration
 
 All configuration is done through environment variables; there are no configuration files.

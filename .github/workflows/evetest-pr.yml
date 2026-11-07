@@ -38,6 +38,7 @@ jobs:
       head-sha: ${{ steps.context.outputs.head-sha }}
       head-repository: ${{ steps.context.outputs.head-repository }}
       build-run-id: ${{ steps.context.outputs.build-run-id }}
+      eve-version: ${{ steps.eve-version.outputs.version }}
     steps:
       # PR Gate re-checks build success and PR approval (or a CODEOWNER's /evetest comment)
       # regardless of which of those fired it, and writes the result to this artifact --
@@ -176,6 +177,32 @@ jobs:
                 minimizedComment { isMinimized }
               }
             }' >/dev/null
+
+      # The build job records the version it gave the EVE image (see build-eve), so
+      # that the suites can ask the brokers for exactly that image. The build ran
+      # the PR's code, so the file is only accepted in the shape of that PR's
+      # versions.
+      - name: Download the EVE version of the build
+        if: steps.dedupe.outputs.skip_run == 'false'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: eve-version-kvm-amd64-generic
+          run-id: ${{ steps.context.outputs.build-run-id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: eve-version
+
+      - id: eve-version
+        name: Validate the EVE version of the build
+        if: steps.dedupe.outputs.skip_run == 'false'
+        env:
+          PR: ${{ steps.context.outputs.pr-number }}
+        run: |
+          version=$(tr -d '[:space:]' < eve-version/eve-version.txt)
+          if ! [[ "$version" =~ ^0\.0\.0-pr${PR}-[0-9A-Za-z._-]{1,64}$ ]]; then
+            echo "::error::unexpected EVE version in the build artifact: $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Mark this run as the active evetest run of the PR
         if: steps.dedupe.outputs.skip_run == 'false'
@@ -476,7 +503,11 @@ jobs:
             if (skip.length > 0 && text) {
               // The full reasoning lives in the job summary; the PR comment
               // only points to it to keep the conversation short.
-              await core.summary.addHeading('Skipped evetest tests', 2).addRaw(text, true).write();
+              // Nest Claude's headings below our "##" heading.
+              const nested = require('child_process').execFileSync(
+                '.github/actions/evetest-run-suite/shift-headings.sh', ['3'],
+                { input: text, encoding: 'utf8' });
+              await core.summary.addRaw('## Skipped evetest tests\n\n' + nested, true).write();
               const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber,
@@ -588,7 +619,7 @@ jobs:
         with:
           test-suite: ${{ matrix.test-suite }}
           head-sha: ${{ needs.discover-suites.outputs.head-sha }}
-          download-image-artifacts: 'true'
+          eve-version: ${{ needs.discover-suites.outputs.eve-version }}
           source-run-id: ${{ needs.discover-suites.outputs.build-run-id }}
           skip: ${{ needs.discover-suites.outputs.skip }}
           post-status: 'true'
