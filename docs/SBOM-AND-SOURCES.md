@@ -116,7 +116,9 @@ It also fills in what the scanner leaves out, using the rest of the rootfs tar:
 * packages the scanner left with a `NOASSERTION` supplier get `Organization: LF Edge` if EVE builds them (packages recorded by `pkg/alpine/register-sbom-pkg.sh`, and `github.com/lf-edge` Go modules) and `Organization: Alpine Linux` if they are Alpine `-r<N>` apk packages
 * packages recorded by `register-sbom-pkg.sh` get a `pkg:generic/<name>@<version>` purl in place of the `pkg:apk` one the scanner gives them, since EVE builds them from source
 * a file whose checksum matches nothing in the tar is matched by path: dropped with its relationships if the tar does not contain it, as for the `etc/hostname` linuxkit leaves out, or given the checksums of what linuxkit wrote there, as for `etc/hosts`
-* Go modules and Rust crates get the supplier that [tools/sbom-stamp/suppliers.txt](../tools/sbom-stamp/suppliers.txt) maps their purl to; rerun `tools/sbom-stamp/update-suppliers.py` on a fresh SBoM when a `go.mod` or `Cargo.lock` changes
+* Rust crates the scanner read from a `cargo-sbom` document in the rootfs get back what the scanner drops: a crate built from a git repository gets that repository and commit as its `downloadLocation` and a `pkg:cargo` purl with a `vcs_url` qualifier, and a crate from the workspace `cargo-sbom` ran in is looked up in the supplier map by its name
+* the kernel from the `lfedge/eve-kernel` image gets `Organization: LF Edge` and the eve-kernel commit its version ends in as its `downloadLocation`
+* Go modules, Rust crates and other packages get the supplier that [tools/sbom-stamp/suppliers.txt](../tools/sbom-stamp/suppliers.txt) maps their purl to; rerun `tools/sbom-stamp/update-suppliers.py` on a fresh SBoM when a `go.mod` or `Cargo.lock` changes, and add by hand what it cannot resolve and what `sbom-stamp` still reports without a supplier
 
 To generate the sources, run `make collected_sources`. This does the following:
 

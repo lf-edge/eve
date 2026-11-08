@@ -36,6 +36,9 @@ const (
 	documentID    = "SPDXRef-DOCUMENT"
 	lfEdge        = "Organization: LF Edge"
 	nsPlaceholder = "https://github.com/lf-edge/eve/spdx/placeholder"
+	// maxEmbeddedSBOM bounds the size of an SPDX document inside an image
+	// that stampTar holds in memory.
+	maxEmbeddedSBOM = 64 << 20
 )
 
 // Options carry the product identity stamped into the document.
@@ -225,7 +228,13 @@ func Stamp(in []byte, o Options, c Content) ([]byte, Stats, error) {
 		return nil, st, err
 	}
 
-	// Suppliers are looked up by purl, so fill the purls first.
+	// Suppliers are looked up by purl, so fill the purls first, and the
+	// cargo purls before they are copied between copies of a package.
+	for i := range pkgs {
+		if pkgs[i], err = fillCargo(pkgs[i], c); err != nil {
+			return nil, st, err
+		}
+	}
 	if st.FilledPURLs, err = fillPURLs(pkgs); err != nil {
 		return nil, st, err
 	}
@@ -234,7 +243,7 @@ func Stamp(in []byte, o Options, c Content) ([]byte, Stats, error) {
 		return nil, st, err
 	}
 	for i := range pkgs {
-		if pkgs[i], err = fillPackage(pkgs[i], roots); err != nil {
+		if pkgs[i], err = fillPackage(pkgs[i], roots, c); err != nil {
 			return nil, st, err
 		}
 	}
@@ -460,7 +469,7 @@ func stampTar(path, member string, o Options) (st Stats, err error) {
 	src := io.TeeReader(in, inSum)
 	tr := tar.NewReader(src)
 	tw := tar.NewWriter(io.MultiWriter(tmp, outSum))
-	c := Content{SHA1: map[string]string{}, Paths: map[string]string{}}
+	c := Content{SHA1: map[string]string{}, Paths: map[string]string{}, Cargo: map[string]map[string]string{}}
 	found := false
 	for {
 		hdr, err := tr.Next()
@@ -479,14 +488,24 @@ func stampTar(path, member string, o Options) (st Stats, err error) {
 			}
 			w := io.Writer(tw)
 			var h1, h256 hash.Hash
+			var embedded *bytes.Buffer
 			if hdr.Typeflag == tar.TypeReg {
 				h1, h256 = sha1.New(), sha256.New()
 				w = io.MultiWriter(tw, h1, h256)
+				if strings.HasSuffix(hdr.Name, ".spdx.json") && hdr.Size <= maxEmbeddedSBOM {
+					embedded = &bytes.Buffer{}
+					w = io.MultiWriter(w, embedded)
+				}
 			}
 			if _, err := io.Copy(w, tr); err != nil {
 				return st, err
 			}
 			name := strings.Trim(filepath.Clean(hdr.Name), "/")
+			if embedded != nil {
+				if sources := cargoSources(embedded.Bytes()); sources != nil {
+					c.Cargo["/"+name] = sources
+				}
+			}
 			c.Paths[name] = ""
 			if h1 != nil {
 				sum := hex.EncodeToString(h256.Sum(nil))
