@@ -2,6 +2,207 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-08 -- 0.0.0-master-90f9b3d8 (run #11)](https://github.com/lf-edge/eve/actions/runs/42418484474)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/11/)
+
+### TestDeviceConnectivitySuite: failure analysis
+
+#### TestPNACWithoutProxy
+
+##### Failure
+
+```
+failed to onboard device "edge-dev": context deadline exceeded
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+The evetest broker's Proxmox provisioning assigned the **same VM ID (106)** to both the EVE device and the SDN VM: `gotest.json` shows `Device "eve-02d27b64-edge-dev" prepared as Proxmox VM 106` at 22:19:24, immediately followed by `Device "sdn-02d27b64" prepared as Proxmox VM 106` at 22:19:33 — a VM-ID collision. Live evidence confirms the EVE VM never actually ran as a result: `evetest eve console-output` shows only the single stale `starting serial terminal on interface serial0` line with zero further output over 20+ minutes, the onboarding-network dnsmasq lease file is empty (no DHCPDISCOVER ever received), and hostapd's log shows no EAPOL packets at all from the device's port — i.e. the guest never booted far enough to touch the network, consistent with its VM having been clobbered by the colliding SDN VM. This left the device stuck in `EVE_DEVICE_STATE_UNDEFINED` until the onboarding wait timed out.
+
+This is the same mechanism as an earlier entry in this run's `live-ledger.md` (the `edge-dev1`/VM-111 collision under `TestThreeNodesCluster`-style multi-VM provisioning), which showed the identical signature: console output frozen at the initial serial-terminal line, no IP ever discovered, device permanently `UNDEFINED`. It also fits the broader, well-documented recurring pattern of Proxmox broker/host instability during VM provisioning (truncated `"unexpected end of JSON input"` storage-lookup responses — seen twice here at 22:18:13 and 22:19:18 right before the collision — VM-ID races, and `"no worker upid"` errors), logged repeatedly in the ledger going back to at least 2026-11-01. This specific instance (a single-device test hitting a VM-ID collision with its own SDN VM, rather than between sibling EVE devices) is a new variant of that same known infra-flake pattern, not an EVE/pillar code defect.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestClusterPVCGCDeletesOnlyOrphans
+
+##### Failure
+
+```
+
+Timed out after 900.001s.
+The function passed to Eventually failed at /evetest/tests/cluster/pvcgc_test.go:115 with:
+node "edge-dev2" has no created VolumeStatus for volume 84f66c6d-4273-4154-b809-0c0559869d76
+Expected
+    <bool>: false
+to be true
+```
+
+##### Claude's conclusion
+
+Confirmed exactly: this is the same recurring tie-breaker-node/Longhorn-manager gap documented in the ledger, still live right now.
+
+###### Root cause
+
+Live `volumemgr` logs on `edge-dev2` are continuously logging `WaitForLonghornReady: not ready yet: longhorn daemonset:longhorn-manager missing on this node` (every 5s, still ongoing at 03:54). Confirmed via `kubectl get daemonset -n longhorn-system`: the `longhorn-manager` DaemonSet has `NODE SELECTOR: tie-breaker-node=false` with `DESIRED=2` (only `edge-dev1`/`edge-dev3`), while `edge-dev2` carries `tie-breaker-node=true` — so `longhorn-manager` can never be scheduled there, `kubeapi.WaitForLonghornReady` (`pkg/pillar/kubeapi/kubeapi.go:396`) loops forever, and `volumehandlers/csihandler.go`'s `PrepareVolume` never creates the PVC for volume `84f66c6d-4273-4154-b809-0c0559869d76` (`pvc-gc-persistent`), leaving its `VolumeStatus` permanently stuck at `CREATING_VOLUME` (State 109) — exactly matching the test's "no created VolumeStatus" timeout. Note this is a slightly different symptom than prior nights (then `engine-image`/`csi-plugin` were also absent from the tie-breaker node; tonight only `longhorn-manager` is nodeSelector-excluded while `engine-image`/`csi-plugin` do run on `edge-dev2`), but the mechanism — `csihandler.go` calling `WaitForLonghornReady` unconditionally with no exemption for tie-breaker nodes — is identical.
+
+This is the same known, recurring, still-unfixed issue recorded in the ledger for this exact test (`TestClusterPVCGCDeletesOnlyOrphans`) on **2026-11-02 (run #5)** and again **2026-11-07 (run #10, last night)**. It does not appear related to the sibling test that ran just before it in this run (`TestDNIDandBackupDNID`, which powered off `edge-dev3`, not `edge-dev2`, and passed) — the `edge-dev2` tie-breaker exclusion is a pre-existing cluster-topology condition, not something that test introduced.
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.001s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+Confirmed live and ongoing right now. This fully matches the ledger's known pattern.
+
+**Root cause:** Confirmed live — this is the exact same `getKubeAppActivateStatus` (`pkg/pillar/cmd/zedmanager/zedmanager.go:2059`) deadlock already documented repeatedly in the ledger. `AppInstanceStatus` for `failover-purge-app` (uuid `66a21d18-...`) on edge-dev2 shows `PurgeInprogress:4`, `PurgeStartedAt:2026-11-08T04:16:40Z`, `Activated:false`, `IsDesignatedNodeID:false`, and `kubectl -n eve-kube-app get vmirs,vmi,vm -A` returns "No resources found" — matching the test's `found []`. zedmanager has been logging an unbroken loop of `getKubeAppActivateStatus(...): not designated, node 20bf805b-..., onTheDevice false, statusRunning false` every ~20s continuously, still ongoing right now (04:32). `evetest status` confirms edge-dev1 (the designated node) is `EVE_DEVICE_STATE_SUSPECT`, deliberately powered off for this failover scenario, so once the purge tore down the old VMIRS/VMI, nothing in the cluster could originate a new one.
+
+This is the identical mechanism already investigated in this same run for `TestClusterPVCGCDeletesOnlyOrphans` was unrelated, but this specific test/failure is a very well-known recurring issue: per `live-ledger.md`, it has reproduced with the identical signature in essentially every nightly run since the test's introduction (`98acf1411`, 2026-10-18) through at least run #10 (2026-11-07, last night), i.e. an unbroken streak of 10+ consecutive nights. Tonight's occurrence continues that streak — not a new bug.
+#### TestClusterPVCRedownload
+
+##### Failure
+
+```
+
+vm1's content tree is in state LOADED, not REMOTELOADED -- it was re-downloaded despite the PVC already being complete
+Expected
+    <types.SwState>: 108
+to equal
+    <types.SwState>: 125
+```
+
+##### Claude's conclusion
+
+**Root cause:** Confirmed live via `volumemgr` logs on edge-dev1: at `05:11:49`–`05:11:53` for vm1's ContentTreeStatus (`a6d2848a-adb1-438d-8ee2-ff77626c6268`), `contentTreeSatisfiedByPVCs` logged `no local volumes reference this content tree` (the matching `VolumeConfig`/PVC hadn't been published yet), so `doUpdateContentTree` fell through to the normal path, found all three blobs already in the local CAS from before reboot, and self-completed `VERIFIED→LOADING→LOADED` by `05:11:53.513` — landing at `LOADED` (108) instead of `REMOTELOADED` (125), exactly matching the test's assertion.
+
+This is the identical PVC-adoption race in `contentTreeSatisfiedByPVCs`/`doUpdateContentTree` (`pkg/pillar/cmd/volumemgr/acceptclustercontenttree.go`) already documented in `live-investigation.md` for `TestClusterPVCGCDeletesOnlyOrphans` in this same run — different test, but same class of "volumemgr completes a content tree before PVC/volume adoption info has been published" bug. Per the ledger, this exact `TestClusterPVCRedownload`/LOADED-vs-REMOTELOADED signature is a long-running recurring issue first seen on 2026-10-30 (run #2) and repeated on 2026-10-31 (run #3), 2026-11-03 (run #6), and 2026-11-07 (run #10, last night) — tonight is a continuation of that unbroken streak, not a new bug (note: the ledger also has unrelated SDN-infra failures under the same test name on other nights, but tonight's signature matches the code-race variant, not the infra one).
+
+### TestNodeClusterSuite: failure analysis
+
+#### TestMgmtProxy
+
+##### Failure
+
+```
+Timed out waiting for app "4ff213bf-4fd1-407b-b482-40f97ac17c24" to be scheduled in cluster "mgmtproxy-test-cluster"
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence on `edge-dev1` pins this to a hung async volume-creation worker, not a true scheduling problem: `volumemgr`'s `RolloutDiskToPVC` for the app's volume (`eafc62ec-3159-4c92-9a9e-b5d1dc4219ae`) failed at `02:23:11` with `error uploading image after 10 retries: unexpected return value 503` from `cdi-uploadproxy`, but the CDI upload itself actually completed successfully out-of-band shortly after (`kubectl describe pvc` shows `UploadSucceeded`/`Upload Complete`, pod phase `Succeeded`, and the PVC is `Bound` with `allocated_bytes` ≈ `provisioned_bytes`). Despite that, `volumemgr` never logged consuming a `VolumeWorkResult` after the failed attempt and never retried `AddWorkCreate` — the `VolumeStatus` is still parked in `State:CREATING_VOLUME`/`SubState:PrepareDone` (Progress 100%) with no error recorded, so `AppInstanceStatus` for app `4ff213bf-...` stays at `CREATING_VOLUME` forever, the PVC sits unused (`Used By: <none>`), and no VMI/pod is ever created — matching the test's "never scheduled" symptom exactly.
+
+This is a known, recurring failure class for `TestMgmtProxy`'s scheduling-timeout variant (distinct from the older `ImagePullBackOff`/registry-routing variant): the identical CDI-uploadproxy-`503`-stalls-`CREATING_VOLUME` mechanism was already diagnosed for this exact test on 2026-11-07 (run #10, last night) and traces back further to 2026-11-01/11-02 (run #4/#5) under heavier control-plane load. No other suite test failed in tonight's run to compare against, so this doesn't share a root cause with anything else currently failing. No PR diff was supplied for this investigation, so no relatedness assessment is given.
+#### TestClusterVMApp
+
+##### Failure
+
+```
+Timed out waiting for app "574d84c2-4cd1-456f-a437-8f08d9f89b8d" to be scheduled in cluster "test-cluster"
+```
+
+##### Claude's conclusion
+
+This is an exact match — identical mechanism, first seen 2026-11-02, recurring multiple nights since including 2026-11-06. I have enough to write the conclusion.
+
+###### Root cause
+
+Live evidence on the paused cluster confirms this is the known tie-breaker/Longhorn gating bug: `edge-dev3` carries **no `tie-breaker-node` label at all**, while `edge-dev1`/`edge-dev2` are labeled `tie-breaker-node=false`. Since the `longhorn-manager`/`longhorn-csi-plugin`/`engine-image` DaemonSets use `nodeSelector: tie-breaker-node=false`, `edge-dev3` fails that selector and never gets a Longhorn manager pod scheduled (`kubectl get nodes.longhorn.io edge-dev3` → `READY: False`, reason `ManagerPodMissing`). App `574d84c2`'s root-volume CDI-upload pod got scheduled onto `edge-dev3` and has been stuck `ContainerCreating` for 30+ minutes, with repeated `FailedAttachVolume: node edge-dev3 is not ready` events — so the VM/VMI was never created, exactly matching the 30-minute "app never scheduled" timeout.
+
+This is **the same root cause** already documented for this exact test in `live-ledger.md`: first seen 2026-11-02 (run #5), recurring on multiple subsequent nights including run #9 (2026-11-06) with app `8becf6b7-...` — same missing/stale tie-breaker-node label on a reused device, same Longhorn-selector exclusion, same unfixed gap in `volumehandlers/csihandler.go`'s `PrepareVolume`/`kubeapi.WaitForLonghornReady` (per `pkg/pillar/kubeapi/longhorninfo.go:720-721`) not accounting for nodes Longhorn's DaemonSets don't schedule on. It does not share a root cause with the other failure already recorded in this run's `live-investigation.md` (`TestMgmtProxy`'s CDI-uploadproxy-503/stuck-`CREATING_VOLUME` bug — a different mechanism, even though the symptom string is identical). This is a known, long-standing, unfixed recurring issue (since 2026-11-02), not a new regression.
+
+### TestPcibackErrorSuite: failure analysis
+
+#### TestReportMissingDevice
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to setup EVE device "edge-dev": failed waiting for VM 106 creation: task failed on Proxmox: unable to create VM 106 - cannot import from 'local:import/ev-eve-78488b3d-edge-dev-0.qcow2' - can't lock file '/var/lock/pve-manager/pve-storage-local-lvm' - got timeout (task UPID:farfalle:0008FD95:7CCB9423:6AEFA385:qmcreate:106:root@pam:)
+```
+
+##### Claude's conclusion
+
+This confirms it: the gotest.json log shows the exact same broker-side error, occurring entirely before any EVE device booted. No EVE device was ever created (setup failed at `qmcreate`), so there's nothing further to inspect live — confirmed by `evetest status` returning "No EVE devices found."
+
+The ledger has no prior occurrence of this exact `pve-storage-local-lvm` lock-timeout signature, but it fits the same broader, well-documented pattern of Proxmox host "farfalle" API/lock contention under concurrent VM lifecycle operations (seen repeatedly as TLS handshake timeouts on `qmcreate`/`qmstop`, `lvremove`/"Logical volume in use", `storage/local/status` timeouts, etc.) going back to at least 2026-11-01.
+
+**Root cause:** Pure broker/Proxmox-infrastructure failure, not an EVE or pillar code issue. Proxmox's `qmcreate` task for VM 106 failed because it couldn't acquire the storage lock `/var/lock/pve-manager/pve-storage-local-lvm` within the timeout — i.e., another concurrent Proxmox storage operation (likely another VM's create/import/remove on the shared `local-lvm` storage) was holding that lock on host "farfalle." No EVE device ever got created (`evetest status` confirms "No EVE devices found"), so there's no pillar-side state to examine; this is identical in class to the recurring "farfalle" Proxmox contention entries already documented across multiple prior nights (TLS handshake timeouts on `qmcreate`/`qmstop`, `lvremove` LV-in-use races, `storage/local/status` timeouts dating back to 2026-11-01), though this exact lock-path/error string hasn't been recorded before, so it's a new manifestation of that same known, recurring host-contention problem rather than a brand-new failure class.
+
+### TestStorageSuite: failure analysis
+
+#### TestZVolProvisionedSizeReported
+
+##### Failure
+
+```
+Device "edge-dev" failed to confirm the latest config (version 1): timed out waiting for LastProcessedConfig >= 2026-11-07 22:18:57.356048437 +0000 UTC
+```
+
+##### Claude's conclusion
+
+Root cause findings:
+
+**Live evidence:** `edge-dev` actually processed config version 1 correctly and promptly — `zedagent` parsed it at 22:19:00.316 (setting `lastProcessedConfig` in-process per `parseconfig.go:211`), the volume `zvol-provisioned-test` was created by 22:19:11, and the DPC switch from the bootstrap "lastresort" network to the controller-assigned "zedagent" network completed successfully (`DPC_SUCCESS`) by 22:19:34. The problem is that this `LastProcessedConfig` value is only surfaced to the controller via a periodic `metrics` POST (`handlemetrics.go:648`), not via the device-info channel — and device logs show exactly one metrics-send attempt in the whole test window, which started around 22:18:42 (right at boot, before the DPC switch) and then hung for the full 120s client timeout, finally failing at 22:21:00.327 with `sendMetricsProtobufByURL status 0 failed: ... context deadline exceeded (Client.Timeout exceeded while awaiting headers)`, logged alongside a watchdog warning `StillRunning(zedagentmetrics) took a long time: 138`. So the one metrics report that would have carried the updated `LastProcessedConfig` got wedged on a connection/route established before the network reconfiguration and was never retried in time, even though `PublishDeviceInfo` sends succeeded repeatedly throughout (including right after the DPC switch) — the harness's 2-minute wait expired at almost exactly the same moment (22:21:00) the stuck metrics call timed out.
+
+**Ledger check:** No prior entry in `live-ledger.md` matches this signature (`TestZVolProvisionedSizeReported`, `LastProcessedConfig` timeout, or `sendMetricsProtobufByURL`/metrics-POST hang) — this appears to be a new, not-previously-recorded failure mode, not a repeat of anything documented so far.
+
+**Shared cause with this run:** No other failure has been investigated in this run yet, so there's nothing to correlate it against.
+
+No PR diff was supplied for this investigation, so no relatedness assessment is given.
+
+### TestTelemetrySuite: failure analysis
+
+#### TestKernelPanicReport
+
+##### Failure
+
+```
+
+Timed out after 600.001s.
+the kernel panic stack trace header was not uploaded
+When passed a matcher, ReceiveMatcher's channel *must* receive something.
+```
+
+##### Claude's conclusion
+
+This confirms the pattern dates back to **2026-10-29 (run #1)** and has recurred at least twice more since (2026-10-28 ledger entry at line 3175, and 2026-11-07's own entry at line 1139 — i.e. this test has failed with this exact signature repeatedly across the project's test history).
+
+Root cause: the pillar/EVE telemetry pipeline worked correctly — nodeagent logged the kernel-panic stack-trace header at 23:07:34.738Z and the end-of-stack marker at 23:07:35.899Z, newlogd uploaded the containing chunk (`dev.log.1794092856562.gz`, now in `keepSentQueue`) via a `POST .../newlogs` at 23:08:17, and Adam's own on-disk store (`adam-db/.../logs/01794092864018512237`, written 23:08) contains the exact header line — all well inside the 600s window before the test's 23:17:48 timeout. The failure is on the evetest side: the test's `device.WatchLogs(...)` live subscription to Adam's `/device/<uuid>/logs` endpoint never delivered the already-persisted matching entry to the test's channel, which is the identical `AdamClient.SubscribeToDeviceLogs` race documented in the ledger since 2026-10-29 and seen again on 2026-10-28 and in tonight's own earlier entry — i.e. this is a **known, recurring evetest-side bug**, not a new issue and not a pillar/EVE regression.
+
+### TestUpgradeSuite: failure analysis
+
+#### TestThreeNodesUpgrade
+
+##### Failure
+
+```
+Timed out waiting for cluster nodes to become ready in cluster "test-cluster" (device "edge-dev3")
+```
+
+##### Claude's conclusion
+
+This exact failure (same test, same message, same mechanism — `edge-dev2`'s CNI/service networking breaking after its post-admission pod-identity switch) was already seen and diagnosed just yesterday (2026-11-07, run #10). That's the night immediately preceding this run.
+
+###### Root cause
+
+Live evidence: `kubectl get nodes` shows all three nodes `Ready` and `kubectl get pods -A` shows the cluster formed, but `evetest cluster update-info` shows storage health stuck `DEGRADED`/`FAILED` (last observed transition at 00:11:31, vs. now 00:24:03 — never recovered). The cause is isolated to `edge-dev2`: its `virt-handler-qgbcb` and `longhorn-manager-jrm8g` pods have been crash-looping (5 restarts in the last 13 min) with liveness/readiness probes failing against their **own** pod IPs (`10.42.0.41:8443` / `10.42.0.40:9501`) with "no route to host" / "connection refused". `edge-dev2`'s current flannel subnet is `10.42.1.1/24` (confirmed via `/run/flannel/subnet.env` and its `cni0` IP), but those two pods were assigned IPs from `10.42.0.0/24` — a subnet that belongs to a different node. This means the pods got their network identity before/during `edge-dev2`'s subnet reassignment (consistent with the k3s/flannel process on edge-dev2 having only started at 00:11, i.e. restarted during the rolling upgrade), and were never recreated to pick up the correct subnet, leaving them permanently unreachable on their own node and storage (Longhorn) unable to reach `HEALTHY`.
+
+This is the identical failure mode, same test, and same root-cause mechanism (`edge-dev2`'s CNI/service networking breaking after a mid-flight pod-identity/subnet switch, leaving `virt-handler`/Longhorn pods in permanent `CrashLoopBackOff` with "no route to host" on their own pod IPs, keeping storage `DEGRADED` forever) as the entry already logged in `live-ledger.md` for 2026-11-07 (run #10, the immediately preceding night) — so this is a **known, recurring issue, first seen 2026-11-07**, not a new one. No PR diff was supplied for this investigation, so no relatedness judgment is given.
+
 ## [2026-11-07 -- 0.0.0-master-d87216a0 (run #10)](https://github.com/lf-edge/eve/actions/runs/42301228193)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/10/)
