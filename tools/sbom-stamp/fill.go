@@ -21,6 +21,9 @@ type Content struct {
 	// regular file written there, or to "" for any other entry type. A nil
 	// Paths leaves files whose content is not in the tar untouched.
 	Paths map[string]string
+	// Cargo maps the path of each SPDX document cargo-sbom wrote to the
+	// sources it records, as cargoSources returns them.
+	Cargo map[string]map[string]string
 }
 
 const (
@@ -29,7 +32,13 @@ const (
 	// pkg/alpine/register-sbom-pkg.sh ends the description of every package
 	// EVE builds from source with this.
 	builtFromSource = "(built from source)"
+	// kernelPackage starts the ID of the kernel in the eve-kernel image.
+	kernelPackage = "SPDXRef-docker.io-lfedge-eve-kernel-Package-"
 )
+
+// kernelCommit matches the eve-kernel commit that ends the version of the
+// kernel EVE builds, such as 6.18.55-linuxkit-core-92df24b15f57.
+var kernelCommit = regexp.MustCompile(`-([0-9a-f]{12})$`)
 
 // apkRelease matches the -r<N> release suffix of a package Alpine built.
 var apkRelease = regexp.MustCompile(`-r[0-9]+$`)
@@ -77,13 +86,15 @@ func imageSupplier(repo string) string {
 }
 
 type pkgInfo struct {
-	SPDXID          string        `json:"SPDXID"`
-	Name            string        `json:"name"`
-	VersionInfo     string        `json:"versionInfo"`
-	Supplier        string        `json:"supplier"`
-	Description     string        `json:"description"`
-	PackageFileName string        `json:"packageFileName"`
-	ExternalRefs    []externalRef `json:"externalRefs"`
+	SPDXID           string        `json:"SPDXID"`
+	Name             string        `json:"name"`
+	VersionInfo      string        `json:"versionInfo"`
+	Supplier         string        `json:"supplier"`
+	DownloadLocation string        `json:"downloadLocation"`
+	SourceInfo       string        `json:"sourceInfo"`
+	Description      string        `json:"description"`
+	PackageFileName  string        `json:"packageFileName"`
+	ExternalRefs     []externalRef `json:"externalRefs"`
 }
 
 func (p pkgInfo) purl() string {
@@ -207,7 +218,8 @@ func knownSupplier(p pkgInfo) string {
 	purl := p.purl()
 	switch {
 	case strings.HasSuffix(p.Description, builtFromSource),
-		strings.HasPrefix(purl, "pkg:golang/github.com/lf-edge/"):
+		strings.HasPrefix(purl, "pkg:golang/github.com/lf-edge/"),
+		p.Name == "linux-kernel" && strings.HasPrefix(p.SPDXID, kernelPackage):
 		return lfEdge
 	// syft drops an apk maintainer it cannot parse, such as one whose email
 	// domain has a hyphen (anchore/syft#5439), and gives some apk packages,
@@ -221,8 +233,9 @@ func knownSupplier(p pkgInfo) string {
 
 // fillPackage gives an image root, which linuxkit names after the image's
 // repository and versions with its tag or digest, the image's purl and
-// supplier, and fills in suppliers the scanner left as NOASSERTION.
-func fillPackage(raw json.RawMessage, roots map[string]bool) (json.RawMessage, error) {
+// supplier, and fills in suppliers the scanner left as NOASSERTION. It gives
+// the kernel the eve-kernel commit it was built from as its downloadLocation.
+func fillPackage(raw json.RawMessage, roots map[string]bool, c Content) (json.RawMessage, error) {
 	var p pkgInfo
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return nil, err
@@ -251,8 +264,21 @@ func fillPackage(raw json.RawMessage, roots map[string]bool) (json.RawMessage, e
 			set("supplier", s, "versionInfo")
 		}
 	}
+	noLocation := p.DownloadLocation == "" || p.DownloadLocation == "NOASSERTION"
+	workspaceCrate := false
+	if p.purl() == "" {
+		workspaceCrate = cargoSource(p, c) == "NONE"
+	}
+	if m := kernelCommit.FindStringSubmatch(p.VersionInfo); m != nil && noLocation &&
+		p.Name == "linux-kernel" && strings.HasPrefix(p.SPDXID, kernelPackage) {
+		set("downloadLocation", "git+https://github.com/lf-edge/eve-kernel@"+m[1], "supplier")
+	}
 	if supplier == "" || supplier == "NOASSERTION" {
-		if s := knownSupplier(p); s != "" {
+		s := knownSupplier(p)
+		if s == "" && workspaceCrate {
+			s = mappedSupplier(suppliers, "pkg:cargo/"+purlEscape(p.Name))
+		}
+		if s != "" {
 			set("supplier", s, "versionInfo")
 		}
 	}

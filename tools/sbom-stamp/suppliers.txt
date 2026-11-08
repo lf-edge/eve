@@ -342,6 +342,8 @@ pkg:cargo/graphql-parser	Organization: GraphQL Rust
 pkg:cargo/graphql_client	Organization: GraphQL Rust
 pkg:cargo/graphql_client_codegen	Organization: GraphQL Rust
 pkg:cargo/graphql_query_derive	Organization: GraphQL Rust
+pkg:cargo/greptime-proto	Organization: Greptime
+pkg:cargo/greptimedb-ingester	Organization: Greptime
 pkg:cargo/grok	Person: Matt Mastracci
 pkg:cargo/group	Organization: Zero-knowledge Cryptography in Rust
 pkg:cargo/h2	Organization: hyperium
@@ -354,6 +356,14 @@ pkg:cargo/hdrhistogram	Organization: HdrHistogram
 pkg:cargo/headers	Organization: hyperium
 pkg:cargo/headers-core	Organization: hyperium
 pkg:cargo/heck	Person: srrrse
+pkg:cargo/heim	Organization: Vector
+pkg:cargo/heim-common	Organization: Vector
+pkg:cargo/heim-cpu	Organization: Vector
+pkg:cargo/heim-disk	Organization: Vector
+pkg:cargo/heim-host	Organization: Vector
+pkg:cargo/heim-memory	Organization: Vector
+pkg:cargo/heim-net	Organization: Vector
+pkg:cargo/heim-runtime	Organization: Vector
 pkg:cargo/hermit-abi	Organization: The Hermit Operating System
 pkg:cargo/hex	Person: KokaKiwi
 pkg:cargo/hickory-proto	Organization: Hickory DNS
@@ -846,6 +856,7 @@ pkg:cargo/tracing-futures	Organization: Tokio
 pkg:cargo/tracing-log	Organization: Tokio
 pkg:cargo/tracing-serde	Organization: Tokio
 pkg:cargo/tracing-subscriber	Organization: Tokio
+pkg:cargo/tracing-tower	Organization: Tokio
 pkg:cargo/triomphe	Person: Manish Goregaokar
 pkg:cargo/try-lock	Person: Sean McArthur
 pkg:cargo/tryhard	Organization: Embark
@@ -887,6 +898,9 @@ pkg:cargo/utf8parse	Organization: Alacritty
 pkg:cargo/uuid	Organization: Rust Uuid
 pkg:cargo/uuid-simd	Person: Nugine
 pkg:cargo/valuable	Organization: Tokio
+pkg:cargo/vector-common-macros	Organization: Vector
+pkg:cargo/vector-config-macros	Organization: Vector
+pkg:cargo/vector-vrl-web-playground	Organization: Vector
 pkg:cargo/void	Person: Jonathan Reem
 pkg:cargo/vrl	Organization: Vector
 pkg:cargo/vsimd	Person: Nugine
@@ -979,6 +993,7 @@ pkg:cargo/zmij	Person: David Tolnay
 pkg:cargo/zstd	Person: Alexandre Bury
 pkg:cargo/zstd-safe	Person: Alexandre Bury
 pkg:cargo/zstd-sys	Person: Alexandre Bury
+pkg:generic/busybox	Organization: BusyBox
 pkg:golang/cel.dev/expr	Organization: Common Expression Language
 pkg:golang/cloud.google.com/go	Organization: Google APIs
 pkg:golang/dario.cat/mergo	Person: Dario Castañé
