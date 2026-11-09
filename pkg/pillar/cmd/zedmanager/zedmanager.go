@@ -537,7 +537,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	// Low-priority apps are released by an event: either a high-priority app
 	// reaching a running state (observed via subAppInstanceStatus below) or the
 	// priorityStartTimer expiring. Create it stopped; it is armed when
-	// delayBaseTime is first set in handleZedAgentStatusImpl.
+	// delayBaseTime is first set, see ensureDelayBaseTime.
 	ctx.priorityStartTimer = time.NewTimer(waitForAppsToStartTimeout)
 	if !ctx.priorityStartTimer.Stop() {
 		<-ctx.priorityStartTimer.C
@@ -1326,6 +1326,36 @@ func serializeAppInstanceConfigToSnapshot(config types.AppInstanceConfig, snapsh
 	return nil
 }
 
+// ensureDelayBaseTime establishes the moment from which the configured
+// application delays are counted, unless it is already known.
+func ensureDelayBaseTime(ctx *zedmanagerContext) {
+	if !ctx.delayBaseTime.IsZero() {
+		return
+	}
+	ctx.delayBaseTime = time.Now()
+	// Arm the fallback that releases low-priority apps once the startup
+	// window closes. The extra margin keeps the timer from firing a hair
+	// before highPriorityAppsPending sees the deadline as passed, which
+	// would leave apps held with no further wakeup. Guarded because
+	// subAppInstanceConfig is activated before the timer is created.
+	if ctx.priorityStartTimer != nil {
+		ctx.priorityStartTimer.Reset(waitForAppsToStartTimeout + time.Second)
+	}
+}
+
+// appStartTime returns the moment at which the application is allowed to start,
+// i.e. the base time plus the configured delay.
+//
+// The base time is established here as well as on ZedAgentStatus, because an
+// AppInstanceConfig can reach zedmanager first: the two travel over separate
+// pubsub channels and an app config arriving is by itself proof that the device
+// got its configuration. Otherwise the delay would be added to the zero time,
+// putting the start moment in year 1 and starting the app immediately.
+func appStartTime(ctx *zedmanagerContext, config types.AppInstanceConfig) time.Time {
+	ensureDelayBaseTime(ctx)
+	return ctx.delayBaseTime.Add(config.Delay)
+}
+
 func handleCreate(ctxArg interface{}, key string,
 	configArg interface{}) {
 	ctx := ctxArg.(*zedmanagerContext)
@@ -1349,8 +1379,7 @@ func handleCreateAppInstanceStatus(ctx *zedmanagerContext, config types.AppInsta
 		IsDesignatedNodeID: config.IsDesignatedNodeID,
 	}
 
-	// Calculate the moment when the application should start, taking into account the configured delay
-	status.StartTime = ctx.delayBaseTime.Add(config.Delay)
+	status.StartTime = appStartTime(ctx, config)
 
 	restoreAvailableSnapshots(&status)
 
@@ -1481,7 +1510,7 @@ func handleModify(ctxArg interface{}, key string,
 		return
 	}
 
-	status.StartTime = ctx.delayBaseTime.Add(config.Delay)
+	status.StartTime = appStartTime(ctx, config)
 
 	updateSnapshotsInAIStatus(status, config)
 
@@ -1893,14 +1922,7 @@ func handleZedAgentStatusImpl(ctxArg interface{}, key string,
 	// When getting the config successfully for the first time (get from the controller or read from the file), consider
 	// the device as ready to start apps. Hence, count the app delay timeout from now.
 	if status.ConfigGetStatus == types.ConfigGetSuccess || status.ConfigGetStatus == types.ConfigGetReadSaved {
-		if ctxPtr.delayBaseTime.IsZero() {
-			ctxPtr.delayBaseTime = time.Now()
-			// Arm the fallback that releases low-priority apps once the
-			// startup window closes. The extra margin keeps the timer from
-			// firing a hair before highPriorityAppsPending sees the deadline
-			// as passed, which would leave apps held with no further wakeup.
-			ctxPtr.priorityStartTimer.Reset(waitForAppsToStartTimeout + time.Second)
-		}
+		ensureDelayBaseTime(ctxPtr)
 	}
 
 	if ctxPtr.currentProfile != status.CurrentProfile {
