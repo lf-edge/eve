@@ -291,8 +291,12 @@ type VmConfig struct {
 	VncDisplay         uint32
 	VncPasswd          string
 	CPUsPinned         bool
-	VMMMaxMem          int // in kbytes
-	EnableVncShimVM    bool
+	// CPUPlacement is the controller's CPU placement intent (see
+	// cpuplacement.go). zedagent always sets it: a controller that sends only
+	// the legacy pin_cpu has it resolved there (ResolveLegacy).
+	CPUPlacement    CPUPlacementPolicy
+	VMMMaxMem       int // in kbytes
+	EnableVncShimVM bool
 	// Enables enforcement of user-defined ordering for network interfaces.
 	EnforceNetworkInterfaceOrder bool
 	// EnableOemWinLicenseKey indicates the app should receive the embedded Windows license key (if available)
@@ -307,6 +311,17 @@ type VmConfig struct {
 	// The setting is passed to OVMF via fw_cfg "opt/eve.bootorder".
 	BootOrder zcommon.BootOrder
 }
+
+// CPUTopology is the guest-visible CPU topology emitted to QEMU -smp.
+type CPUTopology struct {
+	Sockets int
+	Cores   int
+	Threads int
+}
+
+// IsSet reports whether a non-legacy (computed) topology is present.
+// Zero value means "fall back to the legacy flat VCpus topology".
+func (t CPUTopology) IsSet() bool { return t.Sockets > 0 && t.Cores > 0 && t.Threads > 0 }
 
 // VmMode is the type for the virtualization mode
 type VmMode uint8
@@ -467,6 +482,11 @@ type DomainStatus struct {
 	HoldUntil time.Time
 	// GdbSocket is the gdbstub UNIX socket exposed for a held domain, if any.
 	GdbSocket string
+
+	// Placement is where the workload stands with its CPUs, as domainmgr placed
+	// it. Its domain's cpuset is VmConfig.CPUs, which for a workload holding
+	// CPUs is Placement.Assigned.DomainCPUs().
+	Placement CPUPlacementState
 }
 
 func (status DomainStatus) Key() string {
@@ -729,7 +749,14 @@ type Capabilities struct {
 	HWAssistedVirtualization bool // VMX/SVM for amd64 or Arm virtualization extensions for arm64
 	IOVirtualization         bool // I/O Virtualization support
 	CPUPinning               bool // CPU Pinning support
-	UseVHost                 bool // vHost support
+	// CPUTopologyPinning is whether the hypervisor can bind each guest vCPU to
+	// one named host CPU and expose the resulting SMT topology to the guest.
+	// Strictly stronger than CPUPinning, which only confines a domain to a
+	// cpuset: whole-physical-core placement is meaningless without it, since
+	// the guest neither learns which of its vCPUs are SMT siblings nor stays
+	// on the cores it was placed on.
+	CPUTopologyPinning bool
+	UseVHost           bool // vHost support
 }
 
 // WatchdogParam is used in some proc functions that have a timeout,
