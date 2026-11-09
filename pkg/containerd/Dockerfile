@@ -8,7 +8,7 @@
 # Go toolchain instead of linuxkit's package releases. pkg/runc builds the
 # runc release this containerd is tested with.
 
-FROM lfedge/eve-alpine:2eddc3e8392f4a7ea026f1725f7eb84dcd5fc736 AS build
+FROM lfedge/eve-alpine:61283a3a978a7cdc9073a1ba678717fc3ea1fe97 AS build
 ENV BUILD_PKGS="bash gcc git libc-dev libseccomp-dev linux-headers make"
 ENV PKGS="tzdata"
 RUN eve-alpine-deploy.sh

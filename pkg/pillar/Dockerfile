@@ -11,7 +11,7 @@ ARG BUILD_PKGS_BASE="git gcc linux-headers libc-dev make linux-pam-dev m4 findut
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:61283a3a978a7cdc9073a1ba678717fc3ea1fe97
 
 FROM lfedge/eve-uefi:4e60f5847d2ed202f28d3135eb9d53ec90a45ad8 AS uefi-build
-FROM lfedge/eve-dom0-ztools:eac30aa5566ac172ab712e7a3b12390b9b1c1d8c  AS zfs
+FROM lfedge/eve-dom0-ztools:b1001db22705c0c7020947c36bc99f5a6f31e6c2  AS zfs
 RUN mkdir /out
 # copy zfs-related files from dom0-ztools using prepared list of files
 RUN while read -r x; do \
@@ -169,7 +169,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build if [ "${TEST_TOOLS}" = "y" ]
     GOBIN=/final/opt/ GOFLAGS="" go install gotest.tools/gotestsum@v1.7.0; \
 fi
 
-FROM lfedge/eve-fscrypt:92f91371a725262d07eeb9526955420ef3ce68ac AS fscrypt
+FROM lfedge/eve-fscrypt:ef6638628f83d510ec46eb01a103e404e3032250 AS fscrypt
 FROM lfedge/eve-gpt-tools:2ad8d47013a5c20fd0cd14f504c310c1489a847c AS gpttools
 FROM lfedge/eve-storage-resizer:a534502f496e5c410511f400839ec2667ceb3136 AS storage-resizer
 

@@ -7,7 +7,7 @@
 # eve-alpine's package refreshes instead of linuxkit's package releases.
 # pillar relies on /etc/init.d/001-getty being present in the rootfs.
 
-FROM lfedge/eve-alpine:b1b51db20be9651c521bf5ba14eb5c6d7481eed7 AS mirror
+FROM lfedge/eve-alpine:61283a3a978a7cdc9073a1ba678717fc3ea1fe97 AS mirror
 ENV PKGS="alpine-baselayout apk-tools busybox ca-certificates musl tini util-linux"
 RUN eve-alpine-deploy.sh
 
