@@ -96,7 +96,7 @@ spec:
       # Lets the config-manager sidecar SIGHUP the plugin on a label change.
       shareProcessNamespace: true
       initContainers:
-      - image: nvcr.io/nvidia/k8s-device-plugin:v0.20.0
+      - image: nvcr.io/nvidia/k8s-device-plugin:v0.20.1
         name: nvidia-device-plugin-init
         command: ["config-manager"]
         env:
@@ -128,7 +128,7 @@ spec:
         - name: config
           mountPath: /config
       containers:
-      - image: nvcr.io/nvidia/k8s-device-plugin:v0.20.0
+      - image: nvcr.io/nvidia/k8s-device-plugin:v0.20.1
         name: nvidia-device-plugin-sidecar
         command: ["config-manager"]
         env:
@@ -159,7 +159,7 @@ spec:
           mountPath: /available-configs
         - name: config
           mountPath: /config
-      - image: nvcr.io/nvidia/k8s-device-plugin:v0.20.0
+      - image: nvcr.io/nvidia/k8s-device-plugin:v0.20.1
         name: nvidia-device-plugin-ctr
         command: ["nvidia-device-plugin"]
         env:
