@@ -87,7 +87,7 @@ WORKDIR /
 RUN test -f /nvidia_linux.tbz2 && tar -xjf /nvidia_linux.tbz2 || true
 
 # Build nvidia-ctk
-ENV NVIDIA_CONTAINER_TOOLKIT_REV=v1.20.0
+ENV NVIDIA_CONTAINER_TOOLKIT_REV=v1.20.1
 ADD --keep-git-dir=true https://github.com/NVIDIA/nvidia-container-toolkit.git#${NVIDIA_CONTAINER_TOOLKIT_REV} /nvct
 
 WORKDIR /nvct
@@ -218,7 +218,7 @@ SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 # this userland and the GSP firmware are pinned to each other exactly.
 ARG NVIDIA_DRIVER_BRANCH=580
 ARG NVIDIA_DRIVER_VERSION=580.173.02-0ubuntu0.24.04.1
-ARG NVCT_VERSION=1.20.0-1
+ARG NVCT_VERSION=1.20.1-1
 ARG LIBC_BIN_VERSION=2.39-0ubuntu8.9
 
 # Launchpad's per-file URLs keep every published version; the archive pool
@@ -232,7 +232,7 @@ ADD --checksum=sha256:e685fce27209c2f746105f98c052b134097ff259578cbf7497813f3371
 ADD --checksum=sha256:ce1150fd18ecc16e2ceb4df6a1acdf31068dad2e86c71b5bcbd9a8430433ddf1 https://launchpad.net/ubuntu/+archive/primary/+files/libnvidia-common-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_all.deb /debs/
 ADD --checksum=sha256:35f21f801a14ea75d65504a6fe9e83b95ed7dce1b638e157604c00a697fdbcff https://launchpad.net/ubuntu/+archive/primary/+files/nvidia-kernel-common-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_amd64.deb /debs/
 ADD --checksum=sha256:73e4590815acc5d97b69ddbc72d6a30c6682825328a27b73f909c9d813aff37c https://launchpad.net/ubuntu/+archive/primary/+files/libnvidia-extra-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_amd64.deb /debs/
-ADD --checksum=sha256:d1cc61d9ce8ea08bb4d03ba0950aa499e31640b83f028a2832cc72d92085a0a1 https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/nvidia-container-toolkit-base_${NVCT_VERSION}_amd64.deb /debs/
+ADD --checksum=sha256:b9a2d3768a672fc4b6cd93c201f0ea95f11f8b5567f5587d98ef8a7d89e77996 https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/nvidia-container-toolkit-base_${NVCT_VERSION}_amd64.deb /debs/
 ADD --checksum=sha256:0eccf4563b0f3aa4f181df00047869213b1890160bf1a85905219607c406529e https://launchpad.net/ubuntu/+archive/primary/+files/libnvidia-gl-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_amd64.deb /gl/
 ADD --checksum=sha256:066398a06ef1a218d4109461d4c636eafe83322ad19b179de9ef7af42b3fec58 https://launchpad.net/ubuntu/+archive/primary/+files/libc-bin_${LIBC_BIN_VERSION}_amd64.deb /libc-bin/
 
