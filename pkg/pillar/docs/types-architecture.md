@@ -614,7 +614,7 @@ type VmConfig struct {
     EnableVnc          bool
     VncDisplay         uint32
     VncPasswd          string
-    CPUsPinned         bool
+    CPUPlacement       CPUPlacementPolicy
     VMMMaxMem          int         // in kB
     EnableVncShimVM    bool
     EnforceNetworkInterfaceOrder bool

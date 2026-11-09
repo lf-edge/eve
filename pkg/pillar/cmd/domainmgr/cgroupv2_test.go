@@ -21,12 +21,15 @@ func testDomain() *types.DomainConfig {
 	}
 }
 
-func TestSetCgroupCpusetWritesTheTaskCgroup(t *testing.T) {
+// The cpuset is written into the running domain's cgroup, which a later config
+// version (a boot-order change, say) does not rename.
+func TestSetCgroupCpusetWritesTheRunningDomainsCgroup(t *testing.T) {
 	config := testDomain()
 	file := filepath.Join("eve-user-apps", config.GetTaskName(), "cpuset.cpus")
 	root := cgrouptest.FakeTree(t, map[string]string{file: "0-7"})
-	status := &types.DomainStatus{}
+	status := &types.DomainStatus{DomainName: config.GetTaskName()}
 	status.VmConfig.CPUs = []uint32{2, 3}
+	config.UUIDandVersion.Version = "2"
 
 	if err := setCgroupCpuset(config, status); err != nil {
 		t.Fatal(err)

@@ -290,7 +290,6 @@ type VmConfig struct {
 	EnableVnc          bool
 	VncDisplay         uint32
 	VncPasswd          string
-	CPUsPinned         bool
 	// CPUPlacement is the controller's CPU placement intent (see
 	// cpuplacement.go). zedagent always sets it: a controller that sends only
 	// the legacy pin_cpu has it resolved there (ResolveLegacy).
