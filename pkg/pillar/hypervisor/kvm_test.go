@@ -238,7 +238,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 
@@ -272,7 +272,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 
@@ -508,7 +508,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 
@@ -542,7 +542,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 
@@ -747,7 +747,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 
@@ -781,7 +781,7 @@ func TestCreateDomConfigOnlyCom1(t *testing.T) {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 
@@ -1351,7 +1351,7 @@ func domConfigArm64() string {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 
@@ -1385,7 +1385,7 @@ func domConfigArm64() string {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 
@@ -1641,7 +1641,7 @@ func domConfigAmd64FML() string {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 
@@ -1675,7 +1675,7 @@ func domConfigAmd64FML() string {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 
@@ -1932,7 +1932,7 @@ func domConfigAmd64Legacy() string {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 
@@ -1969,7 +1969,7 @@ func domConfigAmd64Legacy() string {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 
@@ -2213,7 +2213,7 @@ func domConfigAmd64() string {
 [drive "drive-virtio-disk0"]
   file = "/foo/bar.qcow2"
   format = "qcow2"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 
@@ -2247,7 +2247,7 @@ func domConfigAmd64() string {
 [drive "drive-virtio-disk2"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 
@@ -2523,7 +2523,7 @@ func domConfigContainerVNC() string {
 [drive "drive-virtio-disk1"]
   file = "/foo/bar.raw"
   format = "raw"
-  aio = "io_uring"
+  aio = "threads"
   cache = "writeback"
   if = "none"
 
@@ -3472,5 +3472,118 @@ func TestQemuGlobalConfIntelIGPUSuppressesVirtualIOMMU(t *testing.T) {
 			t.Errorf("%s: expected a single blank line after %q, got %q",
 				name, anchor, rest[:min(12, len(rest))])
 		}
+	}
+}
+
+// renderDomConfig writes a domain config for the given config/status pair and
+// returns it, so a test can assert on one block instead of a whole golden file.
+func renderDomConfig(t *testing.T, ctx KvmContext, config types.DomainConfig,
+	status types.DomainStatus, disks []types.DiskStatus) string {
+	t.Helper()
+	conf, err := os.CreateTemp("/tmp", "config")
+	if err != nil {
+		t.Fatalf("can't create config file for a domain: %v", err)
+	}
+	defer os.Remove(conf.Name())
+	aa := types.AssignableAdapters{Initialized: true}
+	if err := ctx.CreateDomConfig(DefaultDomainName, config, status, disks,
+		&aa, nil, swtpmCtrlSock, conf); err != nil {
+		t.Fatalf("CreateDomConfig failed: %v", err)
+	}
+	out, err := os.ReadFile(conf.Name())
+	if err != nil {
+		t.Fatalf("reading conf file failed: %v", err)
+	}
+	return string(out)
+}
+
+func pinnedTopologyConfig() (types.DomainConfig, types.DomainStatus) {
+	config := types.DomainConfig{
+		UUIDandVersion: types.UUIDandVersion{
+			UUID: uuid.FromStringOrNil(DefaultUUID), Version: "1.0",
+		},
+		VmConfig: types.VmConfig{
+			Memory: 1024 * 1024,
+			VCpus:  4,
+			CPUs:   []uint32{2, 3, 6, 7},
+		},
+	}
+	status := types.DomainStatus{
+		Placement: types.CPUPlacementState{Assigned: types.CPUAssignment{
+			CPUs:  []uint32{2, 6, 3, 7},
+			Guest: types.CPUTopology{Sockets: 1, Cores: 2, Threads: 2},
+		}},
+	}
+	return config, status
+}
+
+// Exposing the guest SMT topology is the point of whole-core pinning: a VM given
+// two physical cores must see 2 cores x 2 threads, otherwise the guest scheduler
+// treats siblings as independent cores and places two busy threads on one core.
+func TestCreateDomConfigGuestSMTTopology(t *testing.T) {
+	config, status := pinnedTopologyConfig()
+	topo := status.Placement.Assigned.Guest
+	// QEMU rejects an -smp whose topology does not multiply out to the cpus
+	// count, so the two can never be chosen independently.
+	if got := topo.Sockets * topo.Cores * topo.Threads; got != config.VCpus {
+		t.Fatalf("sockets*cores*threads = %d, want cpus = %d", got, config.VCpus)
+	}
+	want := `[smp-opts]
+  cpus = "4"
+  sockets = "1"
+  cores = "2"
+  threads = "2"
+`
+	if got := renderDomConfig(t, kvmIntel, config, status, nil); !strings.Contains(got, want) {
+		t.Errorf("guest SMT topology missing from config:\nwant:\n%s\ngot:\n%s", want, got)
+	}
+}
+
+// A VM with no computed topology keeps the legacy flat one vCPU per core layout.
+func TestCreateDomConfigLegacySMTTopology(t *testing.T) {
+	config, _ := pinnedTopologyConfig()
+	want := `[smp-opts]
+  cpus = "4"
+  sockets = "1"
+  cores = "4"
+  threads = "1"
+`
+	got := renderDomConfig(t, kvmIntel, config, types.DomainStatus{}, nil)
+	if !strings.Contains(got, want) {
+		t.Errorf("legacy smp topology missing from config:\nwant:\n%s\ngot:\n%s", want, got)
+	}
+}
+
+// The virtio-blk iothread and the iothread0 object it references must appear
+// together, and only for a VM whose emulator threads are moved to a
+// housekeeping set. Every other VM keeps its block datapath on the main loop.
+func TestCreateDomConfigBlockIOThread(t *testing.T) {
+	disks := []types.DiskStatus{
+		{Format: zconfig.Format_QCOW2, FileLocation: "/foo/bar.qcow2", Devtype: "hdd"},
+	}
+	tests := []struct {
+		name         string
+		emulatorCPUs []uint32
+		want         bool
+		aio          string
+	}{
+		{"io_placement housekeeping", []uint32{0, 1}, true, "threads"},
+		{"io_placement dedicated", nil, false, "io_uring"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config, status := pinnedTopologyConfig()
+			status.Placement.Assigned.IOCPUs = tt.emulatorCPUs
+			got := renderDomConfig(t, kvmIntel, config, status, disks)
+			hasObject := strings.Contains(got, `[object "iothread0"]`)
+			hasDevice := strings.Contains(got, `  iothread = "iothread0"`)
+			if hasObject != tt.want || hasDevice != tt.want {
+				t.Errorf("iothread0 object=%v device=%v, want both %v:\n%s",
+					hasObject, hasDevice, tt.want, got)
+			}
+			if aio := fmt.Sprintf(`  aio = "%s"`, tt.aio); !strings.Contains(got, aio) {
+				t.Errorf("want %s:\n%s", aio, got)
+			}
+		})
 	}
 }

@@ -257,7 +257,12 @@ func (ctx kubevirtContext) GetCapabilities() (*types.Capabilities, error) {
 		HWAssistedVirtualization: true,
 		IOVirtualization:         vtd,
 		CPUPinning:               true,
-		UseVHost:                 false, // kubevirt does not support vhost yet
+		// KubeVirt's dedicatedCpuPlacement confines the VMI to exclusive CPUs,
+		// but EVE cannot name which host CPU each vCPU lands on nor emit a
+		// guest SMT topology through it, so whole-core placement cannot be
+		// applied here and must be refused rather than reported as done.
+		CPUTopologyPinning: false,
+		UseVHost:           false, // kubevirt does not support vhost yet
 	}
 	return ctx.capabilities, nil
 }
@@ -440,7 +445,7 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 	//   - KubeVirt featureGate "CPUManager" must be enabled in the KubeVirt CR
 	//   - Node kubelet must run with --cpu-manager-policy=static
 	//   - VMI pod must reach Kubernetes Guaranteed QoS (cpu requests == limits)
-	if config.VmConfig.CPUsPinned {
+	if config.VmConfig.CPUPlacement.HasOwnCPUs() {
 		cpus.DedicatedCPUPlacement = true
 	}
 
@@ -461,7 +466,7 @@ func (ctx kubevirtContext) CreateReplicaVMIConfig(domainName string, config type
 	// the CPU Manager will not honour dedicated (pinned) CPU placement.
 	// Memory must also be included in Requests/Limits to satisfy the
 	// KubeVirt admission webhook requirement.
-	if config.VmConfig.CPUsPinned {
+	if config.VmConfig.CPUPlacement.HasOwnCPUs() {
 		cpuQuantity := resource.MustParse(strconv.Itoa(config.VCpus))
 		vmi.Spec.Domain.Resources.Requests = k8sv1.ResourceList{
 			k8sv1.ResourceCPU:    cpuQuantity,
