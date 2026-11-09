@@ -4,6 +4,8 @@
 # with @<version> holds for that version only. Fields are separated by a tab.
 # update-licenses.py adds entries from deps.dev and keeps every existing
 # entry, so an entry edited here overrides that lookup.
+# github.com/diskfs/partitionresizer is listed as MIT, like go-diskfs, until
+# its repository has a LICENSE file.
 
 pkg:cargo/jsonpath-rust	MIT
 pkg:generic/busybox	GPL-2.0-only
@@ -86,6 +88,7 @@ pkg:golang/github.com/dennwc/btrfs	Apache-2.0
 pkg:golang/github.com/dennwc/ioctl	MIT
 pkg:golang/github.com/digitalocean/go-libvirt	Apache-2.0 AND ISC
 pkg:golang/github.com/diskfs/go-diskfs	MIT
+pkg:golang/github.com/diskfs/partitionresizer	MIT
 pkg:golang/github.com/distribution/reference	Apache-2.0
 pkg:golang/github.com/djherbis/times	MIT
 pkg:golang/github.com/docker/cli	Apache-2.0 AND BSD-3-Clause
