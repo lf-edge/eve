@@ -65,18 +65,18 @@ ARG NVIDIA_DRIVER_VERSION=${NVIDIA_DRIVER_RELEASE}-0ubuntu0.24.04.1
 # The build stage needs the release to name libnvidia-ml.so.<release>
 ENV NVIDIA_DRIVER_RELEASE=${NVIDIA_DRIVER_RELEASE}
 
-ADD https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/sbsa/./libnvidia-egl-wayland1_1.1.21-1ubuntu1_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
-ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-cfg1-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
-ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-compute-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
-ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-decode-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
-ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-encode-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
-ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-extra-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
-ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-fbc1-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
-ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-gl-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
-ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/nvidia-compute-utils-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
-ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/nvidia-firmware-${NVIDIA_DRIVER_BRANCH}-${NVIDIA_DRIVER_RELEASE}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
-ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/nvidia-utils-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
-ADD http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/xserver-xorg-video-nvidia-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD --checksum=sha256:019c57177f8883ba5d2171289ee636b7e42a59da2a2573ab391d7f2012e25114 https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/sbsa/./libnvidia-egl-wayland1_1.1.21-1ubuntu1_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD --checksum=sha256:d841cf27beff463731493b36080d4358a9b1dff864558a57c540d8b2c54c7035 http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-cfg1-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD --checksum=sha256:e382c427919c49ff25460bb3374359d78353ee3684237944b95e7c84dbcfd2ad http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-compute-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD --checksum=sha256:72bcd909cf9ac00ad4ebe0726ccdfebf5f6e3c244aee0054504ab5b6a109e02e http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-decode-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD --checksum=sha256:55532115f802a067344e83f2ed474d5ff7fb4e78c09d73c96928c8978f25fb42 http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-encode-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD --checksum=sha256:6935b922b0732586014fe7caa09676888e06d46b2f133dc6d58d651a8a929059 http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-extra-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD --checksum=sha256:f5826c87e609a64ee92ff16eda15f5021e649d98bb30352f354daffbfbad53b0 http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-fbc1-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD --checksum=sha256:20258be3c8b6a9a1460f08a2696a9da80d6f719266f6fda7da4d01b3daa05d09 http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/libnvidia-gl-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD --checksum=sha256:8954914bd57f002d2df2679a49494876b633a0fcc7cb691fd5b0766f6901e86f http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/nvidia-compute-utils-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD --checksum=sha256:ff8be6f81920b4eae5f5f1c6d675ab51274bd66c63641a16c4bf75072b155c47 http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/nvidia-firmware-${NVIDIA_DRIVER_BRANCH}-${NVIDIA_DRIVER_RELEASE}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD --checksum=sha256:015f8d56737fb892b6a82e6958b7502bfbead6ac7fffbe0157e218e9d93469a7 http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/nvidia-utils-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
+ADD --checksum=sha256:98affa6db7095a17738e0c8d165c9af6406aee9308cb6c462b3a040f87a685c0 http://ports.ubuntu.com/ubuntu-ports/pool/restricted/n/nvidia-graphics-drivers-${NVIDIA_DRIVER_BRANCH}/xserver-xorg-video-nvidia-${NVIDIA_DRIVER_BRANCH}_${NVIDIA_DRIVER_VERSION}_arm64.deb /Linux_for_Tegra/nv_tegra/l4t_deb_packages/
 
 FROM ${TARGETARCH}-${PLATFORM} AS build
 
@@ -159,8 +159,7 @@ RUN mkdir -p /ldconfig-bin /nvfanctrl/dist /nvct/dist /cdi /rootfs-dist /cdi-dis
                 --from /lib --to /opt/vendor/nvidia/dist/lib --output "$OUTFILE" && \
             yq '. | (.. | select(has("args")) | select(.args[] == "update-ldcache")).args += ["--ldconfig-path", "/opt/vendor/nvidia/bin/ldconfig-glibc"]' -i "$OUTFILE" ; \
         done ; \
-    fi && \
-    rm -rf /rootfs/*
+    fi
 
 # Create libnvidia-ml.so.1 if doesn't exist
 RUN if [ "${NVIDIA_VER}" = "gb" ] && \
@@ -178,6 +177,32 @@ RUN mkdir -p /cdi-base && \
         yq 'del(.devices)' /cdi-dist/gb.yaml > /cdi-base/nvidia-base.yaml && \
         rm /cdi-dist/gb.yaml ; \
     fi
+
+# Every deb that ships a file goes into the SBOM and ships its copyright file:
+# NVIDIA's licence reaches recipients through those files (see ai-generic).
+# /rootfs holds all the debs, extracted by process-cdi.sh.
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+WORKDIR /rootfs-dist
+RUN find . ! -type d | sort > /shipped && \
+    mkdir -p /Linux_for_Tegra/nv_tegra/l4t_deb_packages && \
+    find /Linux_for_Tegra/nv_tegra/l4t_deb_packages -name '*.deb' | while IFS= read -r deb; do \
+        files=$(dpkg-deb --fsys-tarfile "$deb" | tar -t) ; \
+        [ -n "$(printf '%s\n' "$files" | grep -v '/$' | sort | comm -12 - /shipped)" ] || continue ; \
+        name=$(dpkg-deb -f "$deb" Package) ; \
+        src=$(dpkg-deb -f "$deb" Source) ; \
+        doc="usr/share/doc/$name/copyright" ; \
+        [ -s "/rootfs/$doc" ] || { echo "ERROR: no copyright file for $name" >&2 ; exit 1 ; } ; \
+        mkdir -p "/rootfs-dist/${doc%/*}" && cp -L "/rootfs/$doc" "/rootfs-dist/$doc" ; \
+        case "$name" in \
+            nvidia-l4t-*) lic=proprietary; url=https://developer.nvidia.com/embedded/jetson-linux ;; \
+            libnvidia-egl-wayland*) lic=MIT; url=https://github.com/NVIDIA/egl-wayland ;; \
+            *) lic=proprietary; url="https://launchpad.net/ubuntu/+source/${src:-$name}" ;; \
+        esac ; \
+        register-sbom-pkg.sh -n "$name" -v "$(dpkg-deb -f "$deb" Version)" -l "$lic" -u "$url" \
+            -d "$name (prebuilt .deb)" -o /sbom-out ; \
+    done && \
+    rm -rf /rootfs/* /shipped
+WORKDIR /
 
 FROM scratch AS out-jetson
 
