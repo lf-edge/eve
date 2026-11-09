@@ -154,6 +154,10 @@ type getconfigContext struct {
 	// See docs/VM-BOOT-ORDER.md "Concurrency Model" section for details.
 	pubAppInstanceConfig pubsub.Publication
 	bootOrderUpdateMx    sync.Mutex
+	// appInstanceConfigRestarted: pubAppInstanceConfig has signalled its
+	// subscribers that they have every app config, once the first config was
+	// parsed. Touched only from parseConfig.
+	appInstanceConfigRestarted bool
 
 	// parsed PNAC configurations
 	pnacs map[string]parsedPNACConfig // key: logical label
