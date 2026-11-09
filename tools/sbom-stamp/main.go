@@ -167,6 +167,7 @@ type Stats struct {
 	AbsentFiles    int
 	ReplacedFiles  int
 	NoSupplier     int
+	NoLicense      int
 	NoSHA1         int
 }
 
@@ -293,6 +294,9 @@ func Stamp(in []byte, o Options, c Content) ([]byte, Stats, error) {
 		if v.Supplier == "" || v.Supplier == "NOASSERTION" {
 			st.NoSupplier++
 		}
+		if noLicense(v.LicenseDeclared) && !roots[v.SPDXID] && v.SPDXID != rootID {
+			st.NoLicense++
+		}
 	}
 	for _, f := range files {
 		_, ok, err := fillFile(f, Content{})
@@ -327,7 +331,7 @@ func Stamp(in []byte, o Options, c Content) ([]byte, Stats, error) {
 			Supplier:              lfEdge,
 			DownloadLocation:      o.Download,
 			LicenseConcluded:      "NOASSERTION",
-			LicenseDeclared:       "Apache-2.0",
+			LicenseDeclared:       "NOASSERTION",
 			CopyrightText:         "NOASSERTION",
 			PrimaryPackagePurpose: "OPERATING-SYSTEM",
 		}
@@ -590,7 +594,8 @@ func main() {
 	fmt.Fprintf(os.Stderr, "sbom-stamp: %s: %d image roots placed under %s, "+
 		"%d SPDX IDs still not unique, %d purls copied between copies of a package, "+
 		"%d files dropped and %d rehashed as linuxkit wrote them, "+
-		"%d packages without supplier, %d files without SHA1\n",
+		"%d packages without supplier, %d outside image roots without license, "+
+		"%d files without SHA1\n",
 		flag.Arg(0), st.Reparented, rootID, st.ConflictingIDs, st.FilledPURLs,
-		st.AbsentFiles, st.ReplacedFiles, st.NoSupplier, st.NoSHA1)
+		st.AbsentFiles, st.ReplacedFiles, st.NoSupplier, st.NoLicense, st.NoSHA1)
 }

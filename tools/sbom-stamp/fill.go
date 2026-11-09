@@ -34,6 +34,9 @@ const (
 	builtFromSource = "(built from source)"
 	// kernelPackage starts the ID of the kernel in the eve-kernel image.
 	kernelPackage = "SPDXRef-docker.io-lfedge-eve-kernel-Package-"
+	// kernelLicense is what COPYING in eve-kernel declares, with the GPL-2.0
+	// ID the SPDX license list deprecated replaced by GPL-2.0-only.
+	kernelLicense = "GPL-2.0-only WITH Linux-syscall-note"
 )
 
 // kernelCommit matches the eve-kernel commit that ends the version of the
@@ -90,6 +93,7 @@ type pkgInfo struct {
 	Name             string        `json:"name"`
 	VersionInfo      string        `json:"versionInfo"`
 	Supplier         string        `json:"supplier"`
+	LicenseDeclared  string        `json:"licenseDeclared"`
 	DownloadLocation string        `json:"downloadLocation"`
 	SourceInfo       string        `json:"sourceInfo"`
 	Description      string        `json:"description"`
@@ -158,19 +162,54 @@ func withPURL(refs []externalRef, purl string) []externalRef {
 //go:embed suppliers.txt
 var suppliersTxt string
 
-var suppliers = mustParseSuppliers(suppliersTxt)
+var suppliers = mustParse(parseSuppliers(suppliersTxt))
 
-func mustParseSuppliers(s string) map[string]string {
-	m, err := parseSuppliers(s)
+// licensesTxt maps package URLs to declared licenses; update-licenses.py adds
+// to it.
+//
+//go:embed licenses.txt
+var licensesTxt string
+
+var licenses = mustParse(parseLicenses(licensesTxt))
+
+func mustParse(m map[string]string, err error) map[string]string {
 	if err != nil {
 		panic(err)
 	}
 	return m
 }
 
-// parseSuppliers reads lines of a purl prefix and an SPDX supplier separated
-// by a tab, skipping blank lines and lines starting with #.
+// parseSuppliers reads suppliers.txt: lines of a purl prefix and an SPDX
+// supplier separated by a tab, skipping blank lines and lines starting with #.
 func parseSuppliers(s string) (map[string]string, error) {
+	return parseMap("suppliers.txt", s, false, func(v string) string {
+		if !strings.HasPrefix(v, "Organization: ") && !strings.HasPrefix(v, "Person: ") {
+			return "supplier must start with \"Organization: \" or \"Person: \""
+		}
+		return ""
+	})
+}
+
+// parseLicenses reads licenses.txt, which has the format of suppliers.txt
+// with an SPDX license expression in place of the supplier. A prefix may end
+// in @<version>, which then takes precedence for that version.
+func parseLicenses(s string) (map[string]string, error) {
+	return parseMap("licenses.txt", s, true, func(v string) string {
+		if !licenseExpr.MatchString(v) || v == "NOASSERTION" || v == "NONE" {
+			return "want an SPDX license expression"
+		}
+		return ""
+	})
+}
+
+// licenseExpr matches a license expression of SPDX license IDs or
+// LicenseRef-s, operators and parentheses, without two operators in a row.
+var licenseExpr = regexp.MustCompile(`^\(*[A-Za-z0-9.+-]+\)*(?: (?:AND|OR|WITH) \(*[A-Za-z0-9.+-]+\)*)*$`)
+
+// parseMap reads lines of a purl prefix and a value separated by a tab,
+// skipping blank lines and lines starting with #. withVersion allows a prefix
+// to end in @<version>. invalid returns why a value is wrong, or "".
+func parseMap(file, s string, withVersion bool, invalid func(string) string) (map[string]string, error) {
 	m := map[string]string{}
 	sc := bufio.NewScanner(strings.NewReader(s))
 	for n := 1; sc.Scan(); n++ {
@@ -178,16 +217,18 @@ func parseSuppliers(s string) (map[string]string, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		prefix, supplier, ok := strings.Cut(line, "\t")
+		prefix, value, ok := strings.Cut(line, "\t")
+		name, version, versioned := strings.Cut(prefix, "@")
 		switch {
-		case !ok || !strings.HasPrefix(prefix, "pkg:") || strings.ContainsAny(prefix, "@?#"):
-			return nil, fmt.Errorf("suppliers.txt:%d: want <purl prefix><tab><supplier>", n)
-		case !strings.HasPrefix(supplier, "Organization: ") && !strings.HasPrefix(supplier, "Person: "):
-			return nil, fmt.Errorf("suppliers.txt:%d: supplier must start with \"Organization: \" or \"Person: \"", n)
+		case !ok || !strings.HasPrefix(prefix, "pkg:") || strings.ContainsAny(name, "?#") ||
+			versioned && (!withVersion || version == "" || strings.ContainsAny(version, "@?#")):
+			return nil, fmt.Errorf("%s:%d: want <purl prefix><tab><value>", file, n)
+		case invalid(value) != "":
+			return nil, fmt.Errorf("%s:%d: %s", file, n, invalid(value))
 		case m[prefix] != "":
-			return nil, fmt.Errorf("suppliers.txt:%d: %s listed twice", n, prefix)
+			return nil, fmt.Errorf("%s:%d: %s listed twice", file, n, prefix)
 		}
-		m[prefix] = supplier
+		m[prefix] = value
 	}
 	return m, sc.Err()
 }
@@ -212,6 +253,17 @@ func mappedSupplier(m map[string]string, purl string) string {
 	return ""
 }
 
+// mappedLicense looks up purl, without its qualifiers and subpath, in m,
+// then as mappedSupplier does.
+func mappedLicense(m map[string]string, purl string) string {
+	key, _, _ := strings.Cut(purl, "#")
+	key, _, _ = strings.Cut(key, "?")
+	if l := m[key]; l != "" {
+		return l
+	}
+	return mappedSupplier(m, purl)
+}
+
 // knownSupplier names the supplier of a package the scanner left without one,
 // or returns "" when it cannot tell.
 func knownSupplier(p pkgInfo) string {
@@ -231,10 +283,20 @@ func knownSupplier(p pkgInfo) string {
 	return mappedSupplier(suppliers, purl)
 }
 
+// knownLicense returns the declared license of a package the scanner left
+// without one, or "" when it cannot tell.
+func knownLicense(p pkgInfo) string {
+	if p.Name == "linux-kernel" && strings.HasPrefix(p.SPDXID, kernelPackage) {
+		return kernelLicense
+	}
+	return mappedLicense(licenses, p.purl())
+}
+
 // fillPackage gives an image root, which linuxkit names after the image's
 // repository and versions with its tag or digest, the image's purl and
-// supplier, and fills in suppliers the scanner left as NOASSERTION. It gives
-// the kernel the eve-kernel commit it was built from as its downloadLocation.
+// supplier, and fills in the suppliers, and outside image roots the declared
+// licenses, the scanner left as NOASSERTION. It gives the kernel the
+// eve-kernel commit it was built from as its downloadLocation.
 func fillPackage(raw json.RawMessage, roots map[string]bool, c Content) (json.RawMessage, error) {
 	var p pkgInfo
 	if err := json.Unmarshal(raw, &p); err != nil {
@@ -282,6 +344,11 @@ func fillPackage(raw json.RawMessage, roots map[string]bool, c Content) (json.Ra
 			set("supplier", s, "versionInfo")
 		}
 	}
+	if noLicense(p.LicenseDeclared) && !roots[p.SPDXID] {
+		if l := knownLicense(p); l != "" {
+			set("licenseDeclared", l, "licenseConcluded")
+		}
+	}
 	if strings.HasSuffix(p.Description, builtFromSource) {
 		if purl := sourcePURL(p); purl != p.purl() {
 			set("externalRefs", withPURL(p.ExternalRefs, purl), "")
@@ -291,6 +358,10 @@ func fillPackage(raw json.RawMessage, roots map[string]bool, c Content) (json.Ra
 		return raw, err
 	}
 	return json.Marshal(po)
+}
+
+func noLicense(l string) bool {
+	return l == "" || l == "NOASSERTION"
 }
 
 // scannerID strips the image scope linuxkit puts in front of a package ID,
