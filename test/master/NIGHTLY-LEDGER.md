@@ -2,6 +2,230 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-09 -- 0.0.0-master-8d1b7670 (run #12)](https://github.com/lf-edge/eve/actions/runs/42527962373)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/12/)
+
+### TestAppsSuite: failure analysis
+
+#### TestMemoryPressureEvents
+
+##### Failure
+
+```
+
+Timed out after 180.001s.
+memory-monitor's handler wrote no complete report after "": map[dir:2026-11-09-01-19-52 handler.log:Warning: Problem (retrying all errors). Will retry in 16 seconds. 1 retry left.   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0 curl: (7) Failed to connect to 127.0.0.1 port 6543 after 0 ms: Could not connect to server + cleanup + set +x memstat_eve.out: memstat_pillar.out:]
+Expected
+    <bool>: false
+to be true
+```
+
+##### Claude's conclusion
+
+Confirmed live: `/persist/coverage/` has fresh `covcounters.*` files (this is a `COVER=y` build) and `zedbox` (pid 2557) is alive and healthy, but port 6543 is refused when curled directly on the device — identical to the prior investigations.
+
+**Root cause:** This nightly build has `COVER=y` set (confirmed by fresh `covcounters.*` files under `/persist/coverage/`). On coverage builds, `agentlog.MaybeInitSigUsr2` is a deliberate no-op since `SIGUSR2` is reserved for the coverage-flush handler, so `agentlog.ListenDebug`'s pprof server on port 6543 never starts. `memory-monitor-handler.sh`'s `eve http-debug` step (which signals zedbox and then curls `127.0.0.1:6543`) therefore exhausts its retries and aborts under `set -e` before writing `memstat_pillar.out`/`memstat_eve.out` — exactly the failure signature seen (zedbox itself is alive and healthy at pid 2557, unrelated to any app/memory issue).
+
+This is a known, recurring issue per `live-ledger.md`: the identical signature (same message, same port-6543/coverage mechanism) was already documented on **2026-10-28**, recurred on **2026-10-29 (run #1)**, and again on **2026-11-01** — it appears specifically on coverage-enabled nightly builds and has been unfixed since at least 2026-10-28. No PR diff was supplied for this investigation, so no relatedness assessment is given.
+
+### TestDeviceConnectivitySuite: failure analysis
+
+#### TestPNACWithoutProxy
+
+##### Failure
+
+```
+
+Timed out after 600.001s.
+Expected to satisfy: Device has enrolled NEW certificate for 802.1x AND deleted the obsolete certificate
+machineArch:"x86_64" cpuArch:"x86_64" platform:"x86_64" ncpu:4 memory:7917 storage:40006 powerCycleCounter:-1 minfo:{manufacturer:"QEMU" productName:"Standard PC (Q35 + ICH9, 2009)" version:"pc-q35-11.0" serialNumber:"IEQAKL9R" UUID:"Not Settable" biosVendor:"EDK II" biosVersion:"unknown" biosReleaseDate:"02/02/2022"} assignableAdapters:{type:PhyIoNetEth name:"ethernet0" members:"ethernet0" usedByBaseOS:true ioAddressList:{macAddress:"da:39:78:d0:19:f2"} usage:PhyIoUsageMgmtAndApps} dns:{DNSservers:"127.0.0.1:53" DNSsearch:"test."} storageList:{mountPath:"/persist/certs"} storageList:{mountPath:"/persist/vault/downloader"} storageList:{device:"nbd2"} storageList:{mountPath:"/persist/lost+found"} storageList:{mountPath:"/persist/status"} storageList:{device:"vda9" total:40953 partitionLabel:"P3" partitionTypeGuid:"5f24425a-2dfa-11e8-a270-7b663faccc2c" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30059"} storageList:{device:"nbd11"} storageList:{mountPath:"/persist/vault/verifier"} storageList:{mountPath:"/persist/netdump"} storageList:{mountPath:"/persist/clear/volumes"} storageList:{device:"vda" total:65536} storageList:{mountPath:"/persist/nettrace"} storageList:{mountPath:"/persist/containerd-system-root"} storageList:{device:"/persist/vector/data/buffer/v2/keep_sent_queue_socket/buffer-data-0.dat"} storageList:{device:"vda4" total:5 partitionLabel:"CONFIG" partitionTypeGuid:"13307e62-cd9c-4920-8f9b-91b45828b798" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30054"} storageList:{mountPath:"/" total:3959} storageList:{device:"nbd5"} storageList:{device:"nbd14"} storageList:{mountPath:"/persist/checkpoint"} storageList:{device:"nbd12"} storageList:{mountPath:"/persist/vault"} storageList:{device:"vda3" total:10240 partitionLabel:"IMGB" partitionTypeGuid:"5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30053"} storageList:{mountPath:"/persist/patchEnvelopesCache"} storageList:{device:"nbd15"} storageList:{device:"nbd13"} storageList:{device:"/persist/vector/data/buffer/v2/dev_upload_socket/buffer-data-0.dat"} storageList:{device:"nbd8"} storageList:{mountPath:"/persist/vault/containerd"} storageList:{mountPath:"/persist/agentdebug"} storageList:{device:"nbd1"} storageList:{device:"nbd6"} storageList:{mountPath:"/hostfs" total:244} storageList:{mountPath:"/persist/log"} storageList:{device:"nbd3"} storageList:{mountPath:"/persist/tmp"} storageList:{mountPath:"/persist/memory-monitor/output"} storageList:{device:"nbd4"} storageList:{device:"nbd7"} storageList:{device:"vda7" total:2048 partitionLabel:"EFI System" partitionTypeGuid:"c12a7328-f81f-11d2-ba4b-00a0c93ec93b" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30056"} storageList:{mountPath:"/persist" total:40006 storageLocation:true} storageList:{device:"vda1" total:2048 partitionLabel:"EFI System" partitionTypeGuid:"c12a7328-f81f-11d2-ba4b-00a0c93ec93b" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30051"} storageList:{device:"nbd9"} storageList:{mountPath:"/persist/clear"} storageList:{mountPath:"/config" total:5} storageList:{mountPath:"/persist/patchEnvelopesUsageCache"} storageList:{device:"vda2" total:10240 partitionLabel:"IMGA" partitionTypeGuid:"5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30052"} storageList:{device:"nbd0"} storageList:{device:"nbd10"} storageList:{mountPath:"/persist/ingested"} storageList:{mountPath:"/persist/newlog"} storageList:{mountPath:"/persist/vault/volumes"} bootTime:{seconds:1794178346} swList:{activated:true partitionLabel:"IMGA" partitionDevice:"/dev/vda2" partitionState:"active" status:INSTALLED shortVersion:"0.0.0-pr42527962373-8d1b7670-kvm-amd64" downloadProgress:100 userStatus:UPDATED} swList:{partitionLabel:"IMGB" partitionDevice:"/dev/vda3" partitionState:"unused" status:INITIAL} HostName:"c11dd6d5-4995-4b09-a11f-52dda8315bff" lastRebootReason:"NORMAL: First boot of device - at 2026-11-08T22:53:01.445259296Z" lastRebootTime:{seconds:1794178381 nanos:445259296} systemAdapter:{status:{version:1 key:"zedagent" timePriority:{seconds:1794178461 nanos:12845918} lastSucceeded:{seconds:1794178465 nanos:59792472} ports:{ifname:"eth0" name:"ethernet0" isMgmt:true free:true dhcpType:4 subnet:"172.20.20.0/24" domainname:"test." proxy:{} macAddr:"da:39:78:d0:19:f2" IPAddrs:"172.20.20.123" defaultRouters:"172.20.20.1" dns:{DNSservers:"10.16.16.25" DNSdomain:"test."} up:true err:{timestamp:{seconds:1794178465 nanos:59715861}} usage:PhyIoUsageMgmtAndApps networkUUID:"df752cc4-fdcd-44b9-9fb4-7d2165250076" mtu:1500 config_source:{origin:NETWORK_CONFIG_ORIGIN_CONTROLLER submitted_at:{seconds:1794178461 nanos:12845918}} pnac_status:{enabled:true state:SUPPLICANT_STATE_AUTHENTICATED last_auth_timestamp:{seconds:1794178468}}}}} HSMStatus:NOTFOUND dataSecAtRestInfo:{status:DATASEC_AT_REST_DISABLED info:"TPM is either absent or not in use" vaultList:{name:"Application Data Store" status:DATASEC_AT_REST_DISABLED vaultErr:{description:"TPM is either absent or not in use" timestamp:{seconds:1794178447 nanos:108691149} severity:SEVERITY_ERROR} pcrStatus:PCR_DISABLED unlock_method:VAULT_UNLOCK_METHOD_NO_TPM}} sec_info:{sha_root_ca:"\x93oZ'{uӎ\x8f\xb3\xa8\xae\x14:Zl\xa9Af4\xd3\xe1V\xe4.\x1d\x9a$\x80\xfeϪ"} configItemStatus:{configItems:{key:"app.allow.vnc" value:{value:"true"}} configItems:{key:"debug.default.loglevel" value:{value:"debug"}} configItems:{key:"debug.default.remote.loglevel" value:{value:"debug"}} configItems:{key:"debug.enable.console" value:{value:"true"}} configItems:{key:"debug.enable.ssh" value:{value:"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC+H1RQUqHjFBJgGpslC73XsLz8Fg5WpNPble9naKyWz1Um8D2bOtQK/yguCImPeBYcH7/73z8dtC6d+dT0UF26+o7Vh6RN/U2X/5nkaZr7oM5QwwZTsD7Nd2Szww9wrRhXvpV0aFgUBDM9BIF1qBQxLNd+Jp8uttrgF3zj/cm7+SXllG54sv8WFBMfTX7J8cQ1jxLyp/Sc6PXK0zBaVzZwhmCCmI6CIzJK6ahMRgXm2vSP6doYibkB3ETSskaCXSHxDiZoaQK2ZY+GqNZkUusbau43MXVPTiJknXqUcmXhQmwyMSltQ3G54jcgn4TDObSQnW7vGdLI7zIEAHnk5D1BmKzQUBh5aRLdhBtb6T3uvVtAqGgnXWKD+d2GjMiy4G31zfIlArvC3G8LxwsDoxQL0XKaFjnEmXIptVXC68zq+laIM8YGDDOCEc6RfczP7lA4p6rv0gQUfTNqy0P3a4ulvIDb4hET1Gkh+Azkuw1do9NIhXPxDBmPdkTnKwJv6XelpdCPCw1QT5o7WdOkUgorf/e03jGDnnn1QBWpSPB9gLB/oDmT/Gzm8tCYaq7ggwYUq1fSMBvnbFaclH1KVcC2Gwn8UPLt9HHa/mGywuISZYl3gy7ztlKyAjHEZH053U7I8OaMvv/CFo9aR4Teeb5848REZYAes+yJIz3lJV1K5Q=="}} configItems:{key:"newlog.allow.fastupload" value:{value:"true"}} configItems:{key:"scep.retry.interval" value:{value:"300" error:"***ParseItem: Error in parsing Item. Replacing it with existing Value. key: scep.retry.interval, value: 10, Existing Value: {Key:scep.retry.interval ItemType:1 IntValue:300 StrValue: BoolValue:false TriStateValue:0}. Err: value out of bounds. Parsed value: 10, Max: 3600, Min: 60"}} configItems:{key:"timer.config.interval" value:{value:"5"}} configItems:{key:"timer.deviceinfo.interval" value:{value:"30"}} configItems:{key:"timer.download.retry" value:{value:"60"}} configItems:{key:"timer.location.app.interval" value:{value:"20"}} configItems:{key:"timer.location.cloud.interval" value:{value:"300"}} configItems:{key:"timer.metric.interval" value:{value:"20"}} configItems:{key:"timer.port.testbetterinterval" value:{value:"60"}} configItems:{key:"timer.test.baseimage.update" value:{value:"60"}}} last_boot_reason:BOOT_REASON_FIRST hardware_watchdog_present:true reboot_inprogress:true capabilities:{HWAssistedVirtualization:true IOVirtualization:true} state:ZDEVICE_STATE_REBOOTING storage_info:{pool_name:"/persist" storage_type:STORAGE_TYPE_INFO_EXT4 storage_state:STORAGE_STATUS_ONLINE disks:{disk_name:{name:"/dev/vda9" serial:"unknown"} status:STORAGE_STATUS_ONLINE smart_status:"failed"}} attestation_info:{state:ATTESTATION_STATE_COMPLETE} api_capability:API_CAPABILITY_DEFERRED_QUEUE_METRICS optional_capabilities:{hw_inventory_support:true} device_name:"edge-dev" enrolled_certs:{cert_enrollment_profile_name:"scep-test" subject:{common_name:"edge-dev" organization:"lf-edge" country:"US"} issuer:{common_name:"SCEP CA" organization:"Example" organizational_unit:"Lab" country:"US"} san_uri:"urn:Name:edge-dev" issue_timestamp:{seconds:1794177866} expiration_timestamp:{seconds:1825714466} renew_period_percent:50 sha256_fingerprint:"32a3fcf502d1068ccb6a20401eb5a902ed84dae961e6b1bfb65eda3c3abb0657" status:CERT_STATUS_AVAILABLE}
+```
+
+##### Claude's conclusion
+
+###### Root cause analysis
+
+Live evidence shows the device successfully reached the authenticated VLAN once (`172.20.20.123`, `pnac_status: SUPPLICANT_STATE_AUTHENTICATED`) and processed config version 1, but then the test's `scep-profile-replaced` step triggered a reboot of `edge-dev` at 22:54:50. After that reboot, the device never came back: `evetest eve logs` shows only a single log line reaching the controller since the reboot (a `diag` subscribe message at 22:56:31), and `evetest status`/`evetest eve info` confirm the device is now stuck in `EVE_DEVICE_STATE_SUSPECT` with the last known deviceinfo still frozen at `REBOOTING`. Crucially, `evetest eve ssh` fails with "no reachable endpoint among [172.20.10.123:22]" — i.e. the device's current IP is on the pre-auth/onboarding VLAN (172.20.10.0/24), not the post-auth VLAN (172.20.20.0/24) it was on before the reboot, even though the serial console shows the OS itself booted fine (full boot sequence through to a login prompt by ~22:56:20) and `evetest sdn status` reports the SDN/broker tunnel itself is healthy with no errors. This points to the device failing to re-establish 802.1x (EAP-TLS) port authentication after the reboot that followed the SCEP-profile swap — it's parked on the pre-auth VLAN with no path back to the controller, so it can neither report the renewed certificate nor delete the obsolete one, which is exactly what the test is waiting on.
+
+This is a different mechanism from both prior ledger entries for this suite tonight: `TestPNACWithoutProxy`'s only previous recorded failure (a quick 5.7s SSH/curl "stdout inactivity" timing race right after the VLAN transition, with the device never leaving `ONLINE`) and `TestPNACWithProxy`'s failure (an SDN-VM gRPC tunnel `no route to host` flake occurring entirely before any device existed). I found no prior ledger entry matching this specific signature (reboot after SCEP profile replacement leaving the device stranded on the pre-auth VLAN until `SUSPECT`), so this looks like a new, not-previously-recorded failure mode rather than a continuation of either known issue. No PR diff was supplied for this investigation, so no relatedness assessment is given.
+
+### TestLimitsSuite: failure analysis
+
+#### TestManyAppInterfaces
+
+##### Failure
+
+```
+
+Told to stop trying after 70.045s.
+pillar did not survive: the console shows: Rebooting EVE. Reason: panic: send on closed channelWatchdog report for IMGA EVE version 0.0.0-pr42527962373-8d1b7670-kvm-amd64 at 2026-11-08T22:58:25+00:00: 3 /run/zedbox.pid
+At one point, however, the function did return successfully.
+Yet, Eventually failed because the matcher was not satisfied:
+The function passed to Eventually failed at /evetest/tests/limits/helpers_test.go:128 with:
+all 15 applications are reported running has not happened yet
+Expected
+    <bool>: false
+to be true
+```
+
+##### Claude's conclusion
+
+Matches the ledger exactly and the code path is unchanged (no recent commit touched this close/send race). This is confirmed, known, recurring.
+
+**Root cause:** `zedbox` panicked with `panic: send on closed channel` in goroutine 9062, at `pkg/pillar/cmd/downloader/download.go:473` inside `objectMetadata`'s helper goroutine (`receiveChan <- nil`) — confirmed live via `/persist/reboot-stack` on the device, byte-for-byte identical stack trace to the one already diagnosed in this ledger. This is a close-vs-send race: `receiveChan` is created per download object in `downloadHandler.create()` and explicitly `close()`d in `downloadHandler.delete()`, with no synchronization stopping an in-flight `objectMetadata` goroutine from writing to it after close. `TestManyAppInterfaces` provisions 15 apps with many interfaces, driving a burst of concurrent downloader config creates/deletes that makes the race far more likely to fire, exactly matching tonight's symptom (`all 15 applications are reported running` never went true because zedbox rebooted mid-run).
+
+This is a **known, recurring issue** per the ledger — first seen on **2026-11-05**, with the identical stack trace, same test, and same root-cause writeup already recorded; it is not a new bug. No other test failed in this run to compare against for a shared cause, and no PR diff was supplied for this investigation.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestClusterPVCGCDeletesOnlyOrphans
+
+##### Failure
+
+```
+
+Timed out after 360.000s.
+The function passed to Eventually failed at /evetest/tests/cluster/pvcgc_test.go:218 with:
+the cluster still lists PVC "8b259c65-2d65-40f8-a9ae-a3066474cf7d-pvc-0"
+Expected
+    <map[string]bool | len:6>: {
+        "d06696ff-5b0e-45f8-96f3-f3a9609c4024-pvc-0": true,
+        "360f634c-ba8f-472b-beb0-47829acccd1b-pvc-1": true,
+        "5e71a7a1-c641-49ac-8d22-a288952fd99b-pvc-0": true,
+        "8b259c65-2d65-40f8-a9ae-a3066474cf7d-pvc-0": true,
+        "8b259c65-2d65-40f8-a9ae-a3066474cf7d-pvc-1": true,
+        "9a7ca081-3e99-4fb3-bc78-ff997ebcf66d-pvc-0": true,
+    }
+not to have key
+    <string>: 8b259c65-2d65-40f8-a9ae-a3066474cf7d-pvc-0
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+This is a genuinely new failure signature for `TestClusterPVCGCDeletesOnlyOrphans` — every prior ledger entry for this test failed earlier, at `pvcgc_test.go:115` (volume never even gets created, due to the unrelated tie-breaker-node/Longhorn `nodeSelector` scheduling gap). Tonight's run got past that stage and failed later, at line 218, on the actual GC-deletion assertion — there is no prior entry in `live-ledger.md` matching this line/signature, so it is not a known recurring issue.
+
+Live evidence: at the time of failure, `kubectl get pvc -A` on `edge-dev1` showed the orphan PVC `8b259c65-...-pvc-0` (generation 0 of volume `8b259c65-...`, superseded by the currently-referenced generation 1, `...-pvc-1`) still `Bound`. Checking again a couple of minutes later, the PVC was gone — the garbage collection did complete, just after the test's 360s `Eventually` had already given up. `gotest.json` shows `edge-dev3` flipping `ONLINE → SUSPECT` at `00:18:55`, roughly a minute before the test's timeout fired at `00:19:54` — consistent with `pkg/pillar/cmd/volumemgr/retryvolumedelete.go`'s own stated rationale ("the owner node can be unreachable for a while during a purge or a cluster update") for why a volume delete can be bounded-retried across multiple gc ticks rather than completing immediately. That retry/backoff logic (added in commit `55edeb4f3`, "volumemgr: retry failed volume deletes instead of leaking them", well before tonight) appears to work correctly — it didn't leak the orphan — but its retry/backoff window outlasted the test's fixed 360s timeout, which is either a test timing assumption that's too tight for a node-flap window, or exposes that the delete path is slower to recover from a brief node-unreachability blip than expected.
+
+This does not share a root cause with any other failure already logged tonight (no other suite failures have been investigated in this run yet), and since no PR diff was provided for this investigation, no relatedness assessment is given.
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.001s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+**Root cause:** This is a live reproduction of the same `getKubeAppActivateStatus` deadlock (`pkg/pillar/cmd/zedmanager/zedmanager.go:2059`) already investigated multiple times in this run's ledger. Live evidence on edge-dev2 confirms it precisely: `AppInstanceStatus` for `failover-purge-app` (uuid `b66e736e-a66c-4dd0-bef8-70fb4290b615`) shows `PurgeInprogress:4`, `PurgeStartedAt:2026-11-09T00:46:22Z`, `Activated:false`, `IsDesignatedNodeID:false`, and zedmanager is *still actively logging right now* an unbroken loop of `getKubeAppActivateStatus(...): not designated, node f262faeb-..., onTheDevice false, statusRunning false` every ~20s (through 01:01:42, seconds before I checked). `evetest status` confirms edge-dev1 (the app's designated node) is `EVE_DEVICE_STATE_SUSPECT`, deliberately downed for this failover scenario — once the purge tears down the old VMIRS, only the designated node can originate a replacement, and it's offline, matching the test's `found []`.
+
+This does not share a root cause with the earlier `TestClusterPVCGCDeletesOnlyOrphans` failure investigated in this run (a tie-breaker/Longhorn scheduling gap, unrelated code path). Per `live-ledger.md`, this exact test/failure/mechanism is a long-standing, well-known recurring issue dating back to the test's introduction in commit `98acf1411` (2026-10-18) — it has reproduced with the identical signature in essentially every nightly run since then, through at least run #11 (2026-11-08, last night). Tonight's occurrence continues that unbroken streak; it is not a new bug.
+#### TestClusterPVCRedownload
+
+##### Failure
+
+```
+
+vm1's content tree is in state LOADED, not REMOTELOADED -- it was re-downloaded despite the PVC already being complete
+Expected
+    <types.SwState>: 108
+to equal
+    <types.SwState>: 125
+```
+
+##### Claude's conclusion
+
+This confirms line 2795 (run #2, 2026-10-30) is the earliest occurrence of this exact race signature. I have enough evidence now.
+
+**Root cause:** Live `volumemgr` logs on `edge-dev1` show the exact same `contentTreeSatisfiedByPVCs`/`doUpdateContentTree` race already documented repeatedly in `live-ledger.md`. For vm1's ContentTreeStatus `ba75129a-0418-4a2e-8e9a-fdb9846ec357`, at `01:36:25.872` and `01:36:29.639` (right after the post-reboot reactivation), `contentTreeSatisfiedByPVCs` logged `no local volumes reference this content tree` because the matching `VolumeConfig`/PVC hadn't been published to volumemgr yet, so `doUpdateContentTree` fell through to the normal path, found all three blobs already `VERIFIED` in the local CAS from before reboot, and self-completed `VERIFIED → LOADING → LOADED` within the same reconcile pass by `01:36:29.821` — landing at `LOADED` (108) instead of `REMOTELOADED` (125), exactly matching the test's assertion. This does not share a root cause with either of the other failures already investigated in this run (`TestClusterPVCGCDeletesOnlyOrphans`'s GC-timeout-vs-node-flap issue, or `TestVMAppPurgeDuringFailover`'s zedmanager purge-after-failover deadlock) — it's the same `pkg/pillar/cmd/volumemgr/acceptclustercontenttree.go`/`updatestatus.go` PVC-adoption-timing bug. Per `live-ledger.md`, this is a long-standing, well-known recurring issue for `TestClusterPVCRedownload` specifically, first seen 2026-10-30 (run #2) and recurring on 2026-10-31, 2026-11-03, 2026-11-07 (last night), and several other nights since — tonight is a continuation of that unbroken streak, not a new bug.
+
+### TestNodeClusterSuite: failure analysis
+
+#### TestMgmtProxy
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev1 edge-dev2 edge-dev3]: rpc error: code = Unknown desc = failed to setup EVE device "edge-dev2": failed to create VM 107 for device "eve-9749e40e-edge-dev2": 500 user name not set
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+The failure happened entirely on the Proxmox broker side, before any EVE device booted: `gotest.json` shows the broker successfully provisioned `edge-dev3` (VM 107) and `edge-dev1` (VM 108), but then failed creating `edge-dev2`'s VM with `failed to create VM 107 for device "eve-9749e40e-edge-dev2": 500 user name not set` — the same VM ID (107) just used for `edge-dev3`. Live checks confirm there's nothing further to inspect: `evetest status` reports "No EVE devices found" and `evetest sdn status` reports "SDN client is not initialized" — the whole device/SDN setup aborted before any guest ever ran.
+
+This exact `"500 user name not set"` string has never appeared before in `live-ledger.md`, so it's a new error signature, but it fits the same broad, well-documented class of Proxmox host ("farfalle") API/auth instability recorded repeatedly since at least 2026-11-01 — prior nights show the identical setup-stage failure mode with different symptoms: TLS handshake timeouts on `qmcreate`, `"500 got no worker upid - start worker failed"`, and storage-lock timeouts, all occurring during concurrent VM creation across sibling devices. The VM-107 reuse (just freed from `edge-dev3` and immediately handed to `edge-dev2`) also echoes the VM-ID-collision pattern seen in the most recent ledger entry (2026-11-08, run #11, `TestPNACWithoutProxy`).
+
+This is not shared with any other failure in *this* run (there are no other investigated failures in this directory yet to correlate against), and it is a pure broker/Proxmox infrastructure flake, not a pillar/EVE code defect — just a previously-unseen manifestation of the ongoing "farfalle" Proxmox contention issue rather than a brand-new failure class.
+#### TestClusterVMApp
+
+##### Failure
+
+```
+Timed out waiting for app "984bf42a-a407-42eb-a94e-5f62efdca316" to be scheduled in cluster "test-cluster"
+```
+
+##### Claude's conclusion
+
+Confirmed: no `longhorn-manager` pod scheduled on edge-dev3 at all, consistent with the nodeSelector `tie-breaker-node=false` gating it out since edge-dev3 lacks that label entirely.
+
+###### Root cause
+
+**Root cause:** This is the same known "tie-breaker-node" / Longhorn-gating bug already recorded multiple times in `live-ledger.md`. The live cluster is otherwise fully healthy (`kubectl get nodes` shows all three nodes `Ready`, k3s API/control-plane fine), but `edge-dev3` carries no `tie-breaker-node` label at all, while `edge-dev1`/`edge-dev2` are labeled `tie-breaker-node=false`. The `longhorn-manager` DaemonSet is scoped with `nodeSelector: tie-breaker-node=false`, so edge-dev3 never gets a manager pod (`kubectl get pods -n longhorn-system -l app=longhorn-manager` shows only edge-dev1/edge-dev2), leaving the Longhorn node object for edge-dev3 `Ready=False` with reason `ManagerPodMissing`. App `984bf42a`'s CDI-upload pod got scheduled onto edge-dev3 and its PVC attach has been failing continuously for 31 minutes with `AttachVolume.Attach failed ... node edge-dev3 is not ready`, so the root/scratch volumes never attach, the VM is never created (`kubectl get vmi` returns nothing), and the app sits forever unscheduled — matching the test's timeout exactly.
+
+This is the identical mechanism already investigated for `TestClusterVMApp` in this same ledger (first seen 2026-11-02, run #5, with `edge-dev3` missing the label after being reused across cluster tests, and recurring on several subsequent nights) — a standing, unfixed gap in `volumehandlers/csihandler.go`'s `PrepareVolume`/`kubeapi.WaitForLonghornReady` not accounting for nodes the Longhorn DaemonSet selector excludes. It is not the same failure as the earlier-tonight `TestMgmtProxy` incident in this run (that was a stuck `volumemgr` CDI-upload-503 retry bug, a distinct mechanism). `TestClusterVMApp` overall is a chronically recurring/flaky test (seen on 2026-10-29, -30, -31, 11-01, 11-02, 11-04, and now 11-08) under several different mechanisms, but this specific tie-breaker-label variant has been known since 2026-11-02.
+
+### TestTelemetrySuite: failure analysis
+
+#### TestDeviceLogs
+
+##### Failure
+
+```
+
+Timed out after 600.000s.
+the kernel log probe was not uploaded to the controller
+Expected
+    <<-chan evetest.LogMsg | len:0, cap:100>: 0x2450780fab0
+to receive something.
+```
+
+##### Claude's conclusion
+
+**Root cause:** This is the same evetest-side bug that's been recurring in `TestTelemetrySuite`. Live evidence confirms the pillar/EVE side worked correctly — `dmesg` on the live device still shows the kernel log probe line `evetest-log-probe-device-logs-1794181683485717835` (at kernel uptime 143.6s), and Adam's own on-disk DB snapshot (`adam-db/device/.../logs/01794181669918967309`) contains that exact probe string, ingested as a `kernel` severity log entry with `msgid:7091` at `2026-11-08T23:48:02.745Z` — just ~15s after the test emitted it at 23:48:03, and nearly 10 minutes before the 600s timeout at 23:58:03. So the log was generated, uploaded by newlogd, and persisted by Adam well inside the window; the test's live `device.WatchLogs(...)` channel (`<-chan evetest.LogMsg`) simply never delivered the already-persisted entry.
+
+This is the identical mechanism documented repeatedly in the ledger for `TestTelemetrySuite` — a race/bug in `AdamClient.SubscribeToDeviceLogs`'s live log-streaming subscription missing entries that are already sitting in Adam's store. It was first recorded **2026-10-29** (`TestKernelPanicReport`), and has recurred since on **2026-11-04** and **2026-11-07** (same suite, same "data in Adam's DB but never delivered to the watch channel" signature, just probing a different log line each time — kernel panic stack trace vs. this run's generic kernel-log probe). It does not share a root cause with any other failure in this run (no other failures have been investigated yet in this run's ledger entry). No PR diff was provided for this investigation, so no relatedness assessment is given.
+#### TestKernelPanicReport
+
+##### Failure
+
+```
+
+Timed out after 600.001s.
+the kernel panic stack trace header was not uploaded
+When passed a matcher, ReceiveMatcher's channel *must* receive something.
+```
+
+##### Claude's conclusion
+
+Confirmed. The file written at 00:16:09 contains the "sysrq triggered crash" header string — well within the test's 600s window that started around 00:15:11 and timed out at 00:25:20.
+
+###### Root cause
+
+This is the same known evetest-side bug recorded repeatedly in the ledger. The pillar/EVE telemetry pipeline worked correctly: the kernel panic was triggered at 00:12:29, the device rebooted, and nodeagent logged the stack-trace header (`"[kernel panic #331]: ... Kernel panic - not syncing: sysrq triggered crash"`) at 00:15:07.314, with newlogd uploading the containing chunk (now sitting in `keepSentQueue`, not `failedUpload`). Adam's own on-disk store (`adam-db/device/.../logs/01794183315361415313`, written 00:16:09) confirms the controller received and persisted that exact header string — about a minute after it was generated and nine minutes before the test's 00:25:20 timeout.
+
+This is the identical signature (`Timed out ... ReceiveMatcher's channel *must* receive something`, header string present in Adam's DB but never delivered to `device.WatchLogs(...)`) documented in `live-investigation.md` for `TestDeviceLogs` earlier in this same run, and is the same recurring `AdamClient.SubscribeToDeviceLogs` live-subscription bug the ledger records for `TestKernelPanicReport` going back to **2026-10-28/2026-10-29**, recurring again on **2026-11-04** and **2026-11-07**. This is a long-standing, known, recurring evetest-side issue, not a pillar/EVE regression, and shares the same root cause as the earlier `TestDeviceLogs` failure in this run.
+
 ## [2026-11-08 -- 0.0.0-master-90f9b3d8 (run #11)](https://github.com/lf-edge/eve/actions/runs/42418484474)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/11/)
