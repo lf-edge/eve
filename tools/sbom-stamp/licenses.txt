@@ -1,0 +1,291 @@
+# Declared licenses sbom-stamp gives packages the scanner left as NOASSERTION,
+# keyed by package URL without qualifiers or subpath, then without version,
+# then by a run of its leading path segments; the longest match wins. A key
+# with @<version> holds for that version only. Fields are separated by a tab.
+# update-licenses.py adds entries from deps.dev and keeps every existing
+# entry, so an entry edited here overrides that lookup.
+
+pkg:cargo/jsonpath-rust	MIT
+pkg:generic/busybox	GPL-2.0-only
+pkg:golang/cel.dev/expr	Apache-2.0
+pkg:golang/cloud.google.com/go	Apache-2.0 AND BSD-3-Clause
+pkg:golang/cloud.google.com/go/auth	Apache-2.0
+pkg:golang/cloud.google.com/go/compute/metadata	Apache-2.0
+pkg:golang/cloud.google.com/go/iam	Apache-2.0
+pkg:golang/cloud.google.com/go/monitoring	Apache-2.0
+pkg:golang/cloud.google.com/go/storage	Apache-2.0
+pkg:golang/dario.cat/mergo	BSD-3-Clause
+pkg:golang/github.com/Azure/azure-sdk-for-go/sdk/azcore	MIT
+pkg:golang/github.com/Azure/azure-sdk-for-go/sdk/internal	MIT
+pkg:golang/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob	MIT
+pkg:golang/github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp	Apache-2.0
+pkg:golang/github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric	Apache-2.0
+pkg:golang/github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping	Apache-2.0
+pkg:golang/github.com/Masterminds/semver	MIT
+pkg:golang/github.com/Microsoft/hcsshim	MIT AND Apache-2.0
+pkg:golang/github.com/alecthomas/kingpin/v2	MIT
+pkg:golang/github.com/alecthomas/units	MIT
+pkg:golang/github.com/anatol/smart.go	MIT
+pkg:golang/github.com/anchore/go-lzo	MIT
+pkg:golang/github.com/andrewd-zededa/go-libzfs	BSD-3-Clause
+pkg:golang/github.com/aws/aws-sdk-go-v2	Apache-2.0 AND BSD-3-Clause
+pkg:golang/github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/config	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/credentials	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/feature/ec2/imds	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/feature/s3/manager	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/internal/configsources	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/internal/endpoints/v2	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/internal/ini	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/internal/v4a	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/service/internal/checksum	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/service/internal/presigned-url	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/service/internal/s3shared	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/service/s3	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/service/sso	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/service/ssooidc	Apache-2.0
+pkg:golang/github.com/aws/aws-sdk-go-v2/service/sts	Apache-2.0
+pkg:golang/github.com/aws/smithy-go	Apache-2.0 AND BSD-3-Clause
+pkg:golang/github.com/beevik/ntp	BSD-2-Clause
+pkg:golang/github.com/beorn7/perks	MIT
+pkg:golang/github.com/cenkalti/backoff	MIT
+pkg:golang/github.com/cespare/xxhash/v2	MIT
+pkg:golang/github.com/checkpoint-restore/checkpointctl	Apache-2.0
+pkg:golang/github.com/checkpoint-restore/go-criu/v6	Apache-2.0
+pkg:golang/github.com/checkpoint-restore/go-criu/v7	Apache-2.0
+pkg:golang/github.com/cilium/ebpf	MIT
+pkg:golang/github.com/cncf/xds/go	Apache-2.0
+pkg:golang/github.com/containerd/btrfs/v2	Apache-2.0
+pkg:golang/github.com/containerd/cgroups/v3	Apache-2.0
+pkg:golang/github.com/containerd/console	Apache-2.0
+pkg:golang/github.com/containerd/containerd	Apache-2.0
+pkg:golang/github.com/containerd/continuity	Apache-2.0
+pkg:golang/github.com/containerd/errdefs	Apache-2.0
+pkg:golang/github.com/containerd/fifo	Apache-2.0
+pkg:golang/github.com/containerd/go-cni	Apache-2.0
+pkg:golang/github.com/containerd/go-runc	Apache-2.0
+pkg:golang/github.com/containerd/imgcrypt/v2	Apache-2.0
+pkg:golang/github.com/containerd/log	Apache-2.0
+pkg:golang/github.com/containerd/nri	Apache-2.0
+pkg:golang/github.com/containerd/otelttrpc	Apache-2.0
+pkg:golang/github.com/containerd/platforms	Apache-2.0
+pkg:golang/github.com/containerd/plugin	Apache-2.0
+pkg:golang/github.com/containerd/ttrpc	Apache-2.0
+pkg:golang/github.com/containerd/typeurl/v2	Apache-2.0
+pkg:golang/github.com/containerd/zfs/v2	Apache-2.0
+pkg:golang/github.com/containernetworking/cni	Apache-2.0
+pkg:golang/github.com/containernetworking/plugins	Apache-2.0
+pkg:golang/github.com/containers/ocicrypt	Apache-2.0
+pkg:golang/github.com/coreos/go-semver	Apache-2.0
+pkg:golang/github.com/coreos/go-systemd/v22	Apache-2.0
+pkg:golang/github.com/cpuguy83/go-md2man/v2	MIT
+pkg:golang/github.com/cyphar/filepath-securejoin	BSD-3-Clause AND MPL-2.0
+pkg:golang/github.com/davecgh/go-spew	ISC
+pkg:golang/github.com/dennwc/btrfs	Apache-2.0
+pkg:golang/github.com/dennwc/ioctl	MIT
+pkg:golang/github.com/digitalocean/go-libvirt	Apache-2.0 AND ISC
+pkg:golang/github.com/diskfs/go-diskfs	MIT
+pkg:golang/github.com/distribution/reference	Apache-2.0
+pkg:golang/github.com/djherbis/times	MIT
+pkg:golang/github.com/docker/cli	Apache-2.0 AND BSD-3-Clause
+pkg:golang/github.com/docker/docker	Apache-2.0 AND MIT
+pkg:golang/github.com/docker/docker-credential-helpers	MIT
+pkg:golang/github.com/docker/go-connections	Apache-2.0
+pkg:golang/github.com/docker/go-events	Apache-2.0
+pkg:golang/github.com/docker/go-metrics	Apache-2.0 AND CC-BY-SA-4.0
+pkg:golang/github.com/docker/go-units	Apache-2.0
+pkg:golang/github.com/elliotwutingfeng/asciiset	BSD-3-Clause
+pkg:golang/github.com/ema/qdisc	MIT
+pkg:golang/github.com/emicklei/go-restful/v3	MIT
+pkg:golang/github.com/envoyproxy/go-control-plane/envoy	Apache-2.0
+pkg:golang/github.com/envoyproxy/protoc-gen-validate	Apache-2.0
+pkg:golang/github.com/eriknordmark/ipinfo	MIT
+pkg:golang/github.com/eshard/uevent	Apache-2.0
+pkg:golang/github.com/euank/go-kmsg-parser/v3	Apache-2.0
+pkg:golang/github.com/facebook/time	Apache-2.0
+pkg:golang/github.com/felixge/httpsnoop	MIT
+pkg:golang/github.com/fsnotify/fsnotify	BSD-3-Clause
+pkg:golang/github.com/fxamacker/cbor/v2	MIT
+pkg:golang/github.com/gabriel-vasile/mimetype	MIT
+pkg:golang/github.com/getlantern/framed	Apache-2.0
+pkg:golang/github.com/go-chi/chi/v5	MIT
+pkg:golang/github.com/go-jose/go-jose/v4	Apache-2.0 AND BSD-3-Clause
+pkg:golang/github.com/go-logr/logr	Apache-2.0
+pkg:golang/github.com/go-logr/stdr	Apache-2.0
+pkg:golang/github.com/go-playground/locales	MIT
+pkg:golang/github.com/go-playground/universal-translator	MIT
+pkg:golang/github.com/go-playground/validator/v10	MIT
+pkg:golang/github.com/godbus/dbus/v5	BSD-2-Clause
+pkg:golang/github.com/gogo/protobuf	BSD-3-Clause
+pkg:golang/github.com/golang-design/lockfree	MIT
+pkg:golang/github.com/golang-jwt/jwt	MIT
+pkg:golang/github.com/golang/protobuf	BSD-3-Clause
+pkg:golang/github.com/google/fscrypt	Apache-2.0
+pkg:golang/github.com/google/go-cmp	BSD-3-Clause
+pkg:golang/github.com/google/go-containerregistry	Apache-2.0
+pkg:golang/github.com/google/go-tpm	Apache-2.0
+pkg:golang/github.com/google/gopacket	BSD-3-Clause
+pkg:golang/github.com/google/s2a-go	Apache-2.0
+pkg:golang/github.com/google/uuid	BSD-3-Clause
+pkg:golang/github.com/googleapis/enterprise-certificate-proxy	Apache-2.0
+pkg:golang/github.com/googleapis/gax-go/v2	BSD-3-Clause
+pkg:golang/github.com/gorilla/websocket	BSD-2-Clause
+pkg:golang/github.com/grandcat/zeroconf	MIT
+pkg:golang/github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus	Apache-2.0
+pkg:golang/github.com/grpc-ecosystem/go-grpc-middleware/v2	Apache-2.0
+pkg:golang/github.com/grpc-ecosystem/grpc-gateway/v2	BSD-3-Clause
+pkg:golang/github.com/hashicorp/go-envparse	MPL-2.0
+pkg:golang/github.com/hodgesds/perf-utils	MIT
+pkg:golang/github.com/intel/goresctrl	Apache-2.0
+pkg:golang/github.com/jackwakefield/gopac	Apache-2.0
+pkg:golang/github.com/jaypipes/pcidb	Apache-2.0
+pkg:golang/github.com/josharian/native	MIT
+pkg:golang/github.com/jpillora/backoff	MIT
+pkg:golang/github.com/jsimonetti/rtnetlink/v2	MIT
+pkg:golang/github.com/json-iterator/go	MIT
+pkg:golang/github.com/klauspost/compress	BSD-3-Clause AND Apache-2.0 AND MIT
+pkg:golang/github.com/knqyf263/go-plugin	MIT
+pkg:golang/github.com/kr/fs	BSD-3-Clause
+pkg:golang/github.com/leodido/go-urn	MIT
+pkg:golang/github.com/lf-edge/edge-containers	Apache-2.0
+pkg:golang/github.com/lf-edge/eve	Apache-2.0
+pkg:golang/github.com/lf-edge/eve-api/go	Apache-2.0
+pkg:golang/github.com/lf-edge/eve-libs	Apache-2.0
+pkg:golang/github.com/lf-edge/go-qemu	Apache-2.0
+pkg:golang/github.com/linuxkit/linuxkit	Apache-2.0
+pkg:golang/github.com/lithammer/shortuuid/v4	MIT
+pkg:golang/github.com/mattn/go-xmlrpc	MIT
+pkg:golang/github.com/mdlayher/ethtool	MIT
+pkg:golang/github.com/mdlayher/genetlink	MIT
+pkg:golang/github.com/mdlayher/netlink	MIT
+pkg:golang/github.com/mdlayher/socket	MIT
+pkg:golang/github.com/mdlayher/vsock	MIT
+pkg:golang/github.com/mdlayher/wifi	MIT
+pkg:golang/github.com/miekg/dns	BSD-3-Clause
+pkg:golang/github.com/miekg/pkcs11	BSD-3-Clause
+pkg:golang/github.com/mistifyio/go-zfs/v3	Apache-2.0
+pkg:golang/github.com/mitchellh/colorstring	MIT
+pkg:golang/github.com/moby/docker-image-spec	Apache-2.0
+pkg:golang/github.com/moby/locker	Apache-2.0
+pkg:golang/github.com/moby/spdystream	Apache-2.0 AND BSD-3-Clause
+pkg:golang/github.com/moby/sys/capability	BSD-2-Clause
+pkg:golang/github.com/moby/sys/mountinfo	Apache-2.0
+pkg:golang/github.com/moby/sys/signal	Apache-2.0
+pkg:golang/github.com/moby/sys/symlink	Apache-2.0
+pkg:golang/github.com/moby/sys/user	Apache-2.0
+pkg:golang/github.com/moby/sys/userns	Apache-2.0
+pkg:golang/github.com/modern-go/concurrent	Apache-2.0
+pkg:golang/github.com/modern-go/reflect2	Apache-2.0
+pkg:golang/github.com/mrunalp/fileutils	Apache-2.0
+pkg:golang/github.com/multiplay/go-edac	BSD-2-Clause
+pkg:golang/github.com/munnerz/goautoneg	BSD-3-Clause
+pkg:golang/github.com/mwitkow/go-conntrack	Apache-2.0
+pkg:golang/github.com/mxk/go-flowrate	BSD-3-Clause
+pkg:golang/github.com/opencontainers/cgroups	Apache-2.0
+pkg:golang/github.com/opencontainers/go-digest	Apache-2.0 AND CC-BY-SA-4.0
+pkg:golang/github.com/opencontainers/image-spec	Apache-2.0
+pkg:golang/github.com/opencontainers/runc	Apache-2.0
+pkg:golang/github.com/opencontainers/runtime-spec	Apache-2.0
+pkg:golang/github.com/opencontainers/runtime-tools	Apache-2.0
+pkg:golang/github.com/opencontainers/selinux	Apache-2.0
+pkg:golang/github.com/oxtoacart/bpool	Apache-2.0
+pkg:golang/github.com/packetcap/go-pcap	Apache-2.0
+pkg:golang/github.com/pelletier/go-toml	MIT AND Apache-2.0
+pkg:golang/github.com/pelletier/go-toml/v2	MIT
+pkg:golang/github.com/pierrec/lz4/v4	BSD-3-Clause
+pkg:golang/github.com/pkg/errors	BSD-2-Clause
+pkg:golang/github.com/pkg/sftp	BSD-2-Clause
+pkg:golang/github.com/pkg/xattr	BSD-2-Clause
+pkg:golang/github.com/prometheus-community/go-runit	MIT
+pkg:golang/github.com/prometheus/client_golang	Apache-2.0 AND BSD-3-Clause
+pkg:golang/github.com/prometheus/client_model	Apache-2.0
+pkg:golang/github.com/prometheus/common	Apache-2.0
+pkg:golang/github.com/prometheus/exporter-toolkit	Apache-2.0
+pkg:golang/github.com/prometheus/node_exporter	Apache-2.0
+pkg:golang/github.com/prometheus/procfs	Apache-2.0
+pkg:golang/github.com/rivo/uniseg	MIT
+pkg:golang/github.com/robertkrimen/otto	MIT
+pkg:golang/github.com/russross/blackfriday/v2	BSD-2-Clause
+pkg:golang/github.com/safchain/ethtool	Apache-2.0
+pkg:golang/github.com/satori/go.uuid	MIT
+pkg:golang/github.com/schollz/progressbar/v3	MIT
+pkg:golang/github.com/seccomp/libseccomp-golang	BSD-2-Clause
+pkg:golang/github.com/shirou/gopsutil	BSD-3-Clause
+pkg:golang/github.com/shurcooL/sanitized_anchor_name	MIT
+pkg:golang/github.com/sirupsen/logrus	MIT
+pkg:golang/github.com/smallstep/pkcs7	MIT
+pkg:golang/github.com/smallstep/scep	MIT
+pkg:golang/github.com/spiffe/go-spiffe/v2	Apache-2.0
+pkg:golang/github.com/stefanberger/go-pkcs11uri	Apache-2.0
+pkg:golang/github.com/syndtr/gocapability	BSD-2-Clause
+pkg:golang/github.com/tatsushid/go-fastping	MIT
+pkg:golang/github.com/tchap/go-patricia/v2	MIT
+pkg:golang/github.com/tetratelabs/wazero	Apache-2.0
+pkg:golang/github.com/ti-mo/conntrack	MIT
+pkg:golang/github.com/ti-mo/netfilter	MIT
+pkg:golang/github.com/tklauser/go-sysconf	BSD-3-Clause
+pkg:golang/github.com/tklauser/numcpus	Apache-2.0
+pkg:golang/github.com/ulikunitz/xz	BSD-3-Clause
+pkg:golang/github.com/urfave/cli	MIT
+pkg:golang/github.com/vishvananda/netlink	Apache-2.0
+pkg:golang/github.com/vishvananda/netns	Apache-2.0
+pkg:golang/github.com/x448/float16	MIT
+pkg:golang/github.com/xeipuuv/gojsonpointer	Apache-2.0
+pkg:golang/github.com/xeipuuv/gojsonreference	Apache-2.0
+pkg:golang/github.com/xeipuuv/gojsonschema	Apache-2.0
+pkg:golang/github.com/xhit/go-str2duration/v2	BSD-3-Clause
+pkg:golang/github.com/xrash/smetrics	MIT
+pkg:golang/github.com/zededa/ghw	Apache-2.0
+pkg:golang/go.etcd.io/bbolt	MIT
+pkg:golang/go.opentelemetry.io/auto/sdk	Apache-2.0
+pkg:golang/go.opentelemetry.io/contrib/detectors/gcp	Apache-2.0 AND BSD-3-Clause
+pkg:golang/go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc	Apache-2.0
+pkg:golang/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp	Apache-2.0
+pkg:golang/go.opentelemetry.io/otel/exporters/otlp/otlptrace	Apache-2.0
+pkg:golang/go.opentelemetry.io/otel/metric@v1.31.0	Apache-2.0
+pkg:golang/go.opentelemetry.io/otel/metric@v1.38.0	Apache-2.0 AND BSD-3-Clause
+pkg:golang/go.opentelemetry.io/otel/metric@v1.45.0	Apache-2.0 AND BSD-3-Clause
+pkg:golang/go.opentelemetry.io/otel/sdk	Apache-2.0 AND BSD-3-Clause
+pkg:golang/go.opentelemetry.io/otel/trace@v1.31.0	Apache-2.0
+pkg:golang/go.opentelemetry.io/otel/trace@v1.38.0	Apache-2.0 AND BSD-3-Clause
+pkg:golang/go.opentelemetry.io/otel/trace@v1.45.0	Apache-2.0 AND BSD-3-Clause
+pkg:golang/go.opentelemetry.io/otel@v1.31.0	Apache-2.0
+pkg:golang/go.opentelemetry.io/otel@v1.38.0	Apache-2.0 AND BSD-3-Clause
+pkg:golang/go.opentelemetry.io/otel@v1.45.0	Apache-2.0 AND BSD-3-Clause
+pkg:golang/go.opentelemetry.io/proto/otlp	Apache-2.0
+pkg:golang/go.uber.org/atomic	MIT
+pkg:golang/go.uber.org/multierr	MIT
+pkg:golang/go.yaml.in/yaml/v2	Apache-2.0
+pkg:golang/golang.org/x/crypto	BSD-3-Clause
+pkg:golang/golang.org/x/exp	BSD-3-Clause
+pkg:golang/golang.org/x/mod	BSD-3-Clause
+pkg:golang/golang.org/x/net	BSD-3-Clause
+pkg:golang/golang.org/x/oauth2	BSD-3-Clause
+pkg:golang/golang.org/x/sync	BSD-3-Clause
+pkg:golang/golang.org/x/sys	BSD-3-Clause
+pkg:golang/golang.org/x/term	BSD-3-Clause
+pkg:golang/golang.org/x/text	BSD-3-Clause
+pkg:golang/golang.org/x/time	BSD-3-Clause
+pkg:golang/google.golang.org/api	BSD-3-Clause
+pkg:golang/google.golang.org/genproto	Apache-2.0
+pkg:golang/google.golang.org/grpc	Apache-2.0
+pkg:golang/google.golang.org/protobuf	BSD-3-Clause
+pkg:golang/gopkg.in/inf.v0	BSD-3-Clause
+pkg:golang/gopkg.in/sourcemap.v1	BSD-2-Clause
+pkg:golang/gopkg.in/yaml.v2	Apache-2.0
+pkg:golang/gopkg.in/yaml.v3	MIT AND Apache-2.0
+pkg:golang/k8s.io/api	Apache-2.0
+pkg:golang/k8s.io/apimachinery	Apache-2.0 AND BSD-3-Clause
+pkg:golang/k8s.io/client-go	Apache-2.0 AND BSD-3-Clause
+pkg:golang/k8s.io/cri-api	Apache-2.0
+pkg:golang/k8s.io/klog/v2	Apache-2.0
+pkg:golang/k8s.io/utils	Apache-2.0 AND BSD-3-Clause
+pkg:golang/oras.land/oras-go/v2	Apache-2.0
+pkg:golang/recovertpm	Apache-2.0
+pkg:golang/sigs.k8s.io/json	Apache-2.0 AND BSD-3-Clause
+pkg:golang/sigs.k8s.io/randfill	Apache-2.0
+pkg:golang/sigs.k8s.io/structured-merge-diff/v4	Apache-2.0
+pkg:golang/sigs.k8s.io/structured-merge-diff/v6	Apache-2.0
+pkg:golang/sigs.k8s.io/yaml	MIT AND BSD-3-Clause AND Apache-2.0
+pkg:golang/tags.cncf.io/container-device-interface	Apache-2.0

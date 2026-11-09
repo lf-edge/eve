@@ -106,7 +106,7 @@ the EVE-OS build and two builds of the same commit produce the same bytes:
 * `name` is `eve-<version>`
 * `created` is `SOURCE_DATE_EPOCH`, defaulting to the commit's committer date
 * `documentNamespace` is `https://github.com/lf-edge/eve/spdx/eve-<version>-<hash>`, where the hash covers the document's content
-* the document `DESCRIBES` a root package `SPDXRef-Package-EVE-OS` carrying the version, the source commit and a `pkg:docker/lfedge/eve` purl; each image's root is `CONTAINED` in it
+* the document `DESCRIBES` a root package `SPDXRef-Package-EVE-OS` carrying the version, the source commit and a `pkg:docker/lfedge/eve` purl; each image's root is `CONTAINED` in it. Like the image roots, it declares the license `NOASSERTION`, since it aggregates packages under many licenses that each declare their own
 
 It also fills in what the scanner leaves out, using the rest of the rootfs tar:
 
@@ -117,8 +117,9 @@ It also fills in what the scanner leaves out, using the rest of the rootfs tar:
 * packages recorded by `register-sbom-pkg.sh` get a `pkg:generic/<name>@<version>` purl in place of the `pkg:apk` one the scanner gives them, since EVE builds them from source
 * a file whose checksum matches nothing in the tar is matched by path: dropped with its relationships if the tar does not contain it, as for the `etc/hostname` linuxkit leaves out, or given the checksums of what linuxkit wrote there, as for `etc/hosts`
 * Rust crates the scanner read from a `cargo-sbom` document in the rootfs get back what the scanner drops: a crate built from a git repository gets that repository and commit as its `downloadLocation` and a `pkg:cargo` purl with a `vcs_url` qualifier, and a crate from the workspace `cargo-sbom` ran in is looked up in the supplier map by its name
-* the kernel from the `lfedge/eve-kernel` image gets `Organization: LF Edge` and the eve-kernel commit its version ends in as its `downloadLocation`
+* the kernel from the `lfedge/eve-kernel` image gets `Organization: LF Edge`, the license `GPL-2.0-only WITH Linux-syscall-note` its `COPYING` declares, and the eve-kernel commit its version ends in as its `downloadLocation`
 * Go modules, Rust crates and other packages get the supplier that [tools/sbom-stamp/suppliers.txt](../tools/sbom-stamp/suppliers.txt) maps their purl to; rerun `tools/sbom-stamp/update-suppliers.py` on a fresh SBoM when a `go.mod` or `Cargo.lock` changes, and add by hand what it cannot resolve and what `sbom-stamp` still reports without a supplier
+* packages other than image roots that the scanner left with a `NOASSERTION` declared license, mostly Go modules, whose build info records none, get the license that [tools/sbom-stamp/licenses.txt](../tools/sbom-stamp/licenses.txt) maps their purl to, where an entry for a specific version takes precedence; rerun `tools/sbom-stamp/update-licenses.py`, which takes the licenses deps.dev found in each version's source, the same way, and check what it reports as differing from the map
 
 To generate the sources, run `make collected_sources`. This does the following:
 

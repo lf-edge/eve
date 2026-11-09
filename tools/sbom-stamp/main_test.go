@@ -117,7 +117,7 @@ func TestDocument(t *testing.T) {
 		t.Errorf("documentDescribes %q", d.DocumentDescribes)
 	}
 	if len(d.Packages) != 5 || d.Packages[0]["SPDXID"] != rootID ||
-		d.Packages[0]["supplier"] != "Organization: LF Edge" {
+		d.Packages[0]["supplier"] != "Organization: LF Edge" || d.Packages[0]["licenseDeclared"] != "NOASSERTION" {
 		t.Errorf("packages %v", d.Packages)
 	}
 	if len(d.Files) != 2 {
@@ -254,7 +254,10 @@ func scanned() []byte {
 		pkg("SPDXRef-r-Package-go-module-pillar-1", "github.com/lf-edge/eve/pkg/pillar", "v0.0.0", "NOASSERTION", "", "pkg:golang/github.com/lf-edge/eve/pkg/pillar@v0.0.0") + `,` +
 		pkg("SPDXRef-r-Package-go-module-sys-1", "golang.org/x/sys", "v0.30.0", "NOASSERTION", "", "pkg:golang/golang.org/x/sys@v0.30.0") + `,` +
 		`{"name":"golang.org/x/sys","SPDXID":"SPDXRef-i-Package-go-module-sys-1","versionInfo":"v0.30.0","supplier":"NOASSERTION"},` +
-		pkg("SPDXRef-r-Package-go-module-unmapped-1", "example.com/unmapped", "v0.9.1", "NOASSERTION", "", "pkg:golang/example.com/unmapped@v0.9.1") + `],` +
+		pkg("SPDXRef-r-Package-go-module-unmapped-1", "example.com/unmapped", "v0.9.1", "NOASSERTION", "", "pkg:golang/example.com/unmapped@v0.9.1") + `,` +
+		pkg(kernelPackage+"linux-kernel-1", "linux-kernel", "6.18.55-linuxkit-core-92df24b15f57", "NOASSERTION", "", "pkg:generic/linux-kernel@6.18.55-linuxkit-core-92df24b15f57") + `,` +
+		`{"name":"golang.org/x/net","SPDXID":"SPDXRef-r-Package-go-module-net-1","versionInfo":"v0.1.0","supplier":"Organization: The Go Authors",` +
+		`"licenseConcluded":"NOASSERTION","licenseDeclared":"MIT","externalRefs":[{"referenceCategory":"PACKAGE-MANAGER","referenceType":"purl","referenceLocator":"pkg:golang/golang.org/x/net@v0.1.0"}]}],` +
 		`"files":[{"fileName":"bin/busybox","SPDXID":"SPDXRef-File-bin-busybox-1","checksums":[{"algorithm":"SHA256","checksumValue":"9d75f0d7c398df565d7ac04c6819b62d6d8f9560f5eb4672596ecd8f7e96ae91"}]},` +
 		`{"fileName":"etc/gone","SPDXID":"SPDXRef-File-etc-gone-1","checksums":[{"algorithm":"SHA256","checksumValue":"00"}]},` +
 		`{"fileName":"etc/hosts","SPDXID":"SPDXRef-File-etc-hosts-1","checksums":[{"algorithm":"SHA256","checksumValue":"11"}]}],` +
@@ -325,6 +328,23 @@ func TestFill(t *testing.T) {
 			t.Errorf("%s: got %+v, want %+v", id, got[id], w)
 		}
 	}
+	for id, want := range map[string]any{
+		rngdRoot:                                 nil,
+		initRoot:                                 nil,
+		"SPDXRef-r-Package-apk-busybox-1":        nil,
+		"SPDXRef-r-Package-go-module-pillar-1":   "Apache-2.0",
+		"SPDXRef-r-Package-go-module-sys-1":      "BSD-3-Clause",
+		"SPDXRef-i-Package-go-module-sys-1":      "BSD-3-Clause",
+		"SPDXRef-r-Package-go-module-unmapped-1": nil,
+		"SPDXRef-r-Package-go-module-net-1":      "MIT",
+		kernelPackage + "linux-kernel-1":         kernelLicense,
+	} {
+		for _, p := range d.Packages {
+			if p["SPDXID"] == id && p["licenseDeclared"] != want {
+				t.Errorf("%s: licenseDeclared %v, want %v", id, p["licenseDeclared"], want)
+			}
+		}
+	}
 	sums := d.Files[0]["checksums"].([]any)
 	if len(sums) != 2 || sums[1].(map[string]any)["checksumValue"] != "2f106f27fa1f28a8a4e02aeb10d73b78f9c9b24a" {
 		t.Errorf("bin/busybox checksums %v", sums)
@@ -343,8 +363,9 @@ func TestFill(t *testing.T) {
 			t.Errorf("relationship to the dropped etc/gone kept: %+v", r)
 		}
 	}
-	if st.NoSupplier != 1 || st.NoSHA1 != 0 || st.AbsentFiles != 1 || st.ReplacedFiles != 1 {
-		t.Errorf("stats %+v, want 1 package without supplier, 1 file dropped, 1 rehashed, none without SHA1", st)
+	if st.NoSupplier != 1 || st.NoLicense != 5 || st.NoSHA1 != 0 || st.AbsentFiles != 1 || st.ReplacedFiles != 1 {
+		t.Errorf("stats %+v, want 1 package without supplier, 5 without license, 1 file dropped, 1 rehashed, "+
+			"none without SHA1", st)
 	}
 	if again, _, _ := Stamp(out, opts, content); !bytes.Equal(out, again) {
 		t.Errorf("restamping a filled document changed it")
@@ -544,5 +565,50 @@ func TestSuppliers(t *testing.T) {
 	}
 	if len(suppliers) == 0 {
 		t.Error("suppliers.txt has no entries")
+	}
+}
+
+func TestLicenses(t *testing.T) {
+	m, err := parseLicenses("# comment\n\npkg:golang/go.opentelemetry.io/otel\tApache-2.0 AND BSD-3-Clause\n" +
+		"pkg:golang/go.opentelemetry.io/otel@v1.31.0\tApache-2.0\n" +
+		"pkg:golang/github.com/lf-edge/eve\tApache-2.0\n" +
+		"pkg:golang/github.com/google/fscrypt@v0.3.4%2Bdirty\t(MIT OR Apache-2.0)\n" +
+		"pkg:generic/linux\tGPL-2.0-only WITH Linux-syscall-note\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for purl, want := range map[string]string{
+		"pkg:golang/go.opentelemetry.io/otel@v1.31.0":                 "Apache-2.0",
+		"pkg:golang/go.opentelemetry.io/otel@v1.45.0":                 "Apache-2.0 AND BSD-3-Clause",
+		"pkg:golang/go.opentelemetry.io/otel/trace@v1.31.0":           "Apache-2.0 AND BSD-3-Clause",
+		"pkg:golang/github.com/lf-edge/eve/pkg/pillar@v0.0.0":         "Apache-2.0",
+		"pkg:golang/github.com/lf-edge/eve-api/go@v0.0.0":             "",
+		"pkg:golang/github.com/google/fscrypt@v0.3.4%2Bdirty":         "(MIT OR Apache-2.0)",
+		"pkg:golang/github.com/google/fscrypt@v0.3.5":                 "",
+		"pkg:generic/linux@6.18?arch=amd64#sub":                       "GPL-2.0-only WITH Linux-syscall-note",
+		"pkg:golang/go.opentelemetry.io/otel@v1.31.0?type=module#sub": "Apache-2.0",
+	} {
+		if got := mappedLicense(m, purl); got != want {
+			t.Errorf("mappedLicense(%q) = %q, want %q", purl, got, want)
+		}
+	}
+	for _, bad := range []string{
+		"pkg:cargo/serde MIT\n",
+		"pkg:cargo/serde@\tMIT\n",
+		"pkg:cargo/serde?a=b\tMIT\n",
+		"pkg:cargo/serde\tNOASSERTION\n",
+		"pkg:cargo/serde\tMIT AND AND BSD-3-Clause\n",
+		"pkg:cargo/serde\tMIT and BSD-3-Clause\n",
+		"pkg:cargo/serde\tMIT\npkg:cargo/serde\tBSD-3-Clause\n",
+	} {
+		if _, err := parseLicenses(bad); err == nil {
+			t.Errorf("parseLicenses(%q) succeeded", bad)
+		}
+	}
+	if _, err := parseSuppliers("pkg:cargo/serde@1.0\tPerson: a\n"); err == nil {
+		t.Error("parseSuppliers accepted a versioned prefix")
+	}
+	if len(licenses) == 0 {
+		t.Error("licenses.txt has no entries")
 	}
 }
