@@ -47,8 +47,10 @@ import (
 //     aggregate's protection reaches the services.
 //   - EVE never sets memory.high on pillar's cgroup.
 //   - zedbox runs in /eve/services/pillar, and a command run with
-//     "eve exec pillar" in the root cgroup ("0::/"). Where containerd and its
-//     shims run is TestContainerdCPUs' question.
+//     "eve exec pillar" beside the host processes: in /housekeeping on KVM,
+//     where domainmgr keeps that group off the CPUs workloads hold, else in
+//     the root cgroup ("0::/"). Where containerd and its shims run is
+//     TestContainerdCPUs' question.
 //   - memory-monitor runs where images/rootfs.yml.in puts its service,
 //     /eve-memory-monitor, beside /eve: every memory-monitor process is in
 //     "0::/eve-memory-monitor" and in no cgroup under /eve, and
@@ -57,11 +59,11 @@ import (
 //     effective CPUs are /eve's, and so are the CPUs memory-monitor may run
 //     on. The device has more CPUs than /eve, so that differs from the
 //     root's. The group holds no containerd shim.
-//   - KVM: the app's QEMU runs in the app's own cgroup under /eve-user-apps
-//     (from the qemu service's rootfs, but not in /eve/services/qemu); that
-//     cgroup has memory.max and the cpu.max of one vCPU ("100000 100000"),
-//     and the app's DomainMetric reports non-zero memory use and CPU time
-//     (the cgroup v2 stats of its shim decode).
+//   - KVM: the app's QEMU runs in the emulator group of the app's own cgroup
+//     under /eve-user-apps (from the qemu service's rootfs, but not in
+//     /eve/services/qemu); the app's cgroup has memory.max and the cpu.max of
+//     one vCPU ("100000 100000"), and the app's DomainMetric reports non-zero
+//     memory use and CPU time (the cgroup v2 stats of its shim decode).
 //   - Kubevirt: kube-init's first-boot CPU loan widened /eve/containerd and
 //     was restored (/persist/kubelog/k3s-install.log).
 //
@@ -142,7 +144,11 @@ func TestCgroupTree(test *testing.T) {
 		"pillar's memory.low")
 	t.Expect(f["memory.high[/eve/services/pillar]"]).To(Equal("max"))
 	t.Expect(f["zedbox"]).To(Equal("/eve/services/pillar"))
-	t.Expect(f["eve-exec"]).To(Equal("0::/"), "cgroup of a command run with eve exec")
+	wantExec := "0::/"
+	if hypervisor == evetest.HypervisorKVM {
+		wantExec = "0::/housekeeping"
+	}
+	t.Expect(f["eve-exec"]).To(Equal(wantExec), "cgroup of a command run with eve exec")
 	checkMemoryMonitorCgroup(t, f, nproc, dom0)
 
 	if hypervisor == evetest.HypervisorKubevirt {
@@ -151,7 +157,7 @@ func TestCgroupTree(test *testing.T) {
 		t.Expect(f["loan.restored"]).ToNot(BeEmpty(), "kube-init's CPU loan was not restored")
 	} else {
 		t.Expect(f["app.dir"]).ToNot(BeEmpty(), "no cgroup for the app under /eve-user-apps")
-		t.Expect(f["app.qemu"]).To(Equal(strings.TrimPrefix(f["app.dir"], "/sys/fs/cgroup")),
+		t.Expect(f["app.qemu"]).To(Equal(strings.TrimPrefix(f["app.dir"], "/sys/fs/cgroup")+"/emulator"),
 			"the cgroup of the app's QEMU")
 		t.Expect(f["app.memory.max"]).ToNot(Equal("max"), "the app has no memory limit")
 		t.Expect(f["app.cpu.max"]).To(Equal("100000 100000"), "cpu.max of a 1-vCPU app")
