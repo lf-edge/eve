@@ -28,6 +28,8 @@ const (
 	// Written by memory-monitor to its event log for a pressure event on pillar.
 	monitorPressureEvent = "Pressure event for cgroup eve/services/pillar"
 	monitorEventLog      = "/persist/memory-monitor/output/events.log"
+	// A COVER=y zedbox writes its coverage metadata here at startup.
+	coverBuildMarker = `ls /persist/coverage/covmeta.* >/dev/null 2>&1 && echo cover || echo plain`
 	// The watcher pauses memory-monitor (freezes its cgroup) unless
 	// memory-monitor.enabled is set.
 	monitorThawed = `awk '$1 == "frozen" {print $2}' /sys/fs/cgroup/eve-memory-monitor/cgroup.events`
@@ -88,6 +90,12 @@ echo "pressure=$(head -1 $CG/memory.pressure)"`
 // -----------
 //   - HYPERVISOR.
 //
+// Skipped on COVER=y images: there SIGUSR2 is taken by the coverage flush, so
+// `eve http-debug` (which the memory-monitor handler uses to read pillar's
+// heap profile) cannot start the pprof server and the handler always fails.
+// Letting SIGUSR2 also start the server would keep it running after every
+// coverage collection and disturb other tests.
+//
 // Suite placement
 // ---------------
 //   - TestAppsSuite, after TestCgroupTree (same network model and device).
@@ -113,6 +121,11 @@ func TestMemoryPressureEvents(test *testing.T) {
 	)
 	device := evetest.GetEdgeDevice(devName)
 	evetest.Checkpoint("setup-done")
+
+	if out, _, _ := device.RunShellScript(coverBuildMarker, time.Minute, 0); strings.TrimSpace(out) == "cover" {
+		evetestT.Skip("COVER=y image: SIGUSR2 is used for coverage flushing, " +
+			"so the memory-monitor handler cannot start pillar's debug server")
+	}
 
 	devConfig := evetest.NewEdgeDeviceConfig(devName)
 	addMgmtPort(devConfig)
