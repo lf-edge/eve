@@ -69,6 +69,67 @@ func MemoryStat(group string) (map[string]uint64, error) {
 	return stat, sc.Err()
 }
 
+// Processes lists the processes in group, from its cgroup.procs.
+func Processes(group string) ([]int, error) {
+	b, err := os.ReadFile(Path(group, "cgroup.procs"))
+	if err != nil {
+		return nil, err
+	}
+	var pids []int
+	for _, field := range strings.Fields(string(b)) {
+		pid, err := strconv.Atoi(field)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", Path(group, "cgroup.procs"), err)
+		}
+		pids = append(pids, pid)
+	}
+	return pids, nil
+}
+
+// AddProcess moves process pid into group. The kernel refuses a kernel thread.
+func AddProcess(group string, pid int) error {
+	return os.WriteFile(Path(group, "cgroup.procs"), []byte(strconv.Itoa(pid)), 0)
+}
+
+// AddThread moves thread tid into group, a threaded cgroup in the subtree its
+// process is in.
+func AddThread(group string, tid int) error {
+	return os.WriteFile(Path(group, "cgroup.threads"), []byte(strconv.Itoa(tid)), 0644)
+}
+
+// MakeThreaded creates group, unless it exists, as a threaded cgroup: its
+// members are threads, not processes, and it takes only threaded controllers
+// (cpuset, cpu, pids); its parent becomes a threaded domain, which keeps the
+// domain controllers (memory, io) for the whole subtree. Making a threaded
+// cgroup threaded again changes nothing.
+func MakeThreaded(group string) error {
+	if err := os.MkdirAll(Path(group, ""), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(Path(group, "cgroup.type"), []byte("threaded"), 0644)
+}
+
+// EnableControllers hands controllers to group's children, through its
+// cgroup.subtree_control. Enabling one already enabled changes nothing.
+func EnableControllers(group string, ctrls ...string) error {
+	enable := make([]string, len(ctrls))
+	for i, c := range ctrls {
+		enable[i] = "+" + c
+	}
+	return os.WriteFile(Path(group, "cgroup.subtree_control"),
+		[]byte(strings.Join(enable, " ")), 0644)
+}
+
+// SubtreeControl lists the controllers group hands to its children, from its
+// cgroup.subtree_control.
+func SubtreeControl(group string) ([]string, error) {
+	b, err := os.ReadFile(Path(group, "cgroup.subtree_control"))
+	if err != nil {
+		return nil, err
+	}
+	return strings.Fields(string(b)), nil
+}
+
 // FormatCPUs formats a CPU list the way cpuset.cpus takes it: "1,3,5".
 func FormatCPUs(cpus []uint32) string {
 	list := make([]string, len(cpus))
