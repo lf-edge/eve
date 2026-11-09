@@ -96,7 +96,11 @@ RUN ./configure \
 
 RUN make -j "$(getconf _NPROCESSORS_ONLN)"
 RUN make install
-RUN HARNESS_JOBS="$(getconf _NPROCESSORS_ONLN)" make tests
+ARG TARGETARCH
+# QEMU user-mode cannot install the seccomp filter required by OpenSSH tests.
+RUN if [ "$TARGETARCH" != riscv64 ]; then \
+        HARNESS_JOBS="$(getconf _NPROCESSORS_ONLN)" make tests; \
+    fi
 
 RUN mkdir -p /out/usr/lib/ssh
 RUN /usr/bin/install -c -m 0755 -s ssh /out/usr/bin/ssh
