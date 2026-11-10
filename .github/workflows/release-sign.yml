@@ -168,14 +168,20 @@ jobs:
               tries=$((tries + 1))
             done
           }
-          # Docker Hub's referrers listing can lag a push by up to a minute.
+          # Docker Hub's referrers listing can lag a push, so a signature or
+          # attestation just made is re-checked every 5 s for up to five minutes,
+          # as tools/eve-cosign.sh does; the last attempt's error goes to stderr.
           until_visible() {
-            local waited=0
+            local start=$SECONDS
             until "$@" > /dev/null 2>&1; do
-              [ "$waited" -lt 60 ] || { "$@" > /dev/null; return; }
+              if [ $((SECONDS - start)) -ge 300 ]; then
+                echo "not visible after $((SECONDS - start))s: ${*: -1}"
+                "$@" > /dev/null
+                return
+              fi
               sleep 5
-              waited=$((waited + 5))
             done
+            echo "visible after $((SECONDS - start))s: ${*: -1}"
           }
           # download-artifact extracts a single match into images/ itself and
           # several into images/<artifact>/.
