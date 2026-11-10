@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Zededa, Inc.
+// Copyright (c) 2024-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 // Package main runs the dockerfile-from-checker binary.
@@ -59,6 +59,11 @@ func gatherDirs(dir string) ([]string, []string) {
 
 	err = filepath.Walk(dir, func(p string, info fs.FileInfo, _ error) error {
 		if info.Name() == "vendor" {
+			return filepath.SkipDir
+		}
+		// .claude holds AI agent state, including whole checkouts of this
+		// repository whose packages would shadow the real ones.
+		if info.IsDir() && info.Name() == ".claude" {
 			return filepath.SkipDir
 		}
 		if info.IsDir() {
