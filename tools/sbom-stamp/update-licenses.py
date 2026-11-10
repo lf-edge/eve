@@ -36,6 +36,16 @@ SYSTEM = {"golang": "go", "cargo": "cargo"}
 EXPR = re.compile(r"^\(*[A-Za-z0-9.+-]+\)*(?: (?:AND|OR|WITH) \(*[A-Za-z0-9.+-]+\)*)*$")
 
 
+def balanced_parens(expr):
+    """Return whether every parenthesis in expr is closed after it is opened."""
+    depth = 0
+    for c in expr:
+        depth += {"(": 1, ")": -1}.get(c, 0)
+        if depth < 0:
+            return False
+    return depth == 0
+
+
 def split(purl):
     """Return purl without version, qualifiers and subpath, and its version."""
     for sep in "#?":
@@ -121,7 +131,8 @@ def licenses(pair):
         raise
     # deps.dev reports a license file it cannot classify as non-standard.
     expr = " AND ".join(found)
-    return pair, expr if EXPR.match(expr) and "non-standard" not in found else ""
+    ok = EXPR.match(expr) and balanced_parens(expr) and "non-standard" not in found
+    return pair, expr if ok else ""
 
 
 def add(entries, base, versions):
