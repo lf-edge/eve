@@ -3,17 +3,25 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # runc for the rootfs, built from source the way linuxkit's pkg/runc builds
-# it (static, seccomp enabled) but on eve-alpine, and linked without the
-# symbol table and DWARF sections: with them runc is 17 MB that cost 7 MB
-# in the compressed rootfs.
+# it (static, seccomp enabled) but on eve-alpine, so that it follows the
+# runc releases and eve-alpine's Go toolchain instead of linuxkit's package
+# releases, and linked without the symbol table and DWARF sections: with
+# them runc is 17 MB that cost 7 MB in the compressed rootfs.
 
 FROM lfedge/eve-alpine:61283a3a978a7cdc9073a1ba678717fc3ea1fe97 AS build
 ENV BUILD_PKGS="bash gcc git libc-dev libseccomp-dev libseccomp-static linux-headers make"
 RUN eve-alpine-deploy.sh
 
-ENV RUNC_VERSION=v1.3.3
+# Keep in step with script/setup/runc-version of the containerd release in
+# pkg/containerd, the runc version containerd is tested with.
+ENV RUNC_VERSION=v1.3.6
 ADD --keep-git-dir=true https://github.com/opencontainers/runc.git#${RUNC_VERSION} /runc
 WORKDIR /runc
+# runc pins golang.org/x/net (only its bpf package is used) and
+# golang.org/x/sys at releases with published advisories; runc reaches none
+# of the affected code, but the module versions show up in the SBOM. Move
+# them to their current releases before building.
+RUN go get golang.org/x/net@v0.62.0 golang.org/x/sys@v0.49.0 && go mod vendor
 # The build linuxkit/runc uses, plus -s -w.
 RUN make static BUILDTAGS="seccomp" EXTRA_FLAGS="-buildmode pie" EXTRA_LDFLAGS="-s -w -extldflags \\\"-fno-PIC -static\\\""
 

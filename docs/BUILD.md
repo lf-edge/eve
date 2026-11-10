@@ -482,8 +482,6 @@ EVE uses a number of standard linuxkit packages. These are enumerated below. Oth
 
 * `init` packages
   * `linuxkit/init` - for the `init` process
-  * `linuxkit/containerd` - for `containerd`
-  * `linuxkit/getty` - for `getty` to log in on console
 * `onboot` packages
   * `linuxkit/sysctl`
   * `linuxkit/modprobe` - customized for the appropriate modules
@@ -495,7 +493,6 @@ EVE uses a number of standard linuxkit packages. These are enumerated below. Oth
 
 * `init` packages
   * `linuxkit/init` - for the `init` process
-  * `linuxkit/getty` - for `getty` to log in on console
 
 ### Custom Packages
 
@@ -508,6 +505,8 @@ The following custom packages are used:
 * kernel: EVE uses its own custom kernel (taken from [eve-kernel](https://github.com/lf-edge/eve-kernel) project), rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm.
 * `init` packages:
   * `lfedge/eve-runc` - runc built from source, static with seccomp and stripped, in place of `linuxkit/runc`.
+  * `lfedge/eve-containerd` - containerd built from source, static with CRI disabled and stripped, in place of `linuxkit/containerd`.
+  * `lfedge/eve-getty` - linuxkit's getty rebuilt on eve-alpine, to log in on console, in place of `linuxkit/getty`.
   * `lfedge/eve-grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades. See [UPSTREAMING.md](./UPSTREAMING.md#grub) for a more detailed discussion of what is unique in this grub.
   * `lfedge/eve-fw` - various firmware required for device drivers.
   * `lfedge/eve-gpt-tools` - ChromiumOS inspired tools and sgdisk required to enable CoreOS-style dual partition upgrades. See [UPSTREAMING.md](./UPSTREAMING.md#grub) for a more detailed discussion of what is unique in these versions of the gpt tools.
@@ -523,6 +522,7 @@ The following custom packages are used:
 * kernel: EVE uses its own custom kernel (taken from [eve-kernel](https://github.com/lf-edge/eve-kernel) project), rather than one of the standard linuxkit ones. This is primarily due to kernel modules and drivers, especially on arm.
 * `init` packages:
   * `lfedge/eve-runc` - runc built from source, static with seccomp and stripped, in place of `linuxkit/runc`.
+  * `lfedge/eve-getty` - linuxkit's getty rebuilt on eve-alpine, to log in on console, in place of `linuxkit/getty`.
   * `lfedge/eve-grub` - CoreOS inspired GRUB required to enable CoreOS-style dual partition upgrades.
   * `lfedge/eve-devices-trees` - device trees for all the ARM platforms that EVE supports.
   * `lfedge/eve-dom0-ztools` - catch-all containers for tools helpful in developing and debugging EVE.

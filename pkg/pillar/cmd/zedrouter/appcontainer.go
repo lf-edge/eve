@@ -16,15 +16,15 @@ import (
 	"strings"
 	"time"
 
-	containertypes "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/google/go-cmp/cmp"
 	metrics "github.com/lf-edge/eve-api/go/metrics"
 	nestedapp "github.com/lf-edge/eve-api/go/nestedappinstancemetrics"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	containertypes "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -227,15 +227,17 @@ func (z *zedrouter) getAppContainerStats(cli *client.Client,
 
 	for _, container := range containers {
 		// the main purpose of Inspect is to obtain the container start time for CPU stats
-		cjson, err := cli.ContainerInspect(context.Background(), container.ID)
+		cjson, err := cli.ContainerInspect(context.Background(), container.ID,
+			client.ContainerInspectOptions{})
 		if err != nil {
 			z.log.Errorf("getAppContainerStats: container inspect for %s, error %v",
 				container.ID, err)
 			continue
 		}
-		startTime, _ := time.Parse(time.RFC3339Nano, cjson.State.StartedAt)
+		startTime, _ := time.Parse(time.RFC3339Nano, cjson.Container.State.StartedAt)
 
-		stats, err := cli.ContainerStats(context.Background(), container.ID, false)
+		stats, err := cli.ContainerStats(context.Background(), container.ID,
+			client.ContainerStatsOptions{})
 		if err != nil {
 			z.log.Errorf("getAppContainerStats: container stats for %s, error %v\n",
 				container.Names[0], err)
@@ -257,7 +259,7 @@ func (z *zedrouter) getAppContainerStats(cli *client.Client,
 	return acMetrics
 }
 
-func (z *zedrouter) processAppContainerStats(stats containertypes.StatsResponseReader,
+func (z *zedrouter) processAppContainerStats(stats client.ContainerStatsResult,
 	container containertypes.Summary, startTime time.Time) (types.AppContainerStats, error) {
 	var acStats types.AppContainerStats
 	var v *containertypes.StatsResponse
@@ -317,7 +319,7 @@ func (z *zedrouter) getAppContainerLogs(status types.AppNetworkStatus,
 			lasttime = lt.Format(time.RFC3339Nano)
 		}
 		out, err := cli.ContainerLogs(context.Background(), container.ID,
-			containertypes.LogsOptions{
+			client.ContainerLogsOptions{
 				ShowStdout: true,
 				ShowStderr: true,
 				Timestamps: true,
@@ -393,9 +395,9 @@ func (z *zedrouter) getAppContainers(status types.AppNetworkStatus) (
 	*client.Client, []containertypes.Summary, error) {
 	containerEndpoint := "tcp://" + status.GetStatsIPAddr.String() +
 		":" + strconv.Itoa(dockerAPIPort)
-	cli, err := client.NewClientWithOpts(
+	cli, err := client.New(
 		client.WithHost(containerEndpoint),
-		client.WithVersion(dockerAPIVersion),
+		client.WithAPIVersion(dockerAPIVersion),
 		client.WithHTTPClient(&http.Client{
 			Timeout: dockerAPITimeout,
 			Transport: &limitedResponseTransport{
@@ -410,13 +412,13 @@ func (z *zedrouter) getAppContainers(status types.AppNetworkStatus) (
 
 	ctx, cancel := context.WithTimeout(context.Background(), dockerAPITimeout)
 	defer cancel()
-	containers, err := cli.ContainerList(ctx, containertypes.ListOptions{})
+	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{})
 	if err != nil {
 		z.log.Errorf("getAppContainers: Container list error %v", err)
 		return nil, nil, err
 	}
 
-	return cli, containers, nil
+	return cli, containers.Items, nil
 }
 
 // getIotEdgeMetricsAndLogs collects the metrics and logs for IoT-Edge

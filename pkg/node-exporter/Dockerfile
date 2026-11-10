@@ -5,7 +5,7 @@
 # is not part of the package build. Run it with:
 #   docker build --rm --target test --progress=plain --no-cache .
 
-FROM prom/node-exporter:v1.9.1@sha256:d00a542e409ee618a4edc67da14dd48c5da66726bbd5537ab2af9c1dfc442c8a AS upstream
+FROM prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0 AS upstream
 
 # the release binary ships its symbol tables: 21 MB, 14.5 MB stripped
 FROM lfedge/eve-alpine:61283a3a978a7cdc9073a1ba678717fc3ea1fe97 AS strip
