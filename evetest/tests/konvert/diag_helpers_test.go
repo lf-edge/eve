@@ -134,6 +134,10 @@ func dumpRestoreState(device *evetest.EdgeDevice) {
 		{"checkpoint", "ls -l /persist/checkpoint 2>&1 || echo NONE"},
 		{"onboarding", "eve exec pillar sh -c 'cat /persist/status/zedclient/OnboardingStatus/global.json 2>/dev/null' || echo NONE"},
 		{"cipher status", "eve exec pillar sh -c 'cat /run/nim/CipherBlockStatus/*.json 2>/dev/null' || echo NONE"},
+		{"vault status", "eve exec pillar sh -c 'cat /run/vaultmgr/VaultStatus/*.json 2>/dev/null' || echo NONE"},
+		{"vault config", "cat /persist/status/vaultmgr/VaultConfig/global.json 2>/dev/null || echo NONE"},
+		{"fscrypt metadata", "ls -lR /persist/.fscrypt 2>&1 || echo NONE"},
+		{"vault errors (newlog)", newlogProbe(`grep -aE "vaultmgr" | grep -aiE "error|fail|fscrypt" | tail -40`)},
 	})
 }
 

@@ -6,6 +6,7 @@ package konvert_test
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,83 @@ import (
 	"github.com/lf-edge/eve/evetest"
 	"github.com/lf-edge/eve/evetest/netmodels"
 )
+
+// vaultConfigRel is vaultmgr's record of the vault's key derivation, relative
+// to /persist.
+const vaultConfigRel = "status/vaultmgr/VaultConfig/global.json"
+
+// vaultMarkerPath is a file written into the vault before the damage, so that
+// reading it back afterwards shows the vault that reopened is the one the
+// device had rather than a new, empty one.
+const (
+	vaultMarkerPath = "/persist/vault/konvert-restore-marker"
+	vaultMarkerText = "vault-survived-restore"
+)
+
+// The lines vaultmgr logs at startup on finding, or not finding, its record of
+// the key derivation (pkg/pillar/cmd/vaultmgr). The found line ends in the
+// recorded TpmKeyOnly value.
+const (
+	vaultConfigFoundLog   = "Vault config inited with tpmkeyonly true"
+	vaultConfigMissingLog = "Could not find vault config"
+)
+
+// vaultConfigLogCounts is how many times vaultmgr has logged each of those
+// lines over the device's whole log history.
+type vaultConfigLogCounts struct {
+	found   int
+	missing int
+}
+
+// countVaultConfigLog counts vaultmgr's startup lines about its key-derivation
+// record across all of /persist/newlog.
+func countVaultConfigLog(t Gomega, device *evetest.EdgeDevice) vaultConfigLogCounts {
+	return vaultConfigLogCounts{
+		found:   countNewlogLines(t, device, vaultConfigFoundLog),
+		missing: countNewlogLines(t, device, vaultConfigMissingLog),
+	}
+}
+
+// countNewlogLines counts the device log records containing text.
+func countNewlogLines(t Gomega, device *evetest.EdgeDevice, text string) int {
+	out, err := runEVEWithTimeout(device, newlogProbe(`grep -acF "`+text+`"`), newlogScanTimeout)
+	t.Expect(err).NotTo(HaveOccurred(), "counting %q in the device log failed:\n%s", text, out)
+	// grep -c exits 1 on no match, so newlogProbe appends "none" after the 0.
+	fields := strings.Fields(out)
+	t.Expect(fields).NotTo(BeEmpty(), "no count for %q in:\n%s", text, out)
+	n, err := strconv.Atoi(fields[0])
+	t.Expect(err).NotTo(HaveOccurred(), "no count for %q in:\n%s", text, out)
+	return n
+}
+
+// assertVaultReopened asserts the vault the device had before the damage was
+// reopened from the TPM, with no controller, and that vaultmgr found its
+// key-derivation record rather than having to guess it.
+//
+// The record check compares log counts with those taken before the damage. A
+// new found or missing line is required first: it shows the scan sees the
+// boots since, so an unchanged missing count is evidence rather than a log not
+// yet written.
+func assertVaultReopened(t Gomega, device *evetest.EdgeDevice, before vaultConfigLogCounts) {
+	var method string
+	t.Eventually(func() string {
+		method = readVaultUnlockMethod(device)
+		return method
+	}, 12*time.Minute, 10*time.Second).Should(Equal(unlockLocal),
+		"the vault was not reopened from the TPM (unlock method %q)", method)
+	assertMarkerFile(t, device, vaultMarkerPath, vaultMarkerText)
+
+	var after vaultConfigLogCounts
+	t.Eventually(func() int {
+		after = countVaultConfigLog(t, device)
+		return after.found + after.missing
+	}, 5*time.Minute, 30*time.Second).Should(BeNumerically(">", before.found+before.missing),
+		"vaultmgr logged neither %q nor %q since the damage, so the boots since are not in the log",
+		vaultConfigFoundLog, vaultConfigMissingLog)
+	t.Expect(after.missing).To(Equal(before.missing),
+		"vaultmgr logged %q after the restore: the key-derivation record was not restored",
+		vaultConfigMissingLog)
+}
 
 // The wireless port used to prove an encrypted credential can be decrypted
 // after a restore.
@@ -185,7 +263,10 @@ func anyCipherBlockDecrypted(raw string) bool {
 //
 // With simulatedRelease set, it also writes a resize-failed.json naming that
 // release, which is what makes storage-init skip the resize the flag arms.
-func backupIdentityToConfig(t Gomega, device *evetest.EdgeDevice, simulatedRelease string) {
+//
+// It returns the backup's output, which names each file the backup holds on a
+// "BACKED-UP <path relative to /persist>" line.
+func backupIdentityToConfig(t Gomega, device *evetest.EdgeDevice, simulatedRelease string) string {
 	marker := ""
 	if simulatedRelease != "" {
 		marker = fmt.Sprintf(`printf '{"eve_release":"%s","step":"%s","rc":"0","ts":"restore"}' > /tmp/restore-cfg/resize-failed.json`,
@@ -233,6 +314,7 @@ cp /persist/checkpoint/lastconfig /persist/checkpoint/lastconfig.bak \
 tr -d '\0' < /persist/checkpoint/lastconfig.bak | grep -q %q \
     || { echo "FAIL: the refreshed lastconfig.bak lacks the wireless credential"; umount /tmp/restore-cfg; exit 1; }
 %s
+(cd /tmp/restore-cfg/backup-persist && find . -type f | sed "s|^\./|BACKED-UP |")
 sync
 umount /tmp/restore-cfg 2>/dev/null
 echo "BACKUP-DONE"`, resizeTargetSize, restoreWiFiSSID, restoreWiFiSSID, restoreWiFiSSID, marker)
@@ -255,6 +337,7 @@ exit $rc`, backupScriptPath, script, backupScriptPath, backupScriptPath)
 	t.Expect(out).To(ContainSubstring("BACKUP-DONE"), "the identity backup failed:\n%s", out)
 	evetest.Logger().Infof("identity backup: %s", strings.TrimSpace(out))
 	device.SyncDisks()
+	return out
 }
 
 // isolateFromController drops every packet from the device to the controller,
@@ -474,6 +557,32 @@ func assertResizeBookkeeping(t Gomega, device *evetest.EdgeDevice, mode, running
 	t.Expect(marker.PersistRecreated).To(Equal(wantRecreated),
 		"persist_recreated does not match whether /persist was recreated: %s", raw)
 	return marker.Step
+}
+
+// parkedFailureMarker is where moveFailureMarker keeps resize-failed.json while
+// it is off the CONFIG partition.
+const parkedFailureMarker = "/persist/konvert-resize-failed.json"
+
+// moveFailureMarker moves resize-failed.json from the CONFIG partition to
+// parkedFailureMarker, or back when toConfig is set. measure-config hashes every
+// file under /config into PCR14, so while the marker is there the vault cannot
+// unseal from the TPM. baseosmgr reads the marker from the partition, so moving
+// it back takes effect without a reboot.
+func moveFailureMarker(t Gomega, device *evetest.EdgeDevice, toConfig bool) {
+	from, to := `"$M/resize-failed.json"`, parkedFailureMarker
+	if toConfig {
+		from, to = to, from
+	}
+	out, err := runEVE(device, fmt.Sprintf(`set -u
+CFGP=$(findfs PARTLABEL=CONFIG) || { echo "FAIL: no CONFIG partition"; exit 1; }
+M=/tmp/konvert-cfg-rw; mkdir -p "$M"
+mount -t vfat -o rw,iocharset=iso8859-1 "$CFGP" "$M" || { echo "FAIL: could not mount CONFIG"; exit 1; }
+rc=1
+cp %[1]s %[2]s && rm %[1]s && sync && rc=0
+umount "$M"; rmdir "$M"
+[ $rc = 0 ] && echo MOVED`, from, to))
+	t.Expect(err).NotTo(HaveOccurred(), "moving the failure marker failed:\n%s", out)
+	t.Expect(out).To(ContainSubstring("MOVED"), "moving the failure marker failed:\n%s", out)
 }
 
 // readConfigPartitionFile returns the contents of name on the CONFIG partition,

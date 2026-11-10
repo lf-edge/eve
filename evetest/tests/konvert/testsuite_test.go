@@ -212,6 +212,8 @@ func TestKonvertSuite(test *testing.T) {
 		evetest.TestCase{Test: TestKvmToKRepartitionGeometry},
 		evetest.TestCase{Test: TestPersistWipeRestore},
 		evetest.TestCase{Test: TestBackupCorruptRestore},
+		evetest.TestCase{Test: TestVaultConfigLossRestore},
+		evetest.TestCase{Test: TestFscryptMetadataLossRestore},
 		evetest.TestCase{
 			Test: TestKvmToKRepartitionNoVolmig,
 			Variants: []evetest.TestVariant{
