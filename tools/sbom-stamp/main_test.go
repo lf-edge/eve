@@ -598,6 +598,9 @@ func TestLicenses(t *testing.T) {
 		"pkg:cargo/serde?a=b\tMIT\n",
 		"pkg:cargo/serde\tNOASSERTION\n",
 		"pkg:cargo/serde\tMIT AND AND BSD-3-Clause\n",
+		"pkg:cargo/serde\t(MIT OR Apache-2.0\n",
+		"pkg:cargo/serde\tMIT)\n",
+		"pkg:cargo/serde\tMIT) AND (Apache-2.0\n",
 		"pkg:cargo/serde\tMIT and BSD-3-Clause\n",
 		"pkg:cargo/serde\tMIT\npkg:cargo/serde\tBSD-3-Clause\n",
 	} {

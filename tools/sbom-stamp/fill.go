@@ -195,7 +195,7 @@ func parseSuppliers(s string) (map[string]string, error) {
 // in @<version>, which then takes precedence for that version.
 func parseLicenses(s string) (map[string]string, error) {
 	return parseMap("licenses.txt", s, true, func(v string) string {
-		if !licenseExpr.MatchString(v) || v == "NOASSERTION" || v == "NONE" {
+		if !licenseExpr.MatchString(v) || !balancedParens(v) || v == "NOASSERTION" || v == "NONE" {
 			return "want an SPDX license expression"
 		}
 		return ""
@@ -204,7 +204,25 @@ func parseLicenses(s string) (map[string]string, error) {
 
 // licenseExpr matches a license expression of SPDX license IDs or
 // LicenseRef-s, operators and parentheses, without two operators in a row.
+// balancedParens checks the parentheses.
 var licenseExpr = regexp.MustCompile(`^\(*[A-Za-z0-9.+-]+\)*(?: (?:AND|OR|WITH) \(*[A-Za-z0-9.+-]+\)*)*$`)
+
+// balancedParens reports whether every parenthesis in s is closed after it
+// is opened.
+func balancedParens(s string) bool {
+	depth := 0
+	for _, c := range s {
+		switch c {
+		case '(':
+			depth++
+		case ')':
+			if depth--; depth < 0 {
+				return false
+			}
+		}
+	}
+	return depth == 0
+}
 
 // parseMap reads lines of a purl prefix and a value separated by a tab,
 // skipping blank lines and lines starting with #. withVersion allows a prefix
