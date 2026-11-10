@@ -4,8 +4,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/diskfs/go-diskfs v1.9.5-0.20260803113315-a6099fdbe455 h1:ejppUqY//QtsBiMIQXTxUk3GSu5HwVi8F1daOlslrWw=
 github.com/diskfs/go-diskfs v1.9.5-0.20260803113315-a6099fdbe455/go.mod h1:TePJORO83Adh5pb2SqsxAwaP0fofFxKLkxctiS/9OQc=
-github.com/diskfs/partitionresizer v1.0.1-0.20260804072839-b362ce3c37c3 h1:Gyo+CM34I1T0V8c4kfpzHU0SENwb9wKnDe8Rm8+j0+U=
-github.com/diskfs/partitionresizer v1.0.1-0.20260804072839-b362ce3c37c3/go.mod h1:IgdGLXfDbb/skHlI/R4KGZpCWewi6JV/rwUqHMycGKw=
+github.com/diskfs/partitionresizer v1.0.1-0.20261110121057-af5db74dd7ef h1:Gyd3phQezFqBi4TWB6RpIb0m3tyP4zkwfz1nAiUz9i0=
+github.com/diskfs/partitionresizer v1.0.1-0.20261110121057-af5db74dd7ef/go.mod h1:IgdGLXfDbb/skHlI/R4KGZpCWewi6JV/rwUqHMycGKw=
 github.com/djherbis/times v1.6.0 h1:w2ctJ92J8fBvWPxugmXIv7Nz7Q3iDMKNx9v5ocVH20c=
 github.com/djherbis/times v1.6.0/go.mod h1:gOHeRAz2h+VJNZ5Gmc/o7iD9k4wW7NMVqieYCY99oc0=
 github.com/elliotwutingfeng/asciiset v0.0.0-20260129054604-cfde2086bc57 h1:x5yxNrq8XffV/OoNUeFPM6hxHVi5OTspSTBxr/9pemg=
