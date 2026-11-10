@@ -14,6 +14,7 @@ its own builds the same way.
 | `lfedge/eve:<tag>[-<platform>]-<hv>-<arch>`, `lfedge/eve-sources:…`, their multi-arch indexes, and an SPDX SBOM attestation on each EVE image except riscv64 | `release-sign.yml@refs/heads/master` | release tags, after approval |
 | `<arch>.<hv>.<platform>.sha256sums` release asset | `release-sign.yml@refs/heads/master` | release tags, after approval |
 | `<tag>.tagger.sigstore.json` release asset: an in-toto statement, type `https://github.com/lf-edge/eve/release-tagger/v1`, naming who pushed the tag (`github.actor` and its ID), over every image, index and `sha256sums` above | `release-sign.yml@refs/heads/master` | release tags, after approval |
+| `<tag>.maintainer.sigstore.json` release asset, also attached to every image and index above as an OCI referrer: an in-toto statement, type `https://github.com/lf-edge/eve/release-approval/v1`, over the same subjects as the tagger statement, naming the repository, release and commit | a release signer's GitHub account, issuer `https://github.com/login/oauth` | after the workflow signatures, by a signer other than the tagger |
 | `lfedge/eve-<pkg>` platform manifests and indexes | `publish.yml@refs/heads/<branch>` | pushes to `master`, `N.N` and `N.N-stable` that build the package |
 | `lfedge/eve-alpine-base` platform manifests and index | `build-alpine-base.yml@refs/heads/master` | manual runs of that workflow on `master` |
 
@@ -41,9 +42,13 @@ exception). Then:
    tagged commit is on the `N.N` or `N.N-stable` branch of the tag, then waits
    for approval of the `release` environment.
 4. The `tag` job tags the signed digests, and the `release` job attaches the
-   bundles and publishes the release as a pre-release.
+   bundles to the draft.
+5. A release signer other than the tagger signs the release with their own
+   GitHub account and publishes it as a pre-release; `release-approval.yml`
+   attaches their signature to the images.
 
-Nothing is tagged or published before the approval. Because the signing job
+Nothing is tagged before the approval of the `release` environment, and
+nothing is published before a release signer's signature. Because the signing job
 is `release-sign.yml` at `master`, the certificate names that file whatever
 the tag's own `publish.yml` contains; the tag and its commit are in the
 certificate's Source Repository Ref and Digest.
@@ -53,10 +58,10 @@ certificate's Source Repository Ref and Digest.
 When a release waits for approval, `release-sign.yml` opens an issue "Approve
 release `<tag>`" that mentions the approvers, links the Publish run, where the
 `sign / sign` job waits behind "Review deployments", and lists the image
-digests it will sign. The run's `close` job closes the issue once the release
-is published, and otherwise comments on it with the run's outcome. Before
-approving, rebuild the tag independently and compare the rebuild with the
-release images:
+digests it will sign. The run's `close` job comments on the issue with the
+run's outcome, and `release-approval.yml` closes it once the release is
+published. Before approving, rebuild the tag independently and compare the
+rebuild with the release images:
 
 1. **Find the draft release.** Drafts are visible only to users with push
    access. On <https://github.com/lf-edge/eve/releases> the draft carries the
@@ -123,9 +128,44 @@ release images:
 5. **Approve.** On the run page, open "Review deployments", select `release`
    and choose "Approve and deploy".
 
+6. **Sign and publish.** Once the run has finished, a release signer other
+   than the tagger runs, from a `master` checkout, with
+   [gh](https://cli.github.com/) logged in and cosign 3:
+
+   ```sh
+   tools/eve-release-approval.sh approve <tag>
+   ```
+
+   It downloads the draft's `sha256sums` files, their bundles, the
+   `images.txt` files and the tagger statement, and verifies them as
+   [Verifying a release](#verifying-a-release) describes. It shows the tag,
+   its commit, the tagger, every digest it will sign and the changes since
+   the previous release. After a confirmation, cosign opens a browser for the
+   Sigstore login: choose GitHub and the email listed for you in
+   `.github/release-signers`. The script checks the signature against that
+   email, uploads it as `<tag>.maintainer.sigstore.json`, publishes the
+   release, and starts `release-approval.yml`. That workflow verifies the
+   signature again, attaches it to every image and index on Docker Hub as a
+   referrer, and closes the approval issue. If it fails, run it again with
+   `gh workflow run release-approval.yml -R lf-edge/eve --ref master -f tag=<tag>`.
+
+   One statement over every digest needs one login: Sigstore's GitHub login
+   token lasts 60 seconds, too short to sign each image. The signature puts
+   the signer's email in the public Rekor log.
+
 If a job fails after the approval, "Re-run failed jobs" on the run page
 retries it with the same issue; a re-run of `sign / sign` waits for approval
 again.
+
+### Release signers
+
+`.github/release-signers` on `master` lists each signer's GitHub login and
+the email in their signature. The approval script and `release-approval.yml`
+accept a signature only by a listed email, refuse one whose login pushed the
+tag, as the tagger statement records. Verifiers pin the same emails. A
+signer need not be a maintainer. GitHub's environment approval stays in
+GitHub, where an organization owner can grant it to themselves; the signer's
+signature is in Rekor, and an owner cannot log in as another member.
 
 ## Rejecting a release
 
@@ -133,7 +173,9 @@ Reject a release that should not be published, for instance one whose rebuild
 shows an unexplained difference:
 
 1. On the run page, open "Review deployments", select `release` and choose
-   "Reject". Nothing is signed, tagged or published.
+   "Reject". Nothing is signed, tagged or published. A release whose
+   environment was already approved stays a draft until a release signer
+   signs it; to reject it, start at step 2. Its Docker Hub tags remain.
 2. Delete the draft release and its tag:
 
    ```sh
@@ -173,6 +215,25 @@ cosign verify-blob "${POLICY[@]}" \
 sha256sum --ignore-missing -c amd64.kvm.generic.sha256sums
 ```
 
+The release signer's approval verifies against their email from
+`.github/release-signers`, for an image and for a `sha256sums` file; each is
+accepted only when the statement lists its digest:
+
+```sh
+SIGNER=(--type https://github.com/lf-edge/eve/release-approval/v1
+  --certificate-oidc-issuer https://github.com/login/oauth
+  --certificate-identity <email>)
+
+cosign verify-attestation "${SIGNER[@]}" lfedge/eve:$TAG-kvm-amd64
+cosign verify-blob-attestation "${SIGNER[@]}" \
+  --bundle $TAG.maintainer.sigstore.json amd64.kvm.generic.sha256sums
+```
+
+`tools/eve-release-approval.sh check DIR $TAG`, on a directory holding the
+release's `sha256sums` files, their bundles, the `images.txt` files, the
+tagger statement and the approval, checks all of them against the list and
+prints the signer.
+
 Pin the identity, the repository and the tag. Any repository can call a
 public reusable workflow, so a fork's call of `release-sign.yml` yields the same
 identity with the fork in the repository field. A signature made by a tag's
@@ -187,6 +248,7 @@ applies this policy by default. It also requires the release to be a GitHub
 immutable release and checks GitHub's attestation of the tag and its assets:
 
 ```sh
+eve-sigverify release -maintainer <emails> $TAG   # also the signer's approval
 eve-sigverify release $TAG          # sums files, each variant's images.txt
 eve-sigverify release -variant amd64.kvm.generic \
   -asset amd64.kvm.generic.installer.raw.zst $TAG
