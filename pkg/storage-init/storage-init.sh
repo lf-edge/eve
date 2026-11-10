@@ -263,9 +263,13 @@ if P3=$(findfs PARTLABEL=P3) && [ -n "$P3" ]; then
              ext3) mount -t ext3 -o noatime${DIRSYNC_OPT} "$P3" $PERSISTDIR
                    ;;
              ext4) #Use -F option twice, to avoid any user confirmation in mkfs
+                   #EVE releases built on Alpine < 3.22 have an e2fsck that rejects
+                   #orphan_file, and their storage-init then reformats P3
                    if [ "$INIT_FS" = 1 ]; then
-                      mkfs -t ext4 -v -F -F -O encrypt "$P3"
+                      mkfs -t ext4 -v -F -F -O encrypt,^orphan_file "$P3"
                    fi
+                   tune2fs -O ^orphan_file "$P3" || \
+                      echo "$(date -Ins -u) Cannot remove orphan_file from $P3"
                    # Enable encryption
                    tune2fs -O encrypt "$P3" && \
                    mount -t ext4 -o noatime${DIRSYNC_OPT} "$P3" $PERSISTDIR
