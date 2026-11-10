@@ -1,0 +1,9 @@
+# Release signers: tools/eve-release-approval.sh and release-approval.yml
+# accept an approval of a release signed by one of these GitHub accounts,
+# with the email the signer picks at the Sigstore login (issuer
+# https://github.com/login/oauth). docs/SIGNING.md describes the policy.
+#
+# <GitHub login> <email>
+eriknordmark erik@zededa.com
+rene rene@zededa.com
+shjala shahriyar@zededa.com

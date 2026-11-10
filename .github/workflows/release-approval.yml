@@ -1,0 +1,119 @@
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+# Attaches a release signer's approval, <tag>.maintainer.sigstore.json, to
+# every image of the published release as an OCI referrer, then closes the
+# approval issue. tools/eve-release-approval.sh approve starts it on master
+# after publishing; anyone with write access can run it again, since the
+# approval verifies on its own. docs/SIGNING.md describes the policy.
+name: Release approval
+on:  # yamllint disable-line rule:truthy
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: release tag
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  REPOSITORY: lf-edge/eve
+  BUNDLE_TYPE: application/vnd.dev.sigstore.bundle.v0.3+json
+  SIGNER_ISSUER: https://github.com/login/oauth
+
+jobs:
+  attach:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Check the repository and ref
+        run: |
+          [ "$GITHUB_REPOSITORY" = "$REPOSITORY" ] || { echo "::error::runs only in $REPOSITORY"; exit 1; }
+          [ "$GITHUB_REF" = refs/heads/master ] || { echo "::error::runs only from master"; exit 1; }
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/release-signers
+            tools/eve-release-approval.sh
+          sparse-checkout-cone-mode: false
+      - uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4  # v2.0.2
+        with:
+          version: 1.3.1
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+        with:
+          cosign-release: v3.1.4
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Verify the approval
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNERS_FILE: .github/release-signers
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-lts|-rc[0-9]+)?$ ]] || { echo "::error::$TAG is not a release tag"; exit 1; }
+          # A draft release returns 404 here.
+          gh api "repos/$REPOSITORY/releases/tags/$TAG" --jq '"\(.html_url) published \(.published_at)"'
+          gh release download "$TAG" -R "$REPOSITORY" -D "$RUNNER_TEMP/release" \
+            -p '*.sha256sums' -p '*.sigstore.json' -p '*.images.txt'
+          signer=$(tools/eve-release-approval.sh check "$RUNNER_TEMP/release" "$TAG")
+          read -r login email <<< "$signer"
+          echo "approved by $login ($email)"
+          echo "email=$email" >> "$GITHUB_OUTPUT"
+      # Docker Hub's referrers listing can lag a push by over a minute, so
+      # each image is re-checked every 5 s for up to five minutes.
+      - name: Attach and verify
+        env:
+          EMAIL: ${{ steps.verify.outputs.email }}
+        run: |
+          set -euo pipefail
+          bundle="$RUNNER_TEMP/release/$TAG.maintainer.sigstore.json"
+          type=$(jq -r .predicateType "$RUNNER_TEMP/release/approval.json")
+          verified() {
+            cosign verify-attestation --type "$type" --certificate-identity "$EMAIL" \
+              --certificate-oidc-issuer "$SIGNER_ISSUER" "$1" > /dev/null 2>&1
+          }
+          jq -r '.subject[] | select(.name | contains("/")) | "\(.name)@sha256:\(.digest.sha256)"' \
+            "$RUNNER_TEMP/release/approval.json" | while read -r ref; do
+            if verified "$ref"; then
+              echo "already attached: $ref"
+              continue
+            fi
+            oras attach --artifact-type "$BUNDLE_TYPE" \
+              --annotation dev.sigstore.bundle.content=dsse-envelope \
+              --annotation "dev.sigstore.bundle.predicateType=$type" \
+              "$ref" "$bundle:$BUNDLE_TYPE" > /dev/null
+            start=$SECONDS
+            until verified "$ref"; do
+              if [ $((SECONDS - start)) -ge 300 ]; then
+                echo "::error::not visible after $((SECONDS - start))s: $ref"
+                verified "$ref"
+                exit 1
+              fi
+              sleep 5
+            done
+            echo "attached, visible after $((SECONDS - start))s: $ref"
+          done
+      - name: Close the approval issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EMAIL: ${{ steps.verify.outputs.email }}
+        run: |
+          set -euo pipefail
+          run="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          gh issue list -R "$REPOSITORY" --state open --search "\"Approve release $TAG\" in:title" \
+            --json number,title --jq ".[] | select(.title == \"Approve release $TAG\") | .number" |
+            while read -r issue; do
+              gh issue close "$issue" -R "$REPOSITORY" --reason completed \
+                --comment "Released $TAG, approved by $EMAIL; $run attached the approval to its images."
+            done

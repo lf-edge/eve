@@ -663,7 +663,9 @@ jobs:
         with:
           name: signed-blobs
           path: bundles
-      - name: Upload the sums bundles and publish the release
+      # The release stays a draft until a release signer approves it with
+      # tools/eve-release-approval.sh, which publishes it.
+      - name: Upload the bundles
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.trigger_assets.outputs.release_id }}
@@ -677,16 +679,11 @@ jobs:
             jq -e .id <<< "$response" > /dev/null || { echo "::error::uploading $name failed: $response"; exit 1; }
             echo "$name uploaded"
           done
-          response=$(curl -sS -X PATCH -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -d '{"draft": false, "prerelease": true}' \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID")
-          jq -e '.draft == false' <<< "$response" > /dev/null || { echo "::error::publishing failed: $response"; exit 1; }
-          jq -r .html_url <<< "$response"
 
-  # Closes the approval issue once the release is published. Otherwise, also
-  # on a rejected or cancelled run, it comments and leaves the issue open: a
-  # re-run of the failed jobs reuses it, since it does not re-run the job that
-  # opened it.
+  # Comments on the approval issue with the run's outcome and leaves it open:
+  # release-approval.yml closes it once a release signer has approved the
+  # release, and a re-run of the failed jobs reuses it, since it does not
+  # re-run the job that opened it.
   close:
     if: ${{ always() && needs.sign.outputs.issue != '' }}
     needs: [sign, tag, release]
@@ -704,9 +701,9 @@ jobs:
         run: |
           run="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT"
           if [ "$RELEASE" = success ]; then
-            gh issue close "$ISSUE" -R "$GITHUB_REPOSITORY" --reason completed \
-              --comment "Released $GITHUB_REF_NAME in $run."
+            gh issue comment "$ISSUE" -R "$GITHUB_REPOSITORY" --body \
+              "$run signed $GITHUB_REF_NAME. The release stays a draft until a release signer other than the tagger runs \`tools/eve-release-approval.sh approve $GITHUB_REF_NAME\`, as docs/SIGNING.md \"Approving a release\" describes."
           else
             gh issue comment "$ISSUE" -R "$GITHUB_REPOSITORY" --body \
-              "$run did not publish $GITHUB_REF_NAME (sign $SIGN, tag $TAG, release $RELEASE). Re-run the failed jobs, or reject the release as docs/SIGNING.md \"Rejecting a release\" describes."
+              "$run did not finish signing $GITHUB_REF_NAME (sign $SIGN, tag $TAG, release $RELEASE). Re-run the failed jobs, or reject the release as docs/SIGNING.md \"Rejecting a release\" describes."
           fi
