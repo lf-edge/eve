@@ -2,6 +2,142 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-10 -- 0.0.0-master-ddc4baa9 (run #13)](https://github.com/lf-edge/eve/actions/runs/42707740438)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/13/)
+
+### TestAppsSuite: failure analysis
+
+#### TestVMAppPurgeAfterPowerCycle
+
+##### Failure
+
+```
+Device "edge-dev" failed to confirm the latest config (version 1): timed out waiting for LastProcessedConfig >= 2026-11-09 22:39:52.197874647 +0000 UTC
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+This failure happened during test *setup*, not the power-cycle logic itself — `gotest.json` shows the device successfully onboarded, fetched config version 1 at 22:39:53, and zedagent actually finished processing it (`parseConfig`/`parseConfigItems` completed, apps/volumes/content-trees all progressed to `DELIVERED`/`RUNNING`), but the harness never saw `LastProcessedConfig` reach that timestamp before its 120s deadline at 22:41:53. `LastProcessedConfig` is only reported via the periodic **metrics** POST (`handlemetrics.go`), and the live zedagent log shows the very first metrics send (`maybeUpdateMetricsTimer: ... no metricsTickerHandle yet` at 22:39:40) didn't fail until `2026-11-09 22:41:53.370|error|zedagent| client.Do (timeout 120000000000) fail: ... context deadline exceeded` — i.e. it hung for the *entire* 120-second client timeout before erroring, which is coincidentally the same window the harness was waiting on.
+
+The likely trigger is the DPC churn that config version 1 caused right after that metrics POST was issued: zedagent flipped the active `DevicePortConfig` from the fallback `lastresort` key to the controller-supplied `zedagent` key (`CurrentIndex:1 → 0`, port logical-label `eth0 → ethernet0`), producing a ~35s window of `"no suitable IP address available"` and `"dial tcp: lookup adam.evetest ... server misbehaving"` errors (22:39:53–22:40:27) before DNS/routing stabilized. It's plausible the metrics request's underlying connection/route was invalidated mid-flight by that network-stack reconfiguration without the client noticing quickly, so it silently blocked for the full 120s instead of failing fast and retrying. After that one failed attempt, the next metrics send presumably succeeded (config/info polling resumed normally afterward).
+
+This exact test/signature does not appear anywhere in `live-ledger.md`, so it is not a previously known/recurring issue — this is the first recorded instance. No PR diff was supplied for this investigation, so no relatedness assessment is given.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.001s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+This confirms the live state matches the already-known mechanism: edge-dev1 (the designated node) is `SUSPECT`/down, and neither edge-dev2 nor edge-dev3 is taking over as backup designated node — both report `IsDNidNode:false`, `ScheduledOnThisNode:false`, `AppKubeStatus:NotInCluster` continuously, and `kubectl get vmirs/vmi` confirm no VMIRS/VMI exists anywhere, exactly matching the test's assertion.
+
+Given the ledger already contains an entry for this identical failure within tonight's run #12 with the same root cause, and live evidence now reproduces it exactly, I have enough to conclude.
+
+**Root cause:** Live evidence on edge-dev2/edge-dev3 confirms a deadlock in the post-purge failover path for app `failover-purge-app` (`e04c1994-e7fd-487b-91c1-c791a4a5683c`): `edge-dev1` (its designated node) is `EVE_DEVICE_STATE_SUSPECT`, and since purge was issued at 23:29:01, both surviving nodes' zedmanager/zedkube loops have logged, continuously and unbroken through at least 23:45:39, `getKubeAppActivateStatus(...): not designated, ... onTheDevice false, statusRunning false` / `IsDNidNode:false ScheduledOnThisNode:false AppKubeStatus:NotInCluster` — i.e. neither node ever takes over as backup DNID, so `kubectl get vmirs/vmi` show nothing for the app anywhere in the cluster, exactly matching the test's "found []" failure. This is the identical `pkg/pillar/cmd/zedmanager/zedmanager.go:2059` mechanism already investigated and recorded in `live-ledger.md` for this same run (run #12, 2026-11-09) and is noted there as a long-standing, well-known recurring issue dating back to the test's introduction in commit `98acf1411` (2026-10-18), reproducing with the identical signature in essentially every nightly run since then through at least run #11 (2026-11-08). This occurrence does not share a root cause with the other failures investigated tonight (`TestClusterPVCGCDeletesOnlyOrphans`'s GC-timeout-vs-node-flap, or `TestClusterPVCRedownload`'s PVC-adoption-timing race) — it's a continuation of this specific, unbroken, known-recurring streak rather than a new bug.
+#### TestClusterPVCRedownload
+
+##### Failure
+
+```
+
+vm1's content tree is in state LOADED, not REMOTELOADED -- it was re-downloaded despite the PVC already being complete
+Expected
+    <types.SwState>: 108
+to equal
+    <types.SwState>: 125
+```
+
+##### Claude's conclusion
+
+**Root cause:** Live `volumemgr` logs on `edge-dev1` show the identical PVC-adoption race already documented in the ledger for this test: at `00:19:26.093` (post-reboot reactivation of the content tree `27448d31-c4a2-4423-a8b5-25ebd0cefa8f`), `contentTreeSatisfiedByPVCs` logs `no local volumes reference this content tree` because the matching PVC/volume hadn't been re-published to volumemgr yet, so `doUpdateContentTree` falls through the normal (non-PVC) path, finds all three blobs already `VERIFIED` in the local CAS from before reboot, and self-completes `VERIFIED → LOADING → LOADED` by `00:19:30.284` — landing on `LOADED` (108) instead of `REMOTELOADED` (125), exactly matching the test's failing assertion.
+
+This is the same `pkg/pillar/cmd/volumemgr` content-tree/PVC-publish-timing bug already investigated earlier in this same run (recorded in `live-investigation.md`'s prior `TestClusterPVCRedownload` entry at a different timestamp with the identical mechanism and log signature), not a new occurrence. Per `live-ledger.md`, this is a long-standing, well-known recurring issue for `TestClusterPVCRedownload` specifically — first seen 2026-10-30 (run #2) and recurring repeatedly since (16 occurrences logged in the ledger, including last night 2026-11-07/run #10) — so tonight's failure is a continuation of that unbroken streak rather than a new bug.
+
+### TestNodeClusterSuite: failure analysis
+
+#### TestClusterVMApp
+
+##### Failure
+
+```
+Timed out waiting for app "19d46a16-2849-4164-bf5e-baca6b799aa9" to be scheduled in cluster "test-cluster"
+```
+
+##### Claude's conclusion
+
+This is the only failure recorded in this run's artifact set so far. I have enough evidence to write the conclusion.
+
+###### Root cause
+
+Live evidence confirms this is the same known Longhorn "tie-breaker-node" gating bug already recorded repeatedly in the ledger: `kubectl get nodes -L tie-breaker-node` shows `edge-dev1`/`edge-dev2` labeled `tie-breaker-node=false` while `edge-dev3` has **no label at all**, so the Longhorn `longhorn-manager` DaemonSet (node-selected on `tie-breaker-node=false`) never schedules a manager pod there — `kubectl get pods -n longhorn-system -l app=longhorn-manager` shows only `edge-dev1`/`edge-dev2`, and `edge-dev3`'s Longhorn node object logs `Manager pod is missing`. The CDI upload pod for the app's volume import (`cdi-upload-e7d29ee3-...-pvc-0`) landed on `edge-dev3` and has been stuck `ContainerCreating` for ~31 minutes, with `FailedAttachVolume` events repeating every few minutes: `unable to attach volume ... to edge-dev3: node edge-dev3 is not ready`. Since the volume import can never complete, `volumemgr`/`domainmgr` never get a ready volume to build the VMI from, so app `19d46a16-...` never progresses past "waiting to be scheduled" — matching the test's timeout exactly.
+
+This is the identical mechanism already logged for `TestClusterVMApp` multiple times, first seen 2026-11-02 (run #5) and recurring on 2026-10-29, -30, -31, 2026-11-01, -02, -04, and -08 (last night) per `live-ledger.md` — a long-standing, unfixed gap where Longhorn's node selector excludes a node that volume scheduling can still target. This run has no other recorded failures to compare against, so there's no shared-root-cause question to resolve. No PR diff was supplied for this investigation, so no relatedness assessment is given.
+
+### TestTelemetrySuite: failure analysis
+
+#### TestDeviceLogs
+
+##### Failure
+
+```
+
+Timed out after 600.001s.
+the kernel log probe was not uploaded to the controller
+Expected
+    <<-chan evetest.LogMsg | len:0, cap:100>: 0x2532e8b3c930
+to receive something.
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence confirms the pillar/EVE telemetry pipeline worked correctly here: the kernel log probe `evetest-log-probe-device-logs-1794264454591496499` was emitted on the device and is present verbatim in Adam's on-disk DB (`adam-db/device/071129d1-.../logs/01794264434550344789`, msgid `7248`, timestamped `2026-11-09T22:47:33.538Z`) — ingested within about a second of generation, roughly 9.5 minutes before the test's 600s timeout fired at `22:57:34`. `evetest status` and `adam-stdout` show the device is still healthy and online right now, continuously polling/uploading `config`/`metrics`/`newlogs` every few seconds straight through the timeout window. So the log was generated, uploaded, and persisted well inside the window; the test's live `device.WatchLogs(...)` channel simply never delivered the already-persisted entry (`helpers_test.go:187`, `expectKernelLogProbe`).
+
+This is the identical, long-standing `AdamClient.SubscribeToDeviceLogs` live-subscription bug already documented repeatedly in `live-ledger.md` — same "data lands in Adam's DB but never reaches the watch channel" signature, first recorded 2026-10-29 (`TestKernelPanicReport`), recurring 2026-11-04, 2026-11-07, and again in last night's run #12 (`TestDeviceLogs` and `TestKernelPanicReport` both, ~2026-11-08 23:48–00:25). Tonight's occurrence is a continuation of that same unbroken, evetest-side streak, not a new pillar/EVE regression.
+#### TestRemoteLogLevelNone
+
+##### Failure
+
+```
+
+Failed after 0.127s.
+The function passed to Consistently failed at /evetest/tests/telemetry/newlogd_test.go:233 with:
+EVE uploaded device logs generated after the reboot even though every remote log level is set to "none".
+846 log messages; by source: zedagent=267 nim=142 diag=67 zedrouter=65 ledmanager=51 domainmgr=45 wstunnelclient=33 loguploader=23 monitor=21 nodeagent=19 zedmanager=19 newlogd=17 wwan=13 vector=11 vector.out=10 dnsmasq=9 vaultmgr=9 dhcpcd=8 tpmmgr=5 vcomlink=5 =3 debug=3 kernel=1
+  2026-11-09T23:07:40Z [debug] newlogd: {"file":"/newlog/vendor/github.com/lf-edge/eve/pkg/pillar/agentlog/loglevel.go:83","func":"github.com/lf-edge/eve/pkg/pillar/agentlog.HandleGlobalConfig","level":"debug","msg":"HandleGlobalConfig(newl...
+  2026-11-09T23:07:40Z [error] zedagent: {"file":"/pillar/pubsub/socketdriver/publish.go:373","func":"github.com/lf-edge/eve/pkg/pillar/pubsub/socketdriver.(*Publisher).serveConnection","level":"error","msg":"serveConnection(zedagent/ConfigI...
+  2026-11-09T23:07:40Z [info] zedagent: {"diff":"  types.ZedAgentStatus{\n  \tName:            \"zedagent\",\n- \tConfigGetStatus: 0,\n+ \tConfigGetStatus: 4,\n  \tRebootCmd:       false,\n  \tShutdownCmd:     false,\n  \t... //...
+Expected
+    <int>: 846
+to be zero-valued
+```
+
+##### Claude's conclusion
+
+I have enough evidence now to write the root cause analysis.
+
+###### Root cause
+
+Live evidence from the Adam DB (`adam-db/device/5e6d1f34.../logs/01794265668629423360`) shows the first uploaded entry is newlogd's own `HandleGlobalConfig(newlogd, false)` call at `2026-11-09T23:07:40.186Z`, immediately followed by a zedagent log showing `ConfigGetStatus: 0 -> 4` (`types.ConfigGetReadSaved` per `pkg/pillar/types/zedagenttypes.go:534-538`). Per `pkg/pillar/cmd/zedagent/handleconfig.go:819-883`, when zedagent can't yet reach the controller right after a reboot, it falls back to the on-disk `/persist/checkpoint/lastconfig` checkpoint and applies that before any live controller fetch completes. The flood of 846 messages spans essentially every agent's startup (zedagent, nim, diag, zedrouter, domainmgr, loguploader, newlogd, etc.), consistent with each agent's own pubsub `HandleGlobalConfig` handler not yet having applied the "remote loglevel = none" setting during its earliest startup moments — agents default to a non-"none" remote log level until their first `GlobalConfig` update is processed, so the entire early-boot log burst gets uploaded regardless of the controller's current "none" setting. There's also a `zedagent: serveConnection(...) writev: broken pipe` error at the same instant, indicating a subscriber's socket wasn't ready yet — further evidence this is a boot-sequencing/config-propagation race rather than a deliberate upload.
+
+This does not share the root cause of this run's earlier `TestDeviceLogs` failure (that was an evetest-side `AdamClient.SubscribeToDeviceLogs` watch-channel bug where data landed in Adam's DB but wasn't delivered to the test's live channel — a test-harness issue, not a device behavior issue). This also isn't a previously recorded issue — `TestRemoteLogLevelNone` doesn't appear anywhere in `live-ledger.md`, so this looks like a new finding: a boot-time race where early-boot agent logs escape the "none" remote log level until each agent's `GlobalConfig` is locally applied.
+
 ## [2026-11-09 -- 0.0.0-master-8d1b7670 (run #12)](https://github.com/lf-edge/eve/actions/runs/42527962373)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/12/)
