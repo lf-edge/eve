@@ -19,7 +19,7 @@ ENV TARGET_x86_64="bin-x86_64-efi/ipxe.efi bin/ipxe.dsk bin/ipxe.lkrn bin/undion
 ENV TARGET_aarch64="bin-arm64-efi/ipxe.efi"
 ENV TARGET_riscv64="clean"
 
-RUN eval make -j "$(getconf _NPROCESSORS_ONLN)" -C src DOWNLOAD_PROTO_HTTPS=1 NO_ERROR=1 EMBED=embedded.cfg \$TARGET_`uname -m`
+RUN eval make -j "$(getconf _NPROCESSORS_ONLN)" -C src DOWNLOAD_PROTO_HTTPS=1 NO_ERROR=1 EMBED=embedded.cfg \$TARGET_$(uname -m)
 RUN mkdir -p /ws/src/bin-riscv64 && touch /ws/src/bin-riscv64/ipxe.riscv64 && touch /ws/src/bin-riscv64/ipxe.riscv64.debug
 RUN mv /ws/src/bin/undionly.kpxe /ws/src/bin/ipxe.undionly 2>/dev/null || :
 RUN rm /ws/src/bin*/*.*.*
