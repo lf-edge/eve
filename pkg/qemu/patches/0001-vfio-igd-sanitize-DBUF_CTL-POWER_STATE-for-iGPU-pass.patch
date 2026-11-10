@@ -1,7 +1,10 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Mikhail Malyshev <mike.malyshev@gmail.com>
-Date: Thu, 16 Jul 2026 15:57:58 +0000
+Date: Fri, 24 Jul 2026 10:29:58 +0000
 Subject: [PATCH] vfio/igd: sanitize DBUF_CTL POWER_STATE for iGPU passthrough
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
 On some hosts the firmware POST modeset leaves the display data buffer
 (DBUF) powered, so the passed-through iGPU's DBUF_CTL registers read
@@ -39,8 +42,12 @@ Present a consistent view like GVT-g: trap the DBUF_CTL slice registers
 POWER_STATE on read whenever POWER_REQUEST is not set.  Writes pass
 straight through to the device.
 
-Upstream-Status: Submitted [https://lore.kernel.org/qemu-devel/20260717084942.1555442-1-mike.malyshev@gmail.com/]
 Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Reviewed-by: Tomita Moeko <tomitamoeko@gmail.com>
+Link: https://lore.kernel.org/qemu-devel/20260724102959.1043264-1-mike.malyshev@gmail.com
+Signed-off-by: Cédric Le Goater <clg@redhat.com>
+Upstream-Status: Backport [b8509f78ec1ca686c708e8a6a333371f44be8b84]
+(cherry picked from commit b8509f78ec1ca686c708e8a6a333371f44be8b84)
 ---
  hw/vfio/igd.c | 119 ++++++++++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 119 insertions(+)
