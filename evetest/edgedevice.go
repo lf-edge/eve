@@ -164,7 +164,10 @@ func (d *EdgeDevice) GetState() api.EVEDeviceState {
 // which indicates that zedagent has parsed the config and distributed it to
 // other microservices. Do not combine this with configs that change the
 // management port: the device may lose controller connectivity right after
-// applying the change, delaying the metrics publish indefinitely.
+// applying the change, delaying the metrics publish indefinitely. While a
+// reboot declared with ExpectAdditionalReboots has not been observed yet, the
+// wait is extended by the reboot timeout, since such a config is often
+// confirmed only after the device boots again.
 //
 // The two flags are evaluated in order: fetch first, then confirm.
 func (d *EdgeDevice) ApplyConfig(config *EdgeDeviceConfig, waitUntilFetched bool, waitUntilConfirmed bool) {
@@ -306,13 +309,20 @@ func (d *EdgeDevice) ApplyConfig(config *EdgeDeviceConfig, waitUntilFetched bool
 		// LastProcessedConfig to the config's own ConfigTimestamp, so the
 		// comparison is clock-skew-free.
 		configTs := newConfig.ConfigTimestamp.AsTime()
+		d.th.devicesM.Lock()
+		dev := d.th.devices[d.devName]
+		// A config that makes EVE reboot (declared with ExpectAdditionalReboots)
+		// is often confirmed only after the device is back up: the reboot can
+		// come before zedagent's next metrics publish.
+		confirmTimeout := deviceApplyConfigTimeout
+		if dev.expectedRebootCount > dev.rebootCount {
+			confirmTimeout += deviceRebootTimeout
+		}
 		d.th.log.Infof(
 			"Waiting for device %q to confirm the latest config (version %s)...",
 			d.devName, configVer)
-		ctx, cancel = context.WithTimeout(d.th.ctx, deviceApplyConfigTimeout)
+		ctx, cancel = context.WithTimeout(d.th.ctx, confirmTimeout)
 		defer cancel()
-		d.th.devicesM.Lock()
-		dev := d.th.devices[d.devName]
 		if dev.configAppliedCond == nil {
 			dev.configAppliedCond = sync.NewCond(&d.th.devicesM)
 		}
