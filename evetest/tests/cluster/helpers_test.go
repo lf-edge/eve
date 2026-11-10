@@ -76,3 +76,14 @@ func k3sNodeReady(dev *evetest.EdgeDevice, nodeName string) (bool, error) {
 	}
 	return strings.TrimSpace(out) == "True", nil
 }
+
+// k3sRestartLeaseHeld asks the apiserver on dev whether a server holds the
+// lease kube-init takes while it restarts k3s on a rotated token.
+func k3sRestartLeaseHeld(dev *evetest.EdgeDevice) (bool, error) {
+	out, err := dev.RunKubectl("-n kube-system get lease eve-k3s-token-restart "+
+		"--ignore-not-found -o jsonpath='{.spec.holderIdentity}'", time.Minute)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
+}

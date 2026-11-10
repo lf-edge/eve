@@ -7,6 +7,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -34,6 +36,13 @@ func StoredToken() (string, error) {
 // in k3s's full token form or the bare secret the controller delivers.
 func SameToken(a, b string) bool {
 	return tokenSecret(a) == tokenSecret(b)
+}
+
+// TokenHash returns a hex SHA-256 of tok's secret, so either token form
+// hashes the same. Safe to share between nodes in place of the token.
+func TokenHash(tok string) string {
+	sum := sha256.Sum256([]byte(tokenSecret(tok)))
+	return hex.EncodeToString(sum[:])
 }
 
 // tokenSecret strips the "K10<ca-hash>::server:" prefix of a full k3s

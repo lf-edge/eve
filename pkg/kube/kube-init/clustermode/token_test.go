@@ -16,6 +16,7 @@ type tokenFakes struct {
 	running     string
 	rotatedTo   []string
 	provisioned int
+	pending     bool
 }
 
 func stubTokenDeps(t *testing.T, running string) *tokenFakes {
@@ -23,6 +24,7 @@ func stubTokenDeps(t *testing.T, running string) *tokenFakes {
 	f := &tokenFakes{running: running}
 	origCM, origCP, origST, origRT, origPC :=
 		isClusterMode, clusterConfigPresent, storedToken, rotateToNewToken, provisionConfig
+	origRP, origMRP := restartPending, markRestartPending
 	isClusterMode = func() (bool, error) { return true, nil }
 	clusterConfigPresent = func() (bool, error) { return true, nil }
 	storedToken = func() (string, error) { return f.running, nil }
@@ -31,10 +33,14 @@ func stubTokenDeps(t *testing.T, running string) *tokenFakes {
 		return nil
 	}
 	provisionConfig = func(context.Context, bool) error { f.provisioned++; return nil }
+	restartPending = func() (bool, error) { return f.pending, nil }
+	markRestartPending = func() error { f.pending = true; return nil }
 	t.Cleanup(func() {
 		isClusterMode, clusterConfigPresent, storedToken, rotateToNewToken, provisionConfig =
 			origCM, origCP, origST, origRT, origPC
+		restartPending, markRestartPending = origRP, origMRP
 		nextTokenAttempt = time.Time{}
+		nextTokenRestart = time.Time{}
 	})
 	return f
 }
@@ -70,6 +76,9 @@ func TestReconcileClusterTokenRotatesChangedToken(t *testing.T) {
 	}
 	if f.provisioned != 1 {
 		t.Errorf("drop-in rewritten %d times, want 1", f.provisioned)
+	}
+	if !f.pending {
+		t.Error("restart not armed after rotating")
 	}
 }
 

@@ -40,8 +40,8 @@ var (
 // node leaving cluster mode. Only the bootstrap node rotates.
 //
 // This is the rotate step of https://docs.k3s.io/cli/token, which also
-// requires every server to be restarted with the new token. kube-init does
-// not restart them; each picks the new token up on its next k3s start.
+// requires every server to be restarted with the new token; that is
+// ReconcileTokenRestart, armed here by TokenRestartPending.
 //
 // Without this the drop-in carries the new token from the next Configure
 // on, and that k3s start cannot decrypt its own bootstrap data.
@@ -80,6 +80,9 @@ func ReconcileClusterToken(ctx context.Context, cs *k3s.ClusterStatus) error {
 	if err := rotateToNewToken(rctx, cs.EncryptedToken); err != nil {
 		nextTokenAttempt = time.Now().Add(tokenRetryBackoff)
 		return fmt.Errorf("rotate cluster token (retry in %v): %w", tokenRetryBackoff, err)
+	}
+	if err := markRestartPending(); err != nil {
+		return fmt.Errorf("arm restart after rotation: %w", err)
 	}
 	// The drop-in may still hold the old token, e.g. after a start that
 	// fell back to it; rewrite it so the next k3s start uses the new one.

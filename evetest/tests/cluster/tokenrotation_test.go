@@ -28,9 +28,9 @@ const (
 	// NotReady.
 	tokenRotationReportTimeout = 5 * time.Minute
 
-	// tokenRotationRotateTimeout bounds the bootstrap node's health worker
-	// noticing a new token and k3s finishing the rotation.
-	tokenRotationRotateTimeout = 5 * time.Minute
+	// tokenRotationRollTimeout bounds the bootstrap node rotating the token
+	// and then each of the three servers restarting k3s in turn.
+	tokenRotationRollTimeout = 30 * time.Minute
 )
 
 // TestClusterTokenRotation verifies that a cluster keeps working when the
@@ -43,13 +43,14 @@ const (
 // cannot decrypt its own datastore and Kubernetes stays down.
 //
 // Rotation follows https://docs.k3s.io/cli/token: `k3s token rotate` on one
-// server, then every server restarted with the new token. kube-init rotates;
-// the test restarts the servers one at a time, as kube-init does not.
+// server, then every server restarted with the new token. kube-init does
+// both, restarting one server at a time.
 //
 // kube-init has two paths for this, and the test forces each one:
 //   - running rotation: the bootstrap node's health worker rotates the
-//     running cluster. Asserted from the token k3s records on that node,
-//     since a node that came back on the old token looks the same through
+//     running cluster and the servers then restart in turn. Asserted from
+//     the token k3s records on each node, which a member rewrites only when
+//     its k3s restarts, since a node on the old token looks the same through
 //     the EVE API.
 //   - startup recovery: a node whose k3s starts before the rotation falls
 //     back to the token its datastore was encrypted with. Forced by
@@ -78,23 +79,16 @@ const (
 // ------
 //  1. cluster-formed: all three nodes Ready under the first identity.
 //  2. identity-rotated-online: a new identity is applied to all three
-//     running nodes; the bootstrap node's k3s must switch to the new token
-//     without a restart.
+//     running nodes; every node's k3s must end up on the new token, and all
+//     nodes Ready.
 //  3. bootstrap-rebooted: the bootstrap node reboots and must rejoin.
-//  4. members-rebooted: edge-dev2, then edge-dev3, reboot and must rejoin.
-//     They have only the new token, so this passes only if the cluster
-//     itself was rotated. With phase 3 every server has now restarted on
-//     it, as k3s requires, so each falls back to it in phase 6.
-//  5. identity-replaced-offline: the bootstrap node is powered off and a
+//  4. identity-replaced-offline: the bootstrap node is powered off and a
 //     third identity is applied to the two survivors.
-//  6. member-recovered-before-rotation: edge-dev2 reboots while the
+//  5. member-recovered-before-rotation: edge-dev2 reboots while the
 //     bootstrap node is still off. Its k3s must reject the new token, and
 //     kube-init must fall back to the stored one and bring k3s up.
-//  7. bootstrap-restored: the bootstrap node is powered on, all nodes must
-//     be Ready, and the bootstrap node must rotate to the third token.
-//  8. members-rejoined-after-rotation: edge-dev3, which never fell back,
-//     and edge-dev2, which did, each reboot and must rejoin on the third
-//     token.
+//  6. bootstrap-restored: the bootstrap node is powered on, all nodes must
+//     be Ready, and every node's k3s must end up on the third token.
 //
 // Suite placement
 // ---------------
@@ -141,17 +135,30 @@ func TestClusterTokenRotation(test *testing.T) {
 					return info.GetClusterId() == want
 				})))
 	}
-	bootstrapRotated := func(desc string) {
+	// rolledOut waits for every node's k3s to run on the current token, for
+	// the last restart to finish, then for every node to be Ready again. k3s
+	// rewrites the token file as it starts, and a node's Ready status can
+	// outlast a short restart, so only the released lease shows the last
+	// restart is done.
+	rolledOut := func(desc string) {
 		token := clusterConfig.Token
+		for _, name := range devName {
+			dev := evetest.GetEdgeDevice(name)
+			t.Eventually(func() (bool, error) {
+				return k3sRunsToken(dev, token)
+			}, tokenRotationRollTimeout, 15*time.Second).Should(BeTrue(),
+				"%s: k3s on %q never restarted on the new token", desc, name)
+		}
 		t.Eventually(func() (bool, error) {
-			return k3sRunsToken(bootstrap, token)
-		}, tokenRotationRotateTimeout, 10*time.Second).Should(BeTrue(),
-			desc+": k3s on the bootstrap node never rotated to the new token")
-	}
-	rebootAndRejoin := func(name string) {
-		log.Infof("Rebooting %q; it must rejoin the cluster", name)
-		evetest.GetEdgeDevice(name).RequestReboot(true, true)
-		cluster.WaitForFreshNodesReady(tokenRotationRecoverTimeout)
+			return k3sRestartLeaseHeld(bootstrap)
+		}, tokenRotationRecoverTimeout, 15*time.Second).Should(BeFalse(),
+			"%s: a k3s restart never released its lease", desc)
+		for _, name := range devName {
+			t.Eventually(func() (bool, error) {
+				return k3sNodeReady(bootstrap, name)
+			}, tokenRotationRecoverTimeout, 15*time.Second).Should(BeTrue(),
+				"%s: %q not Ready after the restarts", desc, name)
+		}
 	}
 
 	// Phase 2.
@@ -159,21 +166,18 @@ func TestClusterTokenRotation(test *testing.T) {
 	log.Infof("Replacing the cluster identity with %s on all running nodes",
 		clusterConfig.ClusterID)
 	cluster.ApplyConfig(clusterConfig, true, true)
-	bootstrapRotated("after replacing the identity online")
+	rolledOut("after replacing the identity online")
 	evetest.Checkpoint("identity-rotated-online")
 
 	// Phase 3.
-	rebootAndRejoin(bootstrapName)
+	log.Infof("Rebooting %q; it must rejoin the cluster", bootstrapName)
+	bootstrap.RequestReboot(true, true)
+	cluster.WaitForFreshNodesReady(tokenRotationRecoverTimeout)
+	reportsIdentity("after rebooting the bootstrap node")
 	evetest.Checkpoint("bootstrap-rebooted")
 
-	// Phase 4.
-	rebootAndRejoin(memberName)
-	rebootAndRejoin(otherMemberName)
-	reportsIdentity("after rebooting the members")
-	evetest.Checkpoint("members-rebooted")
-
-	// Phase 5. Wait until Kubernetes marks the bootstrap node NotReady, so
-	// the fresh Ready report awaited in phase 7 postdates the outage. Asked
+	// Phase 4. Wait until Kubernetes marks the bootstrap node NotReady, so
+	// the fresh Ready report awaited in phase 6 postdates the outage. Asked
 	// of a survivor's apiserver: only the stats leader sends cluster info,
 	// and the powered-off node may hold that lease for up to 300s.
 	bootstrap.PowerOff()
@@ -187,7 +191,7 @@ func TestClusterTokenRotation(test *testing.T) {
 	cluster.ApplyConfig(clusterConfig, true, true, bootstrapName)
 	evetest.Checkpoint("identity-replaced-offline")
 
-	// Phase 6. etcd regains quorum once edge-dev2 rejoins edge-dev3. Asked
+	// Phase 5. etcd regains quorum once edge-dev2 rejoins edge-dev3. Asked
 	// of edge-dev2's own apiserver, which answers only once its k3s is up:
 	// the cluster report cannot show this, as no NotReady is recorded while
 	// edge-dev3 alone has no quorum, and the last report shows it Ready.
@@ -200,16 +204,11 @@ func TestClusterTokenRotation(test *testing.T) {
 		"k3s on %q never came up on the stored token", memberName)
 	evetest.Checkpoint("member-recovered-before-rotation")
 
-	// Phase 7. waitUntilOnline=false per PowerOn's doc comment; the rejoin
+	// Phase 6. waitUntilOnline=false per PowerOn's doc comment; the rejoin
 	// below is the recovery signal.
 	bootstrap.PowerOn(false)
 	cluster.WaitForFreshNodesReady(tokenRotationRecoverTimeout)
 	reportsIdentity("after powering the bootstrap node back on")
-	bootstrapRotated("after powering the bootstrap node back on")
+	rolledOut("after powering the bootstrap node back on")
 	evetest.Checkpoint("bootstrap-restored")
-
-	// Phase 8.
-	rebootAndRejoin(otherMemberName)
-	rebootAndRejoin(memberName)
-	evetest.Checkpoint("members-rejoined-after-rotation")
 }

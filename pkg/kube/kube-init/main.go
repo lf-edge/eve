@@ -2144,6 +2144,11 @@ func (d *daemon) enterStartingK3s(ctx context.Context) {
 		return
 	}
 
+	// Any k3s start after a rotation is the restart k3s requires.
+	if err := state.Unmark(clustermode.TokenRestartPending); err != nil {
+		log.Printf("WARNING: clear token restart marker: %v", err)
+	}
+
 	pid := d.supervisor.K3sPID()
 	log.Printf("k3s started (pid=%d, phase=%s)", pid, d.phase)
 
@@ -2949,6 +2954,16 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 		}
 		if tokErr := clustermode.ReconcileClusterToken(ctx, cs); tokErr != nil {
 			log.Printf("WARNING: reconcile cluster token: %v", tokErr)
+		}
+		restart := func() {
+			select {
+			case d.eventCh <- Event{Type: EvConfigChange, Detail: "token-rotation"}:
+			case <-ctx.Done():
+			}
+		}
+		if rsErr := clustermode.ReconcileTokenRestart(ctx, cs,
+			state.ToK8sName(d.deviceName), restart); rsErr != nil {
+			log.Printf("WARNING: restart k3s on rotated token: %v", rsErr)
 		}
 	}
 
