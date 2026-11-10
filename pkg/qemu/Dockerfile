@@ -88,8 +88,8 @@ ARG TARGETARCH
 # options, and QEMU_VERSION would turn every emulated step into `-version`.
 ENV LIBURING_VERSION=2.15
 ENV LIBURING_SHA256=28661631f95fce6b3a0f77e40442a937cf4c62cac76a2671ad68378cafb5c21e
-ENV QEMU_RELEASE=11.1.2
-ENV QEMU_SHA256=731b5681e4bb18be313231579b8efd0296c5b015fa36dc533874b639ba838016
+ENV QEMU_RELEASE=11.1.3
+ENV QEMU_SHA256=5a8289c7940dc77d3873c81a6c29ba3afe1446fc9d36e77fa1658cdbecb84b22
 # hadolint ignore=DL3020
 ADD https://git.kernel.org/pub/scm/linux/kernel/git/axboe/liburing.git/snapshot/liburing-${LIBURING_VERSION}.tar.gz /liburing.tar.gz
 # hadolint ignore=DL3020
