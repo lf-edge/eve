@@ -523,8 +523,11 @@ func restorePersistFiles(backupDir, persist string) (int, error) {
 //
 //   - certs/keys (*.pem): a valid file ends each block with a "-----END" marker,
 //     so its absence means a truncated/corrupt cert -> restore.
-//   - the DevicePortConfigList (*.json): must parse as JSON; truncation always
-//     yields invalid JSON -> restore.
+//   - the DevicePortConfigList and VaultConfig (*.json): must parse as JSON;
+//     truncation always yields invalid JSON -> restore.
+//   - the fscrypt policies and protectors: must parse as the protobuf fscrypt
+//     reads them as and pass fscrypt's own validity check (see
+//     validFscryptMetadata) -> restore otherwise.
 //
 // Other backed-up files (the saved config lastconfig/.bak and controllercerts)
 // have no cheap standalone validator here and can be legitimately newer on the
@@ -547,6 +550,8 @@ func needsRestore(rel, dst string) (bool, error) {
 		return !bytes.Contains(data, []byte("-----END")), nil
 	case strings.HasSuffix(rel, ".json"):
 		return !json.Valid(data), nil
+	case isFscryptMetadata(rel):
+		return !validFscryptMetadata(rel, data), nil
 	default:
 		return false, nil // present, non-empty, no validator -> keep the live copy
 	}

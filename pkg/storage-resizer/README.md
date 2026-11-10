@@ -95,8 +95,10 @@ protect; storage-init reads that value, skips the shrink, and runs only the grow
 If the shrink ever has to recreate `/persist` empty,
 `restore` (after `/persist` is remounted) restores each backed-up file whose live
 copy is **missing, empty, or invalid for its type** — a cert/key missing its
-`-----END` marker, or a DevicePortConfigList that is not valid JSON (truncation
-always breaks both). A present, non-empty mutable file (the saved config
+`-----END` marker, a DevicePortConfigList or VaultConfig that is not valid JSON
+(truncation always breaks both), or an fscrypt policy or protector that does not
+decode as the protobuf `fscrypt` reads, fails `fscrypt`'s own validity check, or
+(for a policy) wraps no key. A present, non-empty mutable file (the saved config
 `lastconfig`/`.bak`, `controllercerts`) is left untouched, since the live copy
 may be a legitimately newer version that the stale backup must not clobber —
 pillar validates those itself and falls back to its `.bak` copies. Then
@@ -125,8 +127,9 @@ controller-supplied credentials, and `certs/attest.*.pem` + `certs/ek.*.pem`,
 the attestation/endorsement identity the device needs to re-attest and recover
 its vault key from the controller), `status/nim/DevicePortConfigList`,
 `status/zedclient/OnboardingStatus*` (the saved device UUID, so `cmd/client` can
-take its already-onboarded shortcut with no controller reachable) and
-`status/vaultmgr/VaultConfig`. The `/persist/certs/` keys cannot be re-derived
+take its already-onboarded shortcut with no controller reachable),
+`status/vaultmgr/VaultConfig`, and the vault's wrapped keys in
+`.fscrypt/policies` and `.fscrypt/protectors`. The `/persist/certs/` keys cannot be re-derived
 once the filesystem is wiped — only the controller-trust anchor in `/config`
 survives the shrink on its own — so losing them would cost the device its
 attestation identity, hence the backup.
