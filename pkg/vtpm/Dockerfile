@@ -3,14 +3,14 @@
 # Copyright (c) 2023-2025 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-dom0-ztools:892713d2eace583dd6e9f1f83ad4b81710ab099b AS dom0
+FROM lfedge/eve-dom0-ztools:33f5d7433c0150a02838298ec654af65a02bf9ed AS dom0
 
 # ===========================================================================
 # C builds (libtpms, swtpm, tpm2-tss, tpm2-tools, ptpm)
 # These use autoconf/automake with many -dev dependencies, so for now they
 # remain under QEMU emulation when cross-building.
 # ===========================================================================
-FROM lfedge/eve-alpine:4635a9f93267ec0e24005aa80f2e7b1b828e5d17 AS build-c
+FROM lfedge/eve-alpine:313e46f544cbd964fe6f01fb297ec340023ea3ad AS build-c
 ENV BUILD_PKGS="gcc g++ autoconf automake libtool make openssl-dev libtasn1-dev \
     json-glib-dev gnutls bash expect gawk socat libseccomp-dev gmp-dev \
     musl-utils autoconf-archive git json-c json-c-dev libcurl curl-dev \
@@ -102,7 +102,7 @@ RUN rm /out/usr/lib/libprotoc.so*
 # This avoids QEMU, which is known to deadlock on go vet / go build.
 # ===========================================================================
 # hadolint ignore=DL3029
-FROM --platform=$BUILDPLATFORM lfedge/eve-alpine:4635a9f93267ec0e24005aa80f2e7b1b828e5d17 AS build-go
+FROM --platform=$BUILDPLATFORM lfedge/eve-alpine:313e46f544cbd964fe6f01fb297ec340023ea3ad AS build-go
 ARG TARGETARCH
 
 WORKDIR /vtpm-build

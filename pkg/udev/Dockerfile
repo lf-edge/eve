@@ -3,7 +3,7 @@
 # Copyright (c) 2024 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:4635a9f93267ec0e24005aa80f2e7b1b828e5d17 AS build
+FROM lfedge/eve-alpine:313e46f544cbd964fe6f01fb297ec340023ea3ad AS build
 ENV PKGS="udev kmod"
 RUN eve-alpine-deploy.sh
 
