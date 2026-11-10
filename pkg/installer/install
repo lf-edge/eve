@@ -516,7 +516,8 @@ else
   dd if=/dev/zero of="/dev/$P3" bs=512 count=10240 2>/dev/null
   dd if=/dev/zero of="/dev/$P3" bs=512 seek=$(( $(blockdev --getsz "/dev/$P3") - 10240 )) count=10240 2>/dev/null
   # Use -F option twice, to avoid any user confirmation in mkfs
-  mkfs -t ext4 -v -F -F -O encrypt "/dev/$P3"
+  # No orphan_file, which the e2fsck of EVE releases built on Alpine < 3.22 rejects
+  mkfs -t ext4 -v -F -F -O encrypt,^orphan_file "/dev/$P3"
   mkdir -p /persist
   # now the disk is ready - mount partitions
   mount_part P3 "$INSTALL_PERSIST" /persist 2>/dev/null
