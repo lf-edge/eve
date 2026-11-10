@@ -72,13 +72,49 @@ func TestPersistWipeRestore(test *testing.T) {
 // no-validator files recover from.
 //
 // Same assertions as the wipe: identity back, and the encrypted credential
-// decrypted offline from the restored key.
+// decrypted offline from the restored key. Since /persist survives, the vault
+// must also reopen from the TPM with its contents.
 //
 // Needs an EVE build carrying the conversion (lf-edge/eve#6036, #6063) and a
 // TPM. Unlike the wipe, the damage is done on the running device, so no disk
 // editing is required.
 func TestBackupCorruptRestore(test *testing.T) {
 	runRestoreTest(test, damagePersistCorrupt)
+}
+
+// TestVaultConfigLossRestore asserts the vault reopens, with no controller,
+// when the record of how its key is derived is lost on a surviving /persist.
+//
+// That record says whether the vault key is the TPM key alone or merged with a
+// build-time constant. A power cut during the resize's relocation of /persist
+// has torn it before, and the vault then stayed locked on every boot. It is in
+// the backup set, so the restore has to put it back before vaultmgr reads it.
+//
+// vaultmgr also falls back to the other derivation when its first guess fails,
+// so a reopened vault alone does not prove the restore ran. The test also
+// checks that the recovery boot's vaultmgr found the recorded mode and did not
+// have to guess.
+//
+// Needs an EVE build carrying the conversion and the vault-metadata backup, and
+// a TPM.
+func TestVaultConfigLossRestore(test *testing.T) {
+	runRestoreTest(test, damageVaultConfig)
+}
+
+// TestFscryptMetadataLossRestore asserts the vault reopens, with no controller,
+// when its fscrypt policy is lost and its protector is torn on a surviving
+// /persist.
+//
+// The policy and protector hold the only copies of the wrapped vault key, so
+// without them the vault cannot be opened by any key. An fsck after a power cut
+// during the resize has orphaned them into lost+found before. The removed policy
+// exercises the missing-file restore. The protector, cut to half its length,
+// is still non-empty, so only the restore's protobuf validity check catches it.
+//
+// Needs an EVE build carrying the conversion, the vault-metadata backup and
+// the fscrypt validity check, and a TPM.
+func TestFscryptMetadataLossRestore(test *testing.T) {
+	runRestoreTest(test, damageFscryptMetadata)
 }
 
 // persistDamage is how a restore test breaks /persist. It returns once the
@@ -91,7 +127,10 @@ type persistDamage struct {
 	// recreatesPersist is true for damage storage-init repairs by reformatting
 	// /persist, which the restore records as persist_recreated.
 	recreatesPersist bool
-	apply            func(t Gomega, device *evetest.EdgeDevice)
+	// backedUp lists path prefixes, relative to /persist, the backup must hold
+	// for the damage to be recoverable at all.
+	backedUp []string
+	apply    func(t Gomega, device *evetest.EdgeDevice)
 }
 
 // damagePersistWipe destroys the filesystem on /persist while the device is
@@ -167,7 +206,83 @@ echo "CORRUPTED=$TRUNCATED"`
 	},
 }
 
-// runRestoreTest is the body both restore tests share; they differ only in how
+// damageVaultConfig deletes the vault's key-derivation record on the running
+// device, then cuts its power.
+//
+// The power cut is what keeps vaultmgr from writing the record back: it holds
+// the record in memory and republishes it only when it opens or creates a
+// vault. On the next boot the restore runs from storage-init, before vaultmgr
+// starts.
+var damageVaultConfig = persistDamage{
+	name:     "deleting the vault key-derivation record",
+	backedUp: []string{vaultConfigRel},
+	apply: func(t Gomega, device *evetest.EdgeDevice) {
+		const script = `set -u
+f=/persist/` + vaultConfigRel + `
+# Merged-key vaults predate this layout; the record must name the TPM-only key
+# that a guess from the vault's existence would get wrong.
+grep -q '"TpmKeyOnly":true' "$f" || { echo "FAIL: $f is not a TPM-only record: $(cat "$f" 2>&1)"; exit 1; }
+rm -f "$f"
+sync
+[ -e "$f" ] && { echo "FAIL: $f is still there"; exit 1; }
+echo "DAMAGED=$f"`
+		damageThenPowerCycle(t, device, script)
+	},
+}
+
+// damageFscryptMetadata deletes every fscrypt policy and cuts every protector
+// to half its length on the running device, then cuts its power.
+//
+// The kernel holds the vault key once the vault is open, so nothing on the
+// running device touches the metadata again.
+var damageFscryptMetadata = persistDamage{
+	name:     "deleting the fscrypt policies and tearing the protectors",
+	backedUp: []string{".fscrypt/policies/", ".fscrypt/protectors/"},
+	apply: func(t Gomega, device *evetest.EdgeDevice) {
+		const script = `set -u
+POLICIES=0
+PROTECTORS=0
+for f in /persist/.fscrypt/policies/*; do
+    [ -f "$f" ] || continue
+    rm -f "$f" || { echo "FAIL: could not remove $f"; exit 1; }
+    echo "removed $f"
+    POLICIES=$((POLICIES + 1))
+done
+for f in /persist/.fscrypt/protectors/*; do
+    [ -f "$f" ] || continue
+    size=$(stat -c%s "$f")
+    truncate -s $((size / 2)) "$f" || { echo "FAIL: could not truncate $f"; exit 1; }
+    echo "truncated $f: $size -> $((size / 2))"
+    PROTECTORS=$((PROTECTORS + 1))
+done
+sync
+[ "$POLICIES" -ge 1 ] && [ "$PROTECTORS" -ge 1 ] \
+    || { echo "FAIL: policies=$POLICIES protectors=$PROTECTORS"; exit 1; }
+echo "DAMAGED=policies:$POLICIES,protectors:$PROTECTORS"`
+		damageThenPowerCycle(t, device, script)
+	},
+}
+
+// damageThenPowerCycle runs a damage script on the running device and, once it
+// reports DAMAGED=, cuts the power and brings the device back up.
+func damageThenPowerCycle(t Gomega, device *evetest.EdgeDevice, script string) {
+	out, err := runEVEWithTimeout(device, script, 3*time.Minute)
+	t.Expect(err).NotTo(HaveOccurred(), "could not damage /persist:\n%s", out)
+	t.Expect(out).To(ContainSubstring("DAMAGED="), "could not damage /persist:\n%s", out)
+	evetest.Logger().Infof("damage: %s", out)
+	powerCycle(t, device)
+}
+
+// powerCycle cuts the device's power and brings it back up, which needs no
+// controller.
+func powerCycle(t Gomega, device *evetest.EdgeDevice) {
+	device.SyncDisks()
+	device.PowerOff()
+	device.PowerOn(false)
+	waitDeviceResponds(t, device)
+}
+
+// runRestoreTest is the body the restore tests share; they differ only in how
 // /persist is broken.
 func runRestoreTest(test *testing.T, damage persistDamage) {
 	evetestT := evetest.Init(test)
@@ -213,6 +328,16 @@ func runRestoreTest(test *testing.T, damage persistDamage) {
 	assertWiFiCredentialsDecrypted(t, device, 5*time.Minute)
 	evetest.Checkpoint("credential-decrypts")
 
+	// When /persist survives, so must the vault, and it can only be opened with
+	// no controller if the TPM seal has settled on this build.
+	keepsVault := !damage.recreatesPersist
+	var vaultBefore vaultConfigLogCounts
+	if keepsVault {
+		settleVaultLocal(t, device)
+		writeMarkerFile(t, device, vaultMarkerPath, vaultMarkerText)
+		vaultBefore = countVaultConfigLog(t, device)
+	}
+
 	// Phase 2.
 	running := readRunningVersion(t, device)
 	deviceUUID := readDeviceUUID(t, device)
@@ -223,7 +348,11 @@ func runRestoreTest(test *testing.T, damage persistDamage) {
 	if mode == resizeFailureSimulated {
 		simulatedRelease = running
 	}
-	backupIdentityToConfig(t, device, simulatedRelease)
+	backup := backupIdentityToConfig(t, device, simulatedRelease)
+	for _, prefix := range damage.backedUp {
+		t.Expect(backup).To(ContainSubstring("BACKED-UP "+prefix),
+			"the backup does not hold %s, so the damage cannot be recovered", prefix)
+	}
 	portConfig := readPortConfig(t, device)
 	evetest.Checkpoint("identity-backed-up")
 
@@ -257,6 +386,15 @@ func runRestoreTest(test *testing.T, damage persistDamage) {
 	assertWiFiCredentialsDecrypted(t, device, 8*time.Minute)
 	log.Infof("storage-init must have cleaned up and left the failure marker")
 	step := assertResizeBookkeeping(t, device, mode, running, damage.recreatesPersist)
+	if keepsVault {
+		// The marker moves PCR14 away from the sealing boot, so the vault can
+		// only unseal from the TPM on a boot without it.
+		log.Infof("and, on a boot without the marker, must reopen the vault it had from the TPM, still offline")
+		moveFailureMarker(t, device, false)
+		powerCycle(t, device)
+		assertVaultReopened(t, device, vaultBefore)
+		moveFailureMarker(t, device, true)
+	}
 	restoreOK = true
 	evetest.Checkpoint("recovered-offline")
 
