@@ -89,6 +89,65 @@ func TestWriteCPUs(t *testing.T) {
 	}
 }
 
+func TestProcessesAndAddProcess(t *testing.T) {
+	root := cgrouptest.FakeTree(t, map[string]string{
+		"cgroup.procs":              "1\n552\n",
+		"housekeeping/cgroup.procs": "",
+	})
+	pids, err := cgroup.Processes("")
+	if err != nil || len(pids) != 2 || pids[0] != 1 || pids[1] != 552 {
+		t.Fatalf("Processes = %v, %v; want [1 552]", pids, err)
+	}
+	if err := cgroup.AddProcess("housekeeping", 552); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(root, "housekeeping/cgroup.procs"))
+	if string(b) != "552" {
+		t.Errorf("cgroup.procs = %q, want \"552\"", b)
+	}
+}
+
+func TestSubtreeControl(t *testing.T) {
+	cgrouptest.FakeTree(t, map[string]string{"cgroup.subtree_control": "cpuset cpu io memory pids\n"})
+	ctrls, err := cgroup.SubtreeControl("")
+	if err != nil || len(ctrls) != 5 || ctrls[0] != "cpuset" {
+		t.Errorf("SubtreeControl = %v, %v; want [cpuset cpu io memory pids]", ctrls, err)
+	}
+}
+
+// A domain's thread groups: threaded children, cpuset handed down, threads
+// moved by tid.
+func TestThreadedGroups(t *testing.T) {
+	root := cgrouptest.FakeTree(t, map[string]string{"eve-user-apps/dom/cgroup.procs": "1318\n"})
+	read := func(path string) string {
+		b, err := os.ReadFile(filepath.Join(root, path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	for i := 0; i < 2; i++ { // again: making a threaded group threaded changes nothing
+		if err := cgroup.MakeThreaded("eve-user-apps/dom/emulator"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := read("eve-user-apps/dom/emulator/cgroup.type"); got != "threaded" {
+		t.Errorf("cgroup.type = %q, want threaded", got)
+	}
+	if err := cgroup.EnableControllers("eve-user-apps/dom", "cpuset", "pids"); err != nil {
+		t.Fatal(err)
+	}
+	if got := read("eve-user-apps/dom/cgroup.subtree_control"); got != "+cpuset +pids" {
+		t.Errorf("cgroup.subtree_control = %q, want \"+cpuset +pids\"", got)
+	}
+	if err := cgroup.AddThread("eve-user-apps/dom/emulator", 1330); err != nil {
+		t.Fatal(err)
+	}
+	if got := read("eve-user-apps/dom/emulator/cgroup.threads"); got != "1330" {
+		t.Errorf("cgroup.threads = %q, want 1330", got)
+	}
+}
+
 // On cgroup v2 an empty cpuset.cpus means "inherit the parent's", i.e. every
 // CPU, so an empty list must not reach the kernel.
 func TestWriteCPUsRefusesEmpty(t *testing.T) {

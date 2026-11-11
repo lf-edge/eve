@@ -2968,3 +2968,133 @@ func marshalJSONIgnoreOmitEmpty(u *config.EdgeDevConfig) ([]byte, error) {
 	newType := reflect.StructOf(fields)
 	return json.Marshal(value.Convert(newType).Interface())
 }
+
+// TestParseAppInstanceConfig_StoresCPUPlacement proves the placement fields are
+// actually parsed and stored, not merely parseable: the mappers are unit-tested
+// on their own, but nothing else asserts that parseAppInstanceConfig calls them
+// and puts the result on the published AppInstanceConfig, which is the only way
+// the intent reaches zedmanager and domainmgr.
+func TestParseAppInstanceConfig_StoresCPUPlacement(t *testing.T) {
+	g := NewGomegaWithT(t)
+	getconfigCtx, _ := newFuzzGetConfigCtx(t)
+
+	const appUUID = "6ba7b810-9dad-11d1-80b4-00c04fd430a7"
+	edgeConfig := &zconfig.EdgeDevConfig{
+		Id: &zconfig.UUIDandVersion{
+			Uuid:    "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+			Version: "1",
+		},
+		Apps: []*zconfig.AppInstanceConfig{{
+			Uuidandversion: &zconfig.UUIDandVersion{Uuid: appUUID, Version: "1"},
+			Displayname:    "vpp",
+			Fixedresources: &zconfig.VmConfig{
+				Vcpus:          4,
+				Memory:         1024,
+				CpuPolicy:      zconfig.CpuPolicy_CPU_POLICY_ISOLATED,
+				PinCpu:         true,
+				FullPcpusOnly:  true,
+				ThreadsPerCore: 1,
+				NumaPolicy:     zconfig.NumaPolicy_NUMA_POLICY_SINGLE_NUMA_NODE,
+				IoPlacement:    zconfig.IoPlacement_IO_PLACEMENT_HOUSEKEEPING,
+			},
+		}},
+	}
+
+	appinstancePrevConfigHash = nil
+	parseAppInstanceConfig(getconfigCtx, edgeConfig)
+
+	item, err := getconfigCtx.pubAppInstanceConfig.Get(appUUID)
+	g.Expect(err).To(BeNil())
+	appConfig, ok := item.(types.AppInstanceConfig)
+	g.Expect(ok).To(BeTrue())
+	g.Expect(appConfig.FixedResources.CPUPlacement).To(Equal(types.CPUPlacementPolicy{
+		Policy:         types.CPUPolicyIsolated,
+		Pinned:         true,
+		FullPCPUsOnly:  true,
+		ThreadsPerCore: 1,
+		NUMAPolicy:     types.CPUNUMAPolicySingleNode,
+		IOPlacement:    types.CPUIOPlacementHousekeeping,
+	}))
+	g.Expect(appConfig.FixedResources.CPUPlacement.HasOwnCPUs()).To(BeTrue(),
+		"an isolated policy gives the workload CPUs of its own")
+}
+
+// TestParseAppInstanceConfig_KeepsLegacyPinCpu is the other half: a controller
+// that sends no placement policy must keep behaving exactly as before, with
+// pin_cpu alone deciding -- CPUs of the workload's own, its vCPUs pinned.
+func TestParseAppInstanceConfig_KeepsLegacyPinCpu(t *testing.T) {
+	g := NewGomegaWithT(t)
+	getconfigCtx, _ := newFuzzGetConfigCtx(t)
+
+	const appUUID = "6ba7b810-9dad-11d1-80b4-00c04fd430a8"
+	edgeConfig := &zconfig.EdgeDevConfig{
+		Id: &zconfig.UUIDandVersion{
+			Uuid:    "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+			Version: "1",
+		},
+		Apps: []*zconfig.AppInstanceConfig{{
+			Uuidandversion: &zconfig.UUIDandVersion{Uuid: appUUID, Version: "1"},
+			Displayname:    "legacy",
+			Fixedresources: &zconfig.VmConfig{Vcpus: 2, Memory: 512, PinCpu: true},
+		}},
+	}
+
+	appinstancePrevConfigHash = nil
+	parseAppInstanceConfig(getconfigCtx, edgeConfig)
+
+	item, err := getconfigCtx.pubAppInstanceConfig.Get(appUUID)
+	g.Expect(err).To(BeNil())
+	appConfig := item.(types.AppInstanceConfig)
+	g.Expect(appConfig.FixedResources.CPUPlacement).To(Equal(types.CPUPlacementPolicy{
+		Policy: types.CPUPolicyDedicated,
+		Pinned: true,
+	}))
+	g.Expect(appConfig.FixedResources.CPUPlacement.HasOwnCPUs()).To(BeTrue())
+}
+
+// restartRecorder counts the restart signals of a publication, and how many
+// items it held at each.
+type restartRecorder struct {
+	pubsub.Publication
+	heldAtSignal []int
+}
+
+func (r *restartRecorder) SignalRestarted() error {
+	r.heldAtSignal = append(r.heldAtSignal, len(r.GetAll()))
+	return r.Publication.SignalRestarted()
+}
+
+// The app config restart signal tells zedmanager it has every app config, and
+// its CPU demand set is complete from then on. So it comes once a configuration
+// has been parsed, after that configuration's app configs are published, and
+// only once: a config ignored in maintenance mode does not send it.
+func TestParseConfig_SignalsAppConfigRestartOnceAfterTheFirstParse(t *testing.T) {
+	g := NewGomegaWithT(t)
+	getconfigCtx, _ := newFuzzGetConfigCtx(t)
+	recorder := &restartRecorder{Publication: getconfigCtx.pubAppInstanceConfig}
+	getconfigCtx.pubAppInstanceConfig = recorder
+
+	id := &zconfig.UUIDandVersion{Uuid: "6ba7b810-9dad-11d1-80b4-00c04fd430c8", Version: "1"}
+	app := &zconfig.AppInstanceConfig{
+		Uuidandversion: &zconfig.UUIDandVersion{
+			Uuid: "6ba7b810-9dad-11d1-80b4-00c04fd430a9", Version: "1"},
+		Displayname:    "app",
+		Fixedresources: &zconfig.VmConfig{Vcpus: 2, Memory: 512},
+	}
+	appinstancePrevConfigHash = nil
+
+	parseConfig(getconfigCtx, &zconfig.EdgeDevConfig{Id: id, MaintenanceMode: true,
+		Apps: []*zconfig.AppInstanceConfig{app}}, fromController)
+	g.Expect(recorder.heldAtSignal).To(BeEmpty(),
+		"a config ignored in maintenance mode publishes no app config")
+
+	parseConfig(getconfigCtx, &zconfig.EdgeDevConfig{Id: id,
+		Apps: []*zconfig.AppInstanceConfig{app}}, fromController)
+	g.Expect(recorder.heldAtSignal).To(Equal([]int{1}),
+		"one signal, after the app config was published")
+
+	app.Displayname = "app-renamed"
+	parseConfig(getconfigCtx, &zconfig.EdgeDevConfig{Id: id,
+		Apps: []*zconfig.AppInstanceConfig{app}}, fromController)
+	g.Expect(recorder.heldAtSignal).To(HaveLen(1), "the signal is sent once")
+}

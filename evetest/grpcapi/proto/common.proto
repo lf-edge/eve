@@ -124,6 +124,13 @@ message EVEDevice {
   ImageRef image = 7;
   // Active PCR banks for the emulated TPM; empty uses provider defaults.
   repeated TPMPCRBank tpm_pcr_banks = 8;
+  // How many SMT threads each physical core of the device exposes.
+  // Zero or one means no SMT: the device sees `cpus` single-thread cores,
+  // which is the default. Two makes the device see cpus/2 physical cores
+  // with two hardware threads each, which is what a test exercising
+  // SMT-aware CPU placement needs -- without it the guest has no sibling
+  // thread to place a second vCPU on.
+  uint32 threads_per_core = 9;
 }
 
 // Represents the current lifecycle state of an EVE device.

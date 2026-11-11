@@ -202,6 +202,17 @@ func parseConfig(getconfigCtx *getconfigContext, config *zconfig.EdgeDevConfig,
 				config.GetGlobalProfile(), config.GetLocalProfileServer(),
 				config.GetProfileServerToken())
 			parseAppInstanceConfig(getconfigCtx, config)
+			// Restarted means "you have every app config", which is only true
+			// once one configuration, from the controller or saved, has been
+			// published; the subscribers get it after every app config
+			// published before it.
+			if !getconfigCtx.appInstanceConfigRestarted {
+				if err := getconfigCtx.pubAppInstanceConfig.SignalRestarted(); err != nil {
+					log.Errorf("parseConfig: app config restart signal: %v", err)
+				} else {
+					getconfigCtx.appInstanceConfigRestarted = true
+				}
+			}
 
 			parseDisksConfig(getconfigCtx, config)
 
@@ -723,7 +734,8 @@ func parseAppInstanceConfig(getconfigCtx *getconfigContext,
 		appInstance.Delay = time.Duration(cfgApp.StartDelayInSeconds) * time.Second
 		appInstance.Service = cfgApp.Service
 		appInstance.CloudInitVersion = cfgApp.CloudInitVersion
-		appInstance.FixedResources.CPUsPinned = cfgApp.Fixedresources.PinCpu
+		appInstance.FixedResources.CPUPlacement =
+			parseCPUPlacementPolicy(cfgApp.Fixedresources)
 		appInstance.FixedResources.EnableOemWinLicenseKey = cfgApp.Fixedresources.EnableOemWinLicenseKey
 		appInstance.FixedResources.DisableVirtualTPM = cfgApp.Fixedresources.DisableVtpm
 

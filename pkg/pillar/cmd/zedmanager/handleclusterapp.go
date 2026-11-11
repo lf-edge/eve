@@ -31,6 +31,11 @@ func handleENClusterAppStatusImpl(ctx *zedmanagerContext, key string, status *ty
 	aiStatus := lookupAppInstanceStatus(ctx, key)
 	log.Noticef("handleENClusterAppStatusImpl(%s) for app-status %v aiStatus %v", key, status, aiStatus)
 
+	// In cluster mode the effective-activate decision also depends on where
+	// kubernetes scheduled the app, so this changes which apps are intended to
+	// run here without any config change.
+	publishCPUDemandSet(ctx)
+
 	if status.ScheduledOnThisNode {
 		if aiStatus == nil {
 			// This could happen if app failover to other node and failing back to this designated node.
