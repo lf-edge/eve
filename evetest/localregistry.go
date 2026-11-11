@@ -4,6 +4,7 @@
 package evetest
 
 import (
+	"archive/tar"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -312,4 +313,102 @@ func PushImageWithMissingLayersToLocalRegistry(repo, tag string, numLayers int) 
 		Tag:               tag,
 		TrustedCACertsPEM: []string{string(GetCACertPEM())},
 	}, layerDigests, nil
+}
+
+// PushImagesWithFilesToLocalRegistry publishes, under repo:<tag> in evetest's
+// embedded OCI registry for every tag, the Docker image baseImageName --
+// pulled first if needed -- with one layer appended that holds numFiles
+// empty files under /files/<tag>/, and with cmd as the image's command when
+// cmd is not nil. The appended layer differs per tag, so EVE's content store
+// unpacks every image published this way on its own, numFiles files at a
+// time, while the base layers, shared by all of them, are unpacked once. The
+// returned DockerContainers point an EVE datastore at the images, in the
+// order of tags, as PushDockerImageToLocalRegistry does.
+func PushImagesWithFilesToLocalRegistry(repo, baseImageName string, tags []string,
+	numFiles int, cmd []string) ([]DockerContainer, error) {
+	th := getTestHarness()
+	log := th.log.WithField("component", "local-registry")
+
+	if err := utils.PullDockerImage(th.ctx, log, baseImageName); err != nil {
+		return nil, fmt.Errorf("failed to obtain docker image %q: %w", baseImageName, err)
+	}
+	tarPath, err := saveDockerImageToTempFile(th.ctx, log, baseImageName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to export docker image %q: %w", baseImageName, err)
+	}
+	defer func() {
+		if err := os.Remove(tarPath); err != nil {
+			log.Warnf("failed to remove temp file %q: %v", tarPath, err)
+		}
+	}()
+	base, err := tarball.ImageFromPath(tarPath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read exported docker image %q: %w", baseImageName, err)
+	}
+
+	images := make([]DockerContainer, 0, len(tags))
+	for _, tag := range tags {
+		layer, err := filesLayer("files/"+tag, numFiles)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build the layer of %d files for %s:%s: %w",
+				numFiles, repo, tag, err)
+		}
+		img, err := mutate.AppendLayers(base, layer)
+		if err != nil {
+			return nil, fmt.Errorf("failed to assemble image %s:%s: %w", repo, tag, err)
+		}
+		if cmd != nil {
+			cfg, err := img.ConfigFile()
+			if err != nil {
+				return nil, fmt.Errorf("failed to read the config of image %s:%s: %w", repo, tag, err)
+			}
+			cfg = cfg.DeepCopy()
+			cfg.Config.Cmd = cmd
+			if img, err = mutate.ConfigFile(img, cfg); err != nil {
+				return nil, fmt.Errorf("failed to set the command of image %s:%s: %w", repo, tag, err)
+			}
+		}
+		dstRefStr := fmt.Sprintf("%s/%s:%s", localRegistryPushDomain(), repo, tag)
+		dstRef, err := name.ParseReference(dstRefStr, name.Insecure)
+		if err != nil {
+			return nil, fmt.Errorf("invalid local registry reference %q: %w", dstRefStr, err)
+		}
+		log.Infof("Pushing docker image %q with a layer of %d files into "+
+			"evetest's local OCI registry as %q", baseImageName, numFiles, dstRefStr)
+		if err := remote.Write(dstRef, img); err != nil {
+			return nil, fmt.Errorf("failed to push image %q to the local OCI registry: %w",
+				dstRefStr, err)
+		}
+		images = append(images, DockerContainer{
+			Domain:            localRegistryPullDomain(),
+			ImageName:         repo,
+			Tag:               tag,
+			TrustedCACertsPEM: []string{string(GetCACertPEM())},
+		})
+	}
+	return images, nil
+}
+
+// filesLayer returns a layer holding numFiles empty regular files named
+// 000000 and up under the directory dir.
+func filesLayer(dir string, numFiles int) (v1.Layer, error) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	if err := tw.WriteHeader(&tar.Header{
+		Typeflag: tar.TypeDir, Name: dir + "/", Mode: 0755}); err != nil {
+		return nil, err
+	}
+	for i := 0; i < numFiles; i++ {
+		if err := tw.WriteHeader(&tar.Header{
+			Typeflag: tar.TypeReg, Name: fmt.Sprintf("%s/%06d", dir, i), Mode: 0644}); err != nil {
+			return nil, err
+		}
+	}
+	if err := tw.Close(); err != nil {
+		return nil, err
+	}
+	data := buf.Bytes()
+	return tarball.LayerFromOpener(func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(data)), nil
+	})
 }

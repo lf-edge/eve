@@ -422,8 +422,12 @@ type DomainStatus struct {
 	TriedCount     int
 	// ErrorAndTime provides SetErrorNow() and ClearError()
 	ErrorAndTime
-	ConfigFailed   bool
-	BootFailed     bool
+	ConfigFailed bool
+	BootFailed   bool
+	// CrashRetries counts the boot retries domainmgr scheduled on its own
+	// after the guest crashed, since the domain was last activated or last
+	// ran long enough to forget them (see maxCrashRetries in domainmgr).
+	CrashRetries   int
 	AdaptersFailed bool
 	OCIConfigDir   string                     // folder holding an OCI Image config for this domain (empty string means no config)
 	EnvVariables   map[string]string          // List of environment variables to be set in container

@@ -27,6 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/cgroup"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	procutils "github.com/lf-edge/eve/pkg/pillar/utils/proc"
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -810,12 +811,16 @@ func (ctx KvmContext) GetCapabilities() (*types.Capabilities, error) {
 	return ctx.capabilities, nil
 }
 
-// CountMemOverhead - returns the memory overhead estimation for a domain.
+// CountMemOverhead returns the memory overhead estimation for a domain: the
+// VMM's, plus the allowance of the domain's helpers.
 func (ctx KvmContext) CountMemOverhead(domainName string, domainUUID uuid.UUID, domainRAMSize int64, vmmMaxMem int64,
 	domainMaxCpus int64, domainVCpus int64, domainIoAdapterList []types.IoAdapter, aa *types.AssignableAdapters,
 	globalConfig *types.ConfigItemValueMap) (uint64, error) {
 	result, err := vmmOverhead(domainName, domainUUID, domainRAMSize, vmmMaxMem, domainMaxCpus, domainVCpus, domainIoAdapterList, aa, globalConfig)
-	return uint64(result), err
+	if err != nil {
+		return 0, err
+	}
+	return uint64(result) + types.DomainHelpersMemory, nil
 }
 
 func (ctx KvmContext) checkIOVirtualisation() (bool, error) {
@@ -2317,8 +2322,15 @@ func (ctx KvmContext) VirtualTPMSetup(domainName string, wp *types.WatchdogParam
 	if err != nil {
 		return fmt.Errorf("failed to extract UUID from domain name: %v", err)
 	}
-	return requestvTPMLaunch(domainUUID, wp, swtpmTimeout)
-
+	if err := requestvTPMLaunch(domainUUID, wp, swtpmTimeout); err != nil {
+		return err
+	}
+	// The swtpm is running (vtpm waits for its pid file) and charged to vtpm's
+	// cgroup; staying there is harmless, so a failure to move it is only logged.
+	if err := joinSwtpmCgroup(cgroup.Root, "/proc", domainUUID, domainName); err != nil {
+		logrus.Warnf("swtpm of %s stays in vtpm's cgroup: %v", domainName, err)
+	}
+	return nil
 }
 
 // VirtualTPMTerminate terminates the vTPM instance

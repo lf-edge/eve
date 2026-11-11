@@ -684,10 +684,15 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 
 		// If we have not yet calculated memory overhead - do it now
 		if status.MemOverhead == 0 {
-			// NOHYPER runs containers directly without a VMM, so there is no hypervisor overhead.
+			// NOHYPER runs containers directly without a VMM, so there is no hypervisor
+			// overhead; on KVM the container still gets a containerd shim beside it.
 			if config.FixedResources.VirtualizationMode == types.NOHYPER {
 				log.Functionf("doActivate(%s): skipping VMM overhead for NOHYPER virtualization mode",
 					status.Key())
+				if !ctx.hvTypeKube {
+					status.MemOverhead = types.DomainHelpersMemory
+					publishAppInstanceStatus(ctx, status)
+				}
 			} else {
 				// Get hypervisor
 				hyp, err := hypervisor.GetHypervisor(*ctx.hypervisorPtr)

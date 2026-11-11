@@ -43,4 +43,5 @@ zedmanager publishes DomainConfig and subscribes to DomainStatus, while zedagent
 - Look at the respective input/output files:
 - `/run/zedmanager/DomainConfig` and `/run/domainmgr/DomainStatus` shows the key input and output
 - If domUs fail to boot domainmgr will retry after 10  minutes. You can control it with `timer.boot.retry` global configuration variable. The option value is in seconds. e.g. if you want to change retry time to 1 minute, then use `--config=timer.boot.retry:60`
+- A domU whose guest crashed (qemu `internal-error`) is retried the same way after its guest core is captured, at most three times in a row; after that it stays BROKEN until the application instance is restarted. The count is forgotten once the domU has run for an hour (see `docs/QEMU-CRASH-DEBUGGING.md`).
 - If USB keyboard disappears (stops working after boot) could be that domainmgr didn’t initially start; For instance, during onboarding domainmgr does not run hence USB is open
