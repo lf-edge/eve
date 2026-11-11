@@ -1,5 +1,9 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
+# The only declaration of the KubeVirt release. Declared above the first
+# FROM so every stage can pick it up with a bare `ARG KUBEVIRT_VERSION`.
+ARG KUBEVIRT_VERSION=v1.7.3
+
 # sriov-cni upstream image is used only as a source of the prebuilt sriov
 # binary; we copy it into our final image at build time so we don't need a
 # DaemonSet at runtime just to stage the binary on each node.  Pinned by
@@ -39,12 +43,15 @@ COPY --from=sriov-cni-bin /usr/bin/sriov /out/usr/bin/sriov
 # Register etcdctl in the APK DB, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n etcdctl -v "${ETCDCTL_VERSION}" -l Apache-2.0 -u https://github.com/etcd-io/etcd
 
-# Note: virtctl itself is downloaded and installed in the final scratch stage below;
-# the APK DB entry is added here in the build stage so it propagates via COPY /out/.
-# Keep this version aligned with VIRTCTL_VERSION in the final stage.
-ENV VIRTCTL_VERSION=v1.7.3
+# pillar's RolloutDiskToPVC reads only virtctl image-upload's stderr: it
+# relies on the progress bar and status lines going to stdout, and on the
+# returned error ("already successfully imported" included) going to stderr.
+# Re-verify that split when bumping this version.
+ARG KUBEVIRT_VERSION
+ADD https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/virtctl-${KUBEVIRT_VERSION}-linux-${TARGETARCH} /tmp/virtctl
+RUN install /tmp/virtctl /out/usr/bin/virtctl && rm -f /tmp/virtctl
 # Register virtctl in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n virtctl -v "${VIRTCTL_VERSION}" -l Apache-2.0 -u https://github.com/kubevirt/kubevirt
+RUN register-sbom-pkg.sh -n virtctl -v "${KUBEVIRT_VERSION}" -l Apache-2.0 -u https://github.com/kubevirt/kubevirt
 
 COPY eve-bridge /plugins/eve-bridge
 WORKDIR /plugins/eve-bridge
@@ -67,10 +74,11 @@ RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /ou
 # operator-facing CLI client that talks to its control socket.
 COPY kube-init /plugins/kube-init
 WORKDIR /plugins/kube-init
-RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /out/usr/bin/kube-init . && \
+RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w -X github.com/lf-edge/eve/pkg/kube/kube-init/versions.KubeVirt=${KUBEVIRT_VERSION}" -mod=vendor -o /out/usr/bin/kube-init . && \
     GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /out/usr/bin/k3s-sctl ./cmd/k3s-sctl
 
 FROM scratch
+ARG KUBEVIRT_VERSION
 COPY --from=build /out/ /
 RUN mkdir -p /usr/bin/kube/
 
@@ -81,6 +89,7 @@ COPY manifests/* /etc/k3s-manifests/
 
 # upgrades
 COPY update-component/expected_versions.yaml /etc/
+RUN printf 'kubevirt: "%s"\n' "${KUBEVIRT_VERSION}" >> /etc/expected_versions.yaml
 COPY update-component/settings_longhorn.yaml /etc/
 
 # k3s
@@ -94,7 +103,16 @@ COPY cfg-manifests/04-multinode-watch-cache.yaml /etc/kube/
 # Manifests the daemon applies at first boot. Stays under /etc; the
 # Go components/ package reads them by path.
 COPY multus-daemonset.yaml /etc
-COPY kubevirt-operator.yaml /etc
+ADD https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml /etc
+# Add the license header and, only in the container that runs virt-operator,
+# KV_IO_EXTRA_ENV_VIRT_IN_CONTAINER at the head of env:. The range anchors on
+# the `- virt-operator` command item because the container's name: key sorts
+# after env:. The hash pins the result for this KUBEVIRT_VERSION; on a bump,
+# re-check the anchor and regenerate it with
+# curl -sL <ADD URL above> | sed <same -e flags> | sha256sum
+RUN sed -i -e '1i # Copyright (c) 2026 Zededa, Inc.' -e '1i # SPDX-License-Identifier: Apache-2.0' \
+    -e '/^        - virt-operator$/,/^        env:$/ s/^        env:$/&\n        - name: KV_IO_EXTRA_ENV_VIRT_IN_CONTAINER\n          value: "true"/' /etc/kubevirt-operator.yaml
+RUN echo 'c8f600c2cd6679644c6c217f03265835e014ce3ade1b79e293a94415acfbf925 /etc/kubevirt-operator.yaml' | sha256sum -c
 COPY kubevirt-features.yaml /etc
 COPY external-boot-image.tar /etc/
 
@@ -148,17 +166,6 @@ RUN chmod +x /usr/bin/k3s-control /usr/bin/k3s-sctl && \
     ln -s /usr/bin/k3s-control /usr/bin/k3s-stop && \
     ln -s /usr/bin/k3s-control /usr/bin/k3s-start && \
     ln -s /usr/bin/k3s-control /usr/bin/k3s-status
-
-# pillar's RolloutDiskToPVC reads only virtctl image-upload's stderr: it
-# relies on the progress bar and status lines going to stdout, and on the
-# returned error ("already successfully imported" included) going to stderr.
-# Re-verify that split when bumping this version.
-ENV VIRTCTL_VERSION=v1.7.3
-ADD https://github.com/kubevirt/kubevirt/releases/download/${VIRTCTL_VERSION}/virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH} .
-
-RUN install virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH} /usr/bin/virtctl
-# We installed under /usr/bin. Remove the downloaded version
-RUN rm -f ./virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH}
 
 ENTRYPOINT []
 CMD ["/usr/bin/kube-init"]
