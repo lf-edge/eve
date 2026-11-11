@@ -327,6 +327,7 @@ libblkid
 libbpf
 libbpf-dev
 libbsd
+libbsd-dev
 libburn
 libbz2
 libcap
@@ -686,6 +687,7 @@ xz-libs
 yajl
 yajl-dev
 yaml
+yaml-dev
 zfs
 zfs-dev
 zfs-libs
