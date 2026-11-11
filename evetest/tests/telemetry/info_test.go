@@ -72,6 +72,13 @@ import (
 //  4. HSMStatus matches the TPM parameter: ENABLED when the device was
 //     created with an emulated TPM, and anything but ENABLED when it was not.
 //
+//  5. controller-epoch-republish: re-apply the same configuration with
+//     ControllerEpoch incremented. A new epoch tells EVE that the controller
+//     may have lost its state, so EVE must republish all its info messages,
+//     not only the ones that changed. Assert that a new ZInfoHardware
+//     arrives: EVE otherwise publishes the hardware info only once after
+//     boot, so its arrival proves the full republish happened.
+//
 // Test params
 // -----------
 //   - TPM. Drives both whether the device VM gets an emulated TPM and the
@@ -176,4 +183,14 @@ func TestDeviceInfo(test *testing.T) {
 		t.Expect(devInfo.GetHSMStatus()).ToNot(
 			Equal(eveinfo.HwSecurityModuleStatus_ENABLED))
 	}
+
+	// Phase 5: a new controller epoch makes EVE republish all info.
+	hwUpdates, stopHwWatch := device.WatchHardwareInfo()
+	defer stopHwWatch()
+	devConfig.ControllerEpoch = devConfig.GetControllerEpoch() + 1
+	device.ApplyConfig(devConfig, true, true)
+	t.Eventually(hwUpdates, timeout).Should(Receive(Not(BeNil())),
+		"Device republishes its hardware info after the controller epoch "+
+			"changed to %d", devConfig.GetControllerEpoch())
+	evetest.Checkpoint("controller-epoch-republish")
 }
