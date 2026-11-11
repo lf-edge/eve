@@ -1539,6 +1539,15 @@ func (th *TestHarness) maybeReuseDevices(
 			th.devicesM.Unlock()
 			return false
 		}
+		// EVE does not support changing or removing the tie-breaker of
+		// a formed cluster: its setup stays in place. The next test, which
+		// may want a different tie-breaker or none, would inherit it.
+		if dev.config != nil && dev.config.GetCluster().GetTieBreakerNodeId() != "" {
+			th.devicesM.Unlock()
+			th.log.Infof("Device %q was in a cluster with a tie-breaker; "+
+				"not reusing devices", devName)
+			return false
+		}
 		// Cannot reuse device if requirements changed.
 		prevReq := dev.requirement
 		equalReqs := newReq.MinCPUs == prevReq.MinCPUs &&
