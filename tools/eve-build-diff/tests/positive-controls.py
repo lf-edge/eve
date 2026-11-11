@@ -11,6 +11,7 @@ A and B are extracted rootfs directories (eve-build-diff --workdir leaves them
 in <workdir>/a and <workdir>/b). <tool> and <rules> select another version of
 eve-build-diff, to show that a control fails against it.
 """
+import glob
 import gzip
 import io
 import json
@@ -230,9 +231,11 @@ KEYLINK = "etc/apk/keys/builder@projecteve.dev-1.rsa.pub"
 os.symlink("/etc/shadow", os.path.join(M, KEYLINK))
 expect[KEYLINK] = "builder key only in B: a symlink"
 
-RX = next(p for p in ("boot/runx-initrd",
-                      "containers/services/xen-tools/lower/usr/lib/xen/boot/runx-initrd")
-          if os.path.exists(os.path.join(B, p)))
+RX = next(os.path.relpath(p, B) for g in (
+    "boot/runx-initrd",
+    "containers/services/xen-tools/lower/usr/lib/xen/boot/runx-initrd",
+    "containers/onboot/*-pillar-onboot/lower/boot/runx-initrd",
+) for p in glob.glob(os.path.join(B, g)))
 def cpio_uid(d):
     """Set the first cpio member's uid to 4242."""
     gz = d[:2] == b"\x1f\x8b"
