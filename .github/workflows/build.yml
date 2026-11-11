@@ -51,9 +51,6 @@ jobs:
             platform: nvidia-jp6
             hv: default
           - arch: amd64
-            platform: evaluation
-            hv: default
-          - arch: amd64
             platform: generic
             hv: k
     runs-on: ${{ matrix.arch == 'arm64' && 'zededa-ubuntu-2204-arm64' || 'zededa-ubuntu-2204' }}
@@ -122,9 +119,6 @@ jobs:
           - arch: arm64
             hv: kvm
             platform: nvidia-jp6
-          - arch: amd64
-            hv: kvm
-            platform: evaluation
           - arch: amd64
             hv: k
             platform: generic

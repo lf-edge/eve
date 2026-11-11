@@ -46,10 +46,6 @@ jobs:
             platform: "generic"
             hv: k
           - os: zededa-ubuntu-2204
-            arch: amd64
-            platform: "evaluation"
-            hv: kvm
-          - os: zededa-ubuntu-2204
             arch: riscv64
             platform: "generic"
             hv: mini
@@ -261,9 +257,6 @@ jobs:
           - arch: amd64
             hv: k
             platform: "generic"
-          - arch: amd64
-            hv: kvm
-            platform: "evaluation"
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
