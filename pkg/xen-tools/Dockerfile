@@ -43,11 +43,14 @@ COPY alpine.patch /
 RUN patch -p1 < alpine.patch
 
 ENV LIBURING_VERSION 0.7
-ENV LIBURING_SOURCE=https://git.kernel.org/pub/scm/linux/kernel/git/axboe/liburing.git/snapshot/liburing-${LIBURING_VERSION}.tar.gz
+# Static release tarball on the liburing maintainer's snapshot server.
+# When changing the version, also update LIBURING_SHA256.
+ENV LIBURING_SOURCE=https://brick.kernel.dk/snaps/liburing-${LIBURING_VERSION}.tar.gz
+ENV LIBURING_SHA256=2018f9c1f2850d1a46fc2b6c018abeed54f6f820868ea5cc2afb46d83f687e30
 
 # Download and verify liburing
 # hadolint ignore=DL3020
-ADD ${LIBURING_SOURCE} /liburing.tar.gz
+ADD --checksum=sha256:${LIBURING_SHA256} ${LIBURING_SOURCE} /liburing.tar.gz
 RUN tar --absolute-names -xz < /liburing.tar.gz && mv "/liburing-${LIBURING_VERSION}" /liburing
 
 WORKDIR /liburing
