@@ -19,6 +19,7 @@ import (
 	"github.com/lf-edge/eve/evetest"
 	"github.com/lf-edge/eve/evetest/matchers"
 	"github.com/lf-edge/eve/evetest/netmodels"
+	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -42,6 +43,17 @@ import (
 //     blank files generated locally via CreateBlankImageFile and served
 //     by evetest's built-in HTTP image server). Wait for all 5 to reach
 //     ZSwState_CREATED_VOLUME.
+//     On ZFS only: set timer.gc.vdisk to its minimum (60s), reboot the
+//     device and wait until all 5 volumes are reported as CREATED_VOLUME
+//     again. This checks that the zvols survive a reboot and are picked up
+//     again by volumemgr at boot. volumemgr runs its garbage collection
+//     every timer.gc.vdisk/10, i.e. every 6 minutes by default, and the
+//     new value takes effect only from the next boot (the GC ticker is
+//     not recreated when the setting changes). After the reboot, the GC
+//     therefore runs every 6 seconds while the zvols exist. Then create an
+//     unused zvol directly on the device (in persist/clear/volumes, named
+//     like a volume EVE has no config for) and verify that the GC destroys
+//     it, while the zvols of the configured volumes are kept.
 //  3. Disk-space-exhaustion scenario:
 //     a. Read the device's current /persist disk metric (total/free).
 //     b. Create "blank-vol-1", sized so that the free space remaining after
@@ -67,6 +79,10 @@ import (
 // Test params
 // -----------
 //   - HYPERVISOR (defaults to KVM).
+//   - FILESYSTEM (ext4|zfs, defaults to ext4). With ZFS, volumes are backed
+//     by zvols instead of files, which exercises a different volume handler,
+//     and the device is rebooted with a shortened volume GC interval once
+//     the standalone volumes are created.
 func TestVolumes(test *testing.T) {
 	evetestT := evetest.Init(test)
 	t := NewGomegaWithT(evetestT)
@@ -74,14 +90,17 @@ func TestVolumes(test *testing.T) {
 
 	evetest.DefineTestParameters(
 		evetest.HypervisorParameter(),
+		evetest.FilesystemParameter(),
 	)
 	hypervisor := evetest.GetHypervisorParameterValue()
+	filesystem := evetest.GetFilesystemParameterValue()
 
 	devName := "edge-dev"
 	evetest.Setup(
 		evetest.RequireEdgeDevice{
 			Name:              devName,
 			WithHypervisor:    hypervisor,
+			WithFilesystem:    filesystem,
 			DeviceReusePolicy: evetest.ResetDeviceConfig,
 		},
 		evetest.RequireNetworkModel{
@@ -182,6 +201,58 @@ func TestVolumes(test *testing.T) {
 			}).StopIf(volumeHasError)))
 	}
 	evetest.Checkpoint("standalone-volumes-created")
+
+	// On ZFS, check that the zvols survive a reboot, and make volumemgr run its
+	// GC often after it, while the zvols exist. The GC interval is read at
+	// boot, hence it is set before the reboot. Watch only the volume info
+	// published after the reboot request, so that a CREATED_VOLUME reported
+	// before the reboot does not satisfy the check.
+	if filesystem == evetest.FilesystemZFS {
+		cfgProps := pillartypes.NewConfigItemValueMap()
+		cfgProps.SetGlobalValueInt(pillartypes.VdiskGCTime, 60)
+		devConfig.SetConfigProperties(cfgProps)
+		device.ApplyConfig(devConfig, true, true)
+		for i := range vols {
+			vols[i].stop()
+			vols[i].updates, vols[i].stop = device.WatchVolumeInfo(vols[i].uuid)
+		}
+		device.RequestReboot(true)
+		evetest.Checkpoint("rebooted-with-zvols")
+		for _, v := range vols {
+			t.Eventually(v.updates, timeout).Should(Receive(matchers.SatisfyPredicate(
+				fmt.Sprintf("volume %s is created again after the reboot", v.name),
+				func(info *eveinfo.ZInfoVolume) bool {
+					return info.State == eveinfo.ZSwState_CREATED_VOLUME
+				}).StopIf(volumeHasError)))
+		}
+		evetest.Checkpoint("standalone-volumes-survived-reboot")
+
+		// The GC must destroy a zvol that belongs to no known volume...
+		listZVols := func() string {
+			out, _, err := device.RunShellScript(
+				"eve exec pillar zfs list -H -o name -t volume -r "+
+					pillartypes.PersistDataset, 30*time.Second, 0)
+			t.Expect(err).ToNot(HaveOccurred())
+			return out
+		}
+		unusedZVol := fmt.Sprintf("%s/%s.0",
+			pillartypes.VolumeClearZFSDataset, uuid.Must(uuid.NewV4()))
+		_, stderr, err := device.RunShellScript(
+			"eve exec pillar zfs create -V 16M "+unusedZVol, 30*time.Second, 0)
+		t.Expect(err).ToNot(HaveOccurred(), "zfs create failed: %s", stderr)
+		t.Expect(listZVols()).To(ContainSubstring(unusedZVol))
+		t.Eventually(listZVols, 2*time.Minute, 5*time.Second).ShouldNot(
+			ContainSubstring(unusedZVol), "unused zvol %s was not garbage-collected",
+			unusedZVol)
+		// ...but keep the zvols of the configured volumes (all but the docker
+		// one, which is a container and not stored in a zvol).
+		zvols := listZVols()
+		for _, v := range vols[1:] {
+			t.Expect(zvols).To(ContainSubstring(v.uuid.String()),
+				"zvol of the configured volume %s was garbage-collected", v.name)
+		}
+		evetest.Checkpoint("unused-zvol-garbage-collected")
+	}
 
 	// Step 3: disk-space-exhaustion scenario.
 	const mib = evetest.MiB
