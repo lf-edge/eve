@@ -239,7 +239,12 @@ func (q *qemuRunner) qemuVerboseArgs() {
 }
 
 func (q *qemuRunner) qemuQuietArgs() {
-	q.appendArgs["console=null"] = struct{}{}
+	// init (bpftrace-helper) needs a real console: without one it starts
+	// with stdin/stdout/stderr closed, and a Go >= 1.21 runtime then exits
+	// immediately because the root filesystem has no /dev/null yet.
+	for _, arg := range q.verboseArchAppendLineArgs() {
+		q.appendArgs[arg] = struct{}{}
+	}
 	q.appendArgs["quiet"] = struct{}{}
 }
 
