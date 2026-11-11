@@ -428,14 +428,11 @@ lk-extra-opt/%: FORCE
 RESCAN_DEPS=FORCE $(LK_POSSIBLE_BUILD_ARG_TARGETS)
 # set FORCE_BUILD to --force to enforce rebuild
 FORCE_BUILD=
-# set FORCE_BUILD_EVE to --force to build the eve and eve-sources images even
-# if the registry has their tag, which names a version, not their content
-FORCE_BUILD_EVE=
 # Packages to always rebuild rather than pull/skip (applied by the eve-%
 # rule below). Keyed by name, not a target-specific FORCE_BUILD variable:
 # those propagate to the whole prerequisite subtree in GNU Make, which
-# force-rebuilt their dependencies too (e.g. pkg/pillar via pkg/external-boot-image).
-FORCE_BUILD_PKGS=external-boot-image kube
+# would force-rebuild their dependencies too.
+FORCE_BUILD_PKGS=
 
 # ROOTFS_DEPS enforces the scan of all rootfs image dependencies
 ifdef ROOTFS_DEPS
@@ -508,7 +505,7 @@ ifeq ($(HV),k)
         ROOTFS_MAXSIZE_MB=10240
 else
         #kube container will not be in non-k builds
-        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image$$$(PKGS_PLATFORM_EXCLUDE)")
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube$$$(PKGS_PLATFORM_EXCLUDE)")
         # nvidia platform requires more space
         ifeq (, $(findstring nvidia,$(PLATFORM)))
             ROOTFS_MAXSIZE_MB=290
@@ -522,7 +519,7 @@ endif
 # 4KB page reads and decompresses the whole block.
 ROOTFS_SQUASHFS_BLOCK_SIZE=
 ifeq ($(ZARCH),amd64)
-    ifeq ($(HV),kvm)
+    ifneq (,$(filter $(HV),kvm xen))
         ROOTFS_SQUASHFS_BLOCK_SIZE=1048576
     endif
 endif
@@ -530,7 +527,7 @@ endif
 PKGS_riscv64=pkg/ipxe pkg/mkconf pkg/mkimage-iso-efi pkg/grub     \
              pkg/mkimage-raw-efi pkg/uefi pkg/u-boot pkg/cross-compilers \
 	     pkg/debug pkg/dom0-ztools pkg/gpt-tools pkg/storage-init pkg/mkrootfs-squash \
-	     pkg/bsp-imx pkg/optee-os pkg/recovertpm pkg/bpftrace pkg/apparmor
+	     pkg/bsp-imx pkg/optee-os pkg/recovertpm pkg/bpftrace
 # alpine-base and alpine must be the first packages to build
 PKGS=pkg/alpine $(PKGS_$(ZARCH))
 # eve-alpine-base is bootstrap image for eve-alpine
@@ -584,7 +581,6 @@ test: $(LINUXKIT) pkg/pillar | $(DIST)
 	cp pkg/pillar/results.xml $(DIST)/
 	make -C pkg/alpine/dnstest test
 	make -C pkg/debug test
-	make -C pkg/node-exporter test
 	make -C pkg/vtpm test
 	go test -C pkg/newlog/cmd/ -v -race
 	go test -C pkg/edgeview/src/ -v -race
@@ -1036,7 +1032,7 @@ endef
 publish_sources: $(COLLECTED_SOURCES)
 	$(QUIET): $@: Begin
 	cp pkg/sources/* $(SOURCES_DIR)
-	$(call push-eve-image,$(SOURCES_DIR) $|,$(FORCE_BUILD_EVE))
+	$(call push-eve-image,$(SOURCES_DIR) $|)
 	$(QUIET): $@: Succeeded
 
 
@@ -1079,40 +1075,6 @@ pkgs: RESCAN_DEPS=
 pkgs: $(LINUXKIT) $(PKGS) $(LK_POSSIBLE_BUILD_ARG_TARGETS)
 	@echo Done building packages
 
-# No-op target for get-deps which looks at
-# external-boot-image and sees a dep for eve-kernel
-# and attempts to build pkg/kernel, which is in
-# lf-edge/eve-kernel and not built here.
-pkg/kernel:
-	$(QUIET): $@: No-op pkg/kernel
-
-# external-boot-image's runtime contents (runx-initrd from PILLAR_TAG, kernel
-# from KERNEL_TAG) are baked in at build time via Dockerfile.in placeholder
-# substitution. `linuxkit pkg show-tag` only hashes git-tracked files under
-# pkg/external-boot-image/ — Dockerfile.in and build.yml — neither of which
-# changes when pillar or the kernel does. So the package tag is git-stable
-# but runtime-content-variable; without --force, linuxkit's "skip if tag is
-# already in cache/registry" behavior serves a stale runx-initrd whenever
-# pillar changes (e.g. an init-initrd edit produces a new pillar tag but
-# the same external-boot-image tag, so the cached external-boot-image wins).
-# Forced via FORCE_BUILD_PKGS above, applied by the eve-% rule below.
-
-# Same trap as pkg/external-boot-image, one level up: pkg/kube bundles
-# pkg/kube/external-boot-image.tar (a generated artifact, gitignored — see
-# /.gitignore:25), so changes to that .tar don't change linuxkit's content
-# hash for pkg/kube. Without --force, `linuxkit pkg build pkg/kube` finds the
-# existing kube image in cache and skips — keeping the OLD external-boot-image.tar
-# baked in, which the rootfs then ships to the device as /etc/external-boot-image.tar.
-# Forced via FORCE_BUILD_PKGS above, applied by the eve-% rule below.
-
-pkg/kube/external-boot-image.tar: pkg/external-boot-image
-	$(eval BOOT_IMAGE_TAG := $(shell $(LINUXKIT) pkg show-tag --canonical pkg/external-boot-image))
-	$(eval CACHE_CONTENT := $(shell $(LINUXKIT) cache ls 2>&1))
-	$(if $(filter $(BOOT_IMAGE_TAG),$(CACHE_CONTENT)),,$(LINUXKIT) cache pull $(BOOT_IMAGE_TAG))
-	$(MAKE) cache-export IMAGE=$(BOOT_IMAGE_TAG) OUTFILE=pkg/kube/external-boot-image.tar
-	rm -f pkg/external-boot-image/Dockerfile
-pkg/kube: pkg/kube/external-boot-image.tar eve-kube
-	$(QUIET): $@: Succeeded
 pkg/%: eve-% FORCE
 	$(QUIET): $@: Succeeded
 
@@ -1124,7 +1086,7 @@ eve: $(INSTALLER) $(EVE_ARTIFACTS) current $(RUNME) $(BUILD_YML) | $(BUILD_DIR)
 	$(QUIET): "$@: Begin: EVE_REL=$(EVE_REL), HV=$(HV), LINUXKIT_PKG_TARGET=$(LINUXKIT_PKG_TARGET)"
 	cp images/out/*.yml $|
 	$(PARSE_PKGS) pkg/eve/Dockerfile.in > $|/Dockerfile
-	$(call push-eve-image,$|,$(FORCE_BUILD) $(FORCE_BUILD_EVE))
+	$(call push-eve-image,$|,$(FORCE_BUILD))
 	$(QUIET): $@: Succeeded
 
 eden:
@@ -1238,28 +1200,17 @@ cache-export-docker-load-all: $(LINUXKIT) $(addsuffix -cache-export-docker-load,
 proto-vendor:
 	@$(DOCKER_GO) "cd pkg/pillar ; go mod vendor" $(CURDIR) proto
 
-# $(1): Go module to bump in every tracked go.mod that requires it.
-# Fails at the end, listing the modules it could not bump.
-define BUMP_GO_DEP
-	@failed=""; \
-	for dir in $$(git ls-files -- '*go.mod' | xargs grep -lF '$(1) v' | xargs -n1 dirname); do \
-		echo "== $$dir"; \
-		(cd "$$dir" && go get -u $(1) && go mod tidy && go mod vendor) || failed="$$failed $$dir"; \
-	done; \
-	if [ -n "$$failed" ]; then echo "ERROR: failed to bump $(1) in:$$failed" >&2; exit 1; fi
-endef
-
 bump-eve-api:
-	$(call BUMP_GO_DEP,github.com/lf-edge/eve-api/go)
+	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve-api/go' {} \; -execdir go get -u github.com/lf-edge/eve-api/go \; -execdir go mod tidy \; -execdir go mod vendor \;
 
 bump-eve-libs:
-	$(call BUMP_GO_DEP,github.com/lf-edge/eve-libs)
+	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve-libs' {} \; -execdir go get -u github.com/lf-edge/eve-libs \; -execdir go mod tidy \; -execdir go mod vendor \;
 
 bump-eve-pillar:
-	$(call BUMP_GO_DEP,github.com/lf-edge/eve/pkg/pillar)
+	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/eve/pkg/pillar' {} \; -execdir go get -u github.com/lf-edge/eve/pkg/pillar \; -execdir go mod tidy \; -execdir go mod vendor \;
 
 bump-edge-containers:
-	$(call BUMP_GO_DEP,github.com/lf-edge/edge-containers)
+	find . -type f -name "go.mod" -exec grep -q 'github.com/lf-edge/edge-containers' {} \; -execdir go get -u github.com/lf-edge/edge-containers \; -execdir go mod tidy \; -execdir go mod vendor \;
 
 .PHONY: proto-api-%
 

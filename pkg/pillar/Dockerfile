@@ -201,7 +201,7 @@ WORKDIR /
 
 RUN mkdir -p /out/usr/share/ovmf
 COPY --from=uefi-build /OVMF_VARS.fd /out/usr/share/ovmf/OVMF_VARS.fd
-# QEMU loads it through /hostfs, see RunxInitrd in cmd/zedmanager.
+# QEMU loads it through /hostfs, see RunxInitrd in types/locationconsts.go.
 COPY --from=initrd-build /runx-initrd /out/boot/runx-initrd
 
 COPY --from=zfs /out /out
