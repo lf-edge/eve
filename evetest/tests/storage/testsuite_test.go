@@ -30,7 +30,23 @@ func TestStorageSuite(test *testing.T) {
 		evetest.TestCase{
 			Test: TestExtraDiskAttach,
 		},
-		// ZFS tests next, grouped together for the same reason.
+		// ZFS tests next, grouped together for the same reason. The first one
+		// re-runs TestVolumes on ZFS, where volumes are backed by zvols instead
+		// of files.
+		evetest.TestCase{
+			Test: TestVolumes,
+			Variants: []evetest.TestVariant{
+				{
+					Name: "TestVolumesOnZFS",
+					Parameters: []evetest.TestParameterValue{
+						{
+							Key:   evetest.FilesystemParameterKey,
+							Value: evetest.FilesystemZFS,
+						},
+					},
+				},
+			},
+		},
 		evetest.TestCase{
 			Test: TestZVolProvisionedSizeReported,
 		},
