@@ -167,9 +167,9 @@ endif
 	@# them survive runs.
 	$(eval BPFTRACE_COMPILER_MOUNTS := \
 		-v $(call shq,$(REPO_ROOT)/eve-tools/bpftrace-compiler:/eve-tools/bpftrace-compiler:ro) \
-		-v $(call shq,$(EVETEST_HOME_DIR)/linuxkit-cache:/root/.linuxkit/cache) \
+		-v $(call shq,$(HOME)/.linuxkit/cache:/root/.linuxkit/cache) \
 		-v $(call shq,$(EVETEST_HOME_DIR)/bpftrace-compiler-cache:/root/.bpftrace-compiler/cache))
-	@mkdir -p $(call shq,$(EVETEST_HOME_DIR)/linuxkit-cache) $(call shq,$(EVETEST_HOME_DIR)/bpftrace-compiler-cache)
+	@mkdir -p $(call shq,$(HOME)/.linuxkit/cache) $(call shq,$(EVETEST_HOME_DIR)/bpftrace-compiler-cache)
 ifndef EVETEST_BROKER_ADDRESS
 	@# Broker runs inside the container; it stores per-VM disk images on the
 	@# host. Default to <home-dir>/.evetest because /tmp is usually on the small
