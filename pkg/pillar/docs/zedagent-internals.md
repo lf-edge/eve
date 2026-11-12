@@ -2,7 +2,7 @@
 
 This document covers subsystems of `zedagent` that are architecturally significant
 but too detailed for the main [zedagent.md](zedagent.md) overview.  It is intended
-for contributors working on the agent itself or writing eden integration tests.
+for contributors working on the agent itself or writing evetest integration tests.
 
 ## Pubsub Map
 
@@ -180,39 +180,3 @@ When `maintenanceMode` is set:
   re-reads the configuration in full and applies what was deferred. The local reasons
   are cleared by `nodeagent` rather than by a configuration change, so nothing else
   would re-drive it.
-
-## Eden Test Coverage Map
-
-This section maps each major zedagent subsystem to the eden test that exercises it and
-notes which functions each test is specifically designed to cover.
-
-### Go unit tests (no EVE required)
-
-None of the zedagent subsystems are cleanly unit-testable without a running EVE
-because they all depend on the pubsub event loop.  The exception is pure parsing
-logic in `parseconfig.go` (e.g., `parseIpspec`, `computeConfigSha`, `isLocConfigValid`)
-which could be extracted and unit-tested; this has not been done yet.
-
-### Eden integration tests
-
-| Test | Location | Primary targets |
-|---|---|---|
-| `config_items_and_status` | `tests/zedagent/testdata/` | `parseConfigItems`, `handleGlobalConfigImpl`, `publishZedAgentStatus`, `mergeMaintenanceMode` |
-| `network_instance_info_metrics` | `tests/zedagent/testdata/` | `handleNetworkInstanceImpl`, `prepareAndPublishNetworkInstanceInfoMsg`, `createNetworkInstanceMetrics`, `handleAppFlowMonitorImpl`, `flowlogTask` |
-| `app_metrics_detail` | `tests/zedagent/testdata/` | `handleDiskMetricImpl`, `handleAppDiskMetricImpl`, `createVolumeInstanceMetrics`, `getVolumeResourcesMetrics`, `fillStorageDiskMetrics`, `addUserSwInfo` |
-| `device_info_completeness` | `tests/zedagent/testdata/` | `PublishDeviceInfoToZedCloud`, `getDataSecAtRestInfo`, `createConfigItemStatus`, `getCapabilities`, `getEnrolledCertsInfo`, `encodeSystemAdapterInfo` |
-| `maintenance_mode` | `tests/zedagent/testdata/` | `mergeMaintenanceMode`, `equalMaintenanceMode`, `handleGlobalConfigImpl` (maintenance path), `publishZedAgentStatus`, `getDeviceState` |
-| `attest_flow` | `tests/zedagent/testdata/` | `handleAttestQuoteImpl`, `handleEncryptedKeyFromDeviceImpl`, `publishAttestNonce`, `storeIntegrityToken`, `readIntegrityToken`, `restartAttestation`, `recordAttestationTry` |
-| `ctrl_cert_change` | `tests/eclient/testdata/` | `parsePublishControllerCerts`, `handleControllerCertsSha`, `triggerControllerCertEvent`, `verifySigningCertNewest` |
-
-### Subsystems not yet covered
-
-| Subsystem | Functions | Blocker |
-|---|---|---|
-| Base OS fallback path | `forcefallback.go` (6 fns) | Need OTA update test with deliberate failure |
-| SCEP enrollment | `parseSCEPProfiles`, scep HTTP flow | Need SCEP server in test environment |
-| PNAC config | `parsePNACConfig` | Need 802.1X-capable test environment |
-| ZFS metrics | `fillStorageZVolMetrics`, `fillStorageVDevMetrics` | Need ZFS-capable test instance |
-| vcom metrics | protobuf `Reset`/`String` methods | Need vcom test suite with coverage build |
-| Device operation commands | `handleDeviceOperationCmd`, `scheduleBackup` | Requires reboot/backup capable test |
-| Snapshot config | `parseSnapshotConfig`, `parseSnapshots` | Requires volume snapshot support in test |

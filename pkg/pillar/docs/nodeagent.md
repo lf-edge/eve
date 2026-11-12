@@ -395,12 +395,11 @@ Useful `grep` patterns:
   a dev device it can also be exercised by making `zedagent` publish
   `ZedAgentStatus{RebootCmd:true,…}`.
 * The fallback / reset timers can be exercised by cutting controller
-  reachability (`eden eve link down` in eden) for longer than the
+  reachability for longer than the
   configured `timer.update.fallback.no.network` /
   `timer.reboot.no.network`.
 * The post-upgrade test window can be shortened with
-  `timer.test.baseimage.update=30` (used by the
-  `update_eve_image` eden test).
+  `timer.test.baseimage.update=30`.
 * The fault-injection knob `/persist/fault-injection/readfile` causes
   nodeagent to read an arbitrary file at startup. Pointing it at a
   large file is the easiest way to drive pillar into an out-of-memory

@@ -1,8 +1,7 @@
 # EVETest Framework
 
-EVETest (or simply "evetest") is a next-generation integration testing framework
-for [EVE-OS](https://github.com/lf-edge/eve), designed to replace
-[Eden](https://github.com/lf-edge/eden). It enables comprehensive integration testing
+EVETest (or simply "evetest") is an integration testing framework
+for [EVE-OS](https://github.com/lf-edge/eve). It enables comprehensive integration testing
 using virtualization, supports complex network scenarios via a programmable SDN,
 and provides a simplified developer experience.
 

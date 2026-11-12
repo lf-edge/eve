@@ -369,8 +369,7 @@ func connectVNC(t *WithT, dialDesc string, dial func() (net.Conn, error),
 	// The client's background mainLoop goroutine logs an Error-level message
 	// whenever its blocking read unblocks because the connection was closed
 	// -- including on an intentional Close() from our side. Silence it here
-	// (matching eden's own pkg/utils/vnc.go, which does the same) so a clean
-	// shutdown doesn't look like a failure in the test output.
+	// so a clean shutdown doesn't look like a failure in the test output.
 	logger.SetLogLevel("fatal")
 
 	var conn net.Conn

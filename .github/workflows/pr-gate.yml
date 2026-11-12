@@ -13,11 +13,7 @@ on:  # yamllint disable-line rule:truthy
 
 env:
   BUILD_WF_NAME: PR build
-  RUN_CONTEXT_FILE: run-context.json
   EVETEST_CONTEXT_FILE: evetest-run-context.json
-  # Must match EDEN_IN_PR_STATUS_TITLE_PREFIX in eden-trusted.yml: a declined
-  # gate publishes the status that a satisfied gate would later have Eden own.
-  EDEN_IN_PR_STATUS_TITLE_PREFIX: Eden Runner
 
 permissions: {}
 
@@ -35,19 +31,13 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'workflow_run' }}
 
 jobs:
-  eden-gate:
-    name: Ready for Eden
+  evetest-gate:
+    name: Ready for evetest
     permissions:
       actions: read
       contents: read
       pull-requests: read
       statuses: write
-    strategy:
-      fail-fast: false
-      matrix:
-        hv: [kvm]
-        arch: [amd64]
-        platform: [generic]
     if: >
       (github.event_name == 'workflow_run') ||
       (github.event_name == 'pull_request_review' && github.event.review.state == 'approved')
@@ -228,120 +218,48 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ steps.meta.outputs.original_run_id }}
           GH_REPO: ${{ github.repository }}
-          BUILD_JOB_NAME: "eve (${{ matrix.arch }}, ${{ matrix.hv }}, ${{ matrix.platform }})"
+          BUILD_JOB_NAMES: >-
+            eve (amd64, kvm, generic)|eve (amd64, k, generic)
         run: |
-          build_conclusion=$(gh api \
-            /repos/$GH_REPO/actions/runs/$RUN_ID/jobs \
-            -X GET \
-            -q ".jobs[] | select(.name == \"$BUILD_JOB_NAME\") | .conclusion" ) || api_status=$?
-
-          if [[ "${api_status:-0}" -ne 0 ]]; then
+          if ! jobs=$(gh api --paginate "/repos/$GH_REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
+                  --jq '.jobs[] | [.name, .status, (.conclusion // "")] | @tsv'); then
             echo "::error::Failed to fetch build job status for run $RUN_ID"
-            echo "build_ok=false" >>"$GITHUB_OUTPUT"
-          else
-            echo "build_ok=$([[ "$build_conclusion" == 'success' ]] && echo true || echo false)" >>"$GITHUB_OUTPUT"
-            echo "build_skipped=$([[ "$build_conclusion" == 'skipped' ]] && echo true || echo false)" >>"$GITHUB_OUTPUT"
-          fi
-
-      - name: Check Gate Condition
-        id: check
-        env:
-          PR_ID: ${{ steps.meta.outputs.pr_id }}
-          RESOLVE_ERROR: ${{ steps.meta.outputs.resolve_error }}
-          REVIEW_ERROR: ${{ steps.reviews.outputs.review_error }}
-          APPROVED: ${{ steps.reviews.outputs.approved }}
-          BUILD_OK: ${{ steps.build.outputs.build_ok }}
-        run: |
-          echo "PR: ${PR_ID:-<unresolved>}"
-          echo "Approved: $APPROVED"
-          echo "Build OK: $BUILD_OK"
-
-          reason=""
-          state=error
-          if [[ -n "$RESOLVE_ERROR" ]]; then
-            reason="$RESOLVE_ERROR"
-          elif [[ -n "$REVIEW_ERROR" ]]; then
-            reason="$REVIEW_ERROR"
-          elif [[ "$BUILD_OK" != "true" ]]; then
-            reason="PR build did not succeed"
-          elif [[ "$APPROVED" != "true" ]]; then
-            # The expected steady state of an unreviewed PR, not a malfunction.
-            reason="Waiting for the PR to be approved"
-            state=pending
-          fi
-
-          if [[ -n "$reason" ]]; then
             {
-              echo "gate_passed=false"
-              echo "gate_reason=$reason"
-              echo "gate_state=$state"
-            } >> "$GITHUB_OUTPUT"
-            echo "::error::Gate not satisfied: $reason"
-          else
-            echo "gate_passed=true" >> "$GITHUB_OUTPUT"
+              echo "build_ok=false"
+              echo "build_state=error"
+              echo "build_reason=Could not read the build jobs of the PR build"
+            } >>"$GITHUB_OUTPUT"
+            exit 0
           fi
+          state=ok
+          reason=""
+          skipped=true
+          IFS='|' read -r -a names <<<"$BUILD_JOB_NAMES"
+          for name in "${names[@]}"; do
+            row=$(awk -F'\t' -v n="$name" '$1 == n' <<<"$jobs" | head -n1)
+            status=$(cut -f2 <<<"$row")
+            conclusion=$(cut -f3 <<<"$row")
+            echo "Build job '$name': status=${status:-<missing>} conclusion=${conclusion:-<none>}"
+            [[ "$conclusion" == 'skipped' ]] || skipped=false
+            if [[ "$status" != "completed" ]]; then
+              if [[ "$state" != "error" ]]; then
+                state=pending
+                reason="Waiting for the PR build job '$name'"
+              fi
+            elif [[ "$conclusion" != "success" ]]; then
+              state=error
+              reason="PR build job '$name' did not succeed"
+            fi
+          done
+          {
+            echo "build_ok=$([[ "$state" == ok ]] && echo true || echo false)"
+            echo "build_skipped=$skipped"
+            echo "build_state=$state"
+            echo "build_reason=$reason"
+          } >>"$GITHUB_OUTPUT"
 
-      - name: Report Declined Gate on the Commit
-        # Only the workflow_run leg can publish. A pull_request_review run takes
-        # its workflow file from the pull request's head, so GitHub caps its
-        # GITHUB_TOKEN at read-only whenever that head lives in a fork, and the
-        # status write comes back 403 however the job declares its permissions.
-        # A pull request that changes no file needing a build skips the EVE
-        # build jobs; it has nothing for Eden to test, so report nothing.
-        if: >-
-          ${{ github.event_name == 'workflow_run'
-          && steps.check.outputs.gate_passed != 'true'
-          && steps.build.outputs.build_skipped != 'true'
-          && steps.meta.outputs.pr_sha != '' }}
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
-        env:
-          SHA: ${{ steps.meta.outputs.pr_sha }}
-          STATE: ${{ steps.check.outputs.gate_state }}
-          REASON: ${{ steps.check.outputs.gate_reason }}
-          STATUS_CONTEXT: ${{ env.EDEN_IN_PR_STATUS_TITLE_PREFIX }} (${{ matrix.hv }}, ${{ matrix.arch }}, ${{ matrix.platform }})
-        with:
-          script: |
-            await github.rest.repos.createCommitStatus({
-              ...context.repo,
-              sha:         process.env.SHA,
-              state:       process.env.STATE,
-              context:     process.env.STATUS_CONTEXT,
-              // The API rejects a description longer than 140 characters.
-              description: process.env.REASON.slice(0, 140),
-              target_url:  `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
-            });
-
-      - name: Gather Context for Trusted Workflow
-        if: ${{ steps.check.outputs.gate_passed == 'true' }}
-        id: create_gate_context
-        run: |
-          echo "Build passed and PR approved – gate satisfied"
-          # Create gate context file
-          # This file will be used by the eden-trusted workflow to run tests
-          # It should contain the PR number, original WF run ID, and SHA of the commit
-          echo '{ "pr_id":  "${{ steps.meta.outputs.pr_id }}",
-                  "original_run_id": "${{ steps.meta.outputs.original_run_id }}",
-                  "pr_sha": "${{ steps.meta.outputs.pr_sha }}",
-                  "pr_base_ref": "${{ steps.meta.outputs.pr_base_ref }}",
-                  "head_repo": "${{ steps.meta.outputs.head_repo }}",
-                  "hv": "${{ matrix.hv }}",
-                  "arch": "${{ matrix.arch }}",
-                  "platform": "${{ matrix.platform }}",
-                  "gate_run_id": "${{ github.run_id }}",
-                  "gate_status_name": "Ready for Eden (${{ matrix.hv }}, ${{ matrix.arch }}, ${{ matrix.platform }})"
-            }' \
-            > "${{ env.RUN_CONTEXT_FILE }}"
-
-      - name: Gather Failure Context for Trusted Workflow
-        if: ${{ steps.check.outputs.gate_passed != 'true' }}
-        id: create_failure_context
-        run: |
-          echo "Gate not satisfied, creating failure context"
-          echo "exit" > "${{ env.RUN_CONTEXT_FILE }}"
-
-      # evetest has a looser gate than Eden: a green build plus either an
-      # approval or a CODEOWNER's /evetest comment. Eden keeps using
-      # run-context.json above.
+      # The gate is a green build plus either an approval or a CODEOWNER's
+      # /evetest comment.
       - name: Gather Context for the evetest Workflow
         id: evetest_gate
         env:
@@ -354,6 +272,8 @@ jobs:
           EVETEST_RUN_ARGS: ${{ steps.evetest_comment.outputs.args }}
           EVETEST_COMMENT_ID: ${{ steps.evetest_comment.outputs.comment_id }}
           BUILD_OK: ${{ steps.build.outputs.build_ok }}
+          BUILD_STATE: ${{ steps.build.outputs.build_state }}
+          BUILD_REASON: ${{ steps.build.outputs.build_reason }}
           ORIGINAL_RUN_ID: ${{ steps.meta.outputs.original_run_id }}
           PR_SHA: ${{ steps.meta.outputs.pr_sha }}
           PR_BASE_REF: ${{ steps.meta.outputs.pr_base_ref }}
@@ -372,7 +292,8 @@ jobs:
           elif [[ -n "$REVIEW_ERROR" ]]; then
             reason="$REVIEW_ERROR"
           elif [[ "$BUILD_OK" != "true" ]]; then
-            reason="PR build did not succeed"
+            reason="$BUILD_REASON"
+            state="$BUILD_STATE"
           elif [[ "$EVETEST_REQUESTED" == "true" ]]; then
             how="Requested by a CODEOWNER (/evetest${EVETEST_RUN_ARGS:+ $EVETEST_RUN_ARGS}), mode: $EVETEST_RUN_MODE"
           elif [[ "$APPROVED" == "true" ]]; then
@@ -406,8 +327,12 @@ jobs:
           fi
 
       - name: Report Declined evetest Gate on the Commit
-        # Same constraints as the Eden status above: only the workflow_run leg
-        # can write it, and a PR that skips the build has nothing to test.
+        # Only the workflow_run leg can publish. A pull_request_review run takes
+        # its workflow file from the pull request's head, so GitHub caps its
+        # GITHUB_TOKEN at read-only whenever that head lives in a fork, and the
+        # status write comes back 403 however the job declares its permissions.
+        # A PR that changes no file needing a build skips the EVE build jobs and
+        # has nothing to test, so nothing is reported for it.
         # evetest-pr.yml reports the satisfied case on the same context.
         if: >-
           ${{ github.event_name == 'workflow_run'
@@ -435,12 +360,6 @@ jobs:
         with:
           name: evetest-run-context
           path: ${{ env.EVETEST_CONTEXT_FILE }}
-
-      - name: Upload Context for Trusted Workflow
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
-        with:
-          name: run-context
-          path: ${{ env.RUN_CONTEXT_FILE }}
 
       - name: Fail on an Unusable PR Lookup
         if: ${{ steps.meta.outputs.resolve_fatal == 'true' }}

@@ -361,7 +361,7 @@ Useful `grep` patterns (all in the `zedclient` log stream):
 ### Connectivity smoke check
 
 Before trusting any observed `zedclient` behavior on an existing
-device or eden bringup, verify EVE can reach the controller. The
+device or test bringup, verify EVE can reach the controller. The
 relevant `/etc/hosts` is the *pillar container's*, not the EVE root
 namespace's, so the check must run inside pillar (where the agents
 actually resolve the controller hostname):
@@ -380,9 +380,9 @@ this failure (see the canary log line above); on a fresh device,
 ### Forcing transitions for development
 
 * The onboarding step is exercised on every first boot of a freshly
-  installed image. In eden it is driven by `eden adam start` plus the
-  default eve image, which arrives with `onboard.cert.pem` /
-  `onboard.key.pem` and triggers the `selfRegister` branch.
+  installed image, e.g. by evetest, which onboards every device it
+  creates against its embedded Adam controller (the `selfRegister`
+  branch).
 * To exercise the `selfRegister` failure paths, point `/config/server`
   at a controller that does not have the onboard cert provisioned
   (403 → `LedBlinkOnboardingFailureNotFound`). This relies on the
