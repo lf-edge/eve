@@ -103,8 +103,8 @@ func logOOMKills(ctx *domainContext, status *types.DomainStatus, dm types.Domain
 	if dm.OOMKills <= prev {
 		return
 	}
-	log.Errorf("Application %s (%s) reached its memory limit: the kernel's OOM killer killed %d of its processes",
-		status.DisplayName, dm.Key(), dm.OOMKills-prev)
+	log.Errorf("Application %s (%s) reached its memory limit%s: the kernel's OOM killer killed %d of its processes",
+		status.DisplayName, dm.Key(), memoryLimitPhrase(uint64(dm.AllocatedMB)), dm.OOMKills-prev)
 }
 
 func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {

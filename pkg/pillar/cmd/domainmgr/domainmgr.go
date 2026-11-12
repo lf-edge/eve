@@ -1154,17 +1154,31 @@ func asyncKubevirtDeactivate(ctx *domainContext, status *types.DomainStatus, imp
 }
 
 // taskCrashError returns the error to report for a crashed application task,
-// naming the OOM killer when it killed processes in the task's cgroup.
+// naming the OOM killer and the cgroup's memory limit when it killed processes
+// in the task's cgroup.
 func taskCrashError(domainName string) string {
 	const restart = " - please restart application instance"
-	events, err := cgroup.MemoryEvents(filepath.Join(containerd.GetServicesNamespace(), domainName))
+	group := filepath.Join(containerd.GetServicesNamespace(), domainName)
+	events, err := cgroup.MemoryEvents(group)
 	if err != nil {
 		log.Functionf("taskCrashError(%s): %v", domainName, err)
 	} else if n := events["oom_kill"]; n > 0 {
-		return fmt.Sprintf("the application reached its memory limit and the kernel's OOM killer killed %d of its processes%s",
-			n, restart)
+		var limitMiB uint64
+		if limit, err := cgroup.ReadUint(group, "memory.max"); err == nil && limit != cgroup.Unlimited {
+			limitMiB = limit >> 20
+		}
+		return fmt.Sprintf("the application reached its memory limit%s and the kernel's OOM killer killed %d of its processes%s",
+			memoryLimitPhrase(limitMiB), n, restart)
 	}
 	return "one of the application's tasks has crashed" + restart
+}
+
+// memoryLimitPhrase returns " of <limitMiB> MiB", or "" for 0 (no limit known).
+func memoryLimitPhrase(limitMiB uint64) string {
+	if limitMiB == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" of %d MiB", limitMiB)
 }
 
 // Check if it is still running
