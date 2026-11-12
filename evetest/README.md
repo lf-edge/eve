@@ -1151,7 +1151,7 @@ Only when running the CLI against an instance on a remote machine, set
 |----------|-------------|---------|
 | `EVETEST_ORG` | Docker Hub organization for evetest and evetest-broker images | `lfedge` |
 | `EVETEST_EVE_REPO` | EVE image repository | `lfedge/eve` |
-| `EVETEST_ADAM_VERSION` | Adam controller version *(build-time only, see note below)* | `0.0.81` |
+| `EVETEST_ADAM_VERSION` | Adam controller version *(build-time only, see note below)* | `0.0.87` |
 | `EVETEST_SDN_VERSION` | SDN emulator image tag | content hash of `sdn/` (`make sdn-version`) |
 
 > **`EVETEST_ADAM_VERSION` requires evetest container rebuild.** Unlike the other
