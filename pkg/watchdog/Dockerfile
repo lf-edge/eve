@@ -6,8 +6,8 @@ ENV BUILD_PKGS build-base file libtirpc-dev linux-headers tar util-linux
 ENV PKGS alpine-baselayout musl-utils libsmartcols
 RUN eve-alpine-deploy.sh
 
-# Version 5.15
-ENV WATCHDOGD_VERSION 5.15
+# Version 5.16
+ENV WATCHDOGD_VERSION 5.16
 ENV WATCHDOGD_SRC_DIR watchdog-${WATCHDOGD_VERSION}
 ENV WATCHDOGD_SRC_TAR ${WATCHDOGD_SRC_DIR}.tar
 ENV WATCHDOGD_SRC_TGZ ${WATCHDOGD_SRC_TAR}.gz
