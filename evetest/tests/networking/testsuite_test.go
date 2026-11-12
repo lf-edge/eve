@@ -373,6 +373,11 @@ func TestApplicationConnectivitySuite(test *testing.T) {
 //     (real cloud datastores).
 //   - TestContainerRegistry -- pulls from Docker Hub (or the configured
 //     pull-through mirror).
+//   - TestNoRedownloadOnURLTokenChange -- a content tree whose URL carries
+//     an access token as a GET parameter must not be downloaded again when
+//     only that token is replaced and the SHA256 stays the same; the
+//     datastore is evetest's image server, which records every request it
+//     receives.
 func TestDatastoreSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -399,6 +404,9 @@ func TestDatastoreSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestContainerRegistry,
+		},
+		evetest.TestCase{
+			Test: TestNoRedownloadOnURLTokenChange,
 		},
 	)
 }
