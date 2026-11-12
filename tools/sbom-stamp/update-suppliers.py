@@ -9,10 +9,10 @@ purl, no supplier and no entry in suppliers.txt, this looks up the owner of
 its source repository on ecosyste.ms, as snyk/parlay does, and adds it as
 Organization or Person. A Go module under github.com gets one entry for its
 owner. Existing entries are kept, so a curated entry overrides the lookup.
-Run it on the SBoM of a fresh build after Cargo.lock or go.mod files change:
+Run it on the SBoMs of all variants, as update-licenses.py describes:
 
-    tar -xOf dist/amd64/current/rootfs-generic.tar sbom.spdx.json > /tmp/sbom.json
-    tools/sbom-stamp/update-suppliers.py /tmp/sbom.json
+    tools/sbom-stamp/fetch-sboms.py /tmp/sboms 0.0.0-master-<commit>
+    tools/sbom-stamp/update-suppliers.py /tmp/sboms/*.spdx.json
 
 It prints the packages it could not resolve; add those by hand.
 """
