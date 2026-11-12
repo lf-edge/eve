@@ -995,21 +995,28 @@ pkg:cargo/zstd-safe	Person: Alexandre Bury
 pkg:cargo/zstd-sys	Person: Alexandre Bury
 pkg:generic/busybox	Organization: BusyBox
 pkg:golang/cel.dev/expr	Organization: Common Expression Language
+pkg:golang/cert-gen	Organization: LF Edge
 pkg:golang/cloud.google.com/go	Organization: Google APIs
 pkg:golang/dario.cat/mergo	Person: Dario Castañé
 pkg:golang/github.com/Azure	Organization: Microsoft Azure
 pkg:golang/github.com/GoogleCloudPlatform	Organization: Google Cloud Platform
+pkg:golang/github.com/MakeNowJust	Person: Hiroya Fujinami
 pkg:golang/github.com/Masterminds	Organization: Masterminds
 pkg:golang/github.com/Microsoft	Organization: Microsoft
+pkg:golang/github.com/NVIDIA	Organization: NVIDIA Corporation
 pkg:golang/github.com/alecthomas	Person: Alec Thomas
+pkg:golang/github.com/alexflint	Person: Kōshin Alex Flint
 pkg:golang/github.com/anatol	Person: Anatol Pomozov
 pkg:golang/github.com/anchore	Organization: Anchore, Inc.
 pkg:golang/github.com/andrewd-zededa	Person: andrewd-zededa
 pkg:golang/github.com/aws	Organization: Amazon Web Services
 pkg:golang/github.com/beevik	Person: Brett Vickers
 pkg:golang/github.com/beorn7	Person: Björn Rabenstein
+pkg:golang/github.com/bgentry	Person: Blake Gentry
+pkg:golang/github.com/blang	Person: Benedikt Lang
 pkg:golang/github.com/cenkalti	Person: Cenk Altı
 pkg:golang/github.com/cespare	Person: Caleb Spare
+pkg:golang/github.com/chai2010	Person: 柴树杉
 pkg:golang/github.com/checkpoint-restore	Organization: checkpoint-restore
 pkg:golang/github.com/cilium	Organization: Cilium
 pkg:golang/github.com/cncf	Organization: Cloud Native Computing Foundation CNCF
@@ -1026,6 +1033,7 @@ pkg:golang/github.com/diskfs	Organization: disks and filesystems
 pkg:golang/github.com/distribution	Organization: Distribution
 pkg:golang/github.com/djherbis	Person: Dustin H
 pkg:golang/github.com/docker	Organization: Docker
+pkg:golang/github.com/dustin	Person: Dustin Sallings
 pkg:golang/github.com/elliotwutingfeng	Person: Wu Tingfeng
 pkg:golang/github.com/ema	Person: Emanuele Rocca
 pkg:golang/github.com/emicklei	Person: Ernest Micklei
@@ -1033,15 +1041,21 @@ pkg:golang/github.com/envoyproxy	Organization: Envoy Proxy - CNCF
 pkg:golang/github.com/eriknordmark	Person: Erik Nordmark
 pkg:golang/github.com/eshard	Organization: eShard
 pkg:golang/github.com/euank	Person: Euan Kemp
+pkg:golang/github.com/exponent-io	Organization: Exponent Labs
 pkg:golang/github.com/facebook	Organization: Meta
 pkg:golang/github.com/felixge	Person: Felix Geisendörfer
+pkg:golang/github.com/form3tech-oss	Organization: form3 opensource
 pkg:golang/github.com/fsnotify	Organization: fsnotify
 pkg:golang/github.com/fxamacker	Person: Faye Amacker
 pkg:golang/github.com/gabriel-vasile	Person: Gabriel Vasile
 pkg:golang/github.com/getlantern	Organization: Lantern
 pkg:golang/github.com/go-chi	Organization: go-chi
+pkg:golang/github.com/go-errors	Organization: go-errors
 pkg:golang/github.com/go-jose	Organization: go-jose
+pkg:golang/github.com/go-kit	Organization: Go kit
+pkg:golang/github.com/go-logfmt	Organization: go-logfmt
 pkg:golang/github.com/go-logr	Organization: go-logr
+pkg:golang/github.com/go-openapi	Organization: OpenAPI Initiative golang toolkit
 pkg:golang/github.com/go-playground	Organization: Go Playgound
 pkg:golang/github.com/godbus	Organization: godbus
 pkg:golang/github.com/gogo	Organization: gogoprotobuf
@@ -1052,42 +1066,59 @@ pkg:golang/github.com/google	Organization: Google
 pkg:golang/github.com/googleapis	Organization: Google APIs
 pkg:golang/github.com/gorilla	Organization: Gorilla web toolkit
 pkg:golang/github.com/grandcat	Person: Stefan S
+pkg:golang/github.com/gregjones	Person: Greg Jones
 pkg:golang/github.com/grpc-ecosystem	Organization: gRPC Ecosystem
 pkg:golang/github.com/hashicorp	Organization: HashiCorp
 pkg:golang/github.com/hodgesds	Person: Daniel Hodges
+pkg:golang/github.com/insomniacslk	Person: insomniac
 pkg:golang/github.com/intel	Organization: Intel Corporation
 pkg:golang/github.com/jackwakefield	Person: Jack Wakefield
 pkg:golang/github.com/jaypipes	Person: Jay Pipes
+pkg:golang/github.com/jinzhu	Person: Jinzhu
+pkg:golang/github.com/jonboulle	Person: Nell Boulle
 pkg:golang/github.com/josharian	Person: Josh Bleecher Snyder
 pkg:golang/github.com/jpillora	Person: Jaime Pillora
 pkg:golang/github.com/jsimonetti	Person: Jeroen Simonetti
 pkg:golang/github.com/json-iterator	Organization: Jsoniter
+pkg:golang/github.com/k8snetworkplumbingwg	Organization: k8snetworkplumbingwg
 pkg:golang/github.com/klauspost	Person: Klaus Post
 pkg:golang/github.com/knqyf263	Person: Teppei Fukuda
 pkg:golang/github.com/kr	Person: kr
+pkg:golang/github.com/kubernetes-csi	Organization: Kubernetes CSI
 pkg:golang/github.com/leodido	Person: Leo Di Donato
+pkg:golang/github.com/liggitt	Person: Jordan Liggitt
 pkg:golang/github.com/linuxkit	Organization: LinuxKit
 pkg:golang/github.com/lithammer	Person: Peter Lithammer
+pkg:golang/github.com/longhorn	Organization: Longhorn.io
+pkg:golang/github.com/mailru	Organization: Free and open source software developed at VK
 pkg:golang/github.com/mattn	Person: mattn
+pkg:golang/github.com/matttproud	Person: Matt T. Proud
 pkg:golang/github.com/mdlayher	Person: Matt Layher
 pkg:golang/github.com/miekg	Person: Miek Gieben
 pkg:golang/github.com/mistifyio	Organization: Mistify
 pkg:golang/github.com/mitchellh	Person: Mitchell Hashimoto
 pkg:golang/github.com/moby	Organization: Moby
 pkg:golang/github.com/modern-go	Organization: Modern Go Programming
+pkg:golang/github.com/monochromegane	Person: monochromegane
 pkg:golang/github.com/mrunalp	Person: Mrunal Patel
 pkg:golang/github.com/multiplay	Organization: Multiplay
 pkg:golang/github.com/munnerz	Person: James Munnelly
 pkg:golang/github.com/mwitkow	Person: Michal Witkowski
 pkg:golang/github.com/mxk	Person: Maxim Khitrov
+pkg:golang/github.com/networkplumbing	Organization: networkplumbing
+pkg:golang/github.com/olekukonko	Person: Oleku Konko
 pkg:golang/github.com/opencontainers	Organization: Open Container Initiative
+pkg:golang/github.com/openshift	Organization: OpenShift
 pkg:golang/github.com/oxtoacart	Person: Percy Wegmann
 pkg:golang/github.com/packetcap	Organization: packetcap
 pkg:golang/github.com/pelletier	Person: Thomas Pelletier
+pkg:golang/github.com/peterbourgon	Person: Peter Bourgon
 pkg:golang/github.com/pierrec	Person: Pierre Curto
 pkg:golang/github.com/pkg	Organization: pkg
+pkg:golang/github.com/pmezard	Person: Patrick Mézard
 pkg:golang/github.com/prometheus	Organization: Prometheus
 pkg:golang/github.com/prometheus-community	Organization: Prometheus Monitoring Community
+pkg:golang/github.com/prometheus-operator	Organization: prometheus-operator
 pkg:golang/github.com/rivo	Person: rivo
 pkg:golang/github.com/robertkrimen	Person: Robert Krimen
 pkg:golang/github.com/russross	Person: Russ Ross
@@ -1099,6 +1130,7 @@ pkg:golang/github.com/shirou	Person: shirou
 pkg:golang/github.com/shurcooL	Organization: shurcooL
 pkg:golang/github.com/sirupsen	Person: Simon Eskildsen
 pkg:golang/github.com/smallstep	Organization: Smallstep
+pkg:golang/github.com/spf13	Person: Steve Francia
 pkg:golang/github.com/spiffe	Organization: SPIFFE
 pkg:golang/github.com/stefanberger	Person: Stefan Berger
 pkg:golang/github.com/syndtr	Person: Suryandaru Triandana
@@ -1107,6 +1139,7 @@ pkg:golang/github.com/tchap	Person: Ondřej Kupka
 pkg:golang/github.com/tetratelabs	Organization: wazero
 pkg:golang/github.com/ti-mo	Person: Timo Beckers
 pkg:golang/github.com/tklauser	Person: Tobias Klauser
+pkg:golang/github.com/u-root	Organization: u-root
 pkg:golang/github.com/ulikunitz	Person: Ulrich Kunitz
 pkg:golang/github.com/urfave	Organization: urfave
 pkg:golang/github.com/vbatts	Person: Vincent Batts
@@ -1114,25 +1147,46 @@ pkg:golang/github.com/vishvananda	Person: Vish Ishaya Abrams
 pkg:golang/github.com/x448	Person: Montgomery Edwards⁴⁴⁸
 pkg:golang/github.com/xeipuuv	Person: xeipuuv
 pkg:golang/github.com/xhit	Person: Santiago De la Cruz
+pkg:golang/github.com/xiang90	Person: Xiang Li
+pkg:golang/github.com/xlab	Person: Max Kupriianov
 pkg:golang/github.com/xrash	Person: xrash
 pkg:golang/github.com/zededa	Organization: ZEDEDA Inc.
 pkg:golang/go.etcd.io/bbolt	Organization: etcd-io
+pkg:golang/go.etcd.io/etcd/api/v3	Organization: etcd-io
+pkg:golang/go.etcd.io/etcd/client/pkg/v3	Organization: etcd-io
+pkg:golang/go.etcd.io/etcd/client/v2	Organization: etcd-io
+pkg:golang/go.etcd.io/etcd/client/v3	Organization: etcd-io
+pkg:golang/go.etcd.io/etcd/etcdctl/v3	Organization: etcd-io
+pkg:golang/go.etcd.io/etcd/etcdutl/v3	Organization: etcd-io
+pkg:golang/go.etcd.io/etcd/pkg/v3	Organization: etcd-io
+pkg:golang/go.etcd.io/etcd/raft/v3	Organization: etcd-io
+pkg:golang/go.etcd.io/etcd/server/v3	Organization: etcd-io
 pkg:golang/go.opentelemetry.io	Organization: OpenTelemetry
 pkg:golang/go.uber.org/atomic	Organization: Uber Go
+pkg:golang/go.uber.org/mock	Organization: Uber Go
 pkg:golang/go.uber.org/multierr	Organization: Uber Go
+pkg:golang/go.uber.org/zap	Organization: Uber Go
 pkg:golang/go.yaml.in	Organization: The YAML Project
 pkg:golang/golang.org/x	Organization: The Go Authors
 pkg:golang/google.golang.org/api	Organization: Google APIs
 pkg:golang/google.golang.org/genproto	Organization: Google APIs
 pkg:golang/google.golang.org/grpc	Organization: grpc
 pkg:golang/google.golang.org/protobuf	Organization: Protocol Buffers
+pkg:golang/gopkg.in/cheggaaa/pb.v1	Person: Sergey Cherepanov
+pkg:golang/gopkg.in/evanphx/json-patch.v4	Person: Evan Phoenix
 pkg:golang/gopkg.in/inf.v0	Organization: go-inf
+pkg:golang/gopkg.in/natefinch/lumberjack.v2	Person: Nate Finch
 pkg:golang/gopkg.in/sourcemap.v1	Organization: go-sourcemap
 pkg:golang/gopkg.in/yaml.v2	Organization: go-yaml
 pkg:golang/gopkg.in/yaml.v3	Organization: go-yaml
 pkg:golang/k8s.io	Organization: Kubernetes
+pkg:golang/kubevirt.io/api	Organization: KubeVirt
+pkg:golang/kubevirt.io/client-go	Organization: KubeVirt
+pkg:golang/kubevirt.io/containerized-data-importer-api	Organization: KubeVirt
+pkg:golang/kubevirt.io/controller-lifecycle-operator-sdk/api	Organization: KubeVirt
 pkg:golang/oras.land/oras-go/v2	Organization: OCI Registry As Storage ORAS
 pkg:golang/recovertpm	Organization: LF Edge
 pkg:golang/sigs.k8s.io	Organization: Kubernetes
 pkg:golang/stdlib	Organization: The Go Authors
 pkg:golang/tags.cncf.io/container-device-interface	Organization: cncf-tags
+pkg:golang/upgrades	Organization: LF Edge
