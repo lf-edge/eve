@@ -39,7 +39,7 @@ func (th *TestHarness) buildNetbootArtifacts(dev *deviceState) {
 	defer cancel()
 	logger := th.log.WithField("component", "netboot")
 
-	if err := utils.PullDockerImage(ctx, logger, dev.imageName); err != nil {
+	if err := th.pullEVEImage(ctx, logger, dev.imageRef); err != nil {
 		th.t.Fatalf("Failed to pull EVE image %s for netboot artifacts: %v",
 			dev.imageName, err)
 	}
