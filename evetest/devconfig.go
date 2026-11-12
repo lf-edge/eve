@@ -1332,6 +1332,10 @@ type HTTPStorage struct {
 	ServerPort             uint16 // if not defined, we assume port 80 (HTTP) / 443 (HTTPS)
 	UseHTTPS               bool   // true = HTTPS, false = HTTP
 	HTTPSTrustedCACertsPEM []string
+	// OmitPort leaves the port out of the datastore FQDN (the scheme's default
+	// port is then used). Required for a local datastore: EVE recognizes it by
+	// the FQDN ending with ".local", which a ":port" suffix would hide.
+	OmitPort bool
 }
 
 // toProto converts an HTTPStorage into EVE protobuf ContentTree + DatastoreConfig.
@@ -1357,6 +1361,9 @@ func (storage HTTPStorage) toProto(th *TestHarness, log *logrus.Entry, devName s
 		}
 		dsConfig.Fqdn = "https://" + net.JoinHostPort(
 			storage.ServerAddress, port)
+		if storage.OmitPort {
+			dsConfig.Fqdn = "https://" + storage.ServerAddress
+		}
 		for _, cert := range storage.HTTPSTrustedCACertsPEM {
 			dsConfig.DsCertPEM = append(dsConfig.DsCertPEM, []byte(cert))
 		}
@@ -1367,6 +1374,9 @@ func (storage HTTPStorage) toProto(th *TestHarness, log *logrus.Entry, devName s
 			port = strconv.Itoa(int(storage.ServerPort))
 		}
 		dsConfig.Fqdn = "http://" + net.JoinHostPort(storage.ServerAddress, port)
+		if storage.OmitPort {
+			dsConfig.Fqdn = "http://" + storage.ServerAddress
+		}
 		dsConfig.DType = eveconfig.DsType_DsHttp
 	}
 	return contentTree, dsConfig
