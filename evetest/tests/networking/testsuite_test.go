@@ -491,6 +491,9 @@ func TestAppNICsSuite(test *testing.T) {
 //     (real cloud datastores).
 //   - TestContainerRegistry -- pulls from Docker Hub (or the configured
 //     pull-through mirror).
+//   - TestLocalDatastore -- a datastore found through mDNS on the bridge of
+//     a network instance (host name ending with ".local"), served by an
+//     app running on the device itself.
 //   - TestDownloadBurstWithDeadMgmtPorts -- a burst of concurrent downloads
 //     on a device whose management ports mostly cannot reach the datastore
 //     must all complete although the downloader's transport, configured with
@@ -523,6 +526,9 @@ func TestDatastoreSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestContainerRegistry,
+		},
+		evetest.TestCase{
+			Test: TestLocalDatastore,
 		},
 		evetest.TestCase{
 			Test: TestDownloadBurstWithDeadMgmtPorts,
