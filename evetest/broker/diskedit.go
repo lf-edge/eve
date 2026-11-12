@@ -90,10 +90,10 @@ func relocateBackupGPT(ctx context.Context, log *logrus.Entry, diskPath string) 
 // back.
 //
 // sgdisk cannot operate on a QCOW2, so the image is round-tripped through a raw
-// copy, as eden does for the same job. That flattens a backing-file overlay
-// into a standalone image, which costs space but nothing else: the device boots
-// from this path either way. The disk is written back only if edit succeeded,
-// so a failed edit leaves the original alone rather than half-rewritten.
+// copy. That flattens a backing-file overlay into a standalone image, which
+// costs space but nothing else: the device boots from this path either way. The
+// disk is written back only if edit succeeded, so a failed edit leaves the
+// original alone rather than half-rewritten.
 func editGPT(ctx context.Context, diskPath string, edit func(raw string) error) error {
 	raw := diskPath + ".gptedit.raw"
 	defer func() { _ = os.Remove(raw) }()

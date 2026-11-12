@@ -154,9 +154,9 @@ via **HTTP GET**.
 ## Implementation Notes
 
 - There is currently **no open-source production-ready implementation** of the LPS.
-- A **primitive console/file-based LPS** is available inside the
-  [eden](https://github.com/lf-edge/eden/blob/master/tests/eclient/image/pkg/main.go) test
-  framework, used for validation and development.
+- A **test LPS** with a management REST API and a web UI is available in the
+  [evetest](../evetest/testapps/lps/README.md) test framework, used for validation and
+  development.
 
 ## Summary: LPS vs LOC
 

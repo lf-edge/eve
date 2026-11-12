@@ -68,7 +68,7 @@ CONFIGDIR=/config
 CONFIGDIR_PERSIST=/tmp/config_ro
 
 # log writes a timestamped line to both stdout (-> memlogd) and the serial
-# console (-> eden's default-eve.log). An onboot container's stdout alone does
+# console (-> the device console log). An onboot container's stdout alone does
 # NOT reach the serial console, so bare echo from here is invisible there; the
 # storage-resizer invocations in storage-resize.sh additionally redirect their
 # own stdout/stderr to /dev/console (matching pkg/installer's ">/dev/console 2>&1"

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-EVE (Edge Virtualization Engine) is an open, agnostic OS for edge devices, supporting ARM64, AMD64 and riscv64 (experimental) architectures and requiring hardware-assisted virtualization. It runs OCI containers and VMs on the edge through the KVM hypervisor. A KVM based hypervisor variant called eve-k is used for kubernetes support. Almost everything ships as linuxkit packages composed into a bootable rootfs; the actual edge-device control plane is the Go monolith under `pkg/pillar`. EVE is normally driven by an external remote controller (e.g. Adam, run via [Eden](https://github.com/lf-edge/eden) test framework). The most notable commercial controller is provided by Zededa Inc.
+EVE (Edge Virtualization Engine) is an open, agnostic OS for edge devices, supporting ARM64, AMD64 and riscv64 (experimental) architectures and requiring hardware-assisted virtualization. It runs OCI containers and VMs on the edge through the KVM hypervisor. A KVM based hypervisor variant called eve-k is used for kubernetes support. Almost everything ships as linuxkit packages composed into a bootable rootfs; the actual edge-device control plane is the Go monolith under `pkg/pillar`. EVE is normally driven by an external remote controller (e.g. Adam, run via the evetest framework under `evetest/`). The most notable commercial controller is provided by Zededa Inc.
 
 The top-level `Makefile` is the entry point for almost everything. It composes Docker/linuxkit-based builds — you rarely build anything natively on the host. Three knobs drive nearly every target:
 
@@ -38,9 +38,9 @@ make pkgs                           # pre-build all EVE linuxkit packages
 make pkg/<name>                     # build a single linuxkit package (e.g. make pkg/pillar)
 make run                            # alias for run-live: boot the built image in qemu
 make run QEMU_MEMORY=2048 TPM=y PFLASH=true
-make eden                           # full Eden E2E test cycle (clone, build, configure, onboard, test)
+make evetest NAME=<test>            # run an evetest integration test or suite (see evetest/README.md)
 make shell                          # drop into the dockerized Go build env
-make pkgs rootfs                    # Used to produce only the rootfs image that can be used to upgrade device from the remote controller or through Eden
+make pkgs rootfs                    # Used to produce only the rootfs image that can be used to upgrade device from the remote controller or through evetest
 make eve                            # Build and export eve image to docker. This image can be used to generate live/installer images
 ```
 
@@ -65,9 +65,9 @@ make -C pkg/pillar fmt-check                 # gofmt -l (CI-style check)
 make -C pkg/pillar vet                       # go vet with build tags
 make pillar-<target>                         # run any pillar Makefile target via DOCKER_GO wrapper (e.g. make pillar-fmt)
 go test -C pkg/newlog/cmd/ -v -race          # single subpackage natively (requires local Go toolchain)
-make eden TEST_SMOKE=1                       # Eden smoke tests (also TEST_NET, TEST_LOC, TEST_UPGRADE, TEST_UAPP, TEST_VIRT, TEST_STORAGE, TEST_ALL)
-make eden EDEN_CLEANUP=1                     # nuke Eden config/certs and start over
-make eden-cover                              # build COVER=y and collect E2E binary coverage
+make evetest-list-tests                     # list evetest tests and suites
+EVETEST_COLLECT_COVERAGE=true EVETEST_COLLECT_ARTIFACTS=<dir> make evetest   # collect binary coverage of a COVER=y EVE
+make coverage-merge                          # merge unit-test and extra binary coverage (see docs/CODE-COVERAGE.md)
 ```
 
 Running a single Go test (against the dockerized environment) goes through `make -C pkg/pillar test`, which currently runs `go test -tags k ... ./...`. For a tight iteration loop, drop into `make shell` and run `go test` by hand inside the builder image with `BUILD=local`.
@@ -168,7 +168,7 @@ Pillar vendors deps (`go mod vendor`). **Do not** use `replace` directives point
 - `tools/` — shell/Python helper scripts referenced by Makefile targets.
 - `conf/` — default config partition contents.
 - `docs/` — design and operational docs. Start with `docs/BUILD.md`, `docs/MICROSERVICE-CLASSIFICATION.md`, `docs/HYPERVISORS.md`, `docs/NETWORKING.md`, `docs/DEBUGGING.md`, `docs/EVE-K.md`, `docs/LPS.md`, plus per-agent docs under `pkg/pillar/docs/`. Also useful: `docs/CONFIG-PROPERTIES.md` (all config knobs), `docs/MEMORY-SETTINGS.md`, `docs/INTERNAL-MEMORY-MONITOR.md`, `docs/FAULT-INJECTION.md`, `docs/QEMU-CRASH-DEBUGGING.md`.
-- `tests/` — coverage, Eden harness pointers, tpm tests, semgrep rules.
+- `tests/` — coverage, tpm tests, semgrep rules.
 - `eve-tools/` — auxiliary CLI tools (e.g. `bpftrace-compiler`).
 - `kernel-commits.mk` / `kernel-version.mk` — kernel branch/commit pins per arch; coordinate kernel changes across all active `eve-kernel-*` branches (see `CONTRIBUTING.md` "Kernel development" and `tools/update_kernel_commits.py`).
 
