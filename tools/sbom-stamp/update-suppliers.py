@@ -15,6 +15,11 @@ Run it on the SBoMs of all variants, as update-licenses.py describes:
     tools/sbom-stamp/update-suppliers.py /tmp/sboms/*.spdx.json
 
 It prints the packages it could not resolve; add those by hand.
+
+With --check first, it looks nothing up and changes nothing: it prints the
+packages without a supplier that suppliers.txt does not cover and exits 1 if
+there are any. The PR build runs it on the SBoM of every variant it builds;
+fixing what it reports is in docs/SBOM-AND-SOURCES.md.
 """
 
 # pylint: disable=invalid-name
@@ -124,11 +129,19 @@ def supplier(rec):
     return ("Organization: " if rec["kind"] == "organization" else "Person: ") + name
 
 
-def main(paths):
-    """Add entries for the packages in the SPDX documents at paths."""
+def main(args):
+    """Add entries for the packages in the SPDX documents in args, or with
+    --check report the ones missing."""
+    check = args[:1] == ["--check"]
+    paths = args[1:] if check else args
     if not paths:
         sys.exit(__doc__)
     header, entries = read_map()
+    if check:
+        missing = wanted(paths, entries)
+        for purl in missing:
+            print(purl)
+        sys.exit(1 if missing else 0)
     unresolved = []
     for count, purl in enumerate(wanted(paths, entries), 1):
         if lookup(entries, purl):
