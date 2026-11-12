@@ -4,14 +4,19 @@
 package networking_test
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -221,6 +226,99 @@ func logDownloaderView(device *evetest.EdgeDevice, namesBySHA map[string]string,
 			"retries=%d error=%q", name, status.State, status.Progress,
 			status.CurrentSize, status.TotalSize, status.RetryCount, status.Error)
 	}
+}
+
+// recordingDatastore is an HTTP datastore run by the test itself, which
+// records every request it receives, so that a test can tell how often, and
+// with which URL, a device has asked for a file; evetest's built-in image
+// server keeps no such record. It listens on a port of its own on the image
+// server's address, which a device reaches the same way as the image server,
+// and serves its files from memory, whatever query string a request carries.
+type recordingDatastore struct {
+	listener net.Listener
+	server   *http.Server
+	logf     func(format string, args ...interface{})
+
+	mu    sync.Mutex
+	files map[string][]byte
+	// requests holds, per file name, the requests received for that file,
+	// oldest first, each as "<method> <request URI>".
+	requests map[string][]string
+}
+
+// startRecordingDatastore starts a recordingDatastore on a free port of the
+// image server's address. Call stop when done.
+func startRecordingDatastore(t *WithT) *recordingDatastore {
+	listener, err := net.Listen("tcp4",
+		net.JoinHostPort(evetest.GetImageServerIPv4().String(), "0"))
+	t.Expect(err).ToNot(HaveOccurred(), "failed to start the recording datastore")
+	datastore := &recordingDatastore{
+		listener: listener,
+		logf:     evetest.Logger().Infof,
+		files:    make(map[string][]byte),
+		requests: make(map[string][]string),
+	}
+	datastore.server = &http.Server{
+		Handler:           datastore,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	go func() {
+		_ = datastore.server.Serve(listener)
+	}()
+	datastore.logf("Recording datastore listening on http://%s/", listener.Addr())
+	return datastore
+}
+
+// stop shuts the datastore down, dropping any connection still open.
+func (datastore *recordingDatastore) stop() {
+	_ = datastore.server.Close()
+}
+
+// port returns the TCP port the datastore listens on.
+func (datastore *recordingDatastore) port() uint16 {
+	return uint16(datastore.listener.Addr().(*net.TCPAddr).Port)
+}
+
+// addRandomFile makes the datastore serve a file of sizeBytes random bytes
+// under the given name, and returns the hex-encoded SHA256 of its content
+// (for ImageSHA256). See evetest.CreateRandomImageFile for why the content is
+// random.
+func (datastore *recordingDatastore) addRandomFile(t *WithT, name string,
+	sizeBytes uint64) (sha256Hex string) {
+	content := make([]byte, sizeBytes)
+	_, err := rand.Read(content)
+	t.Expect(err).ToNot(HaveOccurred(), "failed to generate random content for %s", name)
+	sum := sha256.Sum256(content)
+	datastore.mu.Lock()
+	datastore.files[name] = content
+	datastore.mu.Unlock()
+	return hex.EncodeToString(sum[:])
+}
+
+// requestsFor returns the requests received so far for the file with the
+// given name, oldest first, each as "<method> <request URI>", e.g.
+// "GET /image.bin?sig=token".
+func (datastore *recordingDatastore) requestsFor(name string) []string {
+	datastore.mu.Lock()
+	defer datastore.mu.Unlock()
+	return append([]string(nil), datastore.requests[name]...)
+}
+
+// ServeHTTP records the request and serves the requested file.
+func (datastore *recordingDatastore) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimPrefix(r.URL.Path, "/")
+	request := r.Method + " " + r.URL.RequestURI()
+	datastore.mu.Lock()
+	datastore.requests[name] = append(datastore.requests[name], request)
+	content, found := datastore.files[name]
+	datastore.mu.Unlock()
+	datastore.logf("Recording datastore received %q from %s", request, r.RemoteAddr)
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(content))
 }
 
 // appHasIP returns true if the application reports the given IP address on any
