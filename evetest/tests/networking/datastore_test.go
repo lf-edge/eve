@@ -86,6 +86,7 @@ import (
 	"github.com/lf-edge/eve/evetest"
 	"github.com/lf-edge/eve/evetest/matchers"
 	"github.com/lf-edge/eve/evetest/netmodels"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
 // TestHTTPDatastore verifies that EVE can download and verify a standalone
@@ -528,6 +529,202 @@ func TestSFTPDatastore(test *testing.T) {
 			Username:          evetest.DefaultSFTPUsername,
 			Password:          evetest.DefaultSFTPPassword,
 		}, contentSize, "file does not exist")
+}
+
+const localDSImageSizeMiBParamKey = "LOCAL_DS_IMAGE_SIZE_MIB"
+
+var localDSImageSizeMiBParam = evetest.TestParameterDefinition{
+	Key:          localDSImageSizeMiBParamKey,
+	DefaultValue: 4,
+	Description: evetest.TestParameterDescription{
+		Summary: "Size in MiB of the image downloaded from the local datastore",
+		Default: "4",
+	},
+}
+
+// TestLocalDatastore verifies that EVE can download a standalone volume from
+// a "local datastore": a datastore whose FQDN ends with ".local" and is
+// therefore not resolved through DNS but discovered with mDNS (zeroconf) on
+// the bridges of EVE's network instances. See the "Local DataStore with
+// ZeroConfig" page of the EVE wiki.
+//
+// The datastore is an application running on the device itself, in a Local
+// network instance (lfedge/evetest-local-ds): it advertises
+// "evetest-local-ds.local" over mDNS and serves files over HTTP. EVE finds
+// it through the NI bridge and downloads from it with the bridge IP as the
+// source address.
+//
+// Phases
+// ------
+//  1. Set up a device with a single DHCP mgmt+app port and a Local network
+//     instance on it.
+//  2. Deploy the local-ds app with an allow-all ACL, and wait until
+//     it is running and reachable over SSH (via a port-forwarding rule).
+//  3. Create a random file inside the app, in the directory served over
+//     HTTP, and read its SHA256 back.
+//  4. Declare a standalone volume (AddVolume) from HTTPStorage pointing at
+//     "evetest-local-ds.local" (OmitPort: the downloader recognizes a local
+//     datastore by the host ending with ".local") with that SHA256, and wait
+//     for it to reach ZSwState_CREATED_VOLUME. This proves the host name was
+//     resolved over mDNS and that the content was downloaded intact.
+//  5. Delete the volume and wait for it to be reported as ZSwState_INVALID.
+//  6. Negative-path variant, via expectDownloadError: a ".local" host
+//     that nobody advertises. VolumeErr contains "mDNS host not found".
+//
+// Test params
+// -----------
+//   - HYPERVISOR (defaults to KVM).
+//   - LOCAL_DS_IMAGE_SIZE_MIB (defaults to 4): size of the random image the
+//     volume is downloaded from the local datastore, settable with
+//     EVETEST_LOCAL_DS_IMAGE_SIZE_MIB.
+func TestLocalDatastore(test *testing.T) {
+	evetestT := evetest.Init(test)
+	t := NewGomegaWithT(evetestT)
+	defer evetest.Close()
+
+	evetest.DefineTestParameters(
+		evetest.HypervisorParameter(),
+		localDSImageSizeMiBParam,
+	)
+	hypervisor := evetest.GetHypervisorParameterValue()
+	imageSizeMiB := evetest.GetTestParameter[int](localDSImageSizeMiBParamKey)
+	if imageSizeMiB <= 0 {
+		test.Fatalf("%s must be positive, got %d",
+			localDSImageSizeMiBParamKey, imageSizeMiB)
+	}
+	contentSize := uint64(imageSizeMiB) * evetest.MiB
+
+	devName := "edge-dev"
+	evetest.Setup(
+		evetest.RequireEdgeDevice{
+			Name:              devName,
+			WithHypervisor:    hypervisor,
+			DeviceReusePolicy: evetest.ResetDeviceConfig,
+		},
+		evetest.RequireNetworkModel{
+			NetworkModel: netmodels.SingleEthWithDHCP,
+		},
+	)
+	device := evetest.GetEdgeDevice(devName)
+	evetest.Checkpoint("setup-done")
+
+	devConfig := evetest.NewEdgeDeviceConfig(devName)
+	dhcpNet := devConfig.AddNetwork(evetest.DHCPNetworkConfig{
+		NetworkType: evecommon.NetworkType_V4Only,
+	})
+	devConfig.AddNetworkAdapter(evetest.NetworkAdapterConfig{
+		LogicalLabel:  "ethernet0",
+		PhysicalLabel: "eth0",
+		InterfaceName: "eth0",
+		NetworkUUID:   dhcpNet,
+		Usage:         evecommon.PhyIoMemberUsage_PhyIoUsageMgmtAndApps,
+	})
+	device.ApplyConfig(devConfig, true, true)
+	if hypervisor == evetest.HypervisorKubevirt {
+		device.WaitForClusterNodeIsReady(20 * time.Minute)
+	}
+	evetest.Checkpoint("mgmt-network-ready")
+	log := evetest.Logger()
+
+	niUUID := devConfig.AddNetworkInstance(evetest.LocalNetworkInstanceConfig{
+		DisplayName: "local-ni",
+		Port:        "ethernet0",
+		Subnet:      evetest.IPSubnet("10.11.12.0/24"),
+		DHCPRange: types.IPRange{
+			Start: evetest.IPAddress("10.11.12.2"),
+			End:   evetest.IPAddress("10.11.12.254"),
+		},
+		Gateway: evetest.IPAddress("10.11.12.1"),
+		MTU:     1500,
+	})
+	appUUID := devConfig.AddApplication(evetest.ApplicationInstanceConfig{
+		DisplayName: "local-datastore-app",
+		Activate:    true,
+		Image: evetest.DockerContainer{
+			ImageName: "lfedge/evetest-local-ds",
+			Tag:       "1.0",
+		},
+		VirtualizationMode: eveconfig.VmMode_HVM,
+		CPUs:               1,
+		MemoryBytes:        512 * evetest.MiB,
+		NetworkAdapters: []evetest.AppNetworkAdapter{
+			evetest.VirtualNetworkAdapter{
+				LogicalLabel:        "vif0",
+				NetworkInstanceUUID: niUUID,
+				PortFwdRules: []evetest.PortFwdRule{
+					{Protocol: evetest.NetworkProtocolTCP, EdgeNodePort: 2222, AppPort: 22},
+				},
+				ACLAllowRules: []evetest.ACLAllowRule{
+					{
+						Protocol:     evetest.NetworkProtocolAny,
+						RemoteSubnet: evetest.IPSubnet("0.0.0.0/0"),
+					},
+				},
+			},
+		},
+	})
+	device.ApplyConfig(devConfig, false, false)
+	device.WaitUntilAppIsRunning(appUUID, 10*time.Minute)
+	evetest.Checkpoint("datastore-app-running")
+
+	appAuth := evetest.UsernamePasswordAuth{
+		Username: "root",
+		Password: "testpassword",
+	}
+	const (
+		imgFile    = "local-datastore-test.bin"
+		dsHostname = "evetest-local-ds.local"
+	)
+	var sha256Hex string
+	t.Eventually(func(g Gomega) {
+		stdout, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+			fmt.Sprintf("set -e; head -c %d /dev/urandom > /srv/www/%s; "+
+				"sha256sum /srv/www/%s | cut -d' ' -f1", contentSize, imgFile, imgFile),
+			30*time.Second+time.Duration(imageSizeMiB)*time.Second, 0)
+		g.Expect(err).ToNot(HaveOccurred())
+		sha256Hex = strings.TrimSpace(stdout)
+		g.Expect(sha256Hex).To(HaveLen(64))
+	}, 5*time.Minute, 5*time.Second).Should(Succeed())
+	evetest.Checkpoint("datastore-content-ready")
+
+	volUUID := devConfig.AddVolume("local-datastore-test", evetest.HTTPStorage{
+		ImageFormat:       eveconfig.Format_RAW,
+		ImageRelativePath: imgFile,
+		ImageSHA256:       sha256Hex,
+		ServerAddress:     dsHostname,
+		OmitPort:          true,
+	}, contentSize)
+
+	volUpdates, stopVolWatch := device.WatchVolumeInfo(volUUID)
+	defer stopVolWatch()
+	device.ApplyConfig(devConfig, false, false)
+	evetest.Checkpoint("local-volume-config-applied")
+
+	t.Eventually(volUpdates, 10*time.Minute).Should(Receive(matchers.SatisfyPredicate(
+		"volume is delivered from the local datastore and passes SHA256 verification",
+		func(info *eveinfo.ZInfoVolume) bool {
+			return info.State == eveinfo.ZSwState_CREATED_VOLUME
+		}).StopIf(volumeHasError)))
+	evetest.Checkpoint("local-volume-delivered")
+
+	devConfig.DeleteVolume(volUUID)
+	device.ApplyConfig(devConfig, false, false)
+	t.Eventually(volUpdates, 5*time.Minute).Should(Receive(matchers.SatisfyPredicate(
+		"volume is gone",
+		func(info *eveinfo.ZInfoVolume) bool {
+			return info.State == eveinfo.ZSwState_INVALID
+		})))
+
+	// Variant: a .local host that no one advertises must not be found.
+	log.Infof("Verifying an unadvertised local datastore is reported as not found")
+	expectDownloadError(t, device, devConfig,
+		"local-datastore-unknown-host", evetest.HTTPStorage{
+			ImageFormat:       eveconfig.Format_RAW,
+			ImageRelativePath: imgFile,
+			ImageSHA256:       sha256Hex,
+			ServerAddress:     "no-such-datastore.local",
+			OmitPort:          true,
+		}, contentSize, "mDNS host not found")
 }
 
 // TestAzureDatastore validates Azure Blob storage as a datastore. Like AWS, it
