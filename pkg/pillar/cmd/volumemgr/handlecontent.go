@@ -52,10 +52,14 @@ func handleContentTreeModify(ctxArg interface{}, key string,
 	// path as a content change to actually (re)enter the download pipeline.
 	becomingLocal := config.IsLocal && !oldConfig.IsLocal
 
+	// Loaded content with a declared hash is identified by that hash: a new
+	// URL for it, e.g. with a replaced access token, is not new content.
+	loadedByHash := status.State == types.LOADED && config.ContentSha256 != ""
+
 	// if the change is significant, i.e. the content has changed, then
 	// delete the whole content tree (incl blobs) and create a new one
 	// otherwise, just update the status and proceed normally
-	if config.RelativeURL != oldConfig.RelativeURL ||
+	if (config.RelativeURL != oldConfig.RelativeURL && !loadedByHash) ||
 		config.Format != oldConfig.Format ||
 		config.ContentSha256 != oldConfig.ContentSha256 ||
 		becomingLocal {
