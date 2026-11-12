@@ -68,3 +68,21 @@ func appHasError(info *eveinfo.ZInfoApp) (string, bool) {
 	}
 	return "", false
 }
+
+// contentTreeHasError reports whether the latest report of the content tree
+// carries an error, i.e. whether its download has failed and parked.
+func contentTreeHasError(info *eveinfo.ZInfoContentTree) bool {
+	return info.GetErr().GetDescription() != ""
+}
+
+// contentTreeIsLoaded reports whether all blobs of the content tree have been
+// downloaded, verified and loaded into the content-addressable store. EVE
+// reports its internal LOADED state as DELIVERED in the API (see
+// SwState.ZSwState in pillar), so both are accepted.
+func contentTreeIsLoaded(info *eveinfo.ZInfoContentTree) bool {
+	if info == nil {
+		return false
+	}
+	return info.GetState() == eveinfo.ZSwState_DELIVERED ||
+		info.GetState() == eveinfo.ZSwState_LOADED
+}
