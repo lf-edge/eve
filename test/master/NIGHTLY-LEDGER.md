@@ -2,6 +2,208 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-12 -- 0.0.0-master-d5a49ec7 (run #15)](https://github.com/lf-edge/eve/actions/runs/43107945149)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/15/)
+
+### TestLimitsSuite: failure analysis
+
+#### TestManyAppInterfaces
+
+##### Failure
+
+```
+Device "edge-dev" failed to confirm the latest config (version 1): timed out waiting for LastProcessedConfig >= 2026-11-12 01:06:25.865682648 +0000 UTC
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence shows `edge-dev` (now onboarded as UUID `d0735655-c6a6-4b43-aeab-0978f2a27bf7`, replacing the previous session's `7c27ea45-...`) actually processed config version 1 correctly and essentially on time: the device's own metrics payload (`adam-db/device/.../metrics/01794445711765213406`) reports `lastProcessedConfig":"2026-11-12T01:06:25.865682648Z"` — the *exact* timestamp the test was waiting for. The problem is that this field is only surfaced to the controller via the periodic `metrics` POST, and that POST was delayed: the first metrics send was a 412-byte stub sent immediately at boot, and the real one carrying `lastProcessedConfig` didn't land at Adam until ~01:08:51 — about 24s *after* the test's own ~120s wait had already timed out and paused at 01:08:27. Device logs from exactly that window show why: right after config v1 triggered the DevicePortConfig switch from the bootstrap `lastresort` network to the controller-assigned one, the device hit repeated `"interface eth0: no suitable IP address available"` and `dial tcp: lookup adam.evetest on 127.0.0.1:53: server misbehaving` DNS/routing failures, which is consistent with the pending metrics call getting wedged on a connection/route torn down mid-flight by the reconfiguration.
+
+This is not a new or unique bug, and does not match the previously-documented zedbox "send on closed channel" panic recorded for `TestManyAppInterfaces` on earlier nights (lines 456/1082 of the ledger) — this run's failure happened entirely during setup, before any app provisioning began. Instead it is the exact same, already-known "zedagent processes config promptly but the confirming metrics POST hangs past the harness's timeout window" mechanism documented twice before in `live-ledger.md` with the identical `"failed to confirm the latest config (version 1): timed out waiting for LastProcessedConfig"` message: first recorded 2026-11-07 (run #10, `TestZVolProvisionedSizeReported`) and recurring 2026-11-09 (run #12, `TestVMAppPurgeAfterPowerCycle`). Tonight is simply the third occurrence of that same recurring harness/timing race, now hitting `TestManyAppInterfaces`.
+
+No PR diff was supplied for this investigation, so no relatedness assessment is given.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestClusterPVCGCDeletesOnlyOrphans
+
+##### Failure
+
+```
+
+Timed out after 900.182s.
+The function passed to Eventually failed at /evetest/tests/cluster/pvcgc_test.go:115 with:
+node "edge-dev2" has no created VolumeStatus for volume e0237029-1859-46ff-afb9-6a9f2d1390ef
+Expected
+    <bool>: false
+to be true
+```
+
+##### Claude's conclusion
+
+Confirmed the code path still exists unchanged. I have what I need.
+
+**Root cause:** `edge-dev2` is labeled `tie-breaker-node=true` and shows `SchedulingDisabled` in `kubectl get nodes`, so Longhorn's `longhorn-manager`/`longhorn-csi-plugin` DaemonSets (node-selected on `tie-breaker-node=false`) never schedule a pod there — confirmed live: `kubectl get pods -n longhorn-system -l app=longhorn-manager -o wide` shows manager/CSI pods only on `edge-dev1`/`edge-dev3`, and the target volume's two Longhorn replicas (`pvc-9ecfec58-...-r-*`) exist only on those same two nodes, never `edge-dev2`. `volumehandlers/csihandler.go:106` still calls `kubeapi.WaitForLonghornReady` unconditionally (no tie-breaker exemption), so `volumemgr` on `edge-dev2` can't ever report `VolumeStatus` as created within the test's wait window for `e0237029-...`, exactly matching `pvcgc_test.go:115`'s "node edge-dev2 has no created VolumeStatus" assertion (the status does eventually appear as `CREATED_VOLUME` now, post-timeout/post-pause, but too late for the test's 900s bound).
+
+This is a known, long-recurring issue in `live-ledger.md`: the identical "tie-breaker-node + `has no created VolumeStatus`" signature for this exact test was first seen 2026-11-02 (run #5) and has recurred on 2026-11-03, -04, -06, -07, and -08 (runs #6, #7, #9, #10, #11) — tonight (run #14) is simply the next occurrence of that same unfixed gap, not a new bug. (Note: this test has also failed under *other*, unrelated signatures on other nights — an etcd/CDI-overload scheduling timeout on 2026-11-01 and a later-stage GC-deletion-assertion bug on 2026-11-09 — but tonight's failure matches the tie-breaker mechanism specifically.) No PR diff was supplied for this investigation, so no code-relatedness assessment is given.
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.000s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+Both edge-dev2 and edge-dev3 confirm the same deadlock: neither is designated, neither is activated. This fully matches the long-standing known mechanism.
+
+**Root cause:** This is the identical, already-known `getKubeAppActivateStatus`/`zedkube.checkAppsStatus` deadlock in `pkg/pillar/cmd/zedmanager`/`zedkube` for the designated-node failover path. Live evidence confirms it precisely: `edge-dev1` (the app's designated node) is `EVE_DEVICE_STATE_SUSPECT` per `evetest status`; `AppInstanceStatus` for `failover-purge-app` (uuid `6df3d7c8-1b0f-4609-934e-a5cf040f9b8c`) on edge-dev2 shows `PurgeInprogress:4`, `PurgeStartedAt:2026-11-11T23:28:08Z`, `Activated:false`, `IsDesignatedNodeID:false`; and `zedkube` on edge-dev2 is *actively logging right now* (23:43:54, well after the 900s timeout) `IsDNidNode:false ScheduledOnThisNode:false AppKubeStatus:NotInCluster` — same on edge-dev3 (`Activated:false`, `IsDesignatedNodeID:false`). Neither surviving node ever takes over as backup DNID after the purge tore down the old VMIRS, so no VMIRS/VMI ever gets created, matching the test's "found []" assertion exactly.
+
+This does **not** share a root cause with the earlier `TestClusterPVCGCDeletesOnlyOrphans` failure in this run (that was the unrelated Longhorn tie-breaker-node scheduling gap). Per `live-ledger.md`, this is a very well-known, long-unbroken recurring issue dating back to the test's introduction in commit `98acf1411` (2026-10-18), reproducing with the identical signature in essentially every nightly run since then (last recorded through run #13 earlier tonight, and runs #9–#12 on preceding nights) — tonight's occurrence is simply the next instance of that same unfixed deadlock, not a new bug.
+#### TestClusterPVCRedownload
+
+##### Failure
+
+```
+
+vm1's content tree is in state LOADED, not REMOTELOADED -- it was re-downloaded despite the PVC already being complete
+Expected
+    <types.SwState>: 108
+to equal
+    <types.SwState>: 125
+```
+
+##### Claude's conclusion
+
+This confirms the exact same mechanism as the ledger entry: `contentTreeSatisfiedByPVCs` logs "no local volumes reference this content tree" at 00:19:26 and 00:19:29, then the content tree falls through to the non-PVC path since all blobs are already VERIFIED in CAS, and lands on LOADED by 00:19:30 instead of waiting for REMOTELOADED via PVC adoption.
+
+I have everything needed to write the conclusion.
+
+**Root cause:** This is a direct repeat of the same `contentTreeSatisfiedByPVCs`/`doUpdateContentTree` PVC-adoption race in `pkg/pillar/cmd/volumemgr` already documented in `live-ledger.md` for this exact test. Live `volumemgr` logs on `edge-dev1` confirm it: on vm1's reactivation, `contentTreeSatisfiedByPVCs(3958d371-...)` logs "no local volumes reference this content tree" at `00:19:26.040` and `00:19:29.921` (the matching `VolumeConfig`/PVC hadn't been republished yet), so `doUpdateContentTree` falls through the ordinary non-PVC path, finds all three blobs already `VERIFIED` in the local CAS from before reboot, and self-completes `VERIFIED → LOADING → LOADED` by `00:19:30.123` — landing on `LOADED` (108) instead of `REMOTELOADED` (125), exactly matching `/run/volumemgr/ContentTreeStatus/3958d371-....json` (`"State":108`) and the failing assertion. This does **not** share a root cause with this run's earlier `TestClusterPVCGCDeletesOnlyOrphans` (Longhorn tie-breaker-node scheduling gap) or `TestVMAppPurgeDuringFailover` (designated-node failover deadlock) failures. Per `live-ledger.md`, this is a long-standing, well-known recurring issue specific to `TestClusterPVCRedownload`, first seen 2026-10-30 (run #2) and reproducing repeatedly since (including runs on 2026-10-31, 11-03, 11-07, and 11-09/10) — tonight's occurrence is simply the next instance of that same unfixed, unbroken streak rather than a new bug.
+
+### TestNodeClusterSuite: failure analysis
+
+#### TestNativeKubeAppNetworking
+
+##### Failure
+
+```
+
+scale ReplicaSet default/native-replica-app to 0
+Unexpected error:
+    <*fmt.wrapError | 0xc0ee4dae0a0>: 
+    failed to execute script over SSH for EVE device edge-dev: SSH dial to 172.20.20.123:22 failed: ssh: handshake failed: read tcp 250.250.250.1:47730->172.20.20.123:22: read: connection reset by peer (stderr: )
+    {
+        msg: "failed to execute script over SSH for EVE device edge-dev: SSH dial to 172.20.20.123:22 failed: ssh: handshake failed: read tcp 250.250.250.1:47730->172.20.20.123:22: read: connection reset by peer (stderr: )",
+        err: <*fmt.wrapError | 0xc0ee4dae080>{
+            msg: "SSH dial to 172.20.20.123:22 failed: ssh: handshake failed: read tcp 250.250.250.1:47730->172.20.20.123:22: read: connection reset by peer",
+            err: <*fmt.wrapError | 0xc0ee4dae060>{
+                msg: "ssh: handshake failed: read tcp 250.250.250.1:47730->172.20.20.123:22: read: connection reset by peer",
+                err: <*net.OpError | 0xc0ee42c4140>{
+                    Op: "read",
+                    Net: "tcp",
+                    Source: <*net.TCPAddr | 0xc0ee4a18150>{
+                        IP: [250, 250, 250, 1],
+                        Port: 47730,
+                        Zone: "",
+                    },
+                    Addr: <*net.TCPAddr | 0xc0ee4a18180>{
+                        IP: [172, 20, 20, 123],
+                        Port: 22,
+                        Zone: "",
+                    },
+                    Err: <*os.SyscallError | 0xc0ee4dae040>{
+                        Syscall: "read",
+                        Err: <syscall.Errno>0x68,
+                    },
+                },
+            },
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+Only `TestNativeKubeAppNetworking` failed in this run; `TestSingleNodeCluster` passed earlier, so there's no shared root cause with another in-run failure.
+
+**Likely root cause:** Live device logs show the exact trigger at the millisecond level: at `00:40:14.381` sshd on `edge-dev` logged `drop connection #0 from [172.20.20.1]:47730 on [172.20.20.123]:22 penalty: connections without attempting authentication` — the identical source port (`47730`) the test's failing SSH dial used. The test harness (and mgmtproxy/NAT path through `172.20.20.1`→`250.250.250.1`) had been hammering the device with very rapid, back-to-back SSH connections for its pod-to-pod/DNS/connectivity checks — device logs show 116 separate `Accepted publickey` sessions in just ~12 minutes since boot, several bursts only ~0.2–0.3s apart. This tripped OpenSSH's per-source-address penalty/rate-limiting mechanism (`PerSourcePenalties`, enabled by default in recent OpenSSH), which proactively RSTs new connections from an offending source for a cooldown period — exactly producing the test's `ssh: handshake failed: ... read: connection reset by peer` at the "scale ReplicaSet to 0" step. The device itself was healthy throughout (I confirmed fresh SSH connections succeed right now, with no corresponding reboot/panic/OOM in the logs), so this is a transient sshd-side connection-rate penalty, not a device/network failure.
+
+This exact signature (`drop connection ... penalty: connections without attempting authentication`) does not appear anywhere in `live-ledger.md`, including prior `TestNativeKubeAppNetworking` entries (which were different mechanisms: a k3s apiserver-readiness race, cluster-mode-not-carried-forward reboots, etc.) — so this looks like a new, previously unrecorded failure mode: the test's own high-frequency SSH usage pattern occasionally self-triggers OpenSSH's built-in anti-flood protection on the device.
+#### TestClusterVMApp
+
+##### Failure
+
+```
+Timed out waiting for app "6091a820-7774-4112-8835-3f1d20aa245f" to be scheduled in cluster "test-cluster"
+```
+
+##### Claude's conclusion
+
+This confirms a long-standing, well-documented, recurring bug going back to at least run #5 (2026-11-02), appearing repeatedly across nights and multiple node variants (TestClusterVMApp, TestClusterPVCGCDeletesOnlyOrphans, etc.), with the exact mechanism I just reproduced live.
+
+###### Root cause
+
+This is a known, recurring failure, reproducing the exact same mechanism documented repeatedly in `live-ledger.md` since at least 2026-11-02 (run #5), and it is directly related to the prior investigation in this same run: `TestClusterToSingleConversion` (which ran immediately before this test, 01:43–01:46, reusing the same devices) withdrew `edge-dev3` from the cluster and rebooted it to convert it back to standalone; when `TestClusterVMApp` then re-formed the 3-node cluster, `edge-dev3` rejoined as a fresh Kubernetes node object that was never relabeled `tie-breaker-node=false` (live `kubectl get nodes -L tie-breaker-node` confirms `edge-dev1`/`edge-dev2` carry `tie-breaker-node=false` while `edge-dev3` has no label at all). Because the `longhorn-manager` DaemonSet is scoped with `nodeSelector: tie-breaker-node=false`, no manager pod was ever scheduled on `edge-dev3`, so Longhorn treats it as "not ready" and every `AttachVolume` for the app's PVC on `edge-dev3` fails (`FailedAttachVolume: ... node edge-dev3 is not ready`, confirmed live via `kubectl describe pod cdi-upload-...`). Consequently the app's volume stayed permanently in `CREATING_VOLUME`/`DETACHED` with all replicas `OFFLINE`, the VM was never created, and the test's 30-minute wait for it to be scheduled timed out exactly as reported.
+
+This is the same underlying code gap the ledger attributes to `pkg/pillar/volumehandlers/csihandler.go`'s `PrepareVolume` calling `kubeapi.WaitForLonghornReady` unconditionally instead of exempting tie-breaker-labeled (or here, never-relabeled) nodes per `longhorninfo.go:720-721`, combined with the tiebreaker-conversion-back-to-standalone/rejoin flow (`pkg/kube/kube-init/tiebreaker/tiebreaker.go`'s `nodesConfigApply`) not being re-run to relabel the rejoined node. It has recurred on essentially every nightly run since 2026-11-02, so this is a standing, still-unfixed bug rather than a new regression.
+
+### TestSecuritySuite: failure analysis
+
+#### TestVaultKeyModeRecoveryOnExt4
+
+##### Failure
+
+```
+
+Timed out after 300.001s.
+the vault must be unlocked after the wrong key mode was recorded
+The function passed to Eventually failed at /evetest/tests/security/vault_keymode_test.go:343 with:
+vault status is 4
+Expected
+    <int>: 4
+to equal
+    <int>: 2
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+This is a different, more specific failure mode than any prior `TestVaultKeyModeRecoveryOnExt4` entry. Live `vaultmgr` logs show that after the test recorded the wrong `TpmKeyOnly` mode and rebooted (22:54:53), the device's first unlock attempt logged `"can't read the legacy disk key, generating a new one"` — a message that only comes from `evetpm.FetchVaultKey` (the *un-sealed*, TPM-NVRAM "legacy key" path), never from the sealed-key path (`FetchSealedVaultKey`, which instead logs `"sealed disk key present int TPM, about to unseal it"` — exactly what the *prior*, successful boot at 22:52:58 had logged). The live `VaultStatus` on the device right now confirms this: `"PCRStatus":2` (`PCR_DISABLED`), versus `PCR_ENABLED` on the healthy prior boot. Per `pkg/pillar/evetpm/tpm.go`, `FetchSealedVaultKey` falls back to the legacy/non-sealed `FetchVaultKey` whenever `PCRBankSHA256Enabled()` — a live, cached-once-per-process `ReadPCR(0, SHA256)` probe against the TPM — returns false. Since no legacy TPM-NVRAM key existed yet (this vault was always sealed-key-based), that first attempt minted a brand-new random key and wrote it into TPM NVRAM, which obviously can't open the real fscrypt-protected vault (`Error unlocking vault: exit status 1`), and the fallback retry just re-reads that same freshly-written garbage key again. Critically, the controller-key rescue path (`vaultmgr.go:594-611`, `Re-sealing disk key` → `UnlockDefaultVault`) re-seals the correct key into TPM but then calls `unlockVault(..., useSealedKey=true)` again, which hits the exact same disabled-PCR-bank branch and ignores the freshly re-sealed key in favor of the unrelated legacy NVRAM key — so even the controller rescue can't recover, leaving the vault permanently in `DATASEC_AT_REST_ERROR` (status 4) for the rest of the boot, matching the test's failure exactly.
+
+This does not match either of the two previously-recorded `TestVaultKeyModeRecoveryOnExt4` failure signatures in `live-ledger.md` (a slow-VM reboot-timeout, last seen 2026-11-04/05, and a stale hardcoded attempt-count assertion recurring 2026-10-29 through 11-02) — both of those hit different line numbers (`vault_keymode_test.go:298`/`:318`) and different mechanisms. Tonight's failure (line 343, vault genuinely stuck in error after the controller key) is new, not previously recorded. There's no other failure in this run's artifacts so far to share a root cause with, and I found no evidence this is simply infra/host-load flakiness — it's a reproducible code path confirmed by matching log strings to their exact source locations.
+
+### TestUpgradeSuite: failure analysis
+
+#### TestThreeNodesUpgrade
+
+##### Failure
+
+```
+Timed out waiting for app "86483418-87a0-467f-98ff-bd248f08f8e4" to be scheduled in cluster "test-cluster"
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live inspection shows the three-node k3s/Kubevirt cluster did form (`evetest status` shows edge-dev1/2/3 all `ONLINE` and k8s `Ready`), and the app's config reached all devices, but the app's Longhorn-backed PVC never finished provisioning. `kubectl describe pod cdi-upload-...-pvc-0` (namespace `eve-kube-app`) shows repeated `FailedAttachVolume` errors ("`node.longhorn.io "edge-dev2" not found`" then later `DeadlineExceeded`), and both backing Longhorn volumes are stuck in `attaching`/`unknown` robustness with all replicas `OFFLINE`.
+
+The actual trigger is on **edge-dev3**: `longhorn-manager-hqj9l`'s previous container crashed at 23:07:06 with `level=fatal msg="Error starting manager: Operation cannot be fulfilled on settings.longhorn.io \"priority-class\": the object has been modified..."`. On restart, it briefly created the `edge-dev3` Longhorn Node CR ("Node edge-dev3 is ready") but then immediately emitted `Warning 'Delete' Deleting node edge-dev3` and never recreated it — `kubectl get nodes.longhorn.io` confirms only `edge-dev1`/`edge-dev2` exist, with edge-dev3 permanently missing even though its k8s node and longhorn-manager pod are healthy. Every ~30s since then the controller logs `failed to get longhorn node edge-dev3: node.longhorn.io "edge-dev3" not found`, and the replica scheduler logs `"There's no available disk for replica ..., size 314572800"` — with only 2 of 3 nodes schedulable, replicas can't be placed, the PVC can't attach, the CDI upload pod stays `ContainerCreating` forever, and the app VMI is never scheduled, exactly matching the test's 10-minute timeout.
+
+This does **not** share the root cause with the earlier `TestThreeNodesUpgrade` failures already logged tonight in `live-ledger.md` (those were Proxmox-host/installer-provisioning timeouts — devices never even came up); this one occurs well after cluster formation, at the volume-attach/app-scheduling stage. I found no prior occurrence of this `node.longhorn.io ... not found`/Longhorn-node-deletion-race signature anywhere in `live-ledger.md`, so this is a new failure mode tonight, not a previously known/recurring one — it looks like a Longhorn node-controller race during manager restart/reconciliation rather than an EVE/pillar bug, but warrants a look since it reproducibly starved app scheduling for the whole remaining test window.
+
 ## [2026-11-11 -- 0.0.0-master-7d265c2a (run #14)](https://github.com/lf-edge/eve/actions/runs/42910376872)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/14/)
