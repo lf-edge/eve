@@ -50,7 +50,20 @@ func ReadUint(group, file string) (uint64, error) {
 // MemoryStat parses group's memory.stat. Keys the kernel does not report (the
 // "kernel" line before 5.18) are absent from the map.
 func MemoryStat(group string) (map[string]uint64, error) {
-	f, err := os.Open(Path(group, "memory.stat"))
+	return readKeyed(group, "memory.stat")
+}
+
+// MemoryEvents parses group's memory.events, whose counters include those of
+// its descendants: "oom_kill" counts the processes the OOM killer killed
+// because the group or a descendant reached its memory.max.
+func MemoryEvents(group string) (map[string]uint64, error) {
+	return readKeyed(group, "memory.events")
+}
+
+// readKeyed parses a cgroup file of "<key> <number>" lines, skipping lines
+// that do not have that form.
+func readKeyed(group, file string) (map[string]uint64, error) {
+	f, err := os.Open(Path(group, file))
 	if err != nil {
 		return nil, err
 	}

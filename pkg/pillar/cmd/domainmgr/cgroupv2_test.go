@@ -6,6 +6,7 @@ package domainmgr
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -83,5 +84,31 @@ func TestCompressorAvailMemUnreadableCgroupUsesMinimumWindow(t *testing.T) {
 	cgrouptest.FakeTree(t, map[string]string{"eve/memory.max": "800000000"})
 	if got := compressorAvailMem(); got != 0 {
 		t.Errorf("compressorAvailMem() = %d, want 0 (minimum window)", got)
+	}
+}
+
+func TestTaskCrashErrorNamesTheOOMKiller(t *testing.T) {
+	task := testDomain().GetTaskName()
+	cgrouptest.FakeTree(t, map[string]string{
+		filepath.Join("eve-user-apps", task, "memory.events"): "max 40\noom 1\noom_kill 1\n",
+	})
+	got := taskCrashError(task)
+	if !strings.Contains(got, "OOM killer killed 1 of its processes") {
+		t.Errorf("taskCrashError = %q, want it to name the OOM kill", got)
+	}
+}
+
+func TestTaskCrashErrorWithoutOOMKill(t *testing.T) {
+	task := testDomain().GetTaskName()
+	cgrouptest.FakeTree(t, map[string]string{
+		filepath.Join("eve-user-apps", task, "memory.events"): "max 0\noom 0\noom_kill 0\n",
+	})
+	want := "one of the application's tasks has crashed - please restart application instance"
+	if got := taskCrashError(task); got != want {
+		t.Errorf("taskCrashError = %q, want %q", got, want)
+	}
+	cgrouptest.FakeTree(t, nil)
+	if got := taskCrashError(task); got != want {
+		t.Errorf("without a cgroup: taskCrashError = %q, want %q", got, want)
 	}
 }
