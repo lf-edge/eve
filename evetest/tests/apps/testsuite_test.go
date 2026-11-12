@@ -174,6 +174,9 @@ func TestAppsSuite(test *testing.T) {
 			Test: TestCgroupTree,
 		},
 		evetest.TestCase{
+			Test: TestAppOOMKillReported,
+		},
+		evetest.TestCase{
 			Test: TestMemoryPressureEvents,
 		},
 		evetest.TestCase{
