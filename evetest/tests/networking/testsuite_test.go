@@ -420,6 +420,9 @@ func TestAppNICsSuite(test *testing.T) {
 //     (real cloud datastores).
 //   - TestContainerRegistry -- pulls from Docker Hub (or the configured
 //     pull-through mirror).
+//   - TestLocalDatastore -- a datastore found through mDNS on the bridge of
+//     a network instance (host name ending with ".local"), served by an
+//     app running on the device itself.
 func TestDatastoreSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -446,6 +449,9 @@ func TestDatastoreSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestContainerRegistry,
+		},
+		evetest.TestCase{
+			Test: TestLocalDatastore,
 		},
 	)
 }
