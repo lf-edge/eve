@@ -407,7 +407,7 @@ const (
 	DefaultSDNRepo = "lfedge/evetest-sdn"
 
 	// DefaultAdamVersion specifies the Adam version to use by default.
-	DefaultAdamVersion = "0.0.85"
+	DefaultAdamVersion = "0.0.87"
 
 	// DefaultSDNUplinkIPv4Subnet species the IPv4 subnet used for SDN uplink
 	// interfaces by default.
