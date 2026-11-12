@@ -318,6 +318,9 @@ type TestHarness struct {
 	// Image server (HTTP file server serving EVE and app images).
 	imgServerListener net.Listener
 	imgServerDir      string // temp dir under $HOME/.evetest; removed in Close()
+	// Requests received by the image server over HTTP and HTTPS (see
+	// GetImageServerRequests).
+	imgServerRequests imgServerRequestLog
 
 	// SFTP listener serving the same imgServerDir as an alternate download
 	// transport (see DsType_DsSFTP / SFTPStorage).
@@ -803,6 +806,7 @@ func Init(t *testing.T, opts ...InitOption) *T {
 	// PushDockerImageToLocalRegistry).
 	imgServerMux.Handle("/v2/", newLocalRegistryHandler(th.imgServerDir, th.log))
 	imgServerMux.Handle("/", http.FileServer(http.Dir(th.imgServerDir)))
+	imgServerHandler := th.imgServerRequests.record(imgServerMux)
 
 	imgListenAddr := net.JoinHostPort(imgServerIPv4.String(), strconv.Itoa(imgServerPort))
 	th.imgServerListener, err = net.Listen("tcp", imgListenAddr)
@@ -810,7 +814,7 @@ func Init(t *testing.T, opts ...InitOption) *T {
 		th.t.Fatalf("failed to listen on image server address %s: %v", imgListenAddr, err)
 	}
 	go func() {
-		_ = http.Serve(th.imgServerListener, imgServerMux)
+		_ = http.Serve(th.imgServerListener, imgServerHandler)
 	}()
 	th.log.Infof("Image server listening on http://%s/ (serving %s)", imgListenAddr, th.imgServerDir)
 
@@ -838,7 +842,7 @@ func Init(t *testing.T, opts ...InitOption) *T {
 			imgServerHTTPSAddr, err)
 	}
 	go func() {
-		_ = http.Serve(th.imgServerTLSListener, imgServerMux)
+		_ = http.Serve(th.imgServerTLSListener, imgServerHandler)
 	}()
 	th.log.Infof("Image server listening on https://%s/ (serving %s)",
 		imgServerHTTPSAddr, th.imgServerDir)
