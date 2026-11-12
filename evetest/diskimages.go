@@ -16,6 +16,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	eveconfig "github.com/lf-edge/eve-api/go/config"
@@ -95,6 +97,66 @@ func AddImageServerFile(name string, content []byte) string {
 		th.t.Fatalf("failed to write image server file %s: %v", name, err)
 	}
 	return name
+}
+
+// ImageServerRequest describes one request received by evetest's built-in
+// image server over HTTP or HTTPS.
+type ImageServerRequest struct {
+	// Method is the HTTP method of the request, e.g. "GET".
+	Method string
+	// RequestURI is the path and the query string of the request, e.g.
+	// "/image.bin?sig=token".
+	RequestURI string
+}
+
+// GetImageServerRequests returns the requests which evetest's built-in image
+// server has received so far over HTTP and HTTPS for the file with the given
+// name (as returned by AddImageServerFile; a query string is not part of it),
+// oldest first. A test can thus tell at the datastore whether, how often and
+// with which URL a device has asked for a file, instead of inferring it from
+// the state the device reports. Requests over SFTP and TFTP are not recorded.
+//
+// A request is recorded when it arrives, whether or not the file exists and
+// whether or not the download completes, and a device may send more than one
+// request for a single download. The image server lives as long as the test
+// suite, so the requests of earlier tests of the suite for a file of the same
+// name are included.
+func GetImageServerRequests(name string) []ImageServerRequest {
+	return getTestHarness().imgServerRequests.requestsFor(name)
+}
+
+// imgServerRequestLog records the requests received by the image server over
+// HTTP and HTTPS. The zero value is ready to use.
+type imgServerRequestLog struct {
+	mu sync.Mutex
+	// requests holds, per requested path relative to the image server's root,
+	// the requests received for it, oldest first.
+	requests map[string][]ImageServerRequest
+}
+
+// record returns a handler which records every request it receives and then
+// passes it on to next.
+func (requestLog *imgServerRequestLog) record(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/")
+		requestLog.mu.Lock()
+		if requestLog.requests == nil {
+			requestLog.requests = make(map[string][]ImageServerRequest)
+		}
+		requestLog.requests[name] = append(requestLog.requests[name], ImageServerRequest{
+			Method:     r.Method,
+			RequestURI: r.URL.RequestURI(),
+		})
+		requestLog.mu.Unlock()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// requestsFor returns a copy of the requests recorded for the given file.
+func (requestLog *imgServerRequestLog) requestsFor(name string) []ImageServerRequest {
+	requestLog.mu.Lock()
+	defer requestLog.mu.Unlock()
+	return append([]ImageServerRequest(nil), requestLog.requests[name]...)
 }
 
 // FetchAndServeImageFile downloads url over the evetest container's own
