@@ -91,10 +91,23 @@ func TestTaskCrashErrorNamesTheOOMKiller(t *testing.T) {
 	task := testDomain().GetTaskName()
 	cgrouptest.FakeTree(t, map[string]string{
 		filepath.Join("eve-user-apps", task, "memory.events"): "max 40\noom 1\noom_kill 1\n",
+		filepath.Join("eve-user-apps", task, "memory.max"):    "268435456\n",
 	})
 	got := taskCrashError(task)
-	if !strings.Contains(got, "OOM killer killed 1 of its processes") {
-		t.Errorf("taskCrashError = %q, want it to name the OOM kill", got)
+	if !strings.Contains(got, "reached its memory limit of 256 MiB and the kernel's OOM killer killed 1 of its processes") {
+		t.Errorf("taskCrashError = %q, want it to name the limit and the OOM kill", got)
+	}
+}
+
+func TestTaskCrashErrorUnlimitedMemory(t *testing.T) {
+	task := testDomain().GetTaskName()
+	cgrouptest.FakeTree(t, map[string]string{
+		filepath.Join("eve-user-apps", task, "memory.events"): "oom_kill 2\n",
+		filepath.Join("eve-user-apps", task, "memory.max"):    "max\n",
+	})
+	got := taskCrashError(task)
+	if !strings.Contains(got, "reached its memory limit and the kernel's OOM killer killed 2 of its processes") {
+		t.Errorf("taskCrashError = %q, want no limit named", got)
 	}
 }
 
