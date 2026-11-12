@@ -15,6 +15,7 @@ import (
 // --------
 //   - TestAppArmorEnabled -- kernel AppArmor status flag.
 //   - TestVCom -- vcomlink (TPM-over-vsock) request/response from inside a VM app.
+//   - TestVComContainer -- the same from a container app, as root and unprivileged.
 //   - TestAppVTPM -- per-app vTPM: the app's SWTPM instance runs unprivileged
 //     with TPM-sealed state encryption, and the guest can consume the TPM.
 //   - TestControllerSigningCertChange -- rotation of the controller certificate
@@ -36,6 +37,7 @@ func TestSecuritySuite(test *testing.T) {
 		evetest.TestCase{
 			Test: TestVCom,
 		},
+		evetest.TestCase{Test: TestVComContainer},
 		evetest.TestCase{
 			Test: TestAppVTPM,
 		},
