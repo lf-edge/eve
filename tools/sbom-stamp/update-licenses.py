@@ -9,13 +9,16 @@ cargo purl and no license, or the license licenses.txt gives it, this asks
 deps.dev for the licenses it found in that version's source and adds them
 joined with AND. A package whose versions disagree gets one entry per version.
 Existing entries are kept, so a curated entry overrides the lookup; the ones
-deps.dev disagrees with are printed. Run it on the SBoM of a fresh build after
-Cargo.lock or go.mod files change:
+deps.dev disagrees with are printed. Each variant ships different modules, so
+run it on the SBoMs of all of them, which fetch-sboms.py gets for a published
+master commit:
 
-    tar -xOf dist/amd64/current/rootfs-generic.tar sbom.spdx.json > /tmp/sbom.json
-    tools/sbom-stamp/update-licenses.py /tmp/sbom.json
+    tools/sbom-stamp/fetch-sboms.py /tmp/sboms 0.0.0-master-<commit>
+    tools/sbom-stamp/update-licenses.py /tmp/sboms/*.spdx.json
 
-It prints the packages it could not resolve; add those by hand.
+For a change not yet published, add the SBoM of each variant it touches, from
+make ZARCH=<arch> HV=<hv> PLATFORM=<platform> pkgs sbom. It prints the
+packages it could not resolve; add those by hand.
 """
 
 # pylint: disable=invalid-name
