@@ -370,6 +370,7 @@ func domainMetric(m *v2stats.Metrics) types.DomainMetric {
 		MaxUsedMemory:     maxUsedMem,
 		AvailableMemory:   availMem,
 		UsedMemoryPercent: usedMemPerc,
+		OOMKills:          m.GetMemoryEvents().GetOomKill(),
 	}
 }
 

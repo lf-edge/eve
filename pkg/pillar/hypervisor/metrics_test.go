@@ -12,14 +12,18 @@ import (
 
 func TestDomainMetricFromV2Stats(t *testing.T) {
 	got := domainMetric(&v2stats.Metrics{
-		Memory: &v2stats.MemoryStat{Usage: 300 << 20, MaxUsage: 400 << 20, UsageLimit: 1024 << 20},
-		CPU:    &v2stats.CPUStat{UsageUsec: 2_500_000},
+		Memory:       &v2stats.MemoryStat{Usage: 300 << 20, MaxUsage: 400 << 20, UsageLimit: 1024 << 20},
+		CPU:          &v2stats.CPUStat{UsageUsec: 2_500_000},
+		MemoryEvents: &v2stats.MemoryEvents{Oom: 3, OomKill: 2},
 	})
 	if got.UsedMemory != 300 || got.MaxUsedMemory != 400 || got.AllocatedMB != 1024 || got.AvailableMemory != 724 {
 		t.Errorf("memory: %+v", got)
 	}
 	if got.CPUTotalNs != 2_500_000_000 || got.CPUScaled != 1 {
 		t.Errorf("CPU: total %d ns, scaled %d; want 2500000000, 1", got.CPUTotalNs, got.CPUScaled)
+	}
+	if got.OOMKills != 2 {
+		t.Errorf("OOMKills = %d, want 2", got.OOMKills)
 	}
 }
 

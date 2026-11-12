@@ -62,6 +62,19 @@ func TestMemoryStat(t *testing.T) {
 	}
 }
 
+func TestMemoryEvents(t *testing.T) {
+	cgrouptest.FakeTree(t, map[string]string{
+		"eve-user-apps/task/memory.events": "low 0\nhigh 0\nmax 12\noom 3\noom_kill 2\noom_group_kill 0\n",
+	})
+	events, err := cgroup.MemoryEvents("eve-user-apps/task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if events["oom_kill"] != 2 || events["oom"] != 3 {
+		t.Errorf("events = %v, want oom_kill 2, oom 3", events)
+	}
+}
+
 func TestFormatCPUs(t *testing.T) {
 	for _, c := range []struct {
 		cpus []uint32

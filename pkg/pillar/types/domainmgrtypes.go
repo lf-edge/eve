@@ -622,9 +622,12 @@ type DomainMetric struct {
 	MaxUsedMemory     uint32 // in MB
 	AvailableMemory   uint32 // in MB
 	UsedMemoryPercent float64
-	LastHeard         time.Time
-	Activated         bool
-	NodeName          string // the name of the kubernetes node on which the app is currently running
+	// OOMKills counts the processes the OOM killer has killed in the task's
+	// cgroup since the task started; zero where it is not measured (EVE-k).
+	OOMKills  uint64
+	LastHeard time.Time
+	Activated bool
+	NodeName  string // the name of the kubernetes node on which the app is currently running
 }
 
 // Key returns the key for pubsub
