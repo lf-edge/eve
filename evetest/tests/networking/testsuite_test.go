@@ -409,6 +409,9 @@ func TestAppNICsSuite(test *testing.T) {
 //     only that token is replaced and the SHA256 stays the same; the
 //     datastore is evetest's image server, which records every request it
 //     receives.
+//   - TestLocalDatastore -- a datastore found through mDNS on the bridge of
+//     a network instance (host name ending with ".local"), served by an
+//     app running on the device itself.
 func TestDatastoreSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -438,6 +441,9 @@ func TestDatastoreSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestNoRedownloadOnURLTokenChange,
+		},
+		evetest.TestCase{
+			Test: TestLocalDatastore,
 		},
 	)
 }
