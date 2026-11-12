@@ -67,6 +67,14 @@ runs:
       run: |
         make V=1 ROOTFS_VERSION="$VERSION" PLATFORM=${{ inputs.platform }} \
           HV=${{ inputs.hv }} ZARCH=${{ inputs.arch }} COVER=${{ inputs.cover }} eve
+    # build.yml's sbom-maps job checks these against the license and supplier
+    # maps, and the update scripts read them when the check fails.
+    - name: Upload SBoM
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+      with:
+        name: sbom-${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}
+        path: dist/${{ inputs.arch }}/${{ steps.set-env.outputs.version }}/installer/rootfs-${{ inputs.platform }}.spdx.json
+        if-no-files-found: error
     - name: Post build report
       shell: bash
       run: |

@@ -142,7 +142,7 @@ The important work in generating EVE is primarily in creating `rootfs.tar`. All 
 
 * converting formats and tools to do so
 * packaging
-* additional metadata such as SBoMs
+* additional metadata such as SBoMs (see [SBOM-AND-SOURCES.md](SBOM-AND-SOURCES.md))
 
 ### Final
 
