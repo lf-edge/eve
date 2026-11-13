@@ -16,6 +16,7 @@ its own builds the same way.
 | `<tag>.tagger.sigstore.json` release asset: an in-toto statement, type `https://github.com/lf-edge/eve/release-tagger/v1`, naming who pushed the tag (`github.actor` and its ID), over every image, index and `sha256sums` above | `release-sign.yml@refs/heads/master` | release tags, after approval |
 | `<tag>.maintainer.sigstore.json` release asset, also attached to every image and index above as an OCI referrer: an in-toto statement, type `https://github.com/lf-edge/eve/release-approval/v1`, over the same subjects as the tagger statement, naming the repository, release and commit | a release signer's GitHub account, issuer `https://github.com/login/oauth` | after the workflow signatures, by a signer other than the tagger |
 | `lfedge/eve-<pkg>` platform manifests and indexes | `publish.yml@refs/heads/<branch>` | pushes to `master`, `N.N` and `N.N-stable` that build the package |
+| `lfedge/eve-<pkg>` platform manifests and indexes | `buildondemand.yml@refs/heads/master` | manual runs of that workflow on `master` |
 | `lfedge/eve-alpine-base` platform manifests and index | `build-alpine-base.yml@refs/heads/master` | manual runs of that workflow on `master` |
 
 Each `sha256sums` also covers `<arch>.<hv>.<platform>.images.txt`, which names
@@ -286,7 +287,8 @@ Packages are pushed only under their content tag, and only by branch builds.
 
 The policy, in `tools/eve-cosign.sh`, accepts
 `release-sign.yml@refs/heads/master`, `build-alpine-base.yml@refs/heads/master`,
-and `publish.yml` at `master`, `N.N` and `N.N-stable`. A job records the packages it built, as a run
+`buildondemand.yml@refs/heads/master`, and `publish.yml` at `master`, `N.N`
+and `N.N-stable`. A job records the packages it built, as a run
 artifact per attempt, before pushing them, and signs what every attempt's
 record lists after pushing; a re-run thus signs what an earlier attempt pushed
 and failed to sign. The `manifest` job pushes every package's index and signs
@@ -304,7 +306,7 @@ releases of a branch, push under the same tag. linuxkit replaces the platform
 manifest of the tag's index and the `<tag>-<arch>` tag with its own build, and
 builds that do not sign, such as stable branches from before signing, leave
 the tag serving a manifest without a valid signature. Branch builds of
-`publish.yml` therefore:
+`publish.yml` and `buildondemand.yml` therefore:
 
 - rebuild, push and sign every package whose tag serves a platform manifest
   without a valid signature, rather than reuse it
@@ -314,7 +316,8 @@ the tag serving a manifest without a valid signature. Branch builds of
 - wait up to five minutes for a platform manifest that another run has pushed
   but not yet signed before signing an index
 
-The jobs that sign packages, in `publish.yml` and `build-alpine-base.yml`,
+The jobs that sign packages, in `publish.yml`, `buildondemand.yml` and
+`build-alpine-base.yml`,
 hold `id-token: write` for their whole run, including `make` and the package
 Dockerfiles, on self-hosted runners that also build pull requests. A
 compromised step in such a job can sign anything as that workflow on that

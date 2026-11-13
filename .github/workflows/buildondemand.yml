@@ -33,6 +33,10 @@ jobs:
     # Only run for the default branch
     if: github.ref_name == github.event.repository.default_branch
     runs-on: ${{ matrix.os }}
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -52,19 +56,17 @@ jobs:
           df -h
           echo Memory
           free -m
-      - name: Clear repository
+      - name: Clear runner state
         run: |
           sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
-          rm -fr ~/.linuxkit
+          rm -rf ~/.linuxkit
+          docker rm -f linuxkit-builder || :
+          docker volume rm -f linuxkit-builder-state
           docker system prune --all --force --volumes
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: ensure zstd for cache  # this should be removed once the arm64 VM includes zstd
-        if: ${{ matrix.os == 'buildjet-4vcpu-ubuntu-2204-arm' || matrix.os == 'arm64-secure' }}
-        run: |
-          sudo apt install -y zstd
       - name: ensure packages for cross-arch build
         if: ${{ matrix.arch == 'riscv64' }}
         run: |
@@ -72,17 +74,66 @@ jobs:
           # the following weird statement is here to speed up the happy path
           # if the default server is responding -- we can skip apt update
           $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
-      - name: update linuxkit cache if available
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
         with:
-          path: ~/.linuxkit/cache
-          key: linuxkit-${{ matrix.arch }}-${{ github.sha }}
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+        with:
+          cosign-release: v3.1.4
+      # See publish.yml. With force, every package is rebuilt anyway.
+      - name: Find the packages to rebuild
+        id: rebuild
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          force="$(make -s force_build_pkgs_info | tail -1)"
+          make -s HV=kvm ZARCH="$ARCH" PLATFORM=generic pkgs_tags_info > "$RUNNER_TEMP/pkg-tags"
+          ./tools/eve-cosign.sh unsigned "$ARCH" < "$RUNNER_TEMP/pkg-tags" > "$RUNNER_TEMP/unsigned"
+          echo "force=$force $(xargs < "$RUNNER_TEMP/unsigned")" >> "$GITHUB_OUTPUT"
       - name: Build packages
         uses: ./.github/actions/run-make
+        env:
+          FORCE_BUILD_PKGS: ${{ steps.rebuild.outputs.force }}
         with:
-          command: "V=1 PRUNE=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD pkgs"
+          command: "V=1 PRUNE=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=build $FORCE_BUILD pkgs"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          clean: false
+      - name: Verify the inputs of packages
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          ./tools/eve-cosign.sh check-inputs "$RUNNER_TEMP/pkgs" "$ARCH" "$(docker version -f '{{.Server.Arch}}')"
+      # Recorded before the push, so that a re-run can sign what this attempt
+      # pushed even when it fails before signing.
+      - name: Record the packages built here
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: pkg-record-pkgs-${{ matrix.arch }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pkgs
+      # FORCE_BUILD= overrides the FORCE_BUILD env above, which make -e would
+      # take, so that the push does not rebuild what the record lists with a
+      # different digest.
+      - name: Push packages
+        uses: ./.github/actions/run-make
+        with:
+          command: "V=1 PRUNE=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push FORCE_BUILD= pkgs"
+          dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+          dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          clean: false
+      - name: Fetch every attempt's record of packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: pkg-record-pkgs-${{ matrix.arch }}-*
+          path: ${{ runner.temp }}/records-pkgs
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+      - name: Sign the packages pushed with packages
+        run: |
+          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP/records-pkgs"
       - name: Post package report
         run: |
           echo Disk usage
@@ -91,12 +142,22 @@ jobs:
           free -m
           docker system df
           docker system df -v
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          make clean
+          docker system prune -f -a --volumes
+          rm -rf ~/.linuxkit
 
   eve:
     needs: packages  # all packages for all platforms must be built first
     # Only run for the default branch
     if: github.ref_name == github.event.repository.default_branch
     runs-on: zededa-ubuntu-2204
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -123,43 +184,201 @@ jobs:
             hv: k
             platform: "generic"
     steps:
+      - name: Clear runner state
+        run: |
+          sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
+          rm -rf ~/.linuxkit
+          docker rm -f linuxkit-builder || :
+          docker volume rm -f linuxkit-builder-state
+          docker system prune --all --force --volumes
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: update linuxkit cache for our arch
-        id: cache_for_packages
-        if: ${{ matrix.arch != 'amd64' }}  # because our runner arch is amd64; if that changes, this will have to change
-        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
+      - name: ensure packages for cross-arch build
+        if: ${{ matrix.arch == 'riscv64' }}
+        run: |
+          APT_INSTALL="sudo apt install -y binfmt-support qemu-user-static"
+          # the following weird statement is here to speed up the happy path
+          # if the default server is responding -- we can skip apt update
+          $APT_INSTALL || { sudo apt update && $APT_INSTALL ; }
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
         with:
-          path: ~/.linuxkit/cache
-          key: linuxkit-${{ matrix.arch }}-${{ github.sha }}
-          fail-on-cache-miss: true
-
-      - uses: ./.github/actions/run-make
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
         with:
-          command: "V=1 HV=${{ matrix.hv }} PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD eve"
+          cosign-release: v3.1.4
+      - uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4  # v2.0.2
+        with:
+          version: 1.3.1
+      # See publish.yml. With force, every package is rebuilt anyway.
+      - name: Find the packages to rebuild
+        id: rebuild
+        env:
+          ARCH: ${{ matrix.arch }}
+          HV: ${{ matrix.hv }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          force="$(make -s force_build_pkgs_info | tail -1)"
+          make -s HV="$HV" ZARCH="$ARCH" PLATFORM="$PLATFORM" pkgs_tags_info > "$RUNNER_TEMP/pkg-tags"
+          ./tools/eve-cosign.sh unsigned "$ARCH" < "$RUNNER_TEMP/pkg-tags" > "$RUNNER_TEMP/unsigned"
+          echo "force=$force $(xargs < "$RUNNER_TEMP/unsigned")" >> "$GITHUB_OUTPUT"
+      - name: Build remaining packages
+        uses: ./.github/actions/run-make
+        env:
+          FORCE_BUILD_PKGS: ${{ steps.rebuild.outputs.force }}
+        with:
+          command: "V=1 PRUNE=1 HV=${{ matrix.hv }} PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=build $FORCE_BUILD pkgs"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          clean: false
+      - name: Verify the inputs of remaining packages
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          ./tools/eve-cosign.sh check-inputs "$RUNNER_TEMP/pkgs" "$ARCH" "$(docker version -f '{{.Server.Arch}}')"
+      # Recorded before the push, so that a re-run can sign what this attempt
+      # pushed even when it fails before signing.
+      - name: Record the packages built here
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: pkg-record-eve-${{ matrix.arch }}-${{ matrix.hv }}-${{ matrix.platform }}-pkgs-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pkgs
+      # FORCE_BUILD= overrides the FORCE_BUILD env above, which make -e would
+      # take, so that the push does not rebuild what the record lists with a
+      # different digest.
+      - name: Push remaining packages
+        uses: ./.github/actions/run-make
+        with:
+          command: "V=1 PRUNE=1 HV=${{ matrix.hv }} PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push FORCE_BUILD= pkgs"
+          dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+          dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          clean: false
+      - name: Fetch every attempt's record of remaining packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: pkg-record-eve-${{ matrix.arch }}-${{ matrix.hv }}-${{ matrix.platform }}-pkgs-*
+          path: ${{ runner.temp }}/records-pkgs
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+      - name: Sign the packages pushed with remaining packages
+        run: |
+          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP/records-pkgs"
+      - name: Fetch the records of the packages job
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: pkg-record-pkgs-${{ matrix.arch }}-*
+          path: ${{ runner.temp }}/records-base
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+      # See publish.yml.
+      - name: Restore signed packages overwritten since they were pushed
+        run: |
+          ./tools/eve-cosign.sh restore "$RUNNER_TEMP/records-base" "$RUNNER_TEMP/records-pkgs"
+      - name: Build EVE
+        uses: ./.github/actions/run-make
+        env:
+          FORCE_BUILD_PKGS: ${{ steps.rebuild.outputs.force }}
+        with:
+          command: "V=1 PRUNE=1 HV=${{ matrix.hv }} PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=build $FORCE_BUILD eve"
+          dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+          dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          clean: false
+      - name: Verify the inputs of EVE
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          ./tools/eve-cosign.sh check-inputs "$RUNNER_TEMP/eve" "$ARCH" "$(docker version -f '{{.Server.Arch}}')"
+      # Recorded before the push, so that a re-run can sign what this attempt
+      # pushed even when it fails before signing.
+      - name: Record the packages built here
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: pkg-record-eve-${{ matrix.arch }}-${{ matrix.hv }}-${{ matrix.platform }}-eve-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/eve
+      # FORCE_BUILD= overrides the FORCE_BUILD env above, which make -e would
+      # take, so that the push does not rebuild what the record lists with a
+      # different digest.
+      - name: Push EVE
+        uses: ./.github/actions/run-make
+        with:
+          command: "V=1 PRUNE=1 HV=${{ matrix.hv }} PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push FORCE_BUILD= eve"
+          dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+          dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          clean: false
+      - name: Fetch every attempt's record of EVE
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: pkg-record-eve-${{ matrix.arch }}-${{ matrix.hv }}-${{ matrix.platform }}-eve-*
+          path: ${{ runner.temp }}/records-eve
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+      - name: Sign the packages pushed with EVE
+        run: |
+          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP/records-eve"
       - uses: ./.github/actions/run-make
         if: matrix.arch != 'riscv64'
         with:
-          command: "V=1 HV=${{ matrix.hv }} PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push $FORCE_BUILD sbom collected_sources compare_sbom_collected_sources publish_sources"
+          command: "V=1 HV=${{ matrix.hv }} PLATFORM=${{ matrix.platform }} ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push FORCE_BUILD= sbom collected_sources compare_sbom_collected_sources publish_sources"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          clean: false
+      - name: Clean
+        if: ${{ always() }}
+        run: |
+          make clean
+          docker system prune -f -a --volumes
+          rm -rf ~/.linuxkit
 
   manifest:
     # Only run for the default branch
     if: github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
-    needs: packages
+    # The eve jobs push the packages specific to a hypervisor or platform.
+    needs: eve
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Login to Docker Hub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4.0.0
+        with:
+          username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+          password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Fetch every job's records
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: pkg-record-*
+          path: ${{ runner.temp }}/records
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+        with:
+          cosign-release: v3.1.4
+      - uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4  # v2.0.2
+        with:
+          version: 1.3.1
+      # See publish.yml.
+      - name: Restore signed packages overwritten since they were pushed
+        run: |
+          ./tools/eve-cosign.sh restore "$RUNNER_TEMP/records"
       - uses: ./.github/actions/run-make
         with:
           command: "V=1 LINUXKIT_PKG_TARGET=manifest pkgs"
           dockerhub-token: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
           dockerhub-account: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
+      - name: Sign package indexes
+        run: |
+          ./tools/eve-cosign.sh sign-indexes "$RUNNER_TEMP/records"
+      - name: Verify that every package the run pushed or used is signed
+        run: |
+          ./tools/eve-cosign.sh audit amd64 arm64 riscv64 -- "$RUNNER_TEMP/records"
