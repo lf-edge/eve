@@ -35,7 +35,7 @@ app is automatically picked up by:
 
 - `make build-test-apps` (from `evetest/`, for local builds), and
 - `.github/workflows/publish-evetest.yml` (for publishing to Docker Hub on
-  every push to `master`), which just invokes `make build` here with
+  every push to `17.0-stable`), which just invokes `make build` here with
   `DOCKER_TARGET=push DOCKER_PLATFORM=linux/amd64,linux/arm64`.
 
 Bump `VERSION` in your app's own `Makefile` whenever you change it -- each
