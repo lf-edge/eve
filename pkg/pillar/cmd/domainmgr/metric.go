@@ -92,6 +92,21 @@ func logWatermarks(ctx *domainContext, status *types.DomainStatus, dm *types.Dom
 	}
 }
 
+// logOOMKills logs the processes the OOM killer killed in the domain's cgroup
+// since the previous metrics pass. A container whose main process survives
+// keeps running without the killed ones, and nothing else reports the loss.
+func logOOMKills(ctx *domainContext, status *types.DomainStatus, dm types.DomainMetric) {
+	var prev uint64
+	if m, _ := ctx.pubDomainMetric.Get(dm.Key()); m != nil {
+		prev = m.(types.DomainMetric).OOMKills
+	}
+	if dm.OOMKills <= prev {
+		return
+	}
+	log.Errorf("Application %s (%s) reached its memory limit%s: the kernel's OOM killer killed %d of its processes",
+		status.DisplayName, dm.Key(), memoryLimitPhrase(uint64(dm.AllocatedMB)), dm.OOMKills-prev)
+}
+
 func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 	dmList, _ := hyper.GetDomsCPUMem()
 	hm, err := hyper.GetHostCPUMem()
@@ -139,6 +154,7 @@ func getAndPublishMetrics(ctx *domainContext, hyper hypervisor.Hypervisor) {
 		}
 
 		logWatermarks(ctx, status, &dm)
+		logOOMKills(ctx, status, dm)
 
 		dm.LastHeard = now
 		ctx.pubDomainMetric.Publish(dm.Key(), dm)

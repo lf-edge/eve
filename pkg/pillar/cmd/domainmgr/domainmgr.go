@@ -1153,6 +1153,34 @@ func asyncKubevirtDeactivate(ctx *domainContext, status *types.DomainStatus, imp
 	return ctx.hvTypeKube && !impatient && status.DomainId != 0
 }
 
+// taskCrashError returns the error to report for a crashed application task,
+// naming the OOM killer and the cgroup's memory limit when it killed processes
+// in the task's cgroup.
+func taskCrashError(domainName string) string {
+	const restart = " - please restart application instance"
+	group := filepath.Join(containerd.GetServicesNamespace(), domainName)
+	events, err := cgroup.MemoryEvents(group)
+	if err != nil {
+		log.Functionf("taskCrashError(%s): %v", domainName, err)
+	} else if n := events["oom_kill"]; n > 0 {
+		var limitMiB uint64
+		if limit, err := cgroup.ReadUint(group, "memory.max"); err == nil && limit != cgroup.Unlimited {
+			limitMiB = limit >> 20
+		}
+		return fmt.Sprintf("the application reached its memory limit%s and the kernel's OOM killer killed %d of its processes%s",
+			memoryLimitPhrase(limitMiB), n, restart)
+	}
+	return "one of the application's tasks has crashed" + restart
+}
+
+// memoryLimitPhrase returns " of <limitMiB> MiB", or "" for 0 (no limit known).
+func memoryLimitPhrase(limitMiB uint64) string {
+	if limitMiB == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" of %d MiB", limitMiB)
+}
+
 // Check if it is still running
 func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 	// Never reconcile a domain whose crash is being handled: a dump may be in
@@ -1203,7 +1231,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 				if corePath := pickupProcessCore(ctx, status); corePath != "" {
 					status.SetErrorNow("QEMU process crashed, core dump saved")
 				} else {
-					status.SetErrorNow("one of the application's tasks has crashed - please restart application instance")
+					status.SetErrorNow(taskCrashError(status.DomainName))
 				}
 				status.State = types.BROKEN
 			} else {
