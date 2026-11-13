@@ -99,18 +99,17 @@ Every `exclude` and `extra` carries a comment saying why, usually the device it
 is for.
 
 The header of the generated list records the kernels it was generated from, by
-branch and configuration flavour but not commit, and every name a module
-declares that the firmware tree lacks:
+branch and configuration flavour but not version or commit, and every name a
+module declares that the firmware tree lacks:
 
 ```text
-# kernel: eve-kernel-amd64-v6.18.55-generic-core
+# kernel: eve-kernel-amd64-generic-core
 # missing: ath10k_pci ath10k/QCA6174/hw3.0/firmware-5.bin
 # missing: rsi_usb rs9113_wlan_qspi.rps
 ```
 
-A new commit of a kernel branch that changes no declared firmware therefore
-leaves the lists as they are; a new kernel version changes the `# kernel:`
-lines.
+A kernel update that changes no declared firmware, a new commit or a new
+version, therefore leaves the lists, and so the pkg/fw image, as they are.
 
 A missing name is usually harmless. The driver also accepts another version,
 which is in the list when the tree has one (ath10k tries firmware API 6 down to
@@ -173,10 +172,10 @@ Two cases fall outside these rules:
    tools/update-fw-lists.py
    ```
 
-1. Review the diff of `pkg/fw/firmware-*.txt`, if any: a kernel commit that
-   declares the same firmware as the one before leaves the lists unchanged.
-   - the `# kernel:` lines change with the kernel version or flavour, not with
-     its commit;
+1. Review the diff of `pkg/fw/firmware-*.txt`, if any: a kernel that declares
+   the same firmware as the one before leaves the lists unchanged.
+   - the `# kernel:` lines change with the kernel flavour, not with its version
+     or commit;
    - added files come from drivers the kernel now builds, or from firmware
      versions the drivers now accept;
    - removed files come from drivers the kernel no longer builds, or from

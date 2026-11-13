@@ -56,11 +56,13 @@ FW_PREFIX = 'lib/firmware/'
 # hardware, and walks the API down to its minimum; "-c<core>" names rank
 # above the plain ones.
 IWLWIFI = re.compile(r'^(iwlwifi-.+)-(c?)(\d+)\.ucode$')
-# eve-kernel tags an image <branch>-<config flavour>-<commit>-<compiler>, and a
-# local build adds -<user>[-dirty] before the compiler. A list names its
-# kernels without the commit, so that a new commit that declares no other
-# firmware leaves it as it is.
-KERNEL_IMAGE = re.compile(r'^.*:([^/]+?)-[0-9a-f]{12,40}(?:-[^-]+(?:-dirty)?)?-[a-z]+$')
+# eve-kernel tags an image <branch>-<config flavour>-<commit>-<compiler>, its
+# branch ending in -v<version>-<flavour>, and a local build adds
+# -<user>[-dirty] before the compiler. A list names its kernels without the
+# version and the commit, so that a kernel update that declares no other
+# firmware leaves it, and the pkg/fw image, as they are.
+KERNEL_IMAGE = re.compile(r'^.*:([^/]+?)-v\d+(?:\.\d+)+(-[^/]+?)-[0-9a-f]{12,40}'
+                          r'(?:-[^-]+(?:-dirty)?)?-[a-z]+$')
 # make takes these from the environment, and a parent make's variables (make
 # HV=k check-fw-lists) from MAKEFLAGS: the tool passes them on the command line.
 MAKE_ENV = ('ZARCH', 'PLATFORM', 'HV', 'MAKEFLAGS', 'MFLAGS', 'MAKELEVEL')
@@ -256,11 +258,11 @@ def check_builds(rules):
 
 
 def kernel_name(tag):
-    """A kernel image tag without its registry, commit and compiler."""
+    """A kernel image tag without its registry, version, commit and compiler."""
     m = KERNEL_IMAGE.match(tag)
     if not m:
-        sys.exit(f'{tag}: not a kernel tag ending in -<commit>-<compiler>')
-    return m.group(1)
+        sys.exit(f'{tag}: not a kernel tag with a -v<version> and ending in -<commit>-<compiler>')
+    return m.group(1) + m.group(2)
 
 
 def modinfo_firmware(data):
@@ -434,20 +436,23 @@ def list_text(name, rule, kernels, tree):
 if PYTEST_AVAILABLE:
 
     def test_kernel_name():
-        """A kernel is named by its branch and config flavour, if it has one."""
+        """A kernel is named by its branch without the version, and its config
+        flavour if it has one, so that every version of a kernel has one name."""
         repo = 'docker.io/lfedge/eve-kernel:eve-kernel'
         assert kernel_name(f'{repo}-amd64-v6.18.55-generic-core-d6791352e9c5-gcc') == \
-            'eve-kernel-amd64-v6.18.55-generic-core'
+            'eve-kernel-amd64-generic-core'
+        assert kernel_name(f'{repo}-amd64-v6.18.63-generic-core-0123456789ab-gcc') == \
+            'eve-kernel-amd64-generic-core'
         assert kernel_name(f'{repo}-amd64-v6.18.55-generic-ai-d6791352e9c5-clang') == \
-            'eve-kernel-amd64-v6.18.55-generic-ai'
+            'eve-kernel-amd64-generic-ai'
         assert kernel_name(f'{repo}-arm64-v6.1.155-generic-417a12ac3d50-gcc') == \
-            'eve-kernel-arm64-v6.1.155-generic'
+            'eve-kernel-arm64-generic'
         assert kernel_name(f'{repo}-amd64-v6.18.55-generic-rt-d6791352e9c5-user-dirty-gcc') == \
-            'eve-kernel-amd64-v6.18.55-generic-rt'
+            'eve-kernel-amd64-generic-rt'
         assert kernel_name(f'{repo}-amd64-v6.18.55-generic-rt-d6791352e9c5-user-gcc') == \
-            'eve-kernel-amd64-v6.18.55-generic-rt'
+            'eve-kernel-amd64-generic-rt'
         assert kernel_name('localhost:5000/eve-kernel:eve-kernel-amd64-v6.18.55-generic-hwe-'
-                           'd6791352e9c5-gcc') == 'eve-kernel-amd64-v6.18.55-generic-hwe'
+                           'd6791352e9c5-gcc') == 'eve-kernel-amd64-generic-hwe'
 
     @pytest.mark.parametrize('tag', [
         'docker.io/lfedge/eve-kernel:eve-kernel-amd64-v6.18.55-generic-core',
@@ -455,15 +460,17 @@ if PYTEST_AVAILABLE:
         'docker.io/lfedge/eve-kernel:eve-kernel-amd64-v6.18.55-generic-core-d6791352e9c5',
         'docker.io/lfedge/eve-kernel:eve-kernel-amd64-v6.18.55-generic-core-d6791352e9c5-user-'
         'extra-gcc',
+        'docker.io/lfedge/eve-kernel:eve-kernel-amd64-generic-core-d6791352e9c5-gcc',
         'docker.io/lfedge/eve-kernel:latest',
         'eve-kernel-amd64-v6.18.55-generic-core-d6791352e9c5-gcc',
     ])
     def test_kernel_name_exit(tag):
-        """A tag without a commit and a compiler, or with more between them than a
-        local build adds, is an error."""
+        """A tag without a version, a commit and a compiler, or with more between
+        the last two than a local build adds, is an error."""
         with pytest.raises(SystemExit) as e:
             kernel_name(tag)
-        assert e.value.code == f'{tag}: not a kernel tag ending in -<commit>-<compiler>'
+        assert e.value.code == \
+            f'{tag}: not a kernel tag with a -v<version> and ending in -<commit>-<compiler>'
 
     def test_list_text():
         """A list read from two kernels holds what either of them declares."""
@@ -471,13 +478,13 @@ if PYTEST_AVAILABLE:
                 'extras': []}
         tree = {'a/one.bin': None, 'a/two.bin': None, 'b/link.bin': 'real.bin',
                 'b/real.bin': None, 'c/other.bin': None}
-        kernels = [('eve-kernel-amd64-v6.18.55-generic-hwe', {'a': {'a/one.bin'}}, set()),
-                   ('eve-kernel-amd64-v6.18.55-generic-ai',
+        kernels = [('eve-kernel-amd64-generic-hwe', {'a': {'a/one.bin'}}, set()),
+                   ('eve-kernel-amd64-generic-ai',
                     {'a': {'a/two.bin'}, 'b': {'b/link.bin', 'b/gone.bin'}}, set())]
         lines = list_text('amd64-k', rule, kernels, tree).splitlines()
         assert lines[:3] == [f'# {GENERATED}',
-                             '# kernel: eve-kernel-amd64-v6.18.55-generic-hwe',
-                             '# kernel: eve-kernel-amd64-v6.18.55-generic-ai']
+                             '# kernel: eve-kernel-amd64-generic-hwe',
+                             '# kernel: eve-kernel-amd64-generic-ai']
         assert [line for line in lines if line.startswith('# missing:')] == \
             ['# missing: b b/gone.bin']
         assert [line for line in lines if not line.startswith('#')] == \
