@@ -17,13 +17,27 @@ FROM rust-host AS target-riscv64
 ENV CARGO_BUILD_TARGET="riscv64gc-unknown-linux-musl"
 
 # hadolint ignore=DL3006
-FROM target-$TARGETARCH AS rust
-
+FROM target-$TARGETARCH AS toolchain
 WORKDIR /usr/local/my-installer
-COPY . .
 
-# tools already in place
-RUN cargo build --release --verbose
+# cargo-chef splits the dependency build into its own cached layer so that
+# editing our source does not recompile every dependency. Requires network
+# access at build time (see build.yml network: yes) - deps come from crates.io
+# and are pinned by Cargo.lock (this package is not vendored).
+FROM toolchain AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM toolchain AS cacher
+COPY --from=planner /usr/local/my-installer/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+FROM toolchain AS rust
+COPY . .
+# reuse the cached, pre-built dependencies
+COPY --from=cacher /usr/local/my-installer/target target
+COPY --from=cacher "$CARGO_HOME" "$CARGO_HOME"
+RUN cargo build --release
 RUN cargo sbom > sbom.spdx.json
 
 RUN cp "/usr/local/my-installer/target/$CARGO_BUILD_TARGET/release/installer" /usr/local/my-installer/target/installer
