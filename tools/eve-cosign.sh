@@ -79,7 +79,7 @@ CACHE="${LINUXKIT_CACHE:-$HOME/.linuxkit/cache}"
 # repository they ran in. A tag build runs its own commit's copy of this
 # script, so EVE's packages are accepted only from protected branches.
 # eve-rust and eve-kernel are signed by their own repositories' workflows.
-EVE_IDENTITY_REGEXP='^https://github\.com/lf-edge/eve/\.github/workflows/(release-sign\.yml@refs/heads/master|build-alpine-base\.yml@refs/heads/master|publish\.yml@refs/heads/(master|[0-9]+\.[0-9]+(-stable)?))$'
+EVE_IDENTITY_REGEXP='^https://github\.com/lf-edge/eve/\.github/workflows/(release-sign\.yml@refs/heads/master|build-alpine-base\.yml@refs/heads/master|buildondemand\.yml@refs/heads/master|publish\.yml@refs/heads/(master|[0-9]+\.[0-9]+(-stable)?))$'
 RUST_IDENTITY_REGEXP='^https://github\.com/lf-edge/eve-rust/\.github/workflows/release\.yaml@refs/tags/[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$'
 KERNEL_IDENTITY_REGEXP='^https://github\.com/lf-edge/eve-kernel/\.github/workflows/publish\.yml@refs/heads/eve-kernel-(amd64|arm64|riscv64)-(v[0-9]+\.[0-9]+(\.[0-9]+)?-[a-z0-9-]+|next)$'
 IDENTITY_REGEXP="${EVE_COSIGN_IDENTITY_REGEXP:-$EVE_IDENTITY_REGEXP}"
