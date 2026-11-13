@@ -1781,7 +1781,7 @@ tries to pull it, else builds it. The SDN image is not checked when
 `EVETEST_SDN_VERSION` is set. With a remote broker (`EVETEST_BROKER_ADDRESS`) the local
 SDN image is still ensured: the broker pulls the image itself, and only if that fails
 (e.g. the image was built from an unmerged change) does the harness push the local copy to it.
-CI (`publish-evetest.yml`) publishes the images of `master` under the same tags.
+CI (`publish-evetest.yml`) publishes the images of `17.0-stable` under the same tags.
 
 Changes to tests (`evetest/tests/`) do not change the tag, because tests are compiled
 inside the container at runtime from the mounted source. A `go.mod` change does, which
