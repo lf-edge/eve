@@ -218,6 +218,11 @@ func handleVolumeRestart(ctxArg interface{}, restartCount int) {
 		handleDeferredVolumeCreate(ctx, key, config)
 		delete(ctx.volumeConfigCreateDeferredMap, key)
 	}
+	if ctx.hvTypeKube {
+		// Content trees doUpdateContentTree held back until the full
+		// VolumeConfig set arrived; their PVC check can now see every volume.
+		reevaluatePendingContentTrees(ctx, types.INITIAL)
+	}
 	// Signal restart on pubVolumeStatus on zedagent's first restart of
 	// pubVolumeConfig. By then on-disk recovery
 	// (populateExistingVolumesFormat*) plus the controller-intended

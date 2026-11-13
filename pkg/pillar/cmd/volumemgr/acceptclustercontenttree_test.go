@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
+	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 )
 
@@ -86,5 +87,50 @@ func TestContentTreeSatisfiedByPVCsNativeContainer(t *testing.T) {
 				t.Errorf("contentTreeSatisfiedByPVCs() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// restartableSub lets a test flip Restarted(): MemoryDriver's Restart is a
+// no-op, so SignalRestarted never reaches the subscriber.
+type restartableSub struct {
+	pubsub.Subscription
+	restarted bool
+}
+
+func (s *restartableSub) Restarted() bool { return s.restarted }
+
+// TestContentTreeWaitsForVolumeConfigRestart pins the EVE-k gate in
+// doUpdateContentTree: after a reboot DatastoreConfig can resolve before
+// zedagent's VolumeConfig set arrives, and a tree whose blob is still verified
+// on disk must not run ahead to LOADING while contentTreeSatisfiedByPVCs
+// cannot yet see the volume whose PVC already satisfies it.
+func TestContentTreeWaitsForVolumeConfigRestart(t *testing.T) {
+	ctx, pub := initVolumeModifyCtxForTest(t)
+	ctx.hvTypeKube = true
+	sub := &restartableSub{Subscription: ctx.subVolumeConfig}
+	ctx.subVolumeConfig = sub
+
+	contentID := mustNewUUID(t)
+	status := &types.ContentTreeStatus{
+		ContentID:             contentID,
+		State:                 types.INITIAL,
+		AllDatastoresResolved: true,
+	}
+	changed, done := doUpdateContentTree(ctx, status)
+	if changed || done || status.State != types.INITIAL {
+		t.Fatalf("before VolumeConfig restart: got changed=%v done=%v state=%v, want false/false/INITIAL",
+			changed, done, status.State)
+	}
+
+	vc := types.VolumeConfig{VolumeID: mustNewUUID(t), ContentID: contentID}
+	pvcName := vc.GetPVCName()
+	pvcAdoptCache[pvcName] = pvcAdoptCacheEntry{state: kubeapi.PVCStateReady, checked: time.Now()}
+	t.Cleanup(func() { delete(pvcAdoptCache, pvcName) })
+	publishTestVolumeConfig(t, ctx, pub, vc)
+	sub.restarted = true
+
+	doUpdateContentTree(ctx, status)
+	if status.State != types.REMOTELOADED {
+		t.Fatalf("after VolumeConfig restart: state %v, want REMOTELOADED", status.State)
 	}
 }
