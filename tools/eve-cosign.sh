@@ -16,6 +16,8 @@
 #       nothing but the packages every build rebuilds (FORCE_BUILD_PKGS in
 #       the Makefile), since it cannot sign. Images of excluded packages
 #       among these are checked as well, and the result is only logged.
+#       <outdir>/built-descriptors holds, for each built manifest, its
+#       descriptor and those of its attestations, for restore.
 #   eve-cosign.sh unsigned <arch>...
 #       Read the "<pkg> <tag>" lines `make pkgs_tags_info` prints and print
 #       each <pkg> the registry serves, for one of the given architectures,
@@ -30,8 +32,15 @@
 #       sign. Does nothing on a tag build.
 #   eve-cosign.sh sign-indexes <dir>...
 #       Sign the package index each tag in the records under the <dir>s
-#       names, once every platform manifest in it verifies. Skips the
-#       packages every build rebuilds, whose tags concurrent builds overwrite.
+#       names, once every platform manifest in it verifies, waiting up to
+#       five minutes for one that another signing run has yet to sign. Skips
+#       the packages every build rebuilds, whose tags concurrent builds
+#       overwrite.
+#   eve-cosign.sh restore <dir>...
+#       Put each signed manifest that the built-descriptors records under the
+#       <dir>s list back into its tag's index, and point <tag>-<arch> at it,
+#       where a manifest without a valid signature has taken its place, as
+#       when a build outside the policy pushed the same tag later. Needs oras.
 #   eve-cosign.sh audit <arch>... -- <dir>...
 #       Verify every manifest and index the records under the <dir>s list,
 #       built ones the registry serves only on a branch build, and the
@@ -247,7 +256,30 @@ classify() {
     sort -u -o "$out/built" "$out/built"
     sort -u -o "$out/built-tags" "$out/built-tags"
     sort -u -o "$out/pulled-tags" "$out/pulled-tags"
+    built_descriptors "$out"
     echo "pulled: $(wc -l < "$out/pulled")  built here: $(wc -l < "$out/built")"
+}
+
+# built_descriptors <out>: write <out>/built-descriptors, a JSON line for each
+# platform manifest <out>/built lists: the package tag, the manifest's
+# descriptor in the index this job built, and the descriptors of the
+# attestation manifests that refer to it.
+built_descriptors() {
+    local out="$1" blobs="$CACHE/blobs/sha256" ref digest
+    jq -r --arg p "$PKG_PREFIX/eve-" '.manifests[]
+        | select((.annotations["org.opencontainers.image.ref.name"] // "") | startswith($p))
+        | select(.mediaType | test("index|manifest.list"))
+        | [(.annotations["org.opencontainers.image.ref.name"] | sub(".*/"; "")), .digest] | @tsv' "$CACHE/index.json" |
+    while IFS=$'\t' read -r ref digest; do
+        [ -f "$blobs/${digest#sha256:}" ] || continue
+        jq -c --arg ref "$ref" '.manifests as $all | .manifests[]
+            | select(.annotations["vnd.docker.reference.type"] != "attestation-manifest")
+            | . as $m
+            | {ref: $ref, entry: (($ref | sub(":[^:]*$"; "")) + "@" + $m.digest), manifest: $m,
+               attestations: [$all[] | select(.annotations["vnd.docker.reference.digest"] == $m.digest)]}' \
+            "$blobs/${digest#sha256:}"
+    done | jq -c --rawfile built "$out/built" '. as $d | select(($built | split("\n") | index($d.entry)) != null)' |
+        sort -u > "$out/built-descriptors"
 }
 
 # report <failures> [<what>]: apply EVE_COSIGN_ENFORCE to a count of failed
@@ -288,6 +320,17 @@ verify_pkgs() {
     sed "s|^|$SIG_PREFIX/|" "$1" | verify_entries
 }
 
+# wait_verified <ref>: verified, retried every 30 s for up to five minutes, for
+# a manifest that another run of a signing workflow pushed and has yet to sign.
+wait_verified() {
+    local waited=0
+    until verified "$1"; do
+        [ "$waited" -lt 300 ] || return 1
+        sleep 30
+        waited=$((waited + 30))
+    done
+}
+
 # sign_index <name>:<tag>: sign the package index the tag names once each of
 # its platform manifests verifies. A tag naming a platform manifest is only
 # checked: its manifest is signed by the job that pushed it, and the tag may
@@ -306,7 +349,7 @@ sign_index() {
     *index*|*manifest.list*)
         for m in $(jq -r '.manifests[]
             | select(.annotations["vnd.docker.reference.type"] != "attestation-manifest") | .digest' <<< "$raw"); do
-            if ! verified "${ref%@*}@$m"; then
+            if ! wait_verified "${ref%@*}@$m"; then
                 echo "::warning::$1 lists ${ref%@*}@$m, which has no valid signature"
                 failed=1
             fi
@@ -548,6 +591,82 @@ unsigned_pkgs() {
     done | sort -u
 }
 
+# restore_one <descriptor>: restore, for one line of a built-descriptors record.
+restore_one() {
+    local ref entry name digest arch raw slot att atts=() index
+    ref=$(jq -r .ref <<< "$1")
+    entry=$(jq -r .entry <<< "$1")
+    name="${entry%@*}"
+    digest="${entry##*@}"
+    arch=$(jq -r .manifest.platform.architecture <<< "$1")
+    docker buildx imagetools inspect --raw "$PKG_PREFIX/$entry" > /dev/null 2>&1 || return 0
+    raw=$(docker buildx imagetools inspect --raw "$PKG_PREFIX/$ref" 2> /dev/null) || return 0
+    # <tag>-<arch> is a plain manifest; retag fixes it from the index's record.
+    jq -e 'has("manifests")' <<< "$raw" > /dev/null || return 0
+    slot=$(jq -r --arg a "$arch" '[.manifests[]?
+        | select(.platform.os == "linux" and .platform.architecture == $a) | .digest] | first // empty' <<< "$raw")
+    if [ "$slot" = "$digest" ] || { [ -n "$slot" ] && verified "$SIG_PREFIX/$name@$slot"; }; then
+        retag "$name" "${ref##*:}-$arch" "$slot"
+        return 0
+    fi
+    if ! verified "$SIG_PREFIX/$entry"; then
+        echo "::warning::$ref lists ${slot:-nothing} for $arch, and $entry has no valid signature to put back"
+        return 0
+    fi
+    for att in $(jq -r '.attestations[].digest' <<< "$1"); do
+        if docker buildx imagetools inspect --raw "$PKG_PREFIX/$name@$att" > /dev/null 2>&1; then
+            atts+=("$att")
+        fi
+    done
+    index=$(mktemp)
+    jq --argjson d "$1" --arg slot "$slot" --args '
+        ($ARGS.positional) as $atts
+        | .manifests |= (
+            [.[] | select(.digest != $slot and (.annotations["vnd.docker.reference.digest"] // "") != $slot)]
+            + [$d.manifest] + [$d.attestations[] | select(.digest as $a | $atts | index($a))]
+            | reduce .[] as $x ([]; if any(.[]; .digest == $x.digest) then . else . + [$x] end))' \
+        "${atts[@]}" <<< "$raw" > "$index"
+    oras manifest push "$PKG_PREFIX/$ref" "$index" > /dev/null || die "cannot push the index of $ref"
+    rm -f "$index"
+    echo "restored $entry in $ref, in place of ${slot:-nothing}"
+    retag "$name" "${ref##*:}-$arch" "$digest"
+}
+
+# retag <name> <arch-tag> <slot>: make manifest merges <arch-tag>
+# into the index ahead of what the index lists, so point <arch-tag> back at
+# <slot> where it names a manifest without a valid signature.
+retag() {
+    local name="$1" tag="$2" slot="$3" cur
+    [ -n "$slot" ] || return 0
+    cur=$(oras manifest fetch --descriptor "$PKG_PREFIX/$name:$tag" 2> /dev/null | jq -r '.digest // empty')
+    [ "$cur" != "$slot" ] || return 0
+    if [ -n "$cur" ] && verified "$SIG_PREFIX/$name@$cur"; then
+        return 0
+    fi
+    oras tag "$PKG_PREFIX/$name@$slot" "$tag" > /dev/null || die "cannot tag $name@$slot as $tag"
+    echo "pointed $name:$tag at $slot, in place of ${cur:-nothing}"
+}
+
+# restore <dir>...: see the usage above. Records written before
+# built-descriptors existed have nothing to restore.
+restore() {
+    local files="" dir line
+    for dir in "$@"; do
+        [ -d "$dir" ] || continue
+        files+="$(find "$dir" -maxdepth 2 -type f -name built-descriptors)"$'\n'
+    done
+    files=$(sort -u <<< "$files" | sed '/^$/d')
+    if [ -z "$files" ]; then
+        echo "no built-descriptors record under $*"
+        return
+    fi
+    # shellcheck disable=SC2086 # one path per line, none with spaces
+    while read -r line; do
+        [ -n "$line" ] || continue
+        restore_one "$line"
+    done < <(sort -u $files)
+}
+
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
 case "$cmd" in
@@ -571,6 +690,14 @@ unsigned)
     [ $# -ge 1 ] || die "usage: unsigned <arch>..."
     unsigned_pkgs "$@"
     ;;
+restore)
+    [ $# -ge 1 ] || die "usage: restore <dir>..."
+    if is_tag_build; then
+        echo "tag build: it pushes no package"
+        exit 0
+    fi
+    restore "$@"
+    ;;
 audit)
     audit "$@"
     ;;
@@ -579,6 +706,6 @@ verify)
     verify_pkgs "$1"
     ;;
 *)
-    die "usage: $0 check-inputs|unsigned|sign-pushed|sign-indexes|audit|verify ..."
+    die "usage: $0 check-inputs|unsigned|sign-pushed|restore|sign-indexes|audit|verify ..."
     ;;
 esac
