@@ -51,6 +51,8 @@ type TpmIdentity struct {
 	Model           string `json:"model"`
 	FirmwareVersion string `json:"firmware_version"`
 	// EKPublic and AIKPublic are TPMT_PUBLIC, AIKName is the TPM2B_NAME.
+	// EKPublic is the TCG EK in the endorsement hierarchy, RSA if the TPM
+	// holds an RSA EK certificate, else ECC if it holds an ECC one.
 	EKPublic  []byte `json:"ek_public"`
 	AIKPublic []byte `json:"aik_public"`
 	AIKName   []byte `json:"aik_name"`
@@ -110,13 +112,6 @@ func ReadTpmIdentity(rw io.ReadWriter) (*TpmIdentity, error) {
 		AIKHierarchy: "owner",
 	}
 
-	ekPub, _, _, err := tpm2.ReadPublic(rw, TpmEKHdl)
-	if err != nil {
-		return nil, fmt.Errorf("reading EK public: %w", err)
-	}
-	if id.EKPublic, err = ekPub.Encode(); err != nil {
-		return nil, fmt.Errorf("encoding EK public: %w", err)
-	}
 	var aikName tpmutil.U16Bytes
 	aikPub, aikName, _, err := tpm2.ReadPublic(rw, TpmAIKHdl)
 	if err != nil {
@@ -135,7 +130,39 @@ func ReadTpmIdentity(rw io.ReadWriter) (*TpmIdentity, error) {
 	if err != nil {
 		return nil, err
 	}
+	alg, cert, err := ekToReport(id.EKCertificates)
+	if err != nil {
+		return nil, err
+	}
+	ekPub, err := ReadTCGEK(rw, alg, cert)
+	if err != nil {
+		return nil, fmt.Errorf("reading EK public: %w", err)
+	}
+	if id.EKPublic, err = ekPub.Encode(); err != nil {
+		return nil, fmt.Errorf("encoding EK public: %w", err)
+	}
 	return id, nil
+}
+
+// ekToReport picks the EK to report: the RSA EK if its certificate is
+// present, else the ECC EK if its certificate is, else the RSA EK uncertified.
+func ekToReport(certs []NVCertificate) (tpm2.Algorithm, *x509.Certificate, error) {
+	for _, c := range []struct {
+		idx tpmutil.Handle
+		alg tpm2.Algorithm
+	}{{TpmEKCertRSAHdl, tpm2.AlgRSA}, {TpmEKCertECCHdl, tpm2.AlgECC}} {
+		for _, nc := range certs {
+			if nc.Index != uint32(c.idx) {
+				continue
+			}
+			cert, err := x509.ParseCertificate(nc.DER)
+			if err != nil {
+				return 0, nil, fmt.Errorf("parsing EK certificate %#x: %w", nc.Index, err)
+			}
+			return c.alg, cert, nil
+		}
+	}
+	return tpm2.AlgRSA, nil, nil
 }
 
 // QuoteWithAIK quotes sel with the AIK over qualifyingData and returns the
