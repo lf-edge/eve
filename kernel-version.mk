@@ -36,7 +36,7 @@ ifeq (, $(filter $(PLATFORM), $(PLATFORMS_$(ZARCH))))
 endif
 
 ifeq ($(ZARCH), amd64)
-    KERNEL_VERSION=v6.18.55
+    KERNEL_VERSION=v6.18.63
     KERNEL_FLAVOR=generic
     ifeq ($(PLATFORM), rt)
         KERNEL_CONFIG_FLAVOR=rt
