@@ -20,7 +20,7 @@ APPS1 = $(notdir $(wildcard cmd/*))
 # find all GOFILES
 GOFILES = $(shell find . -path ./vendor -prune -o -name '*go' -print)
 
-.PHONY: all clean build test build-docker build-docker-git shell
+.PHONY: all clean build test build-docker build-docker-git shell lh-snap-revert
 
 all: build
 
@@ -151,6 +151,11 @@ test-profiling: test-profiling-create
 
 clean:
 	@rm -rf $(DISTDIR)
+
+# EVE-K Longhorn snapshot revert tool, a separate binary from zedbox. The
+# pillar image includes it for HV=k. See tools/lh-snap-revert/README.md.
+lh-snap-revert: $(DISTDIR)
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(ZARCH) go build -mod=vendor -trimpath -ldflags "-s -w" -o $(DISTDIR)/$@ ./tools/$@
 
 fmt:
 	@gofmt -w -s $(GOFILES)
