@@ -79,6 +79,14 @@ type ipEntry struct {
 // It enforces a rate limit with the given RPS and burst size, and automatically removes
 // inactive IPs after the specified idle timeout.
 func (msrv *Msrv) withRateLimiterPerIP() func(http.Handler) http.Handler {
+	return rateLimiterPerIP(func() (rate.Limit, int, time.Duration) {
+		return rate.Limit(msrv.pmc.RPS), msrv.pmc.Burst, msrv.pmc.IdleTimeout
+	})
+}
+
+// rateLimiterPerIP limits requests per source IP to the rate and burst conf
+// returns, dropping IPs idle longer than its idle timeout.
+func rateLimiterPerIP(conf func() (rate.Limit, int, time.Duration)) func(http.Handler) http.Handler {
 	var (
 		mu       sync.Mutex
 		visitors = make(map[string]*ipEntry)
@@ -88,10 +96,11 @@ func (msrv *Msrv) withRateLimiterPerIP() func(http.Handler) http.Handler {
 	go func() {
 		for {
 			time.Sleep(time.Minute)
+			_, _, idle := conf()
 			mu.Lock()
 			now := time.Now()
 			for ip, v := range visitors {
-				if now.Sub(v.lastSeen) > msrv.pmc.IdleTimeout {
+				if now.Sub(v.lastSeen) > idle {
 					delete(visitors, ip)
 				}
 			}
@@ -100,20 +109,20 @@ func (msrv *Msrv) withRateLimiterPerIP() func(http.Handler) http.Handler {
 	}()
 
 	getLimiter := func(ip string) *rate.Limiter {
+		limit, burst, _ := conf()
 		mu.Lock()
 		defer mu.Unlock()
 
 		v, exists := visitors[ip]
 		if !exists {
-			limiter := rate.NewLimiter(rate.Limit(msrv.pmc.RPS), msrv.pmc.Burst)
+			limiter := rate.NewLimiter(limit, burst)
 			visitors[ip] = &ipEntry{limiter: limiter, lastSeen: time.Now()}
 			return limiter
 		}
 
-		// Update the last seen time
-		if v.limiter.Limit() != rate.Limit(msrv.pmc.RPS) || v.limiter.Burst() != msrv.pmc.Burst {
-			v.limiter.SetLimit(rate.Limit(msrv.pmc.RPS))
-			v.limiter.SetBurst(msrv.pmc.Burst)
+		if v.limiter.Limit() != limit || v.limiter.Burst() != burst {
+			v.limiter.SetLimit(limit)
+			v.limiter.SetBurst(burst)
 		}
 
 		v.lastSeen = time.Now()
@@ -134,6 +143,17 @@ func (msrv *Msrv) withRateLimiterPerIP() func(http.Handler) http.Handler {
 				return
 			}
 
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// withWriteDeadline replaces the server's write deadline, past which a reply
+// is lost, with one d from now.
+func withWriteDeadline(d time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(d))
 			next.ServeHTTP(w, r)
 		})
 	}
