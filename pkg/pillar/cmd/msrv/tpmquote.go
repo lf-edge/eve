@@ -236,6 +236,69 @@ func (msrv *Msrv) handleTpmQuote() http.HandlerFunc {
 	}
 }
 
+// TpmActivateRequest is the body of POST /eve/v1/tpm/activate: the output of
+// TPM2_MakeCredential for the identity's ek_public and aik_name.
+type TpmActivateRequest struct {
+	// CredentialBlob is the TPM2B_ID_OBJECT, EncryptedSecret the
+	// TPM2B_ENCRYPTED_SECRET, each with its 2-byte size prefix.
+	CredentialBlob  []byte `json:"credential_blob"`
+	EncryptedSecret []byte `json:"encrypted_secret"`
+}
+
+// TpmActivateResponse is the reply to POST /eve/v1/tpm/activate.
+type TpmActivateResponse struct {
+	Secret []byte `json:"secret"`
+}
+
+// tpmActivateBodyMax bounds the request; an RSA-2048 credential is ~600 bytes.
+const tpmActivateBodyMax = 8192
+
+// handleTpmActivate serves POST /eve/v1/tpm/activate: TPM2_ActivateCredential
+// with the EK from /eve/v1/tpm/identity, so a verifier can check that the AIK
+// is in the TPM the EK certificate names.
+func (msrv *Msrv) handleTpmActivate() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !tpmInUse() {
+			http.Error(w, "no TPM in use on this device", http.StatusNotFound)
+			return
+		}
+		var req TpmActivateRequest
+		body := http.MaxBytesReader(w, r.Body, tpmActivateBodyMax)
+		if err := json.NewDecoder(body).Decode(&req); err != nil {
+			http.Error(w, fmt.Sprintf("bad request body: %v", err), http.StatusBadRequest)
+			return
+		}
+		ta := msrv.tpmAttestState()
+		id, err := ta.getIdentity(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), tpmErrorStatus(err))
+			return
+		}
+		ek, err := tpm2.DecodePublic(id.EKPublic)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		var secret []byte
+		err = ta.withTpm(r.Context(), func(rw io.ReadWriter) error {
+			var err error
+			secret, err = etpm.ActivateCredentialWithTCGEK(rw, ek,
+				req.CredentialBlob, req.EncryptedSecret)
+			return err
+		})
+		if err != nil {
+			msrv.Log.Warnf("handleTpmActivate: %v", err)
+			status := tpmErrorStatus(err)
+			if errors.Is(err, etpm.ErrCredentialActivation) {
+				status = http.StatusBadRequest
+			}
+			http.Error(w, err.Error(), status)
+			return
+		}
+		writeJSON(w, TpmActivateResponse{Secret: secret})
+	}
+}
+
 // Variables so tests can point them elsewhere.
 var (
 	tpmEventLogPath = types.TpmMeasurementLogFile

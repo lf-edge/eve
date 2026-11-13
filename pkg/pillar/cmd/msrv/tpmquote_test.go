@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/google/go-tpm/legacy/tpm2"
+	"github.com/google/go-tpm/legacy/tpm2/credactivation"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -106,6 +107,49 @@ func TestTpmQuote(t *testing.T) {
 	g.Expect(id.EKCertificates[0].IssuerURLs).To(gomega.Equal(ekCert.IssuingCertificateURL))
 	g.Expect(id.EKCertificates[0].IssuerURLs).To(gomega.HaveLen(1))
 
+	// aik_name is the Name of aik_public, and the AIK is a restricted
+	// signing key.
+	aikName, err := tpm2.DecodeName(bytes.NewBuffer(id.AIKName))
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(aikName.Digest.Alg).To(gomega.Equal(tpm2.AlgSHA256))
+	aikPubDigest := sha256.Sum256(id.AIKPublic)
+	g.Expect([]byte(aikName.Digest.Value)).To(gomega.Equal(aikPubDigest[:]))
+	aikPub, err := tpm2.DecodePublic(id.AIKPublic)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	g.Expect(aikPub.NameAlg).To(gomega.Equal(tpm2.AlgSHA256))
+	aikAttrs := tpm2.FlagRestricted | tpm2.FlagSign | tpm2.FlagFixedTPM | tpm2.FlagFixedParent
+	g.Expect(aikPub.Attributes & aikAttrs).To(gomega.Equal(aikAttrs))
+
+	// Credential activation with that EK proves the AIK is in the same TPM.
+	activate := func(ek crypto.PublicKey, secret []byte) *httptest.ResponseRecorder {
+		blob, encSecret, err := credactivation.Generate(aikName.Digest, ek, 16, secret)
+		g.Expect(err).ToNot(gomega.HaveOccurred())
+		body, err := json.Marshal(TpmActivateRequest{CredentialBlob: blob, EncryptedSecret: encSecret})
+		g.Expect(err).ToNot(gomega.HaveOccurred())
+		return do(http.MethodPost, "/eve/v1/tpm/activate", "10.0.0.9", body)
+	}
+	secret := []byte("0123456789abcdef0123456789abcdef")
+	rec = activate(ekKey, secret)
+	g.Expect(rec.Code).To(gomega.Equal(http.StatusOK), rec.Body.String())
+	var act TpmActivateResponse
+	g.Expect(json.Unmarshal(rec.Body.Bytes(), &act)).To(gomega.Succeed())
+	g.Expect(act.Secret).To(gomega.Equal(secret))
+
+	// EVE's owner-hierarchy key at TpmEKHdl cannot activate it.
+	rw, err := tpm2.OpenTPM(etpm.SimTpmPath)
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	ownerEK, _, _, err := tpm2.ReadPublic(rw, etpm.TpmEKHdl)
+	rw.Close()
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	ownerKey, err := ownerEK.Key()
+	g.Expect(err).ToNot(gomega.HaveOccurred())
+	rec = activate(ownerKey, secret)
+	g.Expect(rec.Code).To(gomega.Equal(http.StatusBadRequest), rec.Body.String())
+
+	rec = do(http.MethodPost, "/eve/v1/tpm/activate", "10.0.0.9",
+		[]byte(`{"credential_blob":"AAE=","encrypted_secret":"AAA="}`))
+	g.Expect(rec.Code).To(gomega.Equal(http.StatusBadRequest), rec.Body.String())
+
 	// A caller msrv cannot map to an app gets no quote.
 	reqBody := []byte(`{"caller_data":"cmVjZWlwdC1rZXktZGlnZXN0"}`)
 	rec = do(http.MethodPost, "/eve/v1/tpm/quote", "10.0.0.8", reqBody)
@@ -127,8 +171,6 @@ func TestTpmQuote(t *testing.T) {
 	// The AIK signed the attestation, which carries the binding hash and
 	// the digest of the returned PCR values.
 	q := resp.Quote
-	aikPub, err := tpm2.DecodePublic(id.AIKPublic)
-	g.Expect(err).ToNot(gomega.HaveOccurred())
 	aikKey, err := aikPub.Key()
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(q.SigAlg).To(gomega.Equal("RSASSA-SHA256"))
