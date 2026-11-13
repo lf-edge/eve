@@ -47,22 +47,18 @@ var tcgEKTemplateECC = tpm2.Public{
 // at TpmTCGEKHdl is used instead. If cert is non-nil, the key must be the
 // certificate's.
 func ReadTCGEK(rw io.ReadWriter, alg tpm2.Algorithm, cert *x509.Certificate) (tpm2.Public, error) {
-	var template tpm2.Public
-	switch alg {
-	case tpm2.AlgRSA:
-		template = DefaultEkTemplate
-	case tpm2.AlgECC:
-		template = tcgEKTemplateECC
-	default:
-		return tpm2.Public{}, fmt.Errorf("no TCG EK template for algorithm %v", alg)
-	}
-	pub, err := deriveEK(rw, template)
+	template, err := tcgEKTemplate(alg)
 	if err != nil {
-		persisted, _, _, perr := tpm2.ReadPublic(rw, TpmTCGEKHdl)
-		if perr != nil || !persisted.MatchesTemplate(template) {
-			return tpm2.Public{}, fmt.Errorf("deriving EK: %w", err)
-		}
-		pub = persisted
+		return tpm2.Public{}, err
+	}
+	h, release, err := loadTCGEK(rw, template)
+	if err != nil {
+		return tpm2.Public{}, err
+	}
+	pub, _, _, err := tpm2.ReadPublic(rw, h)
+	release()
+	if err != nil {
+		return tpm2.Public{}, err
 	}
 	if cert != nil {
 		key, err := pub.Key()
@@ -77,13 +73,98 @@ func ReadTCGEK(rw io.ReadWriter, alg tpm2.Algorithm, cert *x509.Certificate) (tp
 	return pub, nil
 }
 
-func deriveEK(rw io.ReadWriter, template tpm2.Public) (tpm2.Public, error) {
+// ActivateCredentialWithTCGEK runs TPM2_ActivateCredential for the AIK with
+// the TCG EK ek, as returned by ReadTCGEK, and returns the recovered secret.
+// credBlob and encSecret are the TPM2B_ID_OBJECT and TPM2B_ENCRYPTED_SECRET
+// that TPM2_MakeCredential produced for ek and the AIK's Name.
+func ActivateCredentialWithTCGEK(rw io.ReadWriter, ek tpm2.Public, credBlob, encSecret []byte) ([]byte, error) {
+	cred, err := unpackTPM2B(credBlob)
+	if err != nil {
+		return nil, fmt.Errorf("%w: credential blob: %w", ErrCredentialActivation, err)
+	}
+	secret, err := unpackTPM2B(encSecret)
+	if err != nil {
+		return nil, fmt.Errorf("%w: encrypted secret: %w", ErrCredentialActivation, err)
+	}
+	template, err := tcgEKTemplate(ek.Type)
+	if err != nil {
+		return nil, err
+	}
+	h, release, err := loadTCGEK(rw, template)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	loaded, _, _, err := tpm2.ReadPublic(rw, h)
+	if err != nil {
+		return nil, err
+	}
+	loadedKey, err := loaded.Key()
+	if err != nil {
+		return nil, err
+	}
+	ekKey, err := ek.Key()
+	if err != nil {
+		return nil, err
+	}
+	if !loadedKey.(interface{ Equal(crypto.PublicKey) bool }).Equal(ekKey) {
+		return nil, errors.New("loaded EK differs from the given EK")
+	}
+
+	// The TCG EK is adminWithPolicy with PolicySecret(TPM_RH_ENDORSEMENT).
+	session, _, err := tpm2.StartAuthSession(rw, tpm2.HandleNull, tpm2.HandleNull,
+		make([]byte, 16), nil, tpm2.SessionPolicy, tpm2.AlgNull, tpm2.AlgSHA256)
+	if err != nil {
+		return nil, fmt.Errorf("starting policy session: %w", err)
+	}
+	defer tpm2.FlushContext(rw, session) //nolint:errcheck
+	pw := tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}
+	if _, _, err := tpm2.PolicySecret(rw, tpm2.HandleEndorsement, pw, session,
+		nil, nil, nil, 0); err != nil {
+		return nil, fmt.Errorf("PolicySecret: %w", err)
+	}
+	out, err := tpm2.ActivateCredentialUsingAuth(rw,
+		[]tpm2.AuthCommand{pw, {Session: session, Attributes: tpm2.AttrContinueSession}},
+		TpmAIKHdl, h, cred, secret)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrCredentialActivation, err)
+	}
+	return out, nil
+}
+
+// ErrCredentialActivation reports a credential the TPM refused to activate,
+// e.g. one made for another TPM's EK or another key's Name.
+var ErrCredentialActivation = errors.New("TPM2_ActivateCredential failed")
+
+func tcgEKTemplate(alg tpm2.Algorithm) (tpm2.Public, error) {
+	switch alg {
+	case tpm2.AlgRSA:
+		return DefaultEkTemplate, nil
+	case tpm2.AlgECC:
+		return tcgEKTemplateECC, nil
+	}
+	return tpm2.Public{}, fmt.Errorf("no TCG EK template for algorithm %v", alg)
+}
+
+// loadTCGEK returns a handle to the TCG EK for template and a function that
+// releases it: a transient primary in the endorsement hierarchy, or a TCG EK
+// persisted at TpmTCGEKHdl if creating the primary fails.
+func loadTCGEK(rw io.ReadWriter, template tpm2.Public) (tpmutil.Handle, func(), error) {
 	h, _, err := tpm2.CreatePrimary(rw, tpm2.HandleEndorsement, tpm2.PCRSelection{},
 		EmptyPassword, EmptyPassword, template)
-	if err != nil {
-		return tpm2.Public{}, err
+	if err == nil {
+		return h, func() { tpm2.FlushContext(rw, h) }, nil //nolint:errcheck
 	}
-	defer tpm2.FlushContext(rw, h) //nolint:errcheck
-	pub, _, _, err := tpm2.ReadPublic(rw, h)
-	return pub, err
+	persisted, _, _, perr := tpm2.ReadPublic(rw, TpmTCGEKHdl)
+	if perr != nil || !persisted.MatchesTemplate(template) {
+		return 0, nil, fmt.Errorf("deriving EK: %w", err)
+	}
+	return TpmTCGEKHdl, func() {}, nil
+}
+
+func unpackTPM2B(b []byte) ([]byte, error) {
+	if len(b) < 2 || int(b[0])<<8|int(b[1]) != len(b)-2 {
+		return nil, errors.New("not a TPM2B: size prefix does not match length")
+	}
+	return b[2:], nil
 }

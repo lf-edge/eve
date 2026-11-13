@@ -737,6 +737,7 @@ func (msrv *Msrv) MakeMetadataHandler() http.Handler {
 			r.Use(withWriteDeadline(tpmWriteTimeout))
 			r.Post("/tpm/quote", msrv.handleTpmQuote())
 			r.Get("/tpm/identity", msrv.handleTpmIdentity())
+			r.Post("/tpm/activate", msrv.handleTpmActivate())
 		})
 
 		r.Route("/patch", func(r chi.Router) {
