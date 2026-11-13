@@ -16,6 +16,12 @@
 #       nothing but the packages every build rebuilds (FORCE_BUILD_PKGS in
 #       the Makefile), since it cannot sign. Images of excluded packages
 #       among these are checked as well, and the result is only logged.
+#   eve-cosign.sh unsigned <arch>...
+#       Read the "<pkg> <tag>" lines `make pkgs_tags_info` prints and print
+#       each <pkg> the registry serves, for one of the given architectures,
+#       without a valid signature, as a build outside the policy (an older
+#       stable branch, say) pushed it. The caller rebuilds those, so that it
+#       pushes and signs its own build under the tag.
 #   eve-cosign.sh sign-pushed <dir>...
 #       Run after the push: sign the manifests that the check-inputs records
 #       in or directly under the <dir>s list as built and the registry
@@ -517,6 +523,31 @@ audit() {
     fi
 }
 
+# unsigned <arch>...: see the usage above. Lines of another form, which make
+# prints while it generates the package dependencies, are skipped. A package
+# every build rebuilds or one in $EXCLUDE is left out, as is one the registry
+# does not serve for the architecture, which the build builds anyway.
+unsigned_pkgs() {
+    local pkg tag ref raw arch m
+    while read -r pkg tag; do
+        [[ "$pkg $tag" =~ ^[a-z0-9._-]+\ [^\ ]*/eve-[a-z0-9-]+:[^\ ]+$ ]] || continue
+        ref="${tag##*/}"
+        force_built "eve-$pkg" && continue
+        [[ "${ref%%:*}" =~ $EXCLUDE ]] && continue
+        raw=$(docker buildx imagetools inspect --raw "$PKG_PREFIX/$ref" 2> /dev/null) || continue
+        for arch in "$@"; do
+            for m in $(jq -r --arg a "$arch" '.manifests[]?
+                | select(.platform.os == "linux" and .platform.architecture == $a) | .digest' <<< "$raw"); do
+                if ! verified "$SIG_PREFIX/${ref%:*}@$m"; then
+                    echo "::warning::$ref serves ${ref%:*}@$m for $arch without a valid signature; rebuilding $pkg" >&2
+                    echo "$pkg"
+                    continue 3
+                fi
+            done
+        done
+    done | sort -u
+}
+
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
 case "$cmd" in
@@ -536,6 +567,10 @@ sign-indexes)
     [ $# -ge 1 ] || die "usage: sign-indexes <dir>..."
     sign_indexes "$@"
     ;;
+unsigned)
+    [ $# -ge 1 ] || die "usage: unsigned <arch>..."
+    unsigned_pkgs "$@"
+    ;;
 audit)
     audit "$@"
     ;;
@@ -544,6 +579,6 @@ verify)
     verify_pkgs "$1"
     ;;
 *)
-    die "usage: $0 check-inputs|sign-pushed|sign-indexes|audit|verify ..."
+    die "usage: $0 check-inputs|unsigned|sign-pushed|sign-indexes|audit|verify ..."
     ;;
 esac

@@ -978,6 +978,11 @@ eve_rel_info:
 force_build_pkgs_info:
 	@echo "$(FORCE_BUILD_PKGS)"
 
+# "<package> <tag>" for each package `make pkgs` builds for ZARCH, HV and
+# PLATFORM; tools/eve-cosign.sh unsigned reads it.
+pkgs_tags_info: $(LINUXKIT)
+	@$(foreach p,$(filter pkg/%,$(PKGS)),t=$$($(LINUXKIT) pkg show-tag --canonical $(if $(strip $(EVE_HASH)),--hash $(EVE_HASH)) --build-yml $(call get_pkg_build_yml,$(p:pkg/%=%)) $(p)) && echo "$(p:pkg/%=%) $$t" &&) true
+
 $(ROOTFS)-%.spdx.json: $(BUILD_DIR)/rootfs-%.tar | $(INSTALLER)
 	$(QUIET): $@: Begin
 	# the rootfs-%.tar includes extended PAX headers, which GNU tar does not support.
