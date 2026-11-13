@@ -299,6 +299,13 @@ under the same tag, as do concurrent runs, each with a different digest. Each
 job signs the digest it built, and the checks verify those digests; the
 packages' tags and indexes are neither signed nor checked.
 
+A package's tag names its source, so builds of other branches, and of older
+releases of a branch, push under the same tag. linuxkit replaces the platform
+manifest of the tag's index and the `<tag>-<arch>` tag with its own build, and
+builds that do not sign, such as stable branches from before signing, leave
+the tag serving a manifest without a valid signature. Branch builds of
+`publish.yml` therefore rebuild, push and sign every package whose tag serves
+a platform manifest without a valid signature, rather than reuse it.
 The jobs that sign packages, in `publish.yml` and `build-alpine-base.yml`,
 hold `id-token: write` for their whole run, including `make` and the package
 Dockerfiles, on self-hosted runners that also build pull requests. A
@@ -331,10 +338,9 @@ build pins them by tag or digest as before.
 2. Run `build-alpine-base.yml` on `master`. It builds and signs
    `eve-alpine-base`, which every `eve-alpine` build starts from, under a new
    tag.
-3. Package images pushed before signing carry no signature and are reused by
-   content hash indefinitely. Change every package's source on the branch, with
-   `pkg/alpine` on the `eve-alpine-base` from step 2, so that the next build
-   rebuilds, pushes and signs all of them.
+3. Point `pkg/alpine` on the branch at the `eve-alpine-base` from step 2.
+   The next branch build rebuilds, pushes and signs every package whose tag
+   serves no valid signature, including those pushed before signing.
 4. Set `EVE_COSIGN_ENFORCE` to `true` once step 2 has run and every branch
    that builds releases has been through step 3.
 
