@@ -304,8 +304,16 @@ releases of a branch, push under the same tag. linuxkit replaces the platform
 manifest of the tag's index and the `<tag>-<arch>` tag with its own build, and
 builds that do not sign, such as stable branches from before signing, leave
 the tag serving a manifest without a valid signature. Branch builds of
-`publish.yml` therefore rebuild, push and sign every package whose tag serves
-a platform manifest without a valid signature, rather than reuse it.
+`publish.yml` therefore:
+
+- rebuild, push and sign every package whose tag serves a platform manifest
+  without a valid signature, rather than reuse it
+- before building EVE and before pushing the indexes, put back each signed
+  manifest the run pushed where such a manifest has replaced it, in the index
+  and in `<tag>-<arch>`
+- wait up to five minutes for a platform manifest that another run has pushed
+  but not yet signed before signing an index
+
 The jobs that sign packages, in `publish.yml` and `build-alpine-base.yml`,
 hold `id-token: write` for their whole run, including `make` and the package
 Dockerfiles, on self-hosted runners that also build pull requests. A
