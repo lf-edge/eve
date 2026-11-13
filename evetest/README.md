@@ -1200,7 +1200,7 @@ Without KVM, QEMU falls back to TCG software emulation.
 The embedded broker uses QEMU directly to start and manage EVE and SDN VMs.
 The checkout's `eve-tools/bpftrace-compiler` is mounted read-only at
 `/eve-tools/bpftrace-compiler`, with its linuxkit cache and its cache of compiled
-scripts persisted under `~/.evetest/linuxkit-cache` and
+scripts persisted under `~/.linuxkit/cache` and
 `~/.evetest/bpftrace-compiler-cache`, for tests that compile a bpftrace script
 for the device's kernel (see `TestVGAPassthroughNoHostAccess`).
 
