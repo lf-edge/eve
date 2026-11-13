@@ -70,7 +70,7 @@ import (
 // Every subtest deploys at least one application and therefore shares the
 // HYPERVISOR parameter -- the suite declares evetest.HypervisorParameter()
 // once and each subtest reads it via evetest.GetHypervisorParameterValue(),
-// except the two purge tests noted below.
+// except the purge tests noted below.
 //
 // Subtests
 // --------
@@ -118,6 +118,9 @@ import (
 //   - TestVMAppPurgeAfterPowerCycle -- a purge issued while the device is
 //     powered off, which is where a reboot lands in the middle of the purge
 //     deterministically rather than by chance. Meaningful on every hypervisor.
+//   - TestVMAppPurgeWithErroredVolume -- a purge of a running app whose
+//     volume is in error still completes; regression test for zedmanager
+//     letting the old generation's error block the purge forever.
 //   - TestLotsOfApps -- starts lots of apps and checks for success
 //   - TestLayerDownloadErrorsBounded -- an application whose image has
 //     every layer fail to download, from both management ports, is reported
@@ -131,7 +134,7 @@ import (
 //     across a quiet window, a management-port DNS change, debug.enable.usb
 //     and debug.enable.vga toggles and an app restart.
 //
-// The two purge tests come late because they are the expensive ones: they
+// The purge tests come late because they are the expensive ones: they
 // assert on which generation of a workload exists, so each needs a device
 // created from scratch (purgeDeviceRequirements) rather than the warm device
 // the earlier subtests reuse. The layer download and VGA passthrough tests
@@ -139,7 +142,7 @@ import (
 // TwoMgmtPorts network model, and a differing model makes the framework
 // recreate the device, so they sit together at the end.
 //
-// Neither declares hypervisor variants. The whole suite is run once per
+// None declares hypervisor variants. The whole suite is run once per
 // hypervisor (EVETEST_HYPERVISOR=kvm|kubevirt), so a variant here would run
 // the same combination a second time; a test that cannot say anything on the
 // hypervisor it was given skips instead.
@@ -199,6 +202,9 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestVMAppPurgeAfterPowerCycle,
+		},
+		evetest.TestCase{
+			Test: TestVMAppPurgeWithErroredVolume,
 		},
 		evetest.TestCase{
 			Test: TestLotsOfApps,
