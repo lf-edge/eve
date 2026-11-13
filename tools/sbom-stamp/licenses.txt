@@ -145,7 +145,6 @@ pkg:golang/github.com/gogo/protobuf	BSD-3-Clause
 pkg:golang/github.com/golang-design/lockfree	MIT
 pkg:golang/github.com/golang-jwt/jwt	MIT
 pkg:golang/github.com/golang/protobuf	BSD-3-Clause
-pkg:golang/github.com/google/btree	Apache-2.0
 pkg:golang/github.com/google/fscrypt	Apache-2.0
 pkg:golang/github.com/google/gnostic-models	Apache-2.0
 pkg:golang/github.com/google/go-cmp	BSD-3-Clause
