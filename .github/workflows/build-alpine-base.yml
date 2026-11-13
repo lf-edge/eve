@@ -25,7 +25,9 @@ jobs:
     # Only run for the default branch
     if: github.ref_name == github.event.repository.default_branch
     permissions:
+      actions: read
       contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -67,14 +69,52 @@ jobs:
         with:
           username: ${{ secrets.RELEASE_DOCKERHUB_ACCOUNT }}
           password: ${{ secrets.RELEASE_DOCKERHUB_TOKEN }}
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+        with:
+          cosign-release: v3.1.4
       # Forced through FORCE_BUILD: on a cross build the Makefile adds --pull
       # unless FORCE_BUILD is set, and linuxkit rejects --force with --pull.
-      - name: Build and push alpine-base (${{ matrix.arch }})
+      - name: Build alpine-base (${{ matrix.arch }})
+        env:
+          ARCH: ${{ matrix.arch }}
+          HASH: ${{ steps.hash.outputs.hash }}
         run: |
-          make V=1 ZARCH=${{ matrix.arch }} LINUXKIT_PKG_TARGET=push \
+          make V=1 ZARCH="$ARCH" LINUXKIT_PKG_TARGET=build \
             FORCE_BUILD=--force \
-            LINUXKIT_EXTRA_BUILD_ARGS="--hash ${{ steps.hash.outputs.hash }}" \
+            LINUXKIT_EXTRA_BUILD_ARGS="--hash $HASH" \
             pkg/alpine-base
+      - name: Verify the inputs of alpine-base
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          ./tools/eve-cosign.sh check-inputs "$RUNNER_TEMP/base" "$ARCH" "$(docker version -f '{{.Server.Arch}}')"
+      # Recorded before the push, so that a re-run can sign what this attempt
+      # pushed even when it fails before signing.
+      - name: Record the build
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: pkg-record-base-${{ matrix.arch }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/base
+      # Without FORCE_BUILD, linuxkit pushes the build above from its cache.
+      - name: Push alpine-base (${{ matrix.arch }})
+        env:
+          ARCH: ${{ matrix.arch }}
+          HASH: ${{ steps.hash.outputs.hash }}
+        run: |
+          make V=1 ZARCH="$ARCH" LINUXKIT_PKG_TARGET=push \
+            LINUXKIT_EXTRA_BUILD_ARGS="--hash $HASH" \
+            pkg/alpine-base
+      - name: Fetch every attempt's record
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: pkg-record-base-${{ matrix.arch }}-*
+          path: ${{ runner.temp }}/records-base
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+      - name: Sign the build
+        run: |
+          ./tools/eve-cosign.sh sign-pushed "$RUNNER_TEMP/records-base"
     outputs:
       hash: ${{ steps.hash.outputs.hash }}
 
@@ -84,6 +124,7 @@ jobs:
     runs-on: zededa-ubuntu-2204
     if: github.ref_name == github.event.repository.default_branch
     permissions:
+      actions: read
       contents: read
       id-token: write
 
@@ -108,14 +149,23 @@ jobs:
         with:
           cosign-release: v3.1.4
       - name: Create multi-arch manifest for alpine-base
-        run: |
-          echo "Creating manifest for alpine-base: ${{ needs.build-base.outputs.hash }}"
-          make V=1 LINUXKIT_PKG_TARGET=manifest \
-            \
-            LINUXKIT_EXTRA_BUILD_ARGS="--hash ${{ needs.build-base.outputs.hash }}" \
-            pkg/alpine-base
-      - name: Sign alpine-base
         env:
           HASH: ${{ needs.build-base.outputs.hash }}
         run: |
-          ./tools/eve-cosign.sh sign-tags "eve-alpine-base:$HASH"
+          echo "Creating manifest for alpine-base: $HASH"
+          make V=1 LINUXKIT_PKG_TARGET=manifest \
+            LINUXKIT_EXTRA_BUILD_ARGS="--hash $HASH" \
+            pkg/alpine-base
+      - name: Fetch every job's records
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: pkg-record-base-*
+          path: ${{ runner.temp }}/records
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}
+      - name: Sign the alpine-base index
+        run: |
+          ./tools/eve-cosign.sh sign-indexes "$RUNNER_TEMP/records"
+      - name: Verify that alpine-base is signed
+        run: |
+          ./tools/eve-cosign.sh audit amd64 arm64 riscv64 -- "$RUNNER_TEMP/records"

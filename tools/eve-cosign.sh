@@ -26,9 +26,6 @@
 #       Sign the package index each tag in the records under the <dir>s
 #       names, once every platform manifest in it verifies. Skips the
 #       packages every build rebuilds, whose tags concurrent builds overwrite.
-#   eve-cosign.sh sign-tags <name>:<tag>...
-#       Sign the platform manifests of each index the tags name, then the
-#       index; for images pushed outside publish.yml, such as eve-alpine-base.
 #   eve-cosign.sh audit <arch>... -- <dir>...
 #       Verify every manifest and index the records under the <dir>s list,
 #       built ones the registry serves only on a branch build, and the
@@ -318,23 +315,6 @@ sign_index() {
     sign_digest "$ref"
 }
 
-# sign_tag <name>:<tag>: sign each platform manifest of the index the tag
-# names, then the index.
-sign_tag() {
-    local ref raw m
-    ref=$(resolve "$PKG_PREFIX/$1")
-    raw=$(docker buildx imagetools inspect --raw "$ref")
-    case "$(jq -r .mediaType <<< "$raw")" in
-    *index*|*manifest.list*)
-        for m in $(jq -r '.manifests[]
-            | select(.annotations["vnd.docker.reference.type"] != "attestation-manifest") | .digest' <<< "$raw"); do
-            sign_digest "$SIG_PREFIX/${1%:*}@$m"
-        done
-        ;;
-    esac
-    sign_index "$1"
-}
-
 # The platform manifests, for the given architectures, of the lfedge/eve-*
 # images that the packages listed in $1 are built from: those a FROM line
 # names, with or without --platform, and those an ARG pins for a later
@@ -556,12 +536,6 @@ sign-indexes)
     [ $# -ge 1 ] || die "usage: sign-indexes <dir>..."
     sign_indexes "$@"
     ;;
-sign-tags)
-    [ $# -ge 1 ] || die "usage: sign-tags <name>:<tag>..."
-    for tag in "$@"; do
-        sign_tag "$tag" || die "cannot sign $tag"
-    done
-    ;;
 audit)
     audit "$@"
     ;;
@@ -570,6 +544,6 @@ verify)
     verify_pkgs "$1"
     ;;
 *)
-    die "usage: $0 check-inputs|sign-pushed|sign-indexes|sign-tags|audit|verify ..."
+    die "usage: $0 check-inputs|sign-pushed|sign-indexes|audit|verify ..."
     ;;
 esac
