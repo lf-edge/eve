@@ -17,7 +17,7 @@ To include as a pubsub library elsewhere, like in pillar:
 
 ```go
 import (
-    "github.com/lf-edge/eden/pkg/verifier"
+    "github.com/lf-edge/eve/pkg/pillar/cmd/verifier"
 )
 
 func main() {

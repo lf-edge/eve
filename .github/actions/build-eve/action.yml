@@ -60,7 +60,6 @@ runs:
         VERSION="0.0.0-pr$PR_ID-$COMMIT_ID"
         echo "VERSION=$VERSION" >> $GITHUB_ENV
         echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "TAG=${{ inputs.image-repo }}:$PR_ID" >> $GITHUB_ENV
         echo "VERSIONED_TAG=${{ inputs.image-repo }}:$VERSION" >> $GITHUB_ENV
     - name: Build EVE ${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}
       shell: bash
@@ -78,18 +77,7 @@ runs:
         make cache-export ZARCH=${{ inputs.arch }} \
           IMAGE=lfedge/eve:$VERSION-${{ inputs.hv }} \
           OUTFILE=eve-${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}.tar \
-          IMAGE_NAME=$TAG-${{ inputs.hv }}-${{ inputs.arch }}
-    # Also tag the image with its build version: the PR-number tag repeats across
-    # pushes, so the evetest broker, which caches images by name, would test a
-    # stale build. linuxkit exports a single name, hence the manifest edit.
-    # TODO: drop this step and the PR-number tag once Eden is gone (it cuts tags
-    # at the first '-', hence not compatible with the version tag).
-    - name: Add the per-build version tag to the exported image
-      shell: bash
-      run: |
-        python3 "${GITHUB_ACTION_PATH}/add_repo_tag.py" \
-          eve-${{ inputs.hv }}-${{ inputs.arch }}-${{ inputs.platform }}.tar \
-          "$VERSIONED_TAG-${{ inputs.hv }}-${{ inputs.arch }}"
+          IMAGE_NAME=$VERSIONED_TAG-${{ inputs.hv }}-${{ inputs.arch }}
     # evetest-pr.yml names the image to stage on the brokers from this, before
     # it downloads anything.
     - name: Upload EVE version

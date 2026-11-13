@@ -25,8 +25,7 @@ import (
 // directly assigned to an application (PCI passthrough) is removed from
 // EVE's host networking and handed over to the guest, which must fully own
 // the NIC: see it under the adapter's MAC address and obtain an address
-// from the SDN-side DHCP server through it. Replicates the eden test
-// tests/hardware_reboot/testdata/hardware_eth_reboot.txt.
+// from the SDN-side DHCP server through it.
 //
 // Network model
 // -------------

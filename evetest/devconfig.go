@@ -2781,12 +2781,10 @@ const (
 )
 
 // DisksLayout describes the desired ZFS/RAID disk-array layout of a device's
-// extra (non-boot) virtio disks (see RequireEdgeDevice.ExtraDisks), mirroring
-// eden's own disks-layout model (pkg/device/disksLayout.go in the eden
-// repo, adapted here since evetest's broker only ever attaches virtio
-// disks -- see DiskName). Disk slot indices below (0..3 for RAID10, 0..1 for
-// RAID1) refer to positions within the layout, not the device's overall
-// extra-disk list.
+// extra (non-boot) virtio disks (see RequireEdgeDevice.ExtraDisks). evetest's
+// broker only ever attaches virtio disks -- see DiskName. Disk slot indices
+// below (0..3 for RAID10, 0..1 for RAID1) refer to positions within the layout,
+// not the device's overall extra-disk list.
 type DisksLayout struct {
 	LayoutType DiskLayoutType
 	// OfflineDisks marks disk slots as ZFS_OFFLINE.
@@ -2857,8 +2855,7 @@ func (layout DisksLayout) diskConfig(slot uint) *eveconfig.DiskConfig {
 // Both DiskLayoutRAID1 and DiskLayoutRAID10 are represented, at the EVE API
 // level, as a top-level DisksConfig with ArrayType RAID0 (stripe) whose
 // Children are the individual RAID1 mirrors -- a single mirror for RAID1, two
-// mirrors for RAID10 -- exactly matching how eden itself builds this
-// structure (pkg/device/disksLayout.go, GetDisksConfig).
+// mirrors for RAID10.
 func (dc *EdgeDeviceConfig) SetDisksLayout(layout DisksLayout) {
 	var cfg eveconfig.DisksConfig
 	switch layout.LayoutType {

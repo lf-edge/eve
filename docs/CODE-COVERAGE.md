@@ -31,11 +31,11 @@ merged into a single combined report:
 | Source | How to produce | Output |
 |---|---|---|
 | Unit tests (`go test`) | `make test` | `pkg/pillar/coverage.txt` |
-| Eden end-to-end tests | `make eden-cover` | `dist/<arch>/current/eden_coverage/eden_e2e_coverage.txt` |
+| evetest integration tests | `EVETEST_COLLECT_COVERAGE=true make evetest` on a `COVER=y` EVE | binary files under `${EVETEST_COLLECT_ARTIFACTS}/<test>/coverage/<device>/`, passed via `EXTRA_COVERAGE_DIR` |
 | Extra binary coverage (optional) | `COVER=y` EVE on a separate device; copy `/persist/coverage/` | binary files passed via `EXTRA_COVERAGE_DIR` |
 | Combined | `make coverage-merge` | `dist/<arch>/current/combined_coverage.txt` |
 
-Both profiles use `-covermode=atomic` (basic-block granularity, safe for
+All sources use `-covermode=atomic` (basic-block granularity, safe for
 concurrent code) so they share the same text format and can be consumed by
 standard `go tool cover` tooling.
 
@@ -43,11 +43,8 @@ standard `go tool cover` tooling.
 
 - Docker installed and running (required for all EVE builds and `make test`)
 - Go 1.20 or later on the host (required for `go tool covdata textfmt` used
-  during Eden coverage collection)
-- `ssh` and `scp` available on the host (used to retrieve coverage data
-  from the running EVE VM)
-- For Eden runs: QEMU with KVM support (or `ACCEL=false` for software
-  emulation, which is much slower)
+  to merge binary coverage)
+- For evetest runs: see the prerequisites in [evetest/README.md](../evetest/README.md)
 
 ## Step 1 — Unit-test coverage
 
@@ -65,96 +62,51 @@ go tool cover -func=pkg/pillar/coverage.txt
 go tool cover -html=pkg/pillar/coverage.txt -o coverage_unit.html
 ```
 
-## Step 2 — Eden end-to-end coverage
+## Step 2 — evetest integration coverage
 
-### How it works
-
-`make eden-cover` does the following:
-
-1. Builds the entire EVE image with `COVER=y`, which causes the `pillar`
-   package to be compiled with `go build -cover -covermode=atomic`.  Each
-   `zedbox` agent process will accumulate basic-block counters in memory
-   while running.
-
-2. Clones and builds Eden from EDEN_REPO (default: github.com/lf-edge/eden)
-   using EDEN_TAG (default: master), which carries the coverage-collection
-   extensions and the current default EVE image size.
-
-3. Starts the EVE VM under QEMU, onboards it, and runs the selected test
-   scenarios exactly as `make eden` would.
-
-   EVE also automatically flushes coverage data on controller-triggered
-   reboots (including reboots caused by EVE updates), so coverage accumulated
-   before a reboot is preserved in `/persist/coverage/` and included in the
-   final collection.
-
-4. After all test scenarios complete, sends `SIGUSR2` to every running
-   `zedbox` process inside EVE.  Each process responds by writing its
-   current coverage counters to `/persist/coverage/` (EVE's persistent
-   storage) **without terminating**.
-
-5. Copies the binary coverage files from `/persist/coverage/` off the VM
-   via SCP and converts them to text profile format on the host using
-   `go tool covdata textfmt`.
-
-6. Writes the final text profile to
-   `dist/<arch>/current/eden_coverage/eden_e2e_coverage.txt`.
-
-### Building and running
-
-`make eden-cover` handles the full pipeline in one target:
+[evetest](../evetest/README.md) collects coverage by itself from every EVE
+device it runs, when EVE is built with `COVER=y` and
+`EVETEST_COLLECT_COVERAGE=true` (together with `EVETEST_COLLECT_ARTIFACTS`)
+is set.  The framework sends `SIGUSR2` to `zedbox` (and `kube-init` on eve-k)
+before every device reboot and at the end of each test, then copies the
+binary coverage files off the device into
+`${EVETEST_COLLECT_ARTIFACTS}/<test>-<timestamp>/coverage/<device-name>/`.
+Coverage collected before a reboot is thus preserved.
 
 ```sh
-# Build coverage-instrumented EVE and run Eden E2E tests:
-make eden-cover
+# Build coverage-instrumented pillar first (required), then the EVE image:
+make COVER=y pkg/pillar
+make COVER=y eve
 
-# Equivalent long form with explicit options:
-make eden-cover HV=kvm ZARCH=amd64 ACCEL=true TPM=false
+# Run the tests (all suites if NAME is omitted) collecting coverage:
+EVETEST_COLLECT_ARTIFACTS=/tmp/evetest-artifacts \
+EVETEST_COLLECT_COVERAGE=true \
+    make evetest NAME=<test-or-suite>
 ```
 
-Internally, `make eden-cover` runs `make COVER=y live` first to build the
-coverage-instrumented EVE image, then invokes `tests/eden/run.sh`.  This
-means the first invocation is slow (full EVE build).  The build is faster
-on subsequent runs because Go and Docker build caches are warm and most
-EVE component packages are already in the linuxkit cache.
+See the "Code Coverage" section of [evetest/README.md](../evetest/README.md)
+for details and for merging the counters of all devices of a run with
+`go tool covdata`.
 
-The first Eden run also clones the Eden fork, builds its binaries, and
-configures the test environment.  Subsequent runs with the same `dist/`
-directory reuse the existing setup (certificates, QEMU image) unless
-`EDEN_CLEANUP=1` is passed.
-
-### Selecting which test scenarios to run
-
-The same `TEST_*` environment variables that control `make eden` apply:
-
-```sh
-TEST_SMOKE=1  make eden-cover        # smoke tests only (default)
-TEST_NET=1    make eden-cover        # networking tests
-TEST_ALL=1    make eden-cover        # all test suites
-```
-
-### Coverage from individual eden test runs
-
-When `COVER` is set, `run.sh` passes `--coverage-dir` to each
-`eden test` invocation so coverage is also collected after every
-individual scenario, not just at the very end.  If a scenario crashes EVE
-the final sweep still attempts to collect whatever was written to
-`/persist/coverage/` before the crash.
+The nightly evetest workflow
+([evetest-nightly.yml](../.github/workflows/evetest-nightly.yml)) can do all of
+this in CI: started manually with the `collect-coverage` input, it builds a
+`COVER=y` image from HEAD, runs every suite against it, merges the coverage
+of all suites and publishes a line-by-line HTML report to GitHub Pages.
 
 ## Step 3 — Merge the profiles
 
-Once `make test` and/or `make eden-cover` have been run:
+Once `make test` has been run and the binary coverage of an evetest run has been
+collected (see Step 2):
 
 ```sh
-make coverage-merge
+make coverage-merge EXTRA_COVERAGE_DIR=/tmp/merged-coverage
 ```
 
 This writes `dist/<arch>/current/combined_coverage.txt` by combining:
 
 1. The unit-test profile from `pkg/pillar/coverage.txt` (required).
-2. The Eden E2E profile from `dist/<arch>/current/eden_coverage/eden_e2e_coverage.txt`
-   (included automatically if present; skipped if absent).
-3. Any extra binary coverage directories specified via `EXTRA_COVERAGE_DIR`
+2. Any binary coverage directories specified via `EXTRA_COVERAGE_DIR`
    (see the next section).
 
 To view the merged result:
@@ -172,8 +124,8 @@ go tool cover -html=dist/amd64/current/combined_coverage.txt \
 
 If you have additional test runs that exercised a `COVER=y` EVE image
 (e.g. a manually-driven hardware test or a separate automated suite), you
-can merge their binary coverage into the combined profile without re-running
-Eden.
+can merge their binary coverage into the combined profile.  The coverage
+collected by evetest (Step 2) is merged the same way.
 
 ### Binary coverage file format
 
@@ -190,7 +142,7 @@ and pass its path to `coverage-merge` via `EXTRA_COVERAGE_DIR`.
 
 `coverage-merge` converts each extra directory with
 `go tool covdata textfmt -i <dir>` and appends the resulting lines to the
-combined profile, just like the Eden E2E profile.
+combined profile.
 
 ### Usage
 
@@ -245,7 +197,7 @@ On a device running a `COVER=y` image, send `SIGUSR2` to each `zedbox`
 process to flush current counters without restarting:
 
 ```sh
-# From inside EVE (e.g. via `eden eve ssh`):
+# From inside EVE (e.g. via `evetest eve ssh` or plain `ssh`):
 pkill -USR2 zedbox
 
 # On an eve-k (HV=k) image, also flush kube-init. The marker file exists
@@ -261,9 +213,14 @@ Pass `/local/my-run-cov/` as `EXTRA_COVERAGE_DIR` to `coverage-merge`.
 ## Running all steps in sequence
 
 ```sh
-# Unit tests and E2E tests can be run in either order.
-# eden-cover includes the EVE build so no separate build step is needed.
-make test && make eden-cover && make coverage-merge
+make test
+make COVER=y pkg/pillar && make COVER=y eve
+EVETEST_COLLECT_ARTIFACTS=/tmp/evetest-artifacts EVETEST_COLLECT_COVERAGE=true make evetest
+mkdir -p /tmp/merged-coverage
+go tool covdata merge \
+    -i "$(find /tmp/evetest-artifacts -path '*/coverage/*' -type d | paste -sd,)" \
+    -o /tmp/merged-coverage
+make coverage-merge EXTRA_COVERAGE_DIR=/tmp/merged-coverage
 ```
 
 ## Notes on the coverage mechanism
@@ -313,18 +270,3 @@ aggregate view of which lines were exercised by either test suite.
 For more sophisticated merging (e.g. deduplication or per-package
 breakdown) the `golang.org/x/tools/cmd/cover` package and third-party
 tools such as `gocovmerge` can be used on the text profiles directly.
-
-### eden-cover vs eden
-
-Both `make eden` and `make eden-cover` use eden from
-`github.com/lf-edge/eden` (default `EDEN_TAG=master`; override
-`EDEN_TAG=<sha-or-tag>` for reproducibility).  The difference is
-that `make eden-cover` sets `COVER=y`, which causes `run.sh` to pass
-`--coverage-dir` to each `eden test` invocation and to call
-`eden eve collect-coverage` after all scenarios complete.
-
-The upstream Eden release includes:
-
-- `eden eve collect-coverage --output-dir <dir>` subcommand
-- `eden test --coverage-dir <dir>` flag
-- `SdnForwardSCPDirFromEve` for recursive directory copy from EVE
