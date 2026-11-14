@@ -4,7 +4,7 @@ go 1.25.12
 
 require (
 	github.com/diskfs/go-diskfs v1.9.5-0.20260803113315-a6099fdbe455
-	github.com/diskfs/partitionresizer v1.0.1-0.20260804072839-b362ce3c37c3
+	github.com/diskfs/partitionresizer v1.0.1-0.20261110121057-af5db74dd7ef
 	golang.org/x/sys v0.46.0
 )
 
