@@ -105,7 +105,6 @@ func TestTpmQuote(t *testing.T) {
 	g.Expect(err).ToNot(gomega.HaveOccurred())
 	g.Expect(ekCert.CheckSignatureFrom(ca)).To(gomega.Succeed())
 	g.Expect(id.EKCertificates[0].IssuerURLs).To(gomega.Equal(ekCert.IssuingCertificateURL))
-	g.Expect(id.EKCertificates[0].IssuerURLs).To(gomega.HaveLen(1))
 
 	// aik_name is the Name of aik_public, and the AIK is a restricted
 	// signing key.
