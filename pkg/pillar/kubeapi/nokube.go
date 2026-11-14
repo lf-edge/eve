@@ -75,7 +75,7 @@ func ClusterStorageReadyForVolumes(*base.LogObject, string) bool {
 	return true
 }
 
-// ControllerRestartPending is a stub for non EVE-k builds (no cluster-init.sh).
+// ControllerRestartPending is a stub for non EVE-k builds (no kube-init).
 func ControllerRestartPending() bool {
 	return false
 }

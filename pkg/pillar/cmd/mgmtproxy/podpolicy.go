@@ -46,10 +46,10 @@ import (
 
 // TokenFile persists the shared secret that gates the cni0 listener, under
 // /persist/vault so it survives reboots. /persist is bind-mounted identically
-// into the pillar and kube containers, so kube-init's patch_cdi_proxy_config()
-// (pkg/kube/cluster-init.sh) can read this same path directly to embed the
-// token in the CDI CR's importProxy URL; its MGMTPROXY_TOKEN_FILE constant
-// must match. mgmtproxy is the sole writer. var so tests can redirect.
+// into the pillar and kube containers, so kube-init's PatchCDIProxyConfig can
+// read this same path directly to embed the token in the CDI CR's
+// importProxy URL; its TokenFile constant must match. mgmtproxy is the sole
+// writer. var so tests can redirect.
 //
 // On a clustered node this value is derived, not random — see ensureProxyToken.
 //
@@ -64,9 +64,8 @@ var TokenFile = "/persist/vault/mgmtproxy/token"
 // cryptographically verify they're really talking to mgmtproxy (via CDI's
 // TrustedCAProxy) instead of trusting whoever answers on cni0. Same
 // persistence convention as TokenFile: mgmtproxy is the sole writer,
-// kube-init's patch_cdi_proxy_config() only reads TLSCertFile to publish it
-// via ensure_proxy_ca_configmap() as the TrustedCAProxy ConfigMap, and the
-// paths must match.
+// kube-init's PatchCDIProxyConfig only reads TLSCertFile to publish it as
+// the TrustedCAProxy ConfigMap, and the paths must match.
 var (
 	TLSCertFile = "/persist/vault/mgmtproxy/cert.pem"
 	TLSKeyFile  = "/persist/vault/mgmtproxy/key.pem"
@@ -505,11 +504,11 @@ func deriveProxyToken(clusterToken string) string {
 // listener: the k3s pod and service CIDRs. Loopback, link-local, unspecified
 // and multicast are handled by net.IP predicates in destinationAllowed.
 //
-// Deliberately not broadened to all of RFC1918: this list mirrors the
-// no_proxy set in cluster-init.sh's patch_cdi_proxy_config(), blocking only
-// ranges that can never be a legitimate registry. General private-network
-// addresses are a real import source (on-prem/air-gapped registries), so
-// they're intentionally left reachable.
+// Deliberately not broadened to all of RFC1918: this list mirrors noProxy
+// (see cdiImportProxyNoProxy), blocking only ranges that can never be a
+// legitimate registry. General private-network addresses are a real
+// import source (on-prem/air-gapped registries), so they're intentionally
+// left reachable.
 var deniedDestCIDRs = func() []*net.IPNet {
 	var out []*net.IPNet
 	for _, c := range []string{"10.42.0.0/16", "10.43.0.0/16"} {
