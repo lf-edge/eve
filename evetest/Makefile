@@ -14,7 +14,7 @@ ifndef SDN_VERSION
 SDN_VERSION := $(shell ./content-hash.sh sdn)
 endif
 
-EVETEST_ADAM_VERSION ?= 0.0.85
+EVETEST_ADAM_VERSION ?= 0.0.87
 EVETEST_ADAM_REPO ?= lfedge/adam
 
 # Repository holding built EVE images (mirrors constants.DefaultEVERepo).
@@ -79,7 +79,9 @@ list-tests: ensure-evetest-image
 		-v $(REPO_ROOT)/evetest/tests:/evetest/tests \
 		$(EVETEST_IMAGE)
 
-# Plain list of test suite names, one per line -- e.g. for a CI job matrix.
+# Plain list of test suites, one per line -- e.g. for a CI job matrix. A suite
+# name is followed by its comma-separated tags in angle brackets, if it has any (see
+# evetest.WithTags).
 list-test-suites: ensure-evetest-image
 	@docker run --rm $(DOCKER_IT) \
 		-v $(REPO_ROOT)/evetest/tests:/evetest/tests \
@@ -330,10 +332,10 @@ ensure-evetest-image:
 		fi; \
 	fi
 
-# Same for the SDN image, which the broker needs. Skipped with a remote broker,
-# which pulls the image itself (and cannot use one built here).
+# Same for the SDN image, which the broker needs. It is needed locally even
+# with a remote broker: when the broker cannot pull the image (e.g. it is built
+# from an unmerged change), the harness pushes the local copy to it.
 ensure-sdn-image:
-ifndef EVETEST_BROKER_ADDRESS
 ifndef EVETEST_SDN_VERSION
 	@if ! docker image inspect $(SDN_IMAGE) >/dev/null 2>&1; then \
 		echo "Docker image $(SDN_IMAGE) not found locally, trying to pull..."; \
@@ -342,7 +344,6 @@ ifndef EVETEST_SDN_VERSION
 			$(MAKE) build-sdn-container; \
 		fi; \
 	fi
-endif
 endif
 
 # Internal target: invoked by proto inside the builder container.
@@ -501,6 +502,7 @@ proxmox-broker-installer:
 	  /@@TEMPLATE_NOTE_END@@/   { skip=0; next } \
 	  skip { next } \
 	  /^@@HOOKSCRIPT@@$$/     { f="$(PROXMOX_DEPLOY)/evetest-hook.pl";             while ((getline l < f) > 0) print l; close(f); next } \
+	  /^@@OOM_HOOKSCRIPT@@$$/ { f="$(PROXMOX_DEPLOY)/evetest-oom-hook.pl";         while ((getline l < f) > 0) print l; close(f); next } \
 	  /^@@CLOUDINIT@@$$/      { f="$(PROXMOX_DEPLOY)/broker-cloudinit.yaml";       while ((getline l < f) > 0) print l; close(f); next } \
 	  /^@@MIRRORS_SCRIPT@@$$/ { f="$(PROXMOX_DEPLOY)/broker-registry-mirrors.sh";  while ((getline l < f) > 0) print l; close(f); next } \
 	  { print }' $(PROXMOX_DEPLOY)/installer.sh.tmpl \

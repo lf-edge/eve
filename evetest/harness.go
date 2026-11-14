@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -74,15 +75,15 @@ const (
 	// for it to acquire IP addresses via DHCP.
 	brokerSetupDevicesTimeout = 15 * time.Minute
 
-	// Timeout for powering on an EVE VM (not for waiting for it to boot).
-	brokerPowerOnEVEDeviceTimeout = time.Minute
-
-	// Timeout for powering off an EVE VM. The broker RPC blocks until the
-	// provider confirms the VM is stopped, so this must accommodate a
-	// graceful ACPI-less hard power-off, not just issuing the request.
-	brokerPowerOffEVEDeviceTimeout = time.Minute
+	// Timeouts for powering an EVE VM on, off, or rebooting it (not for waiting
+	// for it to boot). The broker RPC returns once the provider confirms the
+	// new power state. On Proxmox that is a task which can wait a minute on a
+	// busy host (e.g. for a storage lock held by a parallel VM create), and the
+	// broker retries a failed one up to 3 times, so 1 minute is not enough.
+	brokerPowerOnEVEDeviceTimeout  = 5 * time.Minute
+	brokerPowerOffEVEDeviceTimeout = 5 * time.Minute
 	// Editing a disk rewrites megabytes through qemu-img/qemu-io on a
-	// possibly busy host, so it gets more room than a power operation.
+	// possibly busy host.
 	brokerEditDeviceDiskTimeout = 5 * time.Minute
 	// brokerExecuteQMPTimeout bounds one QMP command, including the SSH and QMP
 	// connection setup the proxmox provider may have to do first.
@@ -91,8 +92,9 @@ const (
 	// which on proxmox uploads up to 1 GiB to the PVE host.
 	brokerScratchImageTimeout = 5 * time.Minute
 
-	// Timeout for triggering an EVE VM reboot (not for waiting for it to boot).
-	brokerRebootEVEDeviceTimeout = time.Minute
+	// Timeout for triggering an EVE VM reboot (not for waiting for it to
+	// boot). See brokerPowerOnEVEDeviceTimeout.
+	brokerRebootEVEDeviceTimeout = 5 * time.Minute
 
 	// Timeout for retrieving the full console output for a single EVE device.
 	brokerGetConsoleOutputTimeout = 30 * time.Second
@@ -101,7 +103,7 @@ const (
 	deviceOnboardTimeout = 10 * time.Minute
 
 	// Timeout for a device to attest (or at least to publish its certificates).
-	deviceAttestTimeout = 2 * time.Minute
+	deviceAttestTimeout = 5 * time.Minute
 
 	// Timeout for a device to fetch the latest configuration from Adam.
 	deviceApplyConfigTimeout = 2 * time.Minute
@@ -360,6 +362,8 @@ type TestHarness struct {
 	pausedAtCheckpoint string
 	pauseOnFailure     bool
 	pausedOnFailure    string
+	// pauseLimit caps a single pause (zero: unlimited), see pauseLimitTimer.
+	pauseLimit time.Duration
 	// hasPausedOnFailure: has the current test already paused once on
 	// failure (see T.fail)? Reset per test/subtest by Init.
 	hasPausedOnFailure bool
@@ -486,6 +490,15 @@ type deviceState struct {
 	// wasUpgraded is set to true once UpgradeEVE has applied an upgrade config.
 	// Upgraded devices must not be reused across tests.
 	wasUpgraded bool
+
+	// inheritedCluster is set when the device is reused while its config
+	// still holds the cluster block of a previous test, and cleared by the
+	// current test's first ApplyConfig (see there).
+	inheritedCluster bool
+
+	// registryMirrors is the registry-mirror setup applied to the device when
+	// it was set up (see applyK3sRegistryMirrorIfConfigured). Reuse keeps it.
+	registryMirrors registryMirrorSetup
 }
 
 // Global test harness instance.
@@ -545,6 +558,7 @@ type InitOption func(*initOptions)
 
 type initOptions struct {
 	controllerFaults bool
+	tags             []Tag
 }
 
 // Init initializes the test harness and must be called exactly once per test.
@@ -634,6 +648,7 @@ func Init(t *testing.T, opts ...InitOption) *T {
 	th.deviceStateCh = make(chan deviceStateEvent, 64)
 	th.pauseAtCheckpoint = viper.GetString(constants.PauseOnCheckpointEnv)
 	th.pauseOnFailure = viper.GetBool(constants.PauseOnFailureEnv)
+	th.pauseLimit = time.Duration(viper.GetInt(constants.PauseLimitEnv)) * time.Second
 	th.resume = make(chan struct{})
 	th.exitCh = make(chan struct{})
 	th.sigCh = make(chan os.Signal, 1)
@@ -1402,9 +1417,14 @@ func Checkpoint(name string) {
 
 	if shouldPause {
 		th.log.Infof("Paused at checkpoint %q", name)
+		limitCh, stopLimit := th.pauseLimitTimer()
+		defer stopLimit()
 		select {
 		case <-resumeCh:
 			th.log.Infof("Resumed after checkpoint %q", name)
+		case <-limitCh:
+			th.log.Warnf("Pause limit of %v reached at checkpoint %q, resuming", th.pauseLimit, name)
+			th.releasePause(resumeCh)
 		case sig := <-th.sigCh:
 			th.t.Fatalf("Received signal %v while paused at checkpoint %q", sig, name)
 		case <-th.exitCh:
@@ -1418,6 +1438,14 @@ func Checkpoint(name string) {
 // enforcing that device network ports cannot change at runtime.
 func UpdateNetworkModel(netModel *api.NetworkModel) {
 	th := getTestHarness()
+	// Fail after releasing netModelM: with pause-on-failure, Fatal blocks
+	// until resumed, and holding the lock would hang SSH-based CLI commands.
+	if err := th.updateNetworkModel(netModel); err != nil {
+		th.t.Fatal(err)
+	}
+}
+
+func (th *TestHarness) updateNetworkModel(netModel *api.NetworkModel) error {
 	th.netModelM.Lock()
 	defer th.netModelM.Unlock()
 
@@ -1454,8 +1482,8 @@ func UpdateNetworkModel(netModel *api.NetworkModel) {
 				a.GetSdnMacAddress() == b.GetSdnMacAddress()
 		})
 	if !samePortSet {
-		th.t.Fatalf(
-			"It is not allowed to change the set of device network ports in runtime")
+		return errors.New(
+			"it is not allowed to change the set of device network ports in runtime")
 	}
 
 	// Apply the new network model.
@@ -1466,11 +1494,12 @@ func UpdateNetworkModel(netModel *api.NetworkModel) {
 	})
 	cancel()
 	if err != nil {
-		th.t.Fatal(err)
+		return err
 	}
 
 	th.netModel = netModel
 	th.log.Info("Successfully applied the new network model")
+	return nil
 }
 
 // RotateControllerSigningCert rotates the certificate and private key with which

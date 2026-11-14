@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,6 +64,14 @@ type ProxmoxProvider struct {
 	// allocation, buildVMOptions (bakes the ID into tap names) and the
 	// create call -- not the disk/firmware uploads or waitTask.
 	vmCreateMutex sync.Mutex
+
+	// sdnApplyMutex keeps VM starts from overlapping an SDN apply. Applying
+	// SDN restarts the zone's dnsmasq, and a VM starting meanwhile fails: PVE's
+	// network script reloads that same dnsmasq to add the VM's DHCP mapping,
+	// fails while dnsmasq is stopped, and QEMU exits. applySDN holds it for
+	// writing, VM starts for reading. It is a leaf lock: nothing else is
+	// acquired while holding it.
+	sdnApplyMutex sync.RWMutex
 
 	client *proxmox.Client
 
@@ -222,25 +229,73 @@ const proxmoxHookscriptVolID = "local:snippets/evetest-hook.pl"
 // proxmoxTaskPollInterval / proxmoxTaskTimeout bound how long we wait for
 // asynchronous Proxmox tasks (VM start/stop, SDN apply, ...) to complete.
 const (
-	proxmoxTaskPollInterval = 1 * time.Second
 	proxmoxTaskTimeout      = 5 * time.Minute
 	proxmoxStatusPollPeriod = 2 * time.Second
 	proxmoxConnectTimeout   = 30 * time.Second
+	// proxmoxOrphanSweepTimeout bounds removeOrphans, which stops and deletes
+	// each leftover VM in turn.
+	proxmoxOrphanSweepTimeout = 15 * time.Minute
+	// proxmoxTaskMaxPollErrors is how many task status polls in a row may
+	// fail before waitTask gives up: one lost response must not abort the
+	// wait for an operation that is still running, or already succeeded.
+	proxmoxTaskMaxPollErrors = 5
 )
 
-// waitTask waits for task to complete. go-proxmox returns a nil task (with a
-// nil error) when PVE completes an operation synchronously without queuing an
-// async UPID; treat that as already done instead of calling Wait on it.
+// proxmoxTaskPollInterval is a variable only so that tests can shorten it.
+var proxmoxTaskPollInterval = 1 * time.Second
+
+// errTaskFailed is wrapped by the error of waitTask for a task that PVE ran to
+// completion and reported as failed, as opposed to one whose status could not
+// be read.
+var errTaskFailed = errors.New("task failed on Proxmox")
+
+// waitTask waits for task to complete, and fails if PVE reports that the task
+// failed. go-proxmox's own Task.Wait cannot be used: it reports every finished
+// task as a success, failed ones included, and gives up at the first status
+// poll that fails. A nil task, which go-proxmox returns with a nil error when
+// PVE completed the operation without queuing an async task, is already done.
 func waitTask(ctx context.Context, task *proxmox.Task) error {
 	if task == nil {
 		return nil
 	}
-	return task.Wait(ctx, proxmoxTaskPollInterval, proxmoxTaskTimeout)
+	timeout := time.NewTimer(proxmoxTaskTimeout)
+	defer timeout.Stop()
+	pollErrors := 0
+	for {
+		err := task.Ping(ctx)
+		switch {
+		case err != nil:
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			pollErrors++
+			if pollErrors >= proxmoxTaskMaxPollErrors {
+				return fmt.Errorf("failed to read the status of Proxmox task %s: %w",
+					task.UPID, err)
+			}
+		case task.IsCompleted:
+			if task.IsFailed {
+				return fmt.Errorf("%w: %s (task %s)", errTaskFailed, task.ExitStatus, task.UPID)
+			}
+			return nil
+		default:
+			pollErrors = 0
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeout.C:
+			return fmt.Errorf("timed out after %v waiting for Proxmox task %s",
+				proxmoxTaskTimeout, task.UPID)
+		case <-time.After(proxmoxTaskPollInterval):
+		}
+	}
 }
 
-// NewProxmoxProvider creates a new Proxmox provider instance and verifies
-// connectivity to the configured Proxmox node.
-func NewProxmoxProvider(conf ProxmoxProviderConf) (*ProxmoxProvider, error) {
+// NewProxmoxProvider creates a new Proxmox provider instance, verifies
+// connectivity to the configured Proxmox node and removes whatever a previous
+// broker run left behind on it (see removeOrphans). ctx carries the logger.
+func NewProxmoxProvider(ctx context.Context, conf ProxmoxProviderConf) (*ProxmoxProvider, error) {
 	if conf.APIURL == "" {
 		return nil, fmt.Errorf("proxmox API URL is not configured (%s)",
 			constants.EnvPrefix+constants.BrokerProxmoxAPIURLEnv)
@@ -272,9 +327,9 @@ func NewProxmoxProvider(conf ProxmoxProviderConf) (*ProxmoxProvider, error) {
 
 	// Query the node architecture. This also verifies API connectivity and that
 	// the configured node exists.
-	ctx, cancel := context.WithTimeout(context.Background(), proxmoxConnectTimeout)
+	connectCtx, cancel := context.WithTimeout(ctx, proxmoxConnectTimeout)
 	defer cancel()
-	archs, err := nodeArchs(ctx, client, conf.Node)
+	archs, err := nodeArchs(connectCtx, client, conf.Node)
 	if err != nil {
 		return nil, err
 	}
@@ -283,9 +338,9 @@ func NewProxmoxProvider(conf ProxmoxProviderConf) (*ProxmoxProvider, error) {
 	// single-node installation has exactly one node, so no configuration is
 	// needed; a multi-node cluster requires the node to be specified explicitly.
 	if conf.Node == "" {
-		ctx, cancel = context.WithTimeout(context.Background(), proxmoxConnectTimeout)
+		connectCtx, cancel := context.WithTimeout(ctx, proxmoxConnectTimeout)
 		defer cancel()
-		node, err := autoDetectNode(ctx, client)
+		node, err := autoDetectNode(connectCtx, client)
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to Proxmox API at %s: %w",
 				conf.APIURL, err)
@@ -293,7 +348,7 @@ func NewProxmoxProvider(conf ProxmoxProviderConf) (*ProxmoxProvider, error) {
 		conf.Node = node
 	}
 
-	return &ProxmoxProvider{
+	p := &ProxmoxProvider{
 		conf:           conf,
 		client:         client,
 		supportedArchs: archs,
@@ -301,7 +356,14 @@ func NewProxmoxProvider(conf ProxmoxProviderConf) (*ProxmoxProvider, error) {
 		devices:        make(map[string]*proxmoxDevice),
 		pending:        make(map[string]*proxmoxDevice),
 		networks:       make(map[string]*proxmoxNetwork),
-	}, nil
+	}
+	sweepCtx, cancel := context.WithTimeout(ctx, proxmoxOrphanSweepTimeout)
+	defer cancel()
+	if err := p.removeOrphans(sweepCtx); err != nil {
+		logger.FromContext(ctx).Warnf(
+			"Failed to remove some resources orphaned by a previous broker run: %v", err)
+	}
+	return p, nil
 }
 
 // autoDetectNode returns the single node of a single-node Proxmox installation.
@@ -469,16 +531,7 @@ func (p *ProxmoxProvider) SetupDevice(
 			p.deleteImportVolumes(ctx, log, node, dev.firmwareVolIDs)
 		}
 		if vmCreated {
-			if vm, vmErr := node.VirtualMachine(ctx, dev.vmID); vmErr != nil {
-				log.Warnf("failed to lookup VM %d for cleanup: %v", dev.vmID, vmErr)
-			} else if task, delErr := vm.Delete(ctx, &proxmox.VirtualMachineDeleteOptions{
-				Purge:                    true,
-				DestroyUnreferencedDisks: true,
-			}); delErr != nil {
-				log.Warnf("failed to delete VM %d during cleanup: %v", dev.vmID, delErr)
-			} else if waitErr := waitTask(ctx, task); waitErr != nil {
-				log.Warnf("failed waiting for cleanup deletion of VM %d: %v", dev.vmID, waitErr)
-			}
+			p.removeFailedVM(ctx, log, node, dev.vmID)
 		}
 	}()
 
@@ -517,15 +570,16 @@ func (p *ProxmoxProvider) SetupDevice(
 	}
 	task, err := node.NewVirtualMachine(ctx, vmID, options...)
 	if err != nil {
-		// The create call can fail client-side (e.g. a truncated Proxmox API
-		// response) even though the VM was actually created server-side --
-		// observed in practice as an orphaned VM after a bare "unexpected
-		// end of JSON input" error here. Verify before concluding nothing
-		// was created, so the failure cleanup below still deletes it instead
-		// of leaving a real VM that nothing will ever track or remove.
-		if _, lookupErr := node.VirtualMachine(ctx, vmID); lookupErr == nil {
-			vmCreated = true
-		}
+		// The create call can fail even though PVE created the VM, or at
+		// least its config. Both have been observed: a fully created VM
+		// after a truncated API response ("unexpected end of JSON input"),
+		// and a placeholder config holding "lock: create" after PVE failed
+		// to fork the create worker on a host out of memory ("got no
+		// worker upid - start worker failed"). Remove whatever exists
+		// before releasing vmCreateMutex: once released, the VMID can be
+		// allocated again, and removing it later could hit another
+		// device's VM.
+		p.removeFailedVM(ctx, log, node, vmID)
 		p.vmCreateMutex.Unlock()
 		return fmt.Errorf("failed to create VM %d for device %q: %w", vmID, name, err)
 	}
@@ -549,6 +603,21 @@ func (p *ProxmoxProvider) SetupDevice(
 	success = true
 	log.Infof("Device %q prepared as Proxmox VM %d in powered-off state", name, vmID)
 	return nil
+}
+
+// removeFailedVM removes the VM of a device whose setup failed, retrying
+// transient failures. It is best-effort: a VM it fails to remove is logged
+// and left for removeOrphans of the next broker run.
+func (p *ProxmoxProvider) removeFailedVM(ctx context.Context, log *logrus.Entry,
+	node *proxmox.Node, vmID int) {
+	removed, err := retryProxmoxCall(ctx, log, fmt.Sprintf("remove VM %d of failed setup", vmID),
+		func() (bool, error) { return p.removeVM(ctx, log, node, vmID) })
+	switch {
+	case err != nil:
+		log.Warnf("Failed to remove VM %d of failed setup, leaking it: %v", vmID, err)
+	case removed:
+		log.Infof("Removed VM %d of failed setup", vmID)
+	}
 }
 
 // unreserve removes name from p.pending. Safe to call even if name was never
@@ -705,12 +774,18 @@ func (p *ProxmoxProvider) PowerOnDevice(ctx context.Context, name string) error 
 		log.Infof("Cleared netboot MTU cap for device %q", name)
 	}
 
-	task, err := vm.Start(ctx)
+	err = p.setVMPowerState(ctx, dev, "start", vmRunning,
+		func(vm *proxmox.VirtualMachine) error {
+			p.sdnApplyMutex.RLock()
+			defer p.sdnApplyMutex.RUnlock()
+			task, err := vm.Start(ctx)
+			if err != nil {
+				return err
+			}
+			return waitTask(ctx, task)
+		})
 	if err != nil {
 		return fmt.Errorf("failed to start VM %d for device %q: %w", dev.vmID, name, err)
-	}
-	if err := waitTask(ctx, task); err != nil {
-		return fmt.Errorf("failed waiting for VM %d start: %w", dev.vmID, err)
 	}
 
 	p.devMutex.Lock()
@@ -729,16 +804,20 @@ func (p *ProxmoxProvider) PowerOnDevice(ctx context.Context, name string) error 
 // PowerOffDevice performs a hard power-off of the VM. The Stop call and its
 // waitTask run unlocked; see PowerOnDevice's doc for why.
 func (p *ProxmoxProvider) PowerOffDevice(ctx context.Context, name string) error {
-	dev, vm, err := p.lookupVM(ctx, name)
+	dev, err := p.lookupDevice(name)
 	if err != nil {
 		return err
 	}
-	task, err := vm.Stop(ctx)
+	err = p.setVMPowerState(ctx, dev, "stop", vmStopped,
+		func(vm *proxmox.VirtualMachine) error {
+			task, err := vm.Stop(ctx)
+			if err != nil {
+				return err
+			}
+			return waitTask(ctx, task)
+		})
 	if err != nil {
 		return fmt.Errorf("failed to stop VM %d for device %q: %w", dev.vmID, name, err)
-	}
-	if err := waitTask(ctx, task); err != nil {
-		return fmt.Errorf("failed waiting for VM %d stop: %w", dev.vmID, err)
 	}
 	p.devMutex.Lock()
 	p.stopConsoleLogger(dev)
@@ -752,17 +831,27 @@ func (p *ProxmoxProvider) PowerOffDevice(ctx context.Context, name string) error
 // The Shutdown call and its waitTask run unlocked; see PowerOnDevice's doc for
 // why.
 func (p *ProxmoxProvider) ShutdownDevice(ctx context.Context, name string) error {
-	dev, vm, err := p.lookupVM(ctx, name)
+	dev, err := p.lookupDevice(name)
 	if err != nil {
 		return err
 	}
-	task, err := vm.Shutdown(ctx)
+	err = p.setVMPowerState(ctx, dev, "shut down", vmStopped,
+		func(vm *proxmox.VirtualMachine) error {
+			task, err := vm.Shutdown(ctx)
+			if err != nil {
+				return err
+			}
+			// A failed shutdown task means the guest ignored the ACPI
+			// request until PVE gave up; asking again won't change that.
+			err = waitTask(ctx, task)
+			if errors.Is(err, errTaskFailed) {
+				return permanent(err)
+			}
+			return err
+		})
 	if err != nil {
 		return fmt.Errorf("failed to shut down VM %d for device %q: %w",
 			dev.vmID, name, err)
-	}
-	if err := waitTask(ctx, task); err != nil {
-		return fmt.Errorf("failed waiting for VM %d shutdown: %w", dev.vmID, err)
 	}
 	p.devMutex.Lock()
 	p.stopConsoleLogger(dev)
@@ -776,18 +865,50 @@ func (p *ProxmoxProvider) ShutdownDevice(ctx context.Context, name string) error
 // waitTask run unlocked; it touches no shared state, so no lock is needed at
 // all here (unlike PowerOnDevice/PowerOffDevice/ShutdownDevice).
 func (p *ProxmoxProvider) RebootDevice(ctx context.Context, name string) error {
-	dev, vm, err := p.lookupVM(ctx, name)
+	dev, err := p.lookupDevice(name)
 	if err != nil {
 		return err
 	}
-	task, err := vm.Reset(ctx)
+	err = p.setVMPowerState(ctx, dev, "reset", nil,
+		func(vm *proxmox.VirtualMachine) error {
+			task, err := vm.Reset(ctx)
+			if err != nil {
+				return err
+			}
+			return waitTask(ctx, task)
+		})
 	if err != nil {
 		return fmt.Errorf("failed to reset VM %d for device %q: %w", dev.vmID, name, err)
 	}
-	if err := waitTask(ctx, task); err != nil {
-		return fmt.Errorf("failed waiting for VM %d reset: %w", dev.vmID, err)
-	}
 	return nil
+}
+
+func vmRunning(vm *proxmox.VirtualMachine) bool { return vm.Status == "running" }
+func vmStopped(vm *proxmox.VirtualMachine) bool { return vm.Status == "stopped" }
+
+// setVMPowerState runs op, a power operation on the device's VM that also
+// waits for its task, retrying failures. Each attempt first reads the VM, and
+// skips op if inTarget reports the VM already is in the state op leads to: a
+// retry after an attempt that succeeded but whose response was lost then
+// counts as done, and so does starting a VM that already runs. A nil
+// inTarget (reset) always runs op. op returns permanent(err) for a failure
+// that a retry cannot fix.
+func (p *ProxmoxProvider) setVMPowerState(ctx context.Context, dev *proxmoxDevice,
+	desc string, inTarget func(*proxmox.VirtualMachine) bool,
+	op func(*proxmox.VirtualMachine) error) error {
+	log := logger.FromContext(ctx)
+	_, err := retryProxmoxCall(ctx, log, fmt.Sprintf("%s VM %d of device %q", desc, dev.vmID, dev.name),
+		func() (struct{}, error) {
+			vm, err := p.getVM(ctx, dev.vmID)
+			if err != nil {
+				return struct{}{}, err
+			}
+			if inTarget != nil && inTarget(vm) {
+				return struct{}{}, nil
+			}
+			return struct{}{}, op(vm)
+		})
+	return err
 }
 
 // GetDeviceConsoleOutput returns the serial console output captured so far.
@@ -994,6 +1115,154 @@ func (p *ProxmoxProvider) TeardownAll(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+// removeOrphans removes the Proxmox resources left behind by a previous
+// broker run that did not tear down its devices, typically because it
+// crashed: VMs named with namePrefix, xconnect VNets of the evetest SDN zone,
+// and volumes uploaded to the import storage under namePrefix. Client
+// sessions do not survive a broker restart, so all of these are orphans. It
+// also removes the nameless placeholder VMs, holding "lock: create", that PVE
+// leaves behind when it fails to start a create worker (see SetupDevice).
+//
+// This relies on the broker owning every such resource on its Proxmox host,
+// i.e. on running a single broker per host, as the broker installer sets up.
+// Only NewProxmoxProvider calls it, before anyone can use the provider: it
+// neither takes the provider's locks nor spares anything a concurrent
+// SetupDevice creates. It is best-effort and returns all failures joined.
+func (p *ProxmoxProvider) removeOrphans(ctx context.Context) error {
+	log := logger.FromContext(ctx)
+	node, err := p.client.Node(ctx, p.conf.Node)
+	if err != nil {
+		return fmt.Errorf("failed to get Proxmox node %q: %w", p.conf.Node, err)
+	}
+	// VMs go first: the VNets and the firmware volumes may be in use by them.
+	errs := []error{p.removeOrphanedVMs(ctx, log, node)}
+	errs = append(errs, p.removeOrphanedVNets(ctx, log))
+	errs = append(errs, p.removeOrphanedImportVolumes(ctx, log, node))
+	return errors.Join(errs...)
+}
+
+func (p *ProxmoxProvider) removeOrphanedVMs(
+	ctx context.Context, log *logrus.Entry, node *proxmox.Node) error {
+	vms, err := node.VirtualMachines(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list VMs: %w", err)
+	}
+	var errs []error
+	for _, vm := range vms {
+		vmID := int(vm.VMID)
+		switch {
+		case strings.HasPrefix(vm.Name, namePrefix):
+		case vm.Lock == "create":
+			isPlaceholder, err := p.isAbandonedPlaceholderVM(ctx, node, vmID)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			if !isPlaceholder {
+				continue
+			}
+		default:
+			continue
+		}
+		_, err := retryProxmoxCall(ctx, log, fmt.Sprintf("remove orphaned VM %d", vmID),
+			func() (bool, error) { return p.removeVM(ctx, log, node, vmID) })
+		if err != nil {
+			errs = append(errs, fmt.Errorf("failed to remove orphaned VM %d (%q): %w",
+				vmID, vm.Name, err))
+			continue
+		}
+		log.Infof("Removed orphaned Proxmox VM %d (%q)", vmID, vm.Name)
+	}
+	return errors.Join(errs...)
+}
+
+// isAbandonedPlaceholderVM reports whether the VM holding "lock: create" is
+// a placeholder whose create worker never ran: its config holds nothing but
+// the lock (so no name either), and no task is running for it. The task
+// check spares a VM that is being created right now, e.g. from the PVE UI.
+func (p *ProxmoxProvider) isAbandonedPlaceholderVM(
+	ctx context.Context, node *proxmox.Node, vmID int) (bool, error) {
+	vm, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		if isVMNotFoundErr(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to look up VM %d: %w", vmID, err)
+	}
+	if vm.VirtualMachineConfig == nil || vm.VirtualMachineConfig.Name != "" {
+		return false, nil
+	}
+	tasks, err := node.Tasks(ctx, &proxmox.NodeTasksOptions{Source: "active", VMID: vmID})
+	if err != nil {
+		return false, fmt.Errorf("failed to list active tasks of VM %d: %w", vmID, err)
+	}
+	return len(tasks) == 0, nil
+}
+
+func (p *ProxmoxProvider) removeOrphanedVNets(ctx context.Context, log *logrus.Entry) error {
+	cluster, err := p.client.Cluster(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get Proxmox cluster: %w", err)
+	}
+	vnets, err := cluster.SDNVNets(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list SDN VNets: %w", err)
+	}
+	var errs []error
+	var removed []string
+	for _, vnet := range vnets {
+		// The uplink VNet is installer-owned and must stay.
+		if vnet.Zone != sdnZone || !strings.HasPrefix(vnet.Name, xconnectBridgePrefix) {
+			continue
+		}
+		if err := cluster.DeleteSDNVNet(ctx, vnet.Name); err != nil {
+			errs = append(errs, fmt.Errorf("failed to delete orphaned SDN VNet %q: %w",
+				vnet.Name, err))
+			continue
+		}
+		removed = append(removed, vnet.Name)
+	}
+	if len(removed) > 0 {
+		if err := p.applySDN(ctx, log); err != nil {
+			errs = append(errs, err)
+		} else {
+			log.Infof("Removed %d orphaned SDN VNets: %s", len(removed),
+				strings.Join(removed, ", "))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (p *ProxmoxProvider) removeOrphanedImportVolumes(
+	ctx context.Context, log *logrus.Entry, node *proxmox.Node) error {
+	storage, err := p.getStorageWithRetry(ctx, log, node, p.conf.ImportStorage)
+	if err != nil {
+		return fmt.Errorf("failed to get import storage %q: %w", p.conf.ImportStorage, err)
+	}
+	content, err := storage.GetContent(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list import storage %q: %w", p.conf.ImportStorage, err)
+	}
+	prefix := fmt.Sprintf("%s:import/%s", p.conf.ImportStorage, namePrefix)
+	var errs []error
+	removed := 0
+	for _, item := range content {
+		if !strings.HasPrefix(item.Volid, prefix) {
+			continue
+		}
+		if err := p.deleteImportVolume(ctx, log, node, item.Volid); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		removed++
+	}
+	if removed > 0 {
+		log.Infof("Removed %d orphaned volumes from import storage %q",
+			removed, p.conf.ImportStorage)
+	}
+	return errors.Join(errs...)
+}
+
 // ReconfigureDeviceDisks updates the disk list of a stopped VM in place by
 // removing the disks that are no longer in newDisks (matched by image path) and
 // re-pointing the boot order at the first remaining disk. It does NOT re-import
@@ -1097,16 +1366,28 @@ func (p *ProxmoxProvider) lookupVM(
 	if err != nil {
 		return nil, nil, err
 	}
-	node, err := p.client.Node(ctx, p.conf.Node)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get Proxmox node %q: %w", p.conf.Node, err)
-	}
-	vm, err := node.VirtualMachine(ctx, dev.vmID)
+	vm, err := retryProxmoxCall(ctx, logger.FromContext(ctx),
+		fmt.Sprintf("get VM %d for device %q", dev.vmID, name),
+		func() (*proxmox.VirtualMachine, error) { return p.getVM(ctx, dev.vmID) })
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get VM %d for device %q: %w",
 			dev.vmID, name, err)
 	}
 	return dev, vm, nil
+}
+
+// getVM reads VM vmID once, marking a VM that does not exist as a permanent
+// failure for retryProxmoxCall.
+func (p *ProxmoxProvider) getVM(ctx context.Context, vmID int) (*proxmox.VirtualMachine, error) {
+	node, err := p.client.Node(ctx, p.conf.Node)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Proxmox node %q: %w", p.conf.Node, err)
+	}
+	vm, err := node.VirtualMachine(ctx, vmID)
+	if isVMNotFoundErr(err) {
+		return nil, permanent(err)
+	}
+	return vm, err
 }
 
 // destroyDevice stops the VM (if running) and deletes it. Safe to call
@@ -1123,49 +1404,73 @@ func (p *ProxmoxProvider) destroyDevice(
 	if err != nil {
 		return fmt.Errorf("failed to get Proxmox node %q: %w", p.conf.Node, err)
 	}
-	vm, err := node.VirtualMachine(ctx, dev.vmID)
+	removed, err := p.removeVM(ctx, log, node, dev.vmID)
 	if err != nil {
-		// go-proxmox wraps a transport-level failure (EOF, timeout, ...) as
-		// *url.Error, which doesn't mean the VM is gone -- only a genuine API
-		// error means that. Otherwise this leaks the VM on a transient error.
-		var urlErr *url.Error
-		if errors.As(err, &urlErr) {
-			return fmt.Errorf("failed to look up VM %d for device %q during teardown: %w",
-				dev.vmID, dev.name, err)
-		}
-		// VM already gone; still remove any uploaded firmware and scratch
-		// image volumes.
-		log.Warnf("VM %d for device %q not found during teardown: %v",
-			dev.vmID, dev.name, err)
-		p.deleteImportVolumes(ctx, log, node, p.volumesToRemove(dev))
-		return nil
+		return fmt.Errorf("failed to remove VM %d for device %q: %w", dev.vmID, dev.name, err)
 	}
-	if mapProxmoxStatus(vm.Status, vm.QMPStatus, log) == DeviceStatusRunning {
+	if removed {
+		log.Infof("Removed Proxmox VM %d for device %q", dev.vmID, dev.name)
+	} else {
+		log.Warnf("VM %d for device %q not found during teardown", dev.vmID, dev.name)
+	}
+	// Remove the uploaded custom-firmware and scratch image volumes now that
+	// the VM is gone.
+	p.deleteImportVolumes(ctx, log, node, p.volumesToRemove(dev))
+	return nil
+}
+
+// isVMNotFoundErr reports whether err, returned by a VM lookup, means that the
+// VM does not exist. PVE reports that as an HTTP 500, like any other
+// server-side failure ("500 Configuration file
+// 'nodes/<node>/qemu-server/<vmid>.conf' does not exist"), so only the message
+// tells it apart from e.g. a failure to fork an API worker on a host that is
+// out of memory. Mistaking such a failure for a missing VM leaks the VM.
+func isVMNotFoundErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "qemu-server/") && strings.Contains(msg, "does not exist")
+}
+
+// removeVM stops VM vmID if it is running, then deletes it together with its
+// disks. It returns false, and no error, if the VM does not exist. Any lock
+// left on the VM is overridden. In particular, a create that PVE accepted but
+// failed to start a worker for leaves behind a placeholder config holding
+// "lock: create", which a plain delete refuses to touch. The caller handles
+// retries.
+func (p *ProxmoxProvider) removeVM(ctx context.Context, log *logrus.Entry,
+	node *proxmox.Node, vmID int) (bool, error) {
+	vm, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		if isVMNotFoundErr(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to look up VM %d: %w", vmID, err)
+	}
+	// Stop on PVE status, not mapProxmoxStatus: a paused VM is "running" too,
+	// and PVE refuses to delete it.
+	if vm.Status == "running" {
 		task, err := vm.Stop(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to stop VM %d during teardown: %w", dev.vmID, err)
+			return false, fmt.Errorf("failed to stop VM %d: %w", vmID, err)
 		}
 		if err := waitTask(ctx, task); err != nil {
-			return fmt.Errorf("failed waiting for VM %d stop during teardown: %w",
-				dev.vmID, err)
+			return false, fmt.Errorf("failed waiting for VM %d to stop: %w", vmID, err)
 		}
 	}
 	task, err := vm.Delete(ctx, &proxmox.VirtualMachineDeleteOptions{
 		Purge:                    true,
 		DestroyUnreferencedDisks: true,
+		SkipLock:                 vm.Lock != "",
 	})
 	if err != nil {
-		return fmt.Errorf("failed to delete VM %d for device %q: %w",
-			dev.vmID, dev.name, err)
+		return false, fmt.Errorf("failed to delete VM %d: %w", vmID, err)
 	}
 	if err := waitTask(ctx, task); err != nil {
-		return fmt.Errorf("failed waiting for VM %d deletion: %w", dev.vmID, err)
+		return false, fmt.Errorf("failed waiting for VM %d deletion: %w", vmID, err)
 	}
-	// Remove the uploaded custom-firmware and scratch image volumes now that
-	// the VM is gone.
-	p.deleteImportVolumes(ctx, log, node, p.volumesToRemove(dev))
-	log.Infof("Removed Proxmox VM %d for device %q", dev.vmID, dev.name)
-	return nil
+	return true, nil
 }
 
 // nicOptions builds the per-interface VM options and the QEMU args fragment
@@ -1307,6 +1612,16 @@ func (p *ProxmoxProvider) buildVMOptions(dev *proxmoxDevice, diskRefs []string,
 		" -global virtio-net-pci.disable-legacy=on" +
 		" -global virtio-net-pci.disable-modern=off" +
 		" -global virtio-net-pci.iommu_platform=on"
+
+	// No KVM async page faults, as in the qemu provider: on an overcommitted
+	// host, a guest task faulting on a page the host swapped out can wait
+	// forever for KVM's "page ready" wakeup. PVE's "cpu" option rejects these
+	// flags, so they go in as -global defaults of the host CPU model, which
+	// leave PVE's own -cpu flags in effect. Async PF is x86-only.
+	if dev.spec.Arch == api.ArchType_ARCH_AMD64 {
+		extraArgs += " -global host-x86_64-cpu.kvm-asyncpf=off" +
+			" -global host-x86_64-cpu.kvm-asyncpf-int=off"
+	}
 
 	// A VGA controller and a USB 3.0 (xHCI) host controller, for tests that
 	// pass either through to an application (EVE treats both classes
@@ -1675,6 +1990,8 @@ func (p *ProxmoxProvider) applySDN(ctx context.Context, log *logrus.Entry) error
 	if err != nil {
 		return fmt.Errorf("failed to get Proxmox cluster: %w", err)
 	}
+	p.sdnApplyMutex.Lock()
+	defer p.sdnApplyMutex.Unlock()
 	task, err := cluster.SDNApply(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to apply SDN configuration: %w", err)
@@ -1777,14 +2094,12 @@ func (p *ProxmoxProvider) startConsoleLogger(ctx context.Context, dev *proxmoxDe
 	vmID := dev.vmID
 	logPath := dev.consoleLog
 	mux := dev.consoleMux
-	node := p.conf.Node
-	client := p.client
 
 	go func() {
 		defer close(done)
 		const retryInterval = 2 * time.Second
 		for loggerCtx.Err() == nil {
-			err := runConsoleLogger(loggerCtx, client, node, vmID, logPath, mux)
+			err := p.runConsoleLogger(loggerCtx, vmID, logPath, mux)
 			if err != nil {
 				log.Warnf("Console logger for VM %d stopped (will retry): %v", vmID, err)
 			}
@@ -1801,10 +2116,9 @@ func (p *ProxmoxProvider) startConsoleLogger(ctx context.Context, dev *proxmoxDe
 // output into logPath, and publishes the connection into mux so it can be
 // shared with any interactively attached client (see AttachToDeviceConsole),
 // until ctx is cancelled or the connection breaks.
-func runConsoleLogger(
-	ctx context.Context, client *proxmox.Client, node string, vmID int, logPath string,
-	mux *consoleMux) error {
-	n, err := client.Node(ctx, node)
+func (p *ProxmoxProvider) runConsoleLogger(
+	ctx context.Context, vmID int, logPath string, mux *consoleMux) error {
+	n, err := p.client.Node(ctx, p.conf.Node)
 	if err != nil {
 		return err
 	}
@@ -1812,15 +2126,12 @@ func runConsoleLogger(
 	if err != nil {
 		return err
 	}
-	conn, err := openSerialConsole(vm)
+	conn, err := p.openSerialConsole(ctx, vm)
 	if err != nil {
 		return err
 	}
-	// wsConsole.Close() is not safe to call twice (the underlying library
-	// panics on a double channel-close), and both the ctx watcher below and
-	// the plain defer may try to close it, so guard with sync.Once.
-	var closeOnce sync.Once
-	closeConn := func() { closeOnce.Do(func() { _ = conn.Close() }) }
+	// Close is idempotent; both the ctx watcher below and this defer call it.
+	closeConn := func() { _ = conn.Close() }
 	defer closeConn()
 
 	mux.setConn(conn)
@@ -1996,111 +2307,32 @@ func (s *muxSubscriber) Close() error {
 	return nil
 }
 
-// openSerialConsole opens a Proxmox termproxy session to the VM serial console
-// and returns it as an io.ReadWriteCloser.
-func openSerialConsole(vm *proxmox.VirtualMachine) (io.ReadWriteCloser, error) {
-	term, err := vm.TermProxy(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("failed to open termproxy for VM %d: %w", vm.VMID, err)
-	}
-	send, recv, errs, closer, err := vm.TermWebSocket(term)
-	if err != nil {
-		err = fmt.Errorf("failed to open console websocket for VM %d: %w", vm.VMID, err)
-		return nil, err
-	}
-	return &wsConsole{
-		send: send, recv: recv, errs: errs, closer: closer,
-		closing: make(chan struct{}),
-	}, nil
-}
-
-// wsConsole adapts the go-proxmox terminal websocket channels to an
-// io.ReadWriteCloser.
-type wsConsole struct {
-	send    chan []byte
-	recv    chan []byte
-	errs    chan error
-	closer  func() error
-	readBuf []byte
-
-	// closeMu serializes Write against Close: go-proxmox closes send/recv/errs
-	// from inside Close, and would panic if that raced a concurrent Write, so
-	// Close only proceeds once every in-flight Write has returned, and any Write
-	// started after Close begins bails out immediately instead of touching the
-	// channels. closing is closed by Close before it even tries to acquire the
-	// lock, so a Write already blocked in its select wakes up immediately
-	// instead of Close having to wait on it indefinitely.
-	closeMu   sync.RWMutex
-	closed    bool
-	closing   chan struct{}
-	closeOnce sync.Once
-}
-
-func (w *wsConsole) Read(p []byte) (int, error) {
-	if len(w.readBuf) == 0 {
-		select {
-		case b, ok := <-w.recv:
-			if !ok {
-				return 0, io.EOF
-			}
-			w.readBuf = b
-		case err := <-w.errs:
-			if err == nil {
-				err = io.EOF
-			}
-			return 0, err
-		}
-	}
-	n := copy(p, w.readBuf)
-	w.readBuf = w.readBuf[n:]
-	return n, nil
-}
-
-func (w *wsConsole) Write(p []byte) (int, error) {
-	w.closeMu.RLock()
-	defer w.closeMu.RUnlock()
-	if w.closed {
-		return 0, io.ErrClosedPipe
-	}
-	b := make([]byte, len(p))
-	copy(b, p)
-	select {
-	case w.send <- b:
-		return len(p), nil
-	case err := <-w.errs:
-		if err == nil {
-			err = io.ErrClosedPipe
-		}
-		return 0, err
-	case <-w.closing:
-		return 0, io.ErrClosedPipe
-	}
-}
-
-func (w *wsConsole) Close() error {
-	w.closeOnce.Do(func() { close(w.closing) })
-	w.closeMu.Lock()
-	defer w.closeMu.Unlock()
-	if w.closed {
-		return nil
-	}
-	w.closed = true
-	if w.closer != nil {
-		return w.closer()
-	}
-	return nil
-}
-
 // proxmoxRetryMaxAttempts bounds retries of a single Proxmox API call against
 // transient failures.
 const proxmoxRetryMaxAttempts = 3
 
-// proxmoxRetryDelay is the pause between retryProxmoxCall attempts.
-const proxmoxRetryDelay = 5 * time.Second
+// proxmoxRetryDelay is the pause between retryProxmoxCall attempts. It is a
+// variable only so that tests can shorten it.
+var proxmoxRetryDelay = 5 * time.Second
+
+// permanentError marks an error that retryProxmoxCall must not retry.
+type permanentError struct{ err error }
+
+func (e permanentError) Error() string { return e.err.Error() }
+func (e permanentError) Unwrap() error { return e.err }
+
+// permanent marks err as a failure that a retry cannot fix.
+func permanent(err error) error {
+	if err == nil {
+		return nil
+	}
+	return permanentError{err: err}
+}
 
 // retryProxmoxCall calls fn up to proxmoxRetryMaxAttempts times, retrying on
-// failure with a proxmoxRetryDelay pause in between. desc names the
-// operation, for the warning logged between attempts.
+// failure with a proxmoxRetryDelay pause in between, unless fn marks the
+// failure permanent. desc names the operation, for the warning logged between
+// attempts.
 func retryProxmoxCall[T any](
 	ctx context.Context, log *logrus.Entry, desc string, fn func() (T, error)) (T, error) {
 	var result T
@@ -2109,6 +2341,9 @@ func retryProxmoxCall[T any](
 		result, err = fn()
 		if err == nil {
 			return result, nil
+		}
+		if errors.As(err, new(permanentError)) {
+			return result, err
 		}
 		if attempt < proxmoxRetryMaxAttempts {
 			log.Warnf("Attempt %d/%d: %s (will retry): %v",

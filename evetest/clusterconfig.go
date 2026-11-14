@@ -111,14 +111,24 @@ func NewEdgeClusterConfig(
 		cc.configs[node.DevName] = NewEdgeDeviceConfig(node.DevName)
 	}
 
-	// Generate a shared cluster UUID and join token.
+	// Generate a shared cluster UUID and join token, unless the nodes are
+	// reused devices still running a cluster: that cluster keeps running, so
+	// it keeps its ID and token, as it would with a real controller. EVE does
+	// not re-report its cluster info on an ID change alone, and k3s cannot
+	// change the token of a running cluster, which a node joining it must
+	// then use.
 	var err error
-	cc.ClusterID = th.newUUID("edge cluster")
-	tokenBytes := make([]byte, 20)
-	if _, err = cryptorand.Read(tokenBytes); err != nil {
-		th.t.Fatalf("Failed to generate cluster token: %v", err)
+	if id, token, ok := th.reusedClusterIdentity(nodes); ok {
+		th.log.Infof("Reusing cluster %s formed by the reused devices", id)
+		cc.ClusterID, cc.Token = id, token
+	} else {
+		cc.ClusterID = th.newUUID("edge cluster")
+		tokenBytes := make([]byte, 20)
+		if _, err = cryptorand.Read(tokenBytes); err != nil {
+			th.t.Fatalf("Failed to generate cluster token: %v", err)
+		}
+		cc.Token = base64.StdEncoding.EncodeToString(tokenBytes)
 	}
-	cc.Token = base64.StdEncoding.EncodeToString(tokenBytes)
 
 	// Resolve the tie-breaker device name to the UUID that EVE knows it
 	// by. Every node is told which node is the tie-breaker, because each
@@ -166,6 +176,52 @@ func (cc *EdgeClusterConfig) setNodeClusterConfig(node ClusterNode) {
 	if node.ClusterIP != nil {
 		dc.Cluster.ClusterIpPrefix = node.ClusterIP.String()
 	}
+	dc.clusterToken = cc.Token
+}
+
+// reusedClusterIdentity returns the ID and join token of the cluster that the
+// given nodes still run, if they run exactly one: every node configured for a
+// cluster is configured for that one, with the same token, at least one is,
+// and no device outside the given nodes is. A node without a cluster config,
+// e.g. one an earlier test took out of the cluster, joins the running cluster,
+// so it needs that cluster's token too.
+func (th *TestHarness) reusedClusterIdentity(
+	nodes []ClusterNode) (id uuid.UUID, token string, ok bool) {
+	th.devicesM.Lock()
+	defer th.devicesM.Unlock()
+	clusterID := ""
+	inNodes := make(map[string]bool, len(nodes))
+	for _, node := range nodes {
+		inNodes[node.DevName] = true
+		dev := th.devices[node.DevName]
+		if dev == nil || dev.config == nil || dev.config.GetCluster() == nil {
+			continue
+		}
+		devClusterID := dev.config.GetCluster().GetClusterId()
+		devToken := dev.config.clusterToken
+		if devToken == "" {
+			return uuid.Nil, "", false
+		}
+		if clusterID == "" {
+			clusterID, token = devClusterID, devToken
+		} else if devClusterID != clusterID || devToken != token {
+			return uuid.Nil, "", false
+		}
+	}
+	if clusterID == "" {
+		return uuid.Nil, "", false
+	}
+	for devName, dev := range th.devices {
+		if !inNodes[devName] && dev.config != nil &&
+			dev.config.GetCluster().GetClusterId() == clusterID {
+			return uuid.Nil, "", false
+		}
+	}
+	id, err := uuid.FromString(clusterID)
+	if err != nil {
+		return uuid.Nil, "", false
+	}
+	return id, token, true
 }
 
 // encryptClusterSecrets encrypts the join token and, when set, the

@@ -740,14 +740,45 @@ spec:
 		shortTimeout, 0)
 }
 
+// kubectlApplyRetryWindow bounds how long applyManifest retries a kubectl
+// apply that failed on a transient API server error.
+const kubectlApplyRetryWindow = 2 * time.Minute
+
+// transientAPIServerErrors are kubectl errors from an API server that is
+// restarting or overloaded, which a retry gets past. Right after a cluster
+// reports ready, k3s can still be restarting for a single-to-cluster
+// transition, or be busy starting its add-ons on a single 4-vCPU node.
+var transientAPIServerErrors = []string{
+	"the server is currently unable to handle the request",
+	"failed to download openapi",
+	"the server has asked for the client to try again later",
+	"etcdserver: request timed out",
+	"connection refused",
+	"TLS handshake timeout",
+}
+
 // applyManifest kubectl-applies a YAML manifest (single- or multi-document,
-// "---"-separated) via `eve exec kube kubectl apply -f -`.
+// "---"-separated) via `eve exec kube kubectl apply -f -`, retrying transient
+// API server errors (see transientAPIServerErrors).
 func applyManifest(t *WithT, device *evetest.EdgeDevice, manifest string,
 	timeout time.Duration) {
 
 	script := fmt.Sprintf("eve exec kube kubectl apply -f - <<'EOF'\n%s\nEOF", manifest)
-	_, _, err := device.RunShellScript(script, timeout, 0)
-	t.Expect(err).ToNot(HaveOccurred(), "kubectl apply manifest:\n%s", manifest)
+	t.Eventually(func() error {
+		_, _, err := device.RunShellScript(script, timeout, 0)
+		if err == nil {
+			return nil
+		}
+		for _, transient := range transientAPIServerErrors {
+			if strings.Contains(err.Error(), transient) {
+				evetest.Logger().Infof("kubectl apply failed on a transient "+
+					"API server error, retrying: %v", err)
+				return err
+			}
+		}
+		return StopTrying("kubectl apply failed").Wrap(err)
+	}, kubectlApplyRetryWindow, 10*time.Second).Should(Succeed(),
+		"kubectl apply manifest:\n%s", manifest)
 }
 
 // indentBlock prefixes every line of s with indent, for embedding

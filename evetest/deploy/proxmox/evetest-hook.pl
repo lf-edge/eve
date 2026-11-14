@@ -7,11 +7,17 @@
 # device provider attaches it to every VM it creates via the "hookscript" config
 # option (local:snippets/evetest-hook.pl).
 #
+# On guest pre-start it removes tap devices of the VM left behind by a previous
+# QEMU process, which would otherwise make QEMU fail to create them.
+#
 # On guest post-start it enables forwarding of link-local L2 protocols (LACP,
 # EAPOL/802.1X, LLDP) and sets arp_ignore on the evetest "xconnect" VNet bridges
 # the guest is attached to, so EVE can exercise those protocols across the
 # simulated point-to-point links to the SDN VM. These are host-namespace
 # operations that the broker (running inside a VM) cannot perform itself.
+#
+# On guest post-start it also runs evetest-oom-hook.pl (a VM has only one
+# hookscript), which sets the VM's OOM-killer priority.
 #
 # On guest post-stop it removes any dnsmasq DHCP lease belonging to the VM from
 # the evetest SDN zone's lease file and restarts dnsmasq so the cleanup takes
@@ -48,6 +54,11 @@ log_info('?', "invoked: vmid=" . (defined $vmid ? $vmid : '?')
 
 exit 0 unless defined $vmid && defined $phase;
 
+if ($phase eq 'pre-start') {
+    remove_stale_taps($vmid);
+    exit 0;
+}
+
 if ($phase eq 'post-stop') {
     cleanup_stale_leases($vmid);
     exit 0;
@@ -56,6 +67,8 @@ if ($phase eq 'post-stop') {
 # Only act once the VM has started: at post-start its tap devices exist and are
 # enslaved to the SDN VNet bridges (the documented moment for group_fwd_mask).
 exit 0 unless $phase eq 'post-start';
+
+system('/var/lib/vz/snippets/evetest-oom-hook.pl', $vmid, $phase);
 
 # group_fwd_mask 0x4008 = EAPOL (0x4000) + LLDP (0x0008). LACP (0x4) is rejected
 # in the bridge-level mask by the kernel (BR_GROUPFWD_RESTRICTED) and is instead
@@ -122,6 +135,51 @@ if ($configured) {
     log_info($vmid, "no xconnect bridges found, nothing to do");
 }
 exit 0;
+
+# remove_stale_taps deletes tap devices left behind by a previous QEMU process
+# of this vmid. No QEMU runs for the vmid at pre-start, so any existing
+# tap<vmid>i<n> (PVE netX) or tap<vmid>x<n> (args-defined xconnect) is stale,
+# and QEMU would fail to create it with "Device or resource busy". This happens
+# when the kernel leaks a reference to the tap of a killed QEMU (seen after an
+# OOM kill). With a leaked reference, "ip link delete" frees the name but then
+# blocks indefinitely waiting for the reference, so it runs detached and only
+# the name is waited for.
+sub remove_stale_taps {
+    my ($vmid) = @_;
+    opendir(my $dh, '/sys/class/net') or do {
+        log_error($vmid, "cannot list /sys/class/net: $!");
+        return;
+    };
+    my @taps = grep { /^tap${vmid}[ix]\d+$/ } readdir($dh);
+    closedir($dh);
+    return unless @taps;
+
+    local $SIG{CHLD} = 'IGNORE';
+    for my $tap (@taps) {
+        log_info($vmid, "removing stale tap $tap left by a previous run of this VM");
+        my $pid = fork();
+        if (!defined $pid) {
+            log_error($vmid, "cannot fork to remove $tap: $!");
+            next;
+        }
+        if ($pid == 0) {
+            # Detach from the task log pipe, which PVE reads until EOF.
+            open(STDOUT, '>', '/dev/null');
+            open(STDERR, '>', '/dev/null');
+            exec('ip', 'link', 'delete', 'dev', $tap) or exit 1;
+        }
+    }
+    for (1 .. 50) {
+        @taps = grep { -e "/sys/class/net/$_" } @taps;
+        last unless @taps;
+        select(undef, undef, undef, 0.2);
+    }
+    if (@taps) {
+        log_error($vmid, "stale tap(s) still present after 10s: @taps");
+    } else {
+        log_info($vmid, "stale taps removed");
+    }
+}
 
 # cleanup_stale_leases removes any dnsmasq lease belonging to vmid's own MAC
 # addresses, or to any address reserved for them in the ethers file, then

@@ -13,7 +13,7 @@ ARG EVETEST_VERSION=dev
 ARG ALPINE_VERSION=3.24
 ARG GOLANG_VERSION=1.26
 ARG EVETEST_ADAM_REPO=lfedge/adam
-ARG EVETEST_ADAM_VERSION=0.0.85
+ARG EVETEST_ADAM_VERSION=0.0.87
 
 ###########################
 # Pull adam binary stage
@@ -44,9 +44,11 @@ ENV GOARCH=$TARGETARCH
 # hadolint ignore=DL3018
 RUN apk add --no-cache make
 
-# Download dependencies first for better layer caching.
+# Download dependencies first for better layer caching. Every evetest CI job
+# builds this image when its sources are not published yet, so retry to ride
+# out transient proxy.golang.org timeouts.
 COPY go.mod go.sum ./
-RUN go mod download
+RUN for _ in 1 2 3; do go mod download && exit 0; sleep 10; done; exit 1
 
 # Copy source code
 COPY . .
@@ -116,11 +118,11 @@ COPY --from=build-go /go/bin/evetest-broker /usr/local/bin/evetest-broker
 COPY --from=build-go /go/bin/evetest /usr/local/bin/evetest
 COPY --from=build-go /go/bin/list-tests /usr/local/bin/list-tests
 
-# Bake the evetest framework into the image with pre-downloaded dependencies.
+# Bake the evetest framework into the image with pre-downloaded dependencies,
+# taken from the build stage (the module cache is platform-independent).
 # tests/ is excluded via .dockerignore and mounted at runtime instead.
 WORKDIR /evetest
-COPY go.mod go.sum ./
-RUN go mod download
+COPY --from=build-go /go/pkg/mod /go/pkg/mod
 COPY . .
 
 RUN mkdir -p /artifacts

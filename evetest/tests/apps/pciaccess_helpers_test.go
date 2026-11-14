@@ -397,17 +397,24 @@ func (a pciAccess) isConsole() bool {
 	return a.Func == "" && hasAnyPrefix(a.Path, consolePathPrefixes)
 }
 
+// qemuVCPUThreadRE matches the name QEMU gives its vCPU threads. The tracer
+// reports the name of the calling thread, and the guest's own config-space
+// accesses to a passed-through device reach the kernel from these threads.
+var qemuVCPUThreadRE = regexp.MustCompile(`^CPU \d+/KVM$`)
+
 // isViolation reports whether the access is one the host must not make while
 // a device is passed through: any write-open of a PCI device attribute, and
 // any reset, config-space write or BAR mapping by a process other than qemu,
-// which drives the device on the guest's behalf. The traced kernel functions
-// do not reveal which device they act on, so a reset of some other device by
-// a host process counts as well. Console attach points are not covered: EVE
-// is expected to bind and unbind its framebuffer console when
-// debug.enable.vga is switched, so those opens are only reported.
+// which drives the device on the guest's behalf, from its main thread or its
+// vCPU threads. The traced kernel functions do not reveal which device they
+// act on, so a reset of some other device by a host process counts as well.
+// Console attach points are not covered: EVE is expected to bind and unbind
+// its framebuffer console when debug.enable.vga is switched, so those opens
+// are only reported.
 func (a pciAccess) isViolation() bool {
 	if a.Func != "" {
-		return !strings.HasPrefix(a.Comm, "qemu-system-")
+		return !strings.HasPrefix(a.Comm, "qemu-system-") &&
+			!qemuVCPUThreadRE.MatchString(a.Comm)
 	}
 	return a.isWriteOpen() && hasAnyPrefix(a.Path, pciPathPrefixes)
 }

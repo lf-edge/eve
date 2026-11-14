@@ -29,8 +29,10 @@ import (
 	pillartypes "github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/vishvananda/netlink"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -441,50 +443,203 @@ func (th *TestHarness) prepareImageForEVEDevice(dev *deviceState) {
 }
 
 // pushEVEImageToBroker streams a pre-built EVE container image to the broker
-// using a client-side streaming gRPC call.
-//
-// The function first sends image metadata to initiate the upload, then streams
-// the gzipped Docker image data in fixed-size chunks directly from the local
-// Docker daemon. The image data is produced lazily and streamed without loading
-// the entire image into memory.
+// (see pushDockerImageToBroker).
+func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
+	dockerImageName, err := utils.EVEDockerImageName(imageRef)
+	if err != nil {
+		th.t.Fatalf("invalid EVE image reference: %v", err)
+	}
+	th.pushDockerImageToBroker(dockerImageName, "EVE",
+		"If running against the current HEAD (EVETEST_EVE_VERSION not explicitly set), "+
+			"build the image first with: make eve",
+		func(ctx context.Context) (dockerImagePushStream, error) {
+			stream, err := th.brokerClient.PushEVEContainerImage(ctx)
+			if err != nil {
+				return dockerImagePushStream{}, err
+			}
+			return dockerImagePushStream{
+				sendRequest: func() error {
+					return stream.Send(&api.PushImageChunk{
+						Payload: &api.PushImageChunk_Request{
+							Request: &api.PushImageRequest{
+								ClientId: th.brokerClientID,
+								Image:    imageRef,
+							},
+						},
+					})
+				},
+				sendData: func(data []byte) error {
+					return stream.Send(&api.PushImageChunk{
+						Payload: &api.PushImageChunk_DataGzipChunk{DataGzipChunk: data},
+					})
+				},
+				closeAndRecv: stream.CloseAndRecv,
+			}, nil
+		})
+}
+
+// pullEVEImageFromBroker loads an EVE container image that the broker has into
+// the local Docker daemon. It reports false if the broker does not have it.
+func (th *TestHarness) pullEVEImageFromBroker(
+	ctx context.Context, log *logrus.Entry, imageRef *api.ImageRef) (bool, error) {
+	dockerImageName, err := utils.EVEDockerImageName(imageRef)
+	if err != nil {
+		return false, err
+	}
+	stream, err := th.brokerClient.PullEVEContainerImage(ctx, &api.PullEVEImageRequest{
+		ClientId: th.brokerClientID,
+		Image:    imageRef,
+	})
+	if err != nil {
+		return false, err
+	}
+	// The first message tells whether the broker has the image at all.
+	first, err := stream.Recv()
+	if status.Code(err) == codes.NotFound {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	pr, pw := io.Pipe()
+	go func() {
+		chunk := first
+		for {
+			if _, err := pw.Write(chunk.GetDataGzipChunk()); err != nil {
+				return
+			}
+			var err error
+			if chunk, err = stream.Recv(); err != nil {
+				if err == io.EOF {
+					err = nil
+				}
+				pw.CloseWithError(err)
+				return
+			}
+		}
+	}()
+	defer func() {
+		if closeErr := pr.Close(); closeErr != nil {
+			log.Warnf("failed to close the pipe of image %s: %v", dockerImageName, closeErr)
+		}
+	}()
+	if err := utils.LoadDockerImageFromReader(ctx, log, pr, dockerImageName); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// pullEVEImage makes an EVE container image available in the local Docker
+// daemon: pulled from its registry, or, if that fails (a PR build is published
+// nowhere), loaded from the broker, which has the image the tests run.
+func (th *TestHarness) pullEVEImage(
+	ctx context.Context, log *logrus.Entry, imageRef *api.ImageRef) error {
+	dockerImageName, err := utils.EVEDockerImageName(imageRef)
+	if err != nil {
+		return err
+	}
+	pullErr := utils.PullDockerImage(ctx, log, dockerImageName)
+	if pullErr == nil {
+		return nil
+	}
+	log.Infof("Could not pull %s (%v), trying the broker", dockerImageName, pullErr)
+	found, err := th.pullEVEImageFromBroker(ctx, log, imageRef)
+	if err != nil {
+		return fmt.Errorf("failed to pull %s: %w; and to get it from the broker: %v",
+			dockerImageName, pullErr, err)
+	}
+	if !found {
+		return pullErr
+	}
+	return nil
+}
+
+// isMissingSDNImageErr tells whether err is the broker's SetupDevices failure
+// for an SDN container image that it has and cannot pull.
+func isMissingSDNImageErr(err error) bool {
+	if status.Code(err) != codes.FailedPrecondition {
+		return false
+	}
+	for _, detail := range status.Convert(err).Details() {
+		info, ok := detail.(*errdetails.ErrorInfo)
+		if ok && info.GetDomain() == constants.BrokerErrorDomain &&
+			info.GetReason() == constants.MissingSDNImageErrorReason {
+			return true
+		}
+	}
+	return false
+}
+
+// pushSDNImageToBroker streams the local SDN container image to the broker,
+// the same way pushEVEImageToBroker does for the EVE image.
+func (th *TestHarness) pushSDNImageToBroker(sdnConfig *api.SDNConfig) {
+	dockerImageName := fmt.Sprintf("%s:%s", sdnConfig.GetImageRepo(), sdnConfig.GetImageVersion())
+	th.pushDockerImageToBroker(dockerImageName, "SDN",
+		"Build the image first with: make build-sdn-container",
+		func(ctx context.Context) (dockerImagePushStream, error) {
+			stream, err := th.brokerClient.PushSDNContainerImage(ctx)
+			if err != nil {
+				return dockerImagePushStream{}, err
+			}
+			return dockerImagePushStream{
+				sendRequest: func() error {
+					return stream.Send(&api.PushSDNImageChunk{
+						Payload: &api.PushSDNImageChunk_Request{
+							Request: &api.PushSDNImageRequest{
+								ClientId:  th.brokerClientID,
+								SdnConfig: sdnConfig,
+							},
+						},
+					})
+				},
+				sendData: func(data []byte) error {
+					return stream.Send(&api.PushSDNImageChunk{
+						Payload: &api.PushSDNImageChunk_DataGzipChunk{DataGzipChunk: data},
+					})
+				},
+				closeAndRecv: stream.CloseAndRecv,
+			}, nil
+		})
+}
+
+// dockerImagePushStream abstracts the client-streaming RPC (EVE or SDN image)
+// over which a Docker image is uploaded to the broker.
+type dockerImagePushStream struct {
+	sendRequest  func() error
+	sendData     func(data []byte) error
+	closeAndRecv func() (*api.PushImageResponse, error)
+}
+
+// pushDockerImageToBroker streams a local Docker image to the broker over the
+// stream opened by open: first the metadata message, then the gzipped image
+// data (`docker save | gzip`) in fixed-size chunks, produced lazily from the
+// local Docker daemon. kind ("EVE" or "SDN") only labels the messages, and
+// notFoundHint is appended to the error reported for a missing local image.
 //
 // The upload is bounded by a timeout and relies on stream EOF to signal
 // completion. On success, the broker responds indicating whether the image
 // already existed or was newly uploaded. Any failure during streaming or upload
 // results in a fatal error.
-func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
+func (th *TestHarness) pushDockerImageToBroker(dockerImageName, kind, notFoundHint string,
+	open func(ctx context.Context) (dockerImagePushStream, error)) {
 	ctx, cancel := context.WithTimeout(th.ctx, brokerPushEVEImageTimeout)
 	defer cancel()
 
-	stream, err := th.brokerClient.PushEVEContainerImage(ctx)
+	stream, err := open(ctx)
 	if err != nil {
-		th.t.Fatalf("PushEVEContainerImage failed: %v", err)
+		th.t.Fatalf("Push of %s image failed: %v", kind, err)
 	}
 
 	// First message: metadata
-	err = stream.Send(&api.PushImageChunk{
-		Payload: &api.PushImageChunk_Request{
-			Request: &api.PushImageRequest{
-				ClientId: th.brokerClientID,
-				Image:    imageRef,
-			},
-		},
-	})
-	if err != nil {
+	if err = stream.sendRequest(); err != nil {
 		th.t.Fatalf("failed to send image metadata: %v", err)
-	}
-
-	dockerImageName, err := utils.EVEDockerImageName(imageRef)
-	if err != nil {
-		th.t.Fatalf("invalid EVE image reference: %v", err)
 	}
 
 	imageSize, err := utils.GetDockerImageSizeBytes(ctx, dockerImageName)
 	if err != nil {
 		if utils.IsErrDockerImageNotFound(err) {
-			th.t.Fatalf("EVE image %q is not available (neither locally nor on Docker Hub). "+
-				"If running against the current HEAD (EVETEST_EVE_VERSION not explicitly set), "+
-				"build the image first with: make eve", dockerImageName)
+			th.t.Fatalf("%s image %q is not available (neither locally nor on Docker Hub). %s",
+				kind, dockerImageName, notFoundHint)
 		}
 		th.t.Fatalf("failed to get docker image size: %v", err)
 	}
@@ -503,12 +658,7 @@ func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
 	for {
 		n, readErr := imageReader.Read(buf)
 		if n > 0 {
-			sendErr := stream.Send(&api.PushImageChunk{
-				Payload: &api.PushImageChunk_DataGzipChunk{
-					DataGzipChunk: buf[:n],
-				},
-			})
-			if sendErr != nil {
+			if sendErr := stream.sendData(buf[:n]); sendErr != nil {
 				// Server closed the stream early (e.g. image already exists
 				// or is being uploaded by another client). Break out and
 				// retrieve the server's response via CloseAndRecv.
@@ -518,8 +668,8 @@ func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
 			sentBytes += int64(n)
 			percent := sentBytes * 100 / imageSize
 			if percent >= nextLogPercent {
-				th.log.Infof("Pushing EVE image %q to broker: %d%% done",
-					dockerImageName, nextLogPercent)
+				th.log.Infof("Pushing %s image %q to broker: %d%% done",
+					kind, dockerImageName, nextLogPercent)
 				nextLogPercent += 10
 			}
 		}
@@ -531,19 +681,19 @@ func (th *TestHarness) pushEVEImageToBroker(imageRef *api.ImageRef) {
 		}
 	}
 
-	pushResp, err := stream.CloseAndRecv()
+	pushResp, err := stream.closeAndRecv()
 	if err != nil {
-		th.t.Fatalf("PushEVEContainerImage failed: %v", err)
+		th.t.Fatalf("Push of %s image failed: %v", kind, err)
 	}
 
 	if earlyClose && !pushResp.AlreadyExists {
-		th.t.Fatalf("Server closed image upload stream early " +
-			"but did not report image as already existing")
+		th.t.Fatalf("Server closed %s image upload stream early "+
+			"but did not report image as already existing", kind)
 	}
 	if pushResp.AlreadyExists {
-		th.log.Info("EVE container image already exists on broker.")
+		th.log.Infof("%s container image already exists on broker.", kind)
 	} else {
-		th.log.Info("EVE container image pushed successfully.")
+		th.log.Infof("%s container image pushed successfully.", kind)
 	}
 }
 
@@ -767,6 +917,14 @@ func (th *TestHarness) setupEVEDevices(
 	th.log.Debugf("Submitting request to setup devices: %s", setupReq)
 	setupResp, err := th.brokerClient.SetupDevices(ctx, setupReq)
 	cancel()
+	if isMissingSDNImageErr(err) {
+		th.log.Warn("Broker is missing SDN container image — pushing it now...")
+		th.pushSDNImageToBroker(setupReq.SdnConfig)
+
+		ctx, cancel = context.WithTimeout(th.ctx, setupTimeout)
+		setupResp, err = th.brokerClient.SetupDevices(ctx, setupReq)
+		cancel()
+	}
 	if err != nil {
 		th.t.Fatalf("Failed to setup devices %v: %v", devNames, err)
 	}
@@ -1381,6 +1539,15 @@ func (th *TestHarness) maybeReuseDevices(
 			th.devicesM.Unlock()
 			return false
 		}
+		// EVE does not support changing or removing the tie-breaker of
+		// a formed cluster: its setup stays in place. The next test, which
+		// may want a different tie-breaker or none, would inherit it.
+		if dev.config != nil && dev.config.GetCluster().GetTieBreakerNodeId() != "" {
+			th.devicesM.Unlock()
+			th.log.Infof("Device %q was in a cluster with a tie-breaker; "+
+				"not reusing devices", devName)
+			return false
+		}
 		// Cannot reuse device if requirements changed.
 		prevReq := dev.requirement
 		equalReqs := newReq.MinCPUs == prevReq.MinCPUs &&
@@ -1400,12 +1567,23 @@ func (th *TestHarness) maybeReuseDevices(
 			th.devicesM.Unlock()
 			return false
 		}
+		// Pulling through registry mirrors that the test did not ask for can
+		// break it, e.g. a test of pulls through a proxy, while a device that
+		// lacks mirrors only pulls more slowly.
+		if dev.registryMirrors != registryMirrorsNone &&
+			dev.registryMirrors != th.wantedRegistryMirrors(newReq) {
+			th.devicesM.Unlock()
+			th.log.Infof("Device %q has registry mirrors this test does not "+
+				"want; not reusing devices", devName)
+			return false
+		}
 	}
 
 	// Reuse every device in parallel.
 	errCh := make(chan error, len(th.devices))
 	for devName, devReq := range edgeDevReqs {
 		dev := th.devices[devName]
+		dev.inheritedCluster = dev.config != nil && dev.config.GetCluster() != nil
 		go func(dev deviceState, newReq RequireEdgeDevice) {
 			err := th.reuseDevice(dev, devReq)
 			errCh <- err
@@ -1675,30 +1853,48 @@ func (th *TestHarness) resetDeviceConfig(dev deviceState) error {
 // allow configuring a registry mirror for K3s (containerd) through device config,
 // so that evetest does not need to directly manipulate files on the EVE device.
 func (th *TestHarness) applyK3sRegistryMirrorIfConfigured() {
-	if th.skipRegistryMirrors {
-		return
-	}
 	mirrors := constants.LoadRegistryMirrors()
-	if len(mirrors) == 0 {
-		return
-	}
-
 	th.devicesM.Lock()
-	var kubevirtDevNames []string
+	wanted := make(map[string]registryMirrorSetup)
 	for _, dev := range th.devices {
-		if dev.requirement.WithHypervisor == HypervisorKubevirt {
-			kubevirtDevNames = append(kubevirtDevNames, dev.name)
+		if setup := th.wantedRegistryMirrors(dev.requirement); setup != registryMirrorsNone {
+			wanted[dev.name] = setup
 		}
 	}
 	th.devicesM.Unlock()
 
-	if len(kubevirtDevNames) == 0 {
-		return
+	for devName, setup := range wanted {
+		if !th.configureContainerdRegistryMirror(devName, mirrors) {
+			continue
+		}
+		th.devicesM.Lock()
+		th.devices[devName].registryMirrors = setup
+		th.devicesM.Unlock()
 	}
+}
 
-	for _, devName := range kubevirtDevNames {
-		th.configureContainerdRegistryMirror(devName, mirrors)
+// registryMirrorSetup is which registry mirrors a device's containerd uses.
+type registryMirrorSetup int
+
+const (
+	registryMirrorsNone registryMirrorSetup = iota
+	registryMirrorsDualStack
+	registryMirrorsIPv6Only
+)
+
+// wantedRegistryMirrors returns the registry-mirror setup the running test
+// wants on a device with the given requirement: mirrors are configured only
+// for kubevirt devices, and only if the broker provided some and the test did
+// not ask for direct pulls.
+func (th *TestHarness) wantedRegistryMirrors(req RequireEdgeDevice) registryMirrorSetup {
+	if th.skipRegistryMirrors || req.WithHypervisor != HypervisorKubevirt ||
+		len(constants.LoadRegistryMirrors()) == 0 {
+		return registryMirrorsNone
 	}
+	if th.ipv6OnlyRegistryMirrors {
+		return registryMirrorsIPv6Only
+	}
+	return registryMirrorsDualStack
 }
 
 // configureContainerdRegistryMirror writes per-registry hosts.toml files under
@@ -1710,9 +1906,10 @@ func (th *TestHarness) applyK3sRegistryMirrorIfConfigured() {
 //
 // Registry mirrors are a pull-through cache used purely to speed up image
 // pulls; they are not required for correctness. So any failure here is logged
-// as a warning and the function just returns, rather than failing the test.
+// as a warning and the function just returns false, rather than failing the
+// test.
 func (th *TestHarness) configureContainerdRegistryMirror(
-	devName string, mirrors map[string][]string) {
+	devName string, mirrors map[string][]string) bool {
 	const (
 		certsD     = "/etc/containerd/certs.d"
 		ctrdConfig = "/etc/containerd/config-k3s.toml"
@@ -1769,13 +1966,13 @@ func (th *TestHarness) configureContainerdRegistryMirror(
 	if err != nil {
 		th.log.Warnf(
 			"configureContainerdRegistryMirror: failed to create temp file: %v", err)
-		return
+		return false
 	}
 	defer os.Remove(tmpFile.Name())
 	if _, err = tmpFile.WriteString(sb.String()); err != nil {
 		th.log.Warnf(
 			"configureContainerdRegistryMirror: failed to write temp file: %v", err)
-		return
+		return false
 	}
 	tmpFile.Close()
 
@@ -1785,7 +1982,7 @@ func (th *TestHarness) configureContainerdRegistryMirror(
 	if err != nil {
 		th.log.Warnf("configureContainerdRegistryMirror: failed to scp script to %q: %v",
 			devName, err)
-		return
+		return false
 	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer
@@ -1797,9 +1994,10 @@ func (th *TestHarness) configureContainerdRegistryMirror(
 		th.log.Warnf("configureContainerdRegistryMirror: script failed on %q: %v "+
 			"(stdout: %s, stderr: %s)", devName, err, stdoutBuf.String(),
 			stderrBuf.String())
-		return
+		return false
 	}
 	th.log.Infof("Containerd registry mirrors configured on device %q", devName)
+	return true
 }
 
 func (th *TestHarness) nextConfigVersion(currentConfig *EdgeDeviceConfig) string {

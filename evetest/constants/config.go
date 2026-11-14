@@ -110,6 +110,12 @@ const (
 	// This is read by the evetest container.
 	PauseOnFailureEnv = "PAUSE_ON_FAILURE"
 
+	// PauseLimitEnv caps, in seconds, how long the harness stays paused at a
+	// checkpoint or on a failure before resuming on its own, as if
+	// 'evetest continue' had been issued. 0 (the default) waits indefinitely.
+	// This is read by the evetest container.
+	PauseLimitEnv = "PAUSE_LIMIT"
+
 	// SkipEnv lists, comma-separated, the names of tests and/or test suites
 	// to skip (see matchedSkipName). This is read by the evetest container.
 	SkipEnv = "SKIP"
@@ -401,7 +407,7 @@ const (
 	DefaultSDNRepo = "lfedge/evetest-sdn"
 
 	// DefaultAdamVersion specifies the Adam version to use by default.
-	DefaultAdamVersion = "0.0.85"
+	DefaultAdamVersion = "0.0.87"
 
 	// DefaultSDNUplinkIPv4Subnet species the IPv4 subnet used for SDN uplink
 	// interfaces by default.
@@ -498,6 +504,7 @@ func InitViperConfig() {
 	viper.SetDefault(SuiteMaxFailuresEnv, DefaultSuiteMaxFailures)
 	viper.SetDefault(PauseOnCheckpointEnv, "")
 	viper.SetDefault(PauseOnFailureEnv, false)
+	viper.SetDefault(PauseLimitEnv, 0)
 	viper.SetDefault(CollectCoverageEnv, false)
 	viper.SetDefault(RestartOnlyFailedEnv, false)
 	viper.SetDefault(ControllerFaultsEnv, false)

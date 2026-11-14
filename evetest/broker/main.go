@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"github.com/lf-edge/eve/evetest/broker/provider"
 	"github.com/lf-edge/eve/evetest/constants"
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
+	"github.com/lf-edge/eve/evetest/logger"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
@@ -102,7 +104,8 @@ func main() {
 			ImportStorage:      viper.GetString(constants.BrokerProxmoxImportStorageEnv),
 			TLSSkipVerify:      viper.GetBool(constants.BrokerProxmoxTLSSkipVerifyEnv),
 		}
-		deviceProvider, err = provider.NewProxmoxProvider(conf)
+		ctx := logger.WithLogger(context.Background(), logrus.NewEntry(log))
+		deviceProvider, err = provider.NewProxmoxProvider(ctx, conf)
 		if err != nil {
 			log.Fatalf("Failed to create proxmox device provider: %v", err)
 		}

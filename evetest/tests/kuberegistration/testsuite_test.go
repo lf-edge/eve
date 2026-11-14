@@ -48,7 +48,7 @@ import (
 // The same values go to every subtest, which they must: a device is reused
 // only when the new test's requirements match it field for field.
 func TestKubeRegistrationSuite(test *testing.T) {
-	evetest.Init(test)
+	evetest.Init(test, evetest.WithTags(evetest.TagHeavyTest))
 	defer evetest.Close()
 
 	// Define configurable parameters available for the test suite.

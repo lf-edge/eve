@@ -91,3 +91,42 @@ func TestExtractParamsFollowsHelpers(t *testing.T) {
 		}
 	}
 }
+
+func TestExtractTags(t *testing.T) {
+	src := `
+package fixture_test
+
+func TestTagged(test *testing.T) {
+	evetest.Init(test, evetest.WithControllerFaults(), evetest.WithTags(evetest.TagHeavyTest))
+}
+
+func TestUntagged(test *testing.T) {
+	evetest.Init(test)
+}
+
+func TestTagsOutsideInit(test *testing.T) {
+	evetest.Init(test)
+	_ = evetest.WithTags(evetest.TagHeavyTest)
+}
+`
+	file, err := parser.ParseFile(token.NewFileSet(), "fixture_test.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := pkgContext{constValues: map[string]string{"evetest.TagHeavyTest": "heavy"}}
+	got := map[string][]string{}
+	for _, decl := range file.Decls {
+		fd := decl.(*ast.FuncDecl)
+		got[fd.Name.Name] = extractTags(fd, ctx)
+	}
+	if len(got["TestTagged"]) != 1 || got["TestTagged"][0] != "heavy" {
+		t.Errorf("TestTagged tags = %v, want [heavy]", got["TestTagged"])
+	}
+	if len(got["TestTagsOutsideInit"]) != 0 {
+		t.Errorf("TestTagsOutsideInit tags = %v, want none: WithTags only counts as an Init option",
+			got["TestTagsOutsideInit"])
+	}
+	if len(got["TestUntagged"]) != 0 {
+		t.Errorf("TestUntagged tags = %v, want none", got["TestUntagged"])
+	}
+}

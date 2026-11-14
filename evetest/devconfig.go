@@ -46,6 +46,9 @@ type EdgeDeviceConfig struct {
 	*eveconfig.EdgeDevConfig
 	th  *TestHarness
 	log *logrus.Entry
+	// clusterToken is the plaintext join token encrypted into Cluster, kept so
+	// that a later test reusing the cluster can keep the token too.
+	clusterToken string
 }
 
 func (th *TestHarness) newUUID(label string) uuid.UUID {
@@ -1307,6 +1310,10 @@ type HTTPStorage struct {
 	ServerPort             uint16 // if not defined, we assume port 80 (HTTP) / 443 (HTTPS)
 	UseHTTPS               bool   // true = HTTPS, false = HTTP
 	HTTPSTrustedCACertsPEM []string
+	// OmitPort leaves the port out of the datastore FQDN (the scheme's default
+	// port is then used). Required for a local datastore: EVE recognizes it by
+	// the FQDN ending with ".local", which a ":port" suffix would hide.
+	OmitPort bool
 }
 
 // toProto converts an HTTPStorage into EVE protobuf ContentTree + DatastoreConfig.
@@ -1332,6 +1339,9 @@ func (storage HTTPStorage) toProto(th *TestHarness, log *logrus.Entry, devName s
 		}
 		dsConfig.Fqdn = "https://" + net.JoinHostPort(
 			storage.ServerAddress, port)
+		if storage.OmitPort {
+			dsConfig.Fqdn = "https://" + storage.ServerAddress
+		}
 		for _, cert := range storage.HTTPSTrustedCACertsPEM {
 			dsConfig.DsCertPEM = append(dsConfig.DsCertPEM, []byte(cert))
 		}
@@ -1342,6 +1352,9 @@ func (storage HTTPStorage) toProto(th *TestHarness, log *logrus.Entry, devName s
 			port = strconv.Itoa(int(storage.ServerPort))
 		}
 		dsConfig.Fqdn = "http://" + net.JoinHostPort(storage.ServerAddress, port)
+		if storage.OmitPort {
+			dsConfig.Fqdn = "http://" + storage.ServerAddress
+		}
 		dsConfig.DType = eveconfig.DsType_DsHttp
 	}
 	return contentTree, dsConfig
@@ -1640,6 +1653,7 @@ func (dc *EdgeDeviceConfig) Clone() *EdgeDeviceConfig {
 		EdgeDevConfig: proto.CloneOf(dc.EdgeDevConfig),
 		th:            dc.th,
 		log:           dc.log,
+		clusterToken:  dc.clusterToken,
 	}
 }
 

@@ -6,6 +6,7 @@
 package apps_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -65,7 +66,12 @@ const metadataServerURL = "http://169.254.169.254/eve/v1"
 //  4. GET /eve/v1/hostname returns the application instance UUID -- a
 //     read-only sanity check that the same server also serves the app its own
 //     identity.
-//  5. Delete the app and wait until the device reports it gone.
+//  5. network-metadata-served: GET /eve/v1/network.json returns the app
+//     instance UUID, the device UUID and name, and as external-ipv4 the IP
+//     address of the device port used by the app's network instance
+//     (ethernet0). Apps use this to learn the address under which they are
+//     reachable from outside (e.g. through port forwarding).
+//  6. Delete the app and wait until the device reports it gone.
 //
 // The POSTs are wrapped in Eventually: reaching RUNNING (and even being
 // SSH-reachable) does not guarantee that zedrouter has already attached the
@@ -184,7 +190,34 @@ func TestAppInstanceMetadata(test *testing.T) {
 	t.Expect(err).ToNot(HaveOccurred())
 	t.Expect(strings.TrimSpace(hostname)).To(Equal(appUUID.String()))
 
-	// Phase 5: clean up.
+	// Phase 5: the metadata server tells the app its network context.
+	var portIPs []string
+	for _, ip := range device.GetDeviceIPAddress("ethernet0") {
+		if ip.To4() != nil {
+			portIPs = append(portIPs, ip.String())
+		}
+	}
+	t.Expect(portIPs).ToNot(BeEmpty(), "ethernet0 has no IPv4 address")
+	output, _, err := device.RunShellScriptInsideApp(appUUID, appAuth,
+		"curl -sS "+metadataServerURL+"/network.json", sshTimeout, 0)
+	t.Expect(err).ToNot(HaveOccurred())
+	var netMeta struct {
+		ExternalIPv4    string `json:"external-ipv4"`
+		AppInstanceUUID string `json:"app-instance-uuid"`
+		DeviceUUID      string `json:"device-uuid"`
+		DeviceName      string `json:"device-name"`
+	}
+	t.Expect(json.Unmarshal([]byte(output), &netMeta)).To(Succeed(),
+		"network.json is not valid JSON: %q", output)
+	t.Expect(netMeta.AppInstanceUUID).To(Equal(appUUID.String()))
+	t.Expect(netMeta.DeviceUUID).To(Equal(device.GetConfig().GetId().GetUuid()))
+	t.Expect(netMeta.DeviceName).To(Equal(devName))
+	t.Expect(strings.Split(netMeta.ExternalIPv4, ",")).To(
+		ContainElement(BeElementOf(portIPs)),
+		"external-ipv4 should contain the IP address of ethernet0")
+	evetest.Checkpoint("network-metadata-served")
+
+	// Phase 6: clean up.
 	stopMetaWatch()
 	deleteAppAndWait(t, device, devConfig, appUUID)
 }

@@ -164,7 +164,10 @@ func (d *EdgeDevice) GetState() api.EVEDeviceState {
 // which indicates that zedagent has parsed the config and distributed it to
 // other microservices. Do not combine this with configs that change the
 // management port: the device may lose controller connectivity right after
-// applying the change, delaying the metrics publish indefinitely.
+// applying the change, delaying the metrics publish indefinitely. While a
+// reboot declared with ExpectAdditionalReboots has not been observed yet, the
+// wait is extended by the reboot timeout, since such a config is often
+// confirmed only after the device boots again.
 //
 // The two flags are evaluated in order: fetch first, then confirm.
 func (d *EdgeDevice) ApplyConfig(config *EdgeDeviceConfig, waitUntilFetched bool, waitUntilConfirmed bool) {
@@ -182,11 +185,23 @@ func (d *EdgeDevice) ApplyConfig(config *EdgeDeviceConfig, waitUntilFetched bool
 	}
 	devUUID := devState.ID
 	prevConfig := devState.config
+	inheritedCluster := devState.inheritedCluster
+	devState.inheritedCluster = false
 	d.th.devicesM.Unlock()
 
 	// Set config ID.
 	configVer := d.th.nextConfigVersion(prevConfig)
 	newConfig := config.Clone()
+
+	// A device reused from a test that left it in cluster mode reboots to
+	// leave it once a config without the cluster block arrives. That reboot
+	// is the previous test's doing, so it is expected here instead of in
+	// every test that may run after a cluster test.
+	if inheritedCluster && newConfig.GetCluster() == nil {
+		d.th.log.Infof("Device %q leaves the cluster mode inherited from the "+
+			"previous test, which reboots it", d.devName)
+		d.ExpectReboots(1)
+	}
 	newConfig.Id = &eveconfig.UUIDandVersion{
 		Uuid:    devUUID.String(),
 		Version: configVer,
@@ -294,13 +309,20 @@ func (d *EdgeDevice) ApplyConfig(config *EdgeDeviceConfig, waitUntilFetched bool
 		// LastProcessedConfig to the config's own ConfigTimestamp, so the
 		// comparison is clock-skew-free.
 		configTs := newConfig.ConfigTimestamp.AsTime()
+		d.th.devicesM.Lock()
+		dev := d.th.devices[d.devName]
+		// A config that makes EVE reboot (declared with ExpectAdditionalReboots)
+		// is often confirmed only after the device is back up: the reboot can
+		// come before zedagent's next metrics publish.
+		confirmTimeout := deviceApplyConfigTimeout
+		if dev.expectedRebootCount > dev.rebootCount {
+			confirmTimeout += deviceRebootTimeout
+		}
 		d.th.log.Infof(
 			"Waiting for device %q to confirm the latest config (version %s)...",
 			d.devName, configVer)
-		ctx, cancel = context.WithTimeout(d.th.ctx, deviceApplyConfigTimeout)
+		ctx, cancel = context.WithTimeout(d.th.ctx, confirmTimeout)
 		defer cancel()
-		d.th.devicesM.Lock()
-		dev := d.th.devices[d.devName]
 		if dev.configAppliedCond == nil {
 			dev.configAppliedCond = sync.NewCond(&d.th.devicesM)
 		}
@@ -587,7 +609,7 @@ func (d *EdgeDevice) upgradeEVE(targetEVEVersion string, targetEVEHypervisor Hyp
 	defer cancel()
 
 	logger := d.th.log.WithField("component", "upgrade")
-	err = utils.PullDockerImage(ctx, logger, imageName)
+	err = d.th.pullEVEImage(ctx, logger, targetImageRef)
 	if err != nil {
 		d.th.t.Fatalf("Failed to pull EVE image %s: %v", imageName, err)
 	}
@@ -3005,6 +3027,9 @@ func (d *EdgeDevice) WatchClusterInfo() (
 // necessarily the leader) or on a device already known to be the leader; for
 // a multi-node cluster where the leader isn't known in advance, use
 // EdgeCluster.WaitUntilNodesAreReady instead.
+//
+// A report for another cluster, such as one a reused device sent during the
+// previous test, is never accepted (see clusterReportMatches).
 func (d *EdgeDevice) WaitForClusterNodeIsReady(timeout time.Duration) {
 	d.th.log.Infof("Waiting for cluster node %q to become ready...", d.devName)
 
@@ -3013,7 +3038,10 @@ func (d *EdgeDevice) WaitForClusterNodeIsReady(timeout time.Duration) {
 	updates, stop := d.WatchClusterInfo()
 	defer stop()
 
-	if info := d.GetClusterInfo(); info != nil && clusterNodeReady(info, d.devName) {
+	ready := func(info *eveinfo.ZInfoKubeCluster) bool {
+		return d.clusterReportMatches(info) && clusterNodeReady(info, d.devName)
+	}
+	if info := d.GetClusterInfo(); info != nil && ready(info) {
 		d.th.log.Infof("Cluster node %q is already ready", d.devName)
 		return
 	}
@@ -3027,7 +3055,7 @@ func (d *EdgeDevice) WaitForClusterNodeIsReady(timeout time.Duration) {
 				d.th.t.Fatalf("Cluster info subscription closed while waiting "+
 					"for node %q to become ready", d.devName)
 			}
-			if clusterNodeReady(info, d.devName) {
+			if ready(info) {
 				d.th.log.Infof("Cluster node %q is now ready", d.devName)
 				return
 			}
@@ -3036,6 +3064,34 @@ func (d *EdgeDevice) WaitForClusterNodeIsReady(timeout time.Duration) {
 				d.devName)
 		}
 	}
+}
+
+// clusterReportMatches reports whether a ZInfoKubeCluster report from the
+// device can describe the cluster its current config puts it in. EVE reports
+// the configured cluster's UUID, or the nil UUID without a cluster config, so a
+// report naming anything else predates that config; on a reused device it can
+// even come from the previous test, whose cluster is gone. A report without a
+// cluster ID, from an EVE version that sends none, is accepted.
+func (d *EdgeDevice) clusterReportMatches(info *eveinfo.ZInfoKubeCluster) bool {
+	configured := ""
+	d.th.devicesM.Lock()
+	if config := d.th.devices[d.devName].config; config != nil {
+		configured = config.GetCluster().GetClusterId()
+	}
+	d.th.devicesM.Unlock()
+	return reportedClusterMatches(info.GetClusterId(), configured)
+}
+
+// reportedClusterMatches is clusterReportMatches for the cluster ID reported
+// and the one configured ("" without a cluster config).
+func reportedClusterMatches(reported, configured string) bool {
+	if reported == "" {
+		return true
+	}
+	if configured == "" {
+		configured = NilUUID.String()
+	}
+	return strings.EqualFold(reported, configured)
 }
 
 // GetClusterUpdateInfo returns the last recorded information regarding the Kubernetes

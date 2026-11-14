@@ -533,6 +533,23 @@ Run a suite like any other test:
 make evetest NAME=TestBootstrapSuite
 ```
 
+### Tagging Tests and Suites
+
+A test or suite can be tagged through an option of its `Init` call:
+
+```go
+evetest.Init(test, evetest.WithTags(evetest.TagHeavyTest))
+```
+
+`list-tests` (`make list-tests`) shows the tags next to the name. `make list-test-suites`
+prints the same `<tags>` after each suite name, for CI to read. CI schedules whole suites, so it only reads the tags of
+suites; tags of individual tests are informational. `WithTags` does nothing at run time:
+the tags are read from the source, so pass constants from the `evetest` package directly.
+
+`TagHeavyTest` marks a test or suite that needs a powerful host. The nightly and PR workflows
+run suites tagged so only on runners labelled `evetest-runner`; all other suites may also
+use runners labelled only `evetest-runner-light`.
+
 ### Rerunning Only Failed Subtests
 
 `EVETEST_RESTART_ONLY_FAILED=true` reruns a suite while skipping every subtest that
@@ -1048,6 +1065,27 @@ evetest cluster info [-f]               # Kubernetes cluster info
 evetest cluster metrics [-f]            # Kubernetes cluster metrics
 ```
 
+### Broker Commands
+
+These talk to the evetest-broker at `EVETEST_BROKER_ADDRESS`:`EVETEST_BROKER_PORT`
+directly and need no running test. CI uses them to stage the EVE image built by a
+workflow run on the broker once per host, no matter how many suite jobs need it:
+
+```bash
+# Exits 0 and prints a ticket if this job has to provide the image; exits 10 if the broker
+# has it. While another job is uploading it, waits, and takes over if that job fails.
+TICKET=$(evetest broker image claim-upload --repo evebuild/pr --version <version> --hypervisor kvm)
+# A `docker save` archive tagged <repo>:<version>-kvm-amd64; the ticket says which image it is.
+evetest broker image upload --ticket "$TICKET" eve-kvm-amd64-generic.tar
+evetest broker image release-claim --ticket "$TICKET"   # give the claim up after a failed download
+```
+
+A claim lapses after 60 minutes if the upload does not start (time to fetch the
+image) and after 10 minutes without upload progress once it runs, so a job that
+died cannot block the others for long. A test that needs the image on the
+runner's own Docker (an EVE upgrade target) loads it from the broker when it
+cannot pull it.
+
 ## Configuration
 
 All configuration is done through environment variables; there are no configuration files.
@@ -1082,6 +1120,7 @@ non-default behavior.
 |----------|-------------|---------|
 | `EVETEST_PAUSE_ON_FAILURE` | Pause when a test fails | `false` |
 | `EVETEST_PAUSE_ON_CHECKPOINT` | Pause at the named checkpoint | -- |
+| `EVETEST_PAUSE_LIMIT` | Maximum time in seconds to stay paused at a checkpoint or on a failure; after that the test resumes as if `evetest continue` was run (`0` = wait indefinitely) | `0` |
 | `EVETEST_SUITE_MAX_FAILURES` | Max failures before aborting suite (`-1` = unlimited) | `1` |
 | `EVETEST_RESTART_ONLY_FAILED` | Skip suite subtests that already passed in a previous run (requires `EVETEST_COLLECT_ARTIFACTS`); see [Rerunning Only Failed Subtests](#rerunning-only-failed-subtests) | `false` |
 | `EVETEST_CONTROLLER_FAULTS` | Run the controller behind a proxy which a test can tell to answer, delay or drop selected device requests (`ArmControllerFault`). Off by default, except that tests which arm faults ask for it themselves (`evetest.WithControllerFaults()`), so nothing needs setting to run them; an explicit `true` turns it on for every test and `false` turns it off for all, which makes the fault tests skip. With no fault armed the proxy forwards everything unchanged, but it terminates TLS and re-originates the request, so it stays out of the path unless a test needs it. | `false` |
@@ -1112,7 +1151,7 @@ Only when running the CLI against an instance on a remote machine, set
 |----------|-------------|---------|
 | `EVETEST_ORG` | Docker Hub organization for evetest and evetest-broker images | `lfedge` |
 | `EVETEST_EVE_REPO` | EVE image repository | `lfedge/eve` |
-| `EVETEST_ADAM_VERSION` | Adam controller version *(build-time only, see note below)* | `0.0.81` |
+| `EVETEST_ADAM_VERSION` | Adam controller version *(build-time only, see note below)* | `0.0.87` |
 | `EVETEST_SDN_VERSION` | SDN emulator image tag | content hash of `sdn/` (`make sdn-version`) |
 
 > **`EVETEST_ADAM_VERSION` requires evetest container rebuild.** Unlike the other
@@ -1739,8 +1778,10 @@ from, and a published image is never overwritten with different content.
 
 `make evetest` expects the images with these tags: for each it uses the local one, else
 tries to pull it, else builds it. The SDN image is not checked when
-`EVETEST_BROKER_ADDRESS` or `EVETEST_SDN_VERSION` is set (a remote broker pulls it
-itself). CI (`publish-evetest.yml`) publishes the images of `master` under the same tags.
+`EVETEST_SDN_VERSION` is set. With a remote broker (`EVETEST_BROKER_ADDRESS`) the local
+SDN image is still ensured: the broker pulls the image itself, and only if that fails
+(e.g. the image was built from an unmerged change) does the harness push the local copy to it.
+CI (`publish-evetest.yml`) publishes the images of `17.0-stable` under the same tags.
 
 Changes to tests (`evetest/tests/`) do not change the tag, because tests are compiled
 inside the container at runtime from the mounted source. A `go.mod` change does, which
