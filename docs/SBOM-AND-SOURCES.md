@@ -118,8 +118,8 @@ It also fills in what the scanner leaves out, using the rest of the rootfs tar:
 * a file whose checksum matches nothing in the tar is matched by path: dropped with its relationships if the tar does not contain it, as for the `etc/hostname` linuxkit leaves out, or given the checksums of what linuxkit wrote there, as for `etc/hosts`
 * Rust crates the scanner read from a `cargo-sbom` document in the rootfs get back what the scanner drops: a crate built from a git repository gets that repository and commit as its `downloadLocation` and a `pkg:cargo` purl with a `vcs_url` qualifier, and a crate from the workspace `cargo-sbom` ran in is looked up in the supplier map by its name
 * the kernel from the `lfedge/eve-kernel` image gets `Organization: LF Edge`, the license `GPL-2.0-only WITH Linux-syscall-note` its `COPYING` declares, and the eve-kernel commit its version ends in as its `downloadLocation`
-* Go modules, Rust crates and other packages get the supplier that [tools/sbom-stamp/suppliers.txt](../tools/sbom-stamp/suppliers.txt) maps their purl to; rerun `tools/sbom-stamp/update-suppliers.py` on a fresh SBoM when a `go.mod` or `Cargo.lock` changes, and add by hand what it cannot resolve and what `sbom-stamp` still reports without a supplier
-* packages other than image roots that the scanner left with a `NOASSERTION` declared license, mostly Go modules, whose build info records none, get the license that [tools/sbom-stamp/licenses.txt](../tools/sbom-stamp/licenses.txt) maps their purl to, where an entry for a specific version takes precedence; rerun `tools/sbom-stamp/update-licenses.py`, which takes the licenses deps.dev found in each version's source, the same way, and check what it reports as differing from the map
+* Go modules, Rust crates and other packages get the supplier that [tools/sbom-stamp/suppliers.txt](../tools/sbom-stamp/suppliers.txt) maps their purl to
+* packages other than image roots that the scanner left with a `NOASSERTION` declared license, mostly Go modules, whose build info records none, get the license that [tools/sbom-stamp/licenses.txt](../tools/sbom-stamp/licenses.txt) maps their purl to, where an entry for a specific version takes precedence
 
 To generate the sources, run `make collected_sources`. This does the following:
 
@@ -128,6 +128,20 @@ To generate the sources, run `make collected_sources`. This does the following:
    1. Runs individual commands to collect each of the source types
    1. Saves output information to the manifest
    1. Creates the `collected_sources.tar.gz` file in `dist/<arch>/<release>`
+
+### Updating the license and supplier maps
+
+A change that adds a Go module or Rust crate to EVE, through a `go.mod`, a `Cargo.lock` or an image bump, needs entries for it in both maps. The PR build checks this: its `SBoM license and supplier maps` job runs `update-licenses.py --check` and `update-suppliers.py --check` on the SBoM of every variant it builds, and fails listing the purls the maps miss. To fix it, run the update scripts on that run's SBoMs, which it uploads as `sbom-<hv>-<arch>-<platform>` artifacts:
+
+```sh
+gh run download <run-id> -R lf-edge/eve -p 'sbom-*' -D /tmp/sboms
+tools/sbom-stamp/update-licenses.py /tmp/sboms/*/*.spdx.json
+tools/sbom-stamp/update-suppliers.py /tmp/sboms/*/*.spdx.json
+```
+
+`update-licenses.py` takes the licenses deps.dev found in each version's source, and `update-suppliers.py` the owner of each source repository from ecosyste.ms. Both keep existing entries, print what they could not resolve, and `update-licenses.py` also prints where deps.dev disagrees with the map. Add the unresolved ones by hand: a line is a purl prefix, a tab, and an SPDX license expression or an `Organization:` or `Person:` supplier; a license key with `@<version>` holds for that version only. Then commit both maps in the same PR, and confirm with `--check` on the same SBoMs.
+
+For a local build, use the SBoM `make ZARCH=<arch> HV=<hv> PLATFORM=<platform> pkgs sbom` writes to `dist/<arch>/<version>/installer/rootfs-<platform>.spdx.json`, for each variant the change touches. Each variant ships modules the others do not (EVE-k, ai-generic and the arm64 NVIDIA platforms). To refresh the maps against what master publishes, `tools/sbom-stamp/fetch-sboms.py /tmp/sboms 0.0.0-master-<commit>` gets the SBoM of every published variant of a master commit.
 
 ## Reconciling SBoM and Sources
 
