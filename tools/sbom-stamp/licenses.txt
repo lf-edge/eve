@@ -4,9 +4,8 @@
 # with @<version> holds for that version only. Fields are separated by a tab.
 # update-licenses.py adds entries from deps.dev and keeps every existing
 # entry, so an entry edited here overrides that lookup.
-# github.com/diskfs/partitionresizer is listed as MIT, like go-diskfs, until
-# its repository has a LICENSE file. cert-gen and upgrades are the modules of
-# pkg/kube/cert-gen and pkg/kube/update-component.
+# cert-gen and upgrades are the modules of pkg/kube/cert-gen and
+# pkg/kube/update-component.
 
 pkg:cargo/jsonpath-rust	MIT
 pkg:deb/ubuntu/gcc-14	GPL-3.0-or-later WITH GCC-exception-3.1
