@@ -150,8 +150,14 @@ func MaybeAddDomainConfig(ctx *zedmanagerContext,
 			// App may have a second disk passed in which is an
 			// empty persistent disk.  Don't overwrite the DomainConfig
 			// KubeImageName if the last container os disk set it.
+			// Take the name from volumemgr's current status, which
+			// doActivate waits for: vrs stops following volumemgr once
+			// the volumes are created, and the image can be named later.
 			if dc.KubeImageName == "" {
 				dc.KubeImageName = vrs.ReferenceName
+				if cur := lookupVolumeRefStatus(ctx, vrc.Key()); cur != nil {
+					dc.KubeImageName = cur.ReferenceName
+				}
 			}
 		}
 	}
