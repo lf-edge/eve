@@ -2,6 +2,136 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-14 -- 0.0.0-master-368a44a3 (run #17)](https://github.com/lf-edge/eve/actions/runs/43515550867)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/17/)
+
+### TestAppsSuite: failure analysis
+
+#### TestAppUserData
+
+##### Failure
+
+```
+timed out after 10m0.002241012s (excluding download) waiting for app "27ca0dc6-c1a6-4627-b030-50dd42c95124" (userdata-app) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+I have enough to explain the failure confidently.
+
+###### Root cause
+
+`userdata-app` got permanently stuck in `CREATING_VOLUME` because of a **shared-image-layer GC race in volumemgr/containerd CAS**, not a new/unrelated infra issue:
+
+- At `23:22:26-23:22:34`, the *previous* suite test's app (`TestAppInstanceMetadata`, content tree `30089a66-...`, same image `lfedge/evetest-ubuntu-ctr:1.0`) was torn down. Its shared image blobs — including manifest `333e5cba9272...` — had their refcounts dropped to 0 and were unpublished/GC'd from containerd (`RemoveRefFromBlobStatus: unpublishing Blob ... since no object is referring it`).
+- At `23:23:10`, `TestAppUserData`'s new content tree (`5a199bab-...`) was created referencing that *same* image, and volumemgr immediately latched onto the already-known manifest hash `333e5cba...` rather than re-downloading it, since it looked cached.
+- At `23:23:24.919`, when `domainmgr`/CAS actually tried to materialize the container rootfs (`PrepareContainerRootDir`), it failed: `Could not create snapshot ... parent snapshot sha256:ce39511f... does not exist: not found` — one of that image's underlying layer snapshots had already been garbage-collected by the prior app's teardown before the new app's volume creation ran. `volumemgr` set this as a permanent error on the volume/app (confirmed live: the device's containerd `eve-user-apps` namespace currently has zero images/snapshots/content, and `/persist/vault/verifier` and `/persist/vault/volumes` are empty), so the app never left `CREATING_VOLUME` and the 10-minute wait timed out.
+
+This doesn't share a root cause with any earlier failure in this run (no other subtests in this suite have failed yet). It isn't an exact repeat of anything in the 16-run ledger (no prior entry mentions `PrepareContainerRootDir`/"parent snapshot ... not found"), but it is the same *class* of bug as a ledger entry from 2026-11-06 (run #9, `TestPurgeNeverActivatedApp`'s stalled-download issue), where a reused/cached CAS blob from a prior test's image wasn't properly re-validated before being handed to a new app — i.e., volumemgr's shared-image-blob reuse logic racing against teardown/GC of that same image appears to be a recurring weak spot across nightly runs, even though this specific manifestation (snapshot-not-found at container creation) is new to the ledger.
+
+### TestBootstrapSuite: failure analysis
+
+#### TestBootstrapWithInstaller
+
+##### Failure
+
+```
+BuildImage "lfedge/eve:0.0.0-master-368a44a3-kvm-amd64" failed: rpc error: code = Unknown desc = failed to build EVE image for device "edge-dev": expected EVE image file "/root/.evetest/images/templates/.tmp-cc0ae86c2c6ed8b07af04bc300f9d9a9-825140533/installer.raw.qcow2" not found: stat /root/.evetest/images/templates/.tmp-cc0ae86c2c6ed8b07af04bc300f9d9a9-825140533/installer.raw.qcow2: no such file or directory
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+The failure is a disk-space exhaustion on the evetest broker host, not a device/SDN runtime issue — in fact no EVE device was ever provisioned for this step (`evetest status` confirms "No EVE devices found"). The broker log shows it was building a fresh "installer" image template (`Building EVE image template "cc0ae86c2c6ed8b07af04bc300f9d9a9"`, an 8192 MiB installer.raw image with partitions `efi conf_win installer inventory_win`), and the underlying `make-raw`/`mkfs.fat` step failed partway through writing the EFI partition image with `dd: error writing '/tmp/output.img': No space left on device`, so `installer.raw.qcow2` was never produced — exactly matching the "file not found" error surfaced up through `prepareImageForEVEDevice`.
+
+This is distinct from the two preceding subtests in the same run (`TestBootstrapWithLastResortDisabled`/`Enabled`), which succeeded because they reused an already-cached EVE image template rather than building a new large installer image; only this third subtest needed to build the large fresh installer image, which is what triggered the broker's `/tmp` running out of space.
+
+I found no earlier occurrence of this "No space left on device"/"make-raw failed" signature anywhere in `live-ledger.md`, so this appears to be a new, not-previously-recorded issue (not a repeat of a known failure mode) — likely transient broker-host disk pressure (possibly from accumulated image-template caches) rather than a code defect in EVE itself. The broker host's own filesystem isn't reachable from this sandbox to confirm current free space directly, but the live build-log evidence is unambiguous about the proximate cause.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestDNIDandBackupDNID
+
+##### Failure
+
+```
+timed out after 6m0.000537502s (excluding download) waiting for app "27899cde-aa55-42ff-b2b1-64109c2335b1" () on device "edge-dev1" to reach RUNNING state (last state: INVALID)
+```
+
+##### Claude's conclusion
+
+**Root cause:** `vm2` (app `27899cde-...`, DNID = edge-dev3) was deactivated before edge-dev3 was hard-powered-off, so unlike `vm3` (whose existing VMIRS/VMI simply got rescheduled onto edge-dev1 by Kubernetes' own ReplicaSet controller, no zedmanager involvement needed), reactivating `vm2` on a backup node requires zedmanager's `isCurrentlyBackupDNIDForApp` gate, which is hard-gated on `ctx.isAppOpLeader`. Live evidence confirms that flag never became true on edge-dev1: `/run/zedkube/KubeLeaderElectInfo/global.json` shows `"IsAppOpLeader":false,"AppOpLeaderIdentity":"edge-dev1"` with `LatestChange` frozen at `2026-11-14T00:11:46.557Z` — the exact instant edge-dev1 acquired the `eve-app-op` lease — and it was never republished since. This is zedkube's `OnStartedLeading`/`OnNewLeader` callback race on `leaderelect.go` (both callbacks fire within the same tick and race on `appOp.isLeader`'s atomic store vs. `publishLeaderElectionChange()`'s read), leaving the published flag stuck at `false` even though edge-dev1 genuinely holds the lease. As a direct consequence, zedmanager's `getKubeAppActivateStatus` logs `"not designated, node a6090fef..., onTheDevice false"` on every tick for `27899cde`, never activating it, matching evetest's 6-minute timeout exactly (matches the test's `backupOpTimeout` with the 1-minute override accepted).
+
+This is the identical signature (same code path, same root cause, same frozen `LatestChange` pattern) already recorded in `live-ledger.md` for 2026-11-05 (run #8) — at that time flagged as a brand-new, not-yet-recurring failure mode. Tonight (2026-11-13/14, run #16) is the first time it has reproduced since, 9 nights later, so this is now a confirmed recurring (if infrequent) issue in zedkube's leader-election callback race, not a new or environmental bug. No PR diff was supplied for this investigation, so no code-relatedness assessment is given.
+#### TestClusterPVCGCDeletesOnlyOrphans
+
+##### Failure
+
+```
+
+Timed out after 300.000s.
+The function passed to Eventually failed at /evetest/tests/cluster/pvcgc_test.go:550 with:
+no surviving node holds the eve-app-op lease
+Expected
+    <*evetest.EdgeDevice | 0x0>: nil
+not to be nil
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+This is the identical zedkube leader-election race already diagnosed earlier tonight for `TestDNIDandBackupDNID`, now surfacing through a different test. The test powered off edge-dev3 (the app's DNID) at 00:55:42 and expects a surviving node (edge-dev1 or edge-dev2) to visibly hold the `eve-app-op` lease so GC/backup logic can proceed; after the 300s `Eventually` window it found none, failing at `pvcgc_test.go:550`.
+
+Live evidence: `kubectl get lease -n eve-kube-app eve-app-op -o yaml` on edge-dev1 shows the Kubernetes lease itself is fine — `holderIdentity: edge-dev1`, `acquireTime: 2026-11-14T00:42:04.644986Z`, `leaseTransitions: 0`, and a fresh `renewTime` (`01:03:26`, seconds before I checked at `01:03:33`) — edge-dev1 has held and continuously renewed it since cluster startup, uninterrupted by edge-dev3's power-off. But `/run/zedkube/KubeLeaderElectInfo/global.json` on edge-dev1 shows `"IsAppOpLeader":false,"AppOpLeaderIdentity":"edge-dev1"` with `LatestChange` frozen at `2026-11-14T00:42:04.649914102Z` — 5ms after the lease's `acquireTime` and never updated since. That's the same `OnStartedLeading`/`OnNewLeader` callback race recorded in `live-investigation.md` for tonight's earlier `TestDNIDandBackupDNID` failure: the flag flips `true` then immediately back to `false` on self-acquisition and is never republished, so any code (and apparently this test) relying on the published `IsAppOpLeader` status sees no node as app-op leader even though the real k8s lease is healthy.
+
+This shares the same root cause as the earlier failure already investigated in this run. It's a new failure signature for `TestClusterPVCGCDeletesOnlyOrphans` specifically (the ledger's prior entries for this test are the unrelated tie-breaker-node/Longhorn scheduling gap at line 115, or the GC-retry-timing issue at line 218 — nothing at line 550), but the underlying zedkube bug is the same one recorded as a known-recurring issue in the ledger since 2026-11-05 (run #8) and reconfirmed earlier tonight. No PR diff was supplied for this investigation.
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.000s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+This exactly matches an identical known, long-recurring bug in `TestVMAppPurgeDuringFailover`.
+
+###### Root cause
+
+This is the same recurring zedmanager/zedkube "purge-after-failover" deadlock in `getKubeAppActivateStatus`/`onTheDeviceForApp` (`pkg/pillar/cmd/zedmanager/zedmanager.go:2027-2059`, `pkg/pillar/cmd/zedmanager/dnidbackup.go`). Live evidence on edge-dev3 confirms it: `AppInstanceStatus` for `failover-purge-app` (uuid `928a4156-...`) shows `PurgeInprogress:4` (BringUp), `Activated:false`, `State:118` (HALTING), `IsDesignatedNodeID:false`, and `domainmgr`'s matching `DomainStatus` is `HALTED`/`Activated:false` with no error — meanwhile `kubectl get vmirs/vmi -A` on edge-dev2/3 shows zero resources for the app. The purge's `BringDown` deleted the old-generation VMIRS, which cleared zedkube's `ScheduledOnThisNode` signal; since edge-dev1 (the DNID) is powered off and the test deliberately pins `dnidOutageThresholdKey` to 2h so no peer ever qualifies as backup-DNID, `onTheDeviceForApp` now returns false on every surviving node, so `getKubeAppActivateStatus` never lets zedmanager re-activate the app — nothing ever asks domainmgr/zedkube to create the new-generation VMIRS, exactly matching `found []`.
+
+This is **not** the same root cause as the other two failures already investigated in this run (`TestDNIDandBackupDNID`/`TestClusterPVCGCDeletesOnlyOrphans`, both the zedkube `IsAppOpLeader`-stuck-false leader-election race) — here I confirmed live that leader election converged correctly (edge-dev2's `KubeLeaderElectInfo` shows `IsAppOpLeader:true` consistent with the actual lease holder, edge-dev3 correctly shows `false`). This is a distinct, separate bug in the designated-node/backup-DNID activation gate. Per `live-ledger.md`, this exact failure signature in `TestVMAppPurgeDuringFailover` is a long-standing, well-known recurring issue first seen **2026-10-29** (run #1), reproducing in nearly every nightly run since (including as recently as the prior run) — tonight's occurrence continues that unbroken streak rather than being a new bug.
+
+### TestUpgradeSuite: failure analysis
+
+#### TestEVEUpgradeKubevirtToKubevirt
+
+##### Failure
+
+```
+EVE upgrade to 0.0.0-master-368a44a3-k-amd64 failed: checkInstalledVersion: image name not match. config 0.0.0-master-368a44a3-k-amd64, image ver 
+```
+
+##### Claude's conclusion
+
+Mostly just device info dumps (nbd/vda devices listed routinely). Nothing substantive about this specific mount-corruption signature. I have sufficient live evidence now for a conclusion.
+
+###### Root cause
+
+The upgrade download/verify succeeded (content tree sha256 verified, progress 100%), but after `baseosmgr` wrote the new rootfs squashfs image to the inactive partition (`WriteToPartition IMGB, /dev/vda3` at 22:53:56, `installWorker DONE ... err <nil>` at 22:53:57), the subsequent sanity-check mount of that partition failed: `Mount of /dev/vda3 failed: invalid argument` (baseosmgr log, 22:53:58.398), and the device's own kernel ring buffer shows the matching squashfs-driver error `unable to read id index table` at uptime 605.7s — i.e. the just-written squashfs image on IMGB is internally corrupt (bad/missing id table), not merely a transient mount race. Because the mount failed, `checkInstalledVersion` read an empty `shortVersion` off the partition and compared it against the target `0.0.0-master-368a44a3-k-amd64`, producing exactly the observed `"image name not match. config 0.0.0-master-368a44a3-k-amd64, image ver "` error; baseosmgr then reset IMGB back to `unused`, leaving the device still booted on the old `66475696` image (confirmed live via `swList`/`ZbootStatus`).
+
+This does not match any prior ledger entry for `TestEVEUpgradeKubevirtToKubevirt` — every previous failure of this test (runs #7, #8, #10, and others) was a post-boot K3s/Longhorn iowait-contention timeout, never a write-and-verify corruption of the IMGB squashfs image itself. A `grep` of `live-ledger.md` for "image name not match", "id index table", and "Mount of /dev/vda3" returns no hits, so this appears to be a new failure signature rather than a recurring/known issue. I could not determine with certainty whether the corruption originated in the `WriteToPartition` copy step itself or in the downloaded/verified blob content (hash verification passed, which argues against the latter), so I can't fully pin down the underlying bug beyond "the raw write to /dev/vda3 produced an unmountable squashfs image."
+
 ## [2026-11-13 -- 0.0.0-master-fc841102 (run #16)](https://github.com/lf-edge/eve/actions/runs/43315699291)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/16/)
