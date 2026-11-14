@@ -4,31 +4,76 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/google/fscrypt/metadata"
+	"google.golang.org/protobuf/proto"
 )
 
 // the critical files a real EVE /persist would hold (verified paths/names).
 // The PEM certs carry a "-----END" marker so they pass the restore validity
 // check; the DPCL is valid JSON.
 var persistFixture = map[string]string{
-	"checkpoint/lastconfig":                       "edgedevconfig-with-ssh-keys",
-	"checkpoint/lastconfig.bak":                   "edgedevconfig-backup",
-	"checkpoint/controllercerts":                  "controller-signing-certs",
-	"certs/ecdh.key.pem":                          "-----BEGIN EC PRIVATE KEY-----\nAAAA\n-----END EC PRIVATE KEY-----\n",
-	"certs/ecdh.cert.pem":                         "-----BEGIN CERTIFICATE-----\nBBBB\n-----END CERTIFICATE-----\n",
-	"certs/attest.cert.pem":                       "-----BEGIN CERTIFICATE-----\nCCCC\n-----END CERTIFICATE-----\n",
-	"certs/ek.cert.pem":                           "-----BEGIN CERTIFICATE-----\nDDDD\n-----END CERTIFICATE-----\n",
-	"status/nim/DevicePortConfigList/global.json": `{"dpc":"cellular-fallback"}`,
-	"status/vaultmgr/VaultConfig/global.json":     `{"TpmKeyOnly":true}`,
-	// fscrypt metadata: opaque protobuf, so no restore validator applies
-	".fscrypt/policies/0123456789abcdef0123456789abcdef": "wrapped-policy-key",
-	".fscrypt/protectors/fedcba9876543210":               "wrapped-protector-key",
+	"checkpoint/lastconfig":                              "edgedevconfig-with-ssh-keys",
+	"checkpoint/lastconfig.bak":                          "edgedevconfig-backup",
+	"checkpoint/controllercerts":                         "controller-signing-certs",
+	"checkpoint/controllercerts.bak":                     "controller-signing-certs-backup",
+	"certs/ecdh.key.pem":                                 "-----BEGIN EC PRIVATE KEY-----\nAAAA\n-----END EC PRIVATE KEY-----\n",
+	"certs/ecdh.cert.pem":                                "-----BEGIN CERTIFICATE-----\nBBBB\n-----END CERTIFICATE-----\n",
+	"certs/attest.key.pem":                               "-----BEGIN EC PRIVATE KEY-----\nEEEE\n-----END EC PRIVATE KEY-----\n",
+	"certs/attest.cert.pem":                              "-----BEGIN CERTIFICATE-----\nCCCC\n-----END CERTIFICATE-----\n",
+	"certs/ek.cert.pem":                                  "-----BEGIN CERTIFICATE-----\nDDDD\n-----END CERTIFICATE-----\n",
+	"status/nim/DevicePortConfigList/global.json":        `{"dpc":"cellular-fallback"}`,
+	"status/vaultmgr/VaultConfig/global.json":            `{"TpmKeyOnly":true}`,
+	".fscrypt/policies/0123456789abcdef0123456789abcdef": fixturePolicy,
+	".fscrypt/protectors/fedcba9876543210":               fixtureProtector,
 	// a file that must NOT be backed up (not in the patterns)
 	"vault/volumes/app1.qcow2": "big-app-volume",
 	"newlog/keep/log.gz":       "logs",
+}
+
+// fixturePolicy and fixtureProtector are fscrypt metadata of the shape EVE's
+// vault has: one raw-key protector wrapping a v2 policy's key.
+var (
+	fixturePolicy = mustMarshal(&metadata.PolicyData{
+		KeyDescriptor: "0123456789abcdef0123456789abcdef",
+		Options: &metadata.EncryptionOptions{
+			Padding:       32,
+			Contents:      metadata.EncryptionOptions_AES_256_XTS,
+			Filenames:     metadata.EncryptionOptions_AES_256_CTS,
+			PolicyVersion: 2,
+		},
+		WrappedPolicyKeys: []*metadata.WrappedPolicyKey{{
+			ProtectorDescriptor: "fedcba9876543210",
+			WrappedKey:          fixtureWrappedKey(metadata.PolicyKeyLen),
+		}},
+	})
+	fixtureProtector = mustMarshal(&metadata.ProtectorData{
+		ProtectorDescriptor: "fedcba9876543210",
+		Source:              metadata.SourceType_raw_key,
+		Name:                "vault",
+		WrappedKey:          fixtureWrappedKey(metadata.InternalKeyLen),
+	})
+)
+
+func fixtureWrappedKey(keyLen int) *metadata.WrappedKeyData {
+	return &metadata.WrappedKeyData{
+		IV:           bytes.Repeat([]byte{1}, metadata.IVLen),
+		EncryptedKey: bytes.Repeat([]byte{2}, keyLen),
+		Hmac:         bytes.Repeat([]byte{3}, metadata.HMACLen),
+	}
+}
+
+func mustMarshal(m proto.Message) string {
+	b, err := proto.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }
 
 func writePersist(t *testing.T, root string, files map[string]string) {
@@ -58,7 +103,9 @@ func mustRemove(t *testing.T, path string) {
 // backedUpRels is the set of fixture paths the patterns should select.
 var backedUpRels = []string{
 	"checkpoint/lastconfig", "checkpoint/lastconfig.bak", "checkpoint/controllercerts",
-	"certs/ecdh.key.pem", "certs/ecdh.cert.pem", "certs/attest.cert.pem", "certs/ek.cert.pem",
+	"checkpoint/controllercerts.bak",
+	"certs/ecdh.key.pem", "certs/ecdh.cert.pem", "certs/attest.key.pem",
+	"certs/attest.cert.pem", "certs/ek.cert.pem",
 	"status/nim/DevicePortConfigList/global.json",
 	"status/vaultmgr/VaultConfig/global.json",
 	".fscrypt/policies/0123456789abcdef0123456789abcdef",
@@ -228,9 +275,8 @@ func TestRestoreRecoversVaultKeyDerivationMode(t *testing.T) {
 }
 
 // An fsck that orphans .fscrypt leaves the vault cryptographically unopenable, so
-// the backup must cover both directories. The metadata is opaque protobuf with no
-// restore validator, so only a missing or zero-length file is repaired -- a
-// non-empty but torn one is left in place and surfaces in the digest report.
+// the backup must cover both directories, and a torn copy left in place is as
+// fatal as a missing one.
 func TestRestoreRecoversFscryptMetadata(t *testing.T) {
 	policy := ".fscrypt/policies/0123456789abcdef0123456789abcdef"
 	protector := ".fscrypt/protectors/fedcba9876543210"
@@ -246,6 +292,10 @@ func TestRestoreRecoversFscryptMetadata(t *testing.T) {
 		{"truncated to zero length", func(t *testing.T, persist string) {
 			mustWrite(t, filepath.Join(persist, policy), "")
 			mustWrite(t, filepath.Join(persist, protector), "")
+		}},
+		{"truncated to half length", func(t *testing.T, persist string) {
+			mustWrite(t, filepath.Join(persist, policy), fixturePolicy[:len(fixturePolicy)/2])
+			mustWrite(t, filepath.Join(persist, protector), fixtureProtector[:len(fixtureProtector)/2])
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -273,34 +323,41 @@ func TestRestoreRecoversFscryptMetadata(t *testing.T) {
 		})
 	}
 
-	t.Run("torn but non-empty is reported, not restored", func(t *testing.T) {
+	t.Run("intact and valid is kept", func(t *testing.T) {
 		persist := t.TempDir()
 		backup := filepath.Join(t.TempDir(), "backup-persist")
 		writePersist(t, persist, persistFixture)
 		if _, err := backupPersistFiles(persist, backup, defaultBackupPatterns); err != nil {
 			t.Fatalf("backup: %v", err)
 		}
-		if _, err := writeBackupManifest(backup); err != nil {
-			t.Fatalf("writeBackupManifest: %v", err)
-		}
-
-		mustWrite(t, filepath.Join(persist, policy), "wrapped-policy-KEY")
-
 		restored, err := restorePersistFiles(backup, persist)
 		if err != nil {
 			t.Fatalf("restore: %v", err)
 		}
 		if restored != 0 {
-			t.Errorf("restored %d, want 0 (no validator for opaque metadata)", restored)
-		}
-		rep, err := verifyPersistAgainstManifest(backup, persist)
-		if err != nil {
-			t.Fatalf("verify: %v", err)
-		}
-		if len(rep.mismatch) != 1 || rep.mismatch[0] != policy {
-			t.Errorf("mismatch = %v, want [%s]", rep.mismatch, policy)
+			t.Errorf("restored %d, want 0", restored)
 		}
 	})
+
+}
+
+// A torn write can stop anywhere, including on a field boundary where the
+// protobuf still decodes. Every proper prefix of EVE's policy and protector must
+// be judged invalid, and the whole file valid.
+func TestFscryptValidatorRejectsEveryTornPrefix(t *testing.T) {
+	for rel, data := range map[string]string{
+		".fscrypt/policies/0123456789abcdef0123456789abcdef": fixturePolicy,
+		".fscrypt/protectors/fedcba9876543210":               fixtureProtector,
+	} {
+		if !validFscryptMetadata(rel, []byte(data)) {
+			t.Errorf("%s: intact file judged invalid", rel)
+		}
+		for n := 0; n < len(data); n++ {
+			if validFscryptMetadata(rel, []byte(data[:n])) {
+				t.Errorf("%s: %d-byte prefix of %d judged valid", rel, n, len(data))
+			}
+		}
+	}
 }
 
 func TestRestoreNoBackupDirIsNoop(t *testing.T) {
@@ -350,7 +407,8 @@ func TestBackupManifestCoversEveryBackedUpFile(t *testing.T) {
 
 // The case the per-type validators cannot see: an interrupted relocation leaves a
 // cert at its original size and still structurally valid (its "-----END" marker
-// intact), so needsRestore keeps it — only the digest reveals the changed bytes.
+// intact), so the per-type validator alone keeps it — only the digest reveals
+// the changed bytes. The repair itself is covered by TestRestoreRepairsDigestMismatch.
 func TestDigestCatchesSilentCorruptionValidatorsMiss(t *testing.T) {
 	persist := t.TempDir()
 	backup := filepath.Join(t.TempDir(), "backup-persist")
@@ -371,7 +429,7 @@ func TestDigestCatchesSilentCorruptionValidatorsMiss(t *testing.T) {
 	mustWrite(t, filepath.Join(persist, rel), torn)
 
 	// establish that the existing validator is blind to this
-	need, err := needsRestore(rel, filepath.Join(persist, rel))
+	need, err := needsRestore(rel, filepath.Join(persist, rel), "")
 	if err != nil {
 		t.Fatalf("needsRestore: %v", err)
 	}
@@ -393,6 +451,97 @@ func TestDigestCatchesSilentCorruptionValidatorsMiss(t *testing.T) {
 	if len(rep.changed) != 0 || len(rep.missing) != 0 {
 		t.Errorf("changed=%v missing=%v, want both empty", rep.changed, rep.missing)
 	}
+}
+
+// The digest check only reports; the repair decision lives in needsRestore,
+// reached through restorePersistFiles. A non-volatile file whose bytes changed
+// but whose shape stayed valid (same size, END marker intact) is restored from
+// the backup. A volatile file with the same damage is kept — a newer version is
+// the ordinary reason its digest moved — and with no manifest at all a
+// pre-manifest backup restores exactly as it did before.
+func TestRestoreRepairsDigestMismatch(t *testing.T) {
+	const rel = "certs/ecdh.cert.pem"
+	torn := func(t *testing.T, persist string) {
+		t.Helper()
+		orig := persistFixture[rel]
+		bad := strings.Replace(orig, "BBBB", "XXXX", 1) // same length, still ends with -----END
+		if len(bad) != len(orig) {
+			t.Fatalf("fixture setup: corruption changed the size (%d vs %d)", len(bad), len(orig))
+		}
+		mustWrite(t, filepath.Join(persist, rel), bad)
+	}
+
+	t.Run("non-volatile mismatch is repaired from the backup", func(t *testing.T) {
+		persist := t.TempDir()
+		backup := filepath.Join(t.TempDir(), "backup-persist")
+		writePersist(t, persist, persistFixture)
+		if _, err := backupPersistFiles(persist, backup, defaultBackupPatterns); err != nil {
+			t.Fatalf("backup: %v", err)
+		}
+		if _, err := writeBackupManifest(backup); err != nil {
+			t.Fatalf("writeBackupManifest: %v", err)
+		}
+		torn(t, persist)
+
+		restored, err := restorePersistFiles(backup, persist)
+		if err != nil {
+			t.Fatalf("restore: %v", err)
+		}
+		if restored != 1 {
+			t.Errorf("restored %d, want 1 (the mismatching cert)", restored)
+		}
+		if got, _ := os.ReadFile(filepath.Join(persist, rel)); string(got) != persistFixture[rel] {
+			t.Errorf("%s = %q, want the pre-shrink copy", rel, got)
+		}
+	})
+
+	t.Run("volatile mismatch stays report-only", func(t *testing.T) {
+		persist := t.TempDir()
+		backup := filepath.Join(t.TempDir(), "backup-persist")
+		writePersist(t, persist, persistFixture)
+		if _, err := backupPersistFiles(persist, backup, defaultBackupPatterns); err != nil {
+			t.Fatalf("backup: %v", err)
+		}
+		if _, err := writeBackupManifest(backup); err != nil {
+			t.Fatalf("writeBackupManifest: %v", err)
+		}
+		newer := "edgedevconfig-NEWER-than-backup"
+		mustWrite(t, filepath.Join(persist, "checkpoint/lastconfig"), newer)
+
+		restored, err := restorePersistFiles(backup, persist)
+		if err != nil {
+			t.Fatalf("restore: %v", err)
+		}
+		if restored != 0 {
+			t.Errorf("restored %d, want 0 (a newer lastconfig must not be clobbered)", restored)
+		}
+		if got, _ := os.ReadFile(filepath.Join(persist, "checkpoint/lastconfig")); string(got) != newer {
+			t.Errorf("lastconfig = %q, want the newer version kept", got)
+		}
+	})
+
+	t.Run("no manifest restores as before", func(t *testing.T) {
+		persist := t.TempDir()
+		backup := filepath.Join(t.TempDir(), "backup-persist")
+		writePersist(t, persist, persistFixture)
+		if _, err := backupPersistFiles(persist, backup, defaultBackupPatterns); err != nil {
+			t.Fatalf("backup: %v", err)
+		}
+		torn(t, persist)
+
+		restored, err := restorePersistFiles(backup, persist)
+		if err != nil {
+			t.Fatalf("restore: %v", err)
+		}
+		if restored != 0 {
+			t.Errorf("restored %d, want 0 (no manifest: the validators alone keep the file)", restored)
+		}
+		got, _ := os.ReadFile(filepath.Join(persist, rel))
+		orig := persistFixture[rel]
+		if string(got) == orig {
+			t.Errorf("%s was repaired without a manifest, want the corrupt copy kept", rel)
+		}
+	})
 }
 
 // EVE keeps running between backup and the reboot, so a rewritten lastconfig or

@@ -30,10 +30,12 @@ package main
 //   - `restore` runs after /persist is mounted again. If the flag file is gone
 //              it garbage-collects any leftover backup dir (so stray /config
 //              files don't perturb the measure-config PCR). If the flag file is
-//              present it restores the files the shrink lost — those missing,
-//              empty, or invalid for their type (see needsRestore) — then (with
-//              --cleanup) removes the flag file FIRST and the backup dir second,
-//              so a crash mid-cleanup is safe.
+//              present it first reports the live copies against the pre-shrink
+//              digest manifest, then restores the files the shrink lost — those
+//              missing, empty, invalid for their type, or no longer matching
+//              that digest (see needsRestore; a volatile file stays report-only)
+//              — then (with --cleanup) removes the flag file FIRST and the
+//              backup dir second, so a crash mid-cleanup is safe.
 //   - `cleanup` is the idempotent end-of-conversion sweep the caller runs after
 //              ANY backup, independent of whether a restore ran. A crash during
 //              restore's --cleanup can clear the flag file but leave the backup
@@ -406,10 +408,13 @@ type digestReport struct {
 // can leave a file at its original size, structurally valid, and still hold a
 // partially-copied mix of old and new bytes.
 //
-// It reports and never repairs. A volatile file (see volatileBackupPatterns) may
-// differ for an ordinary reason, and overwriting a newer lastconfig with the
-// stale backup would lose the ssh keys and network config it carries, so the
-// decision to restore stays with needsRestore.
+// The comparison is reported before anything is restored, so it describes what
+// the shrink left behind rather than what restore rewrites. needsRestore then
+// repairs a mismatch by restoring the file from the backup — except a volatile
+// file (see volatileBackupPatterns), whose change may be an ordinary newer
+// version EVE wrote between the backup and the reboot: overwriting a newer
+// lastconfig with the stale backup would lose the ssh keys and network config
+// it carries, so a volatile mismatch stays report-only.
 func verifyPersistAgainstManifest(backupDir, persist string) (digestReport, error) {
 	var rep digestReport
 	want, err := readBackupManifest(backupDir)
@@ -478,13 +483,22 @@ func (r digestReport) report(w io.Writer) {
 
 // restorePersistFiles walks backupDir and copies each file into persist at the
 // same relative path when the live copy is missing, empty, or fails its content
-// validity check (see needsRestore). Returns the number of files written.
+// validity check (see needsRestore). When the backup carries a digest manifest,
+// the expected digest is passed along so needsRestore can also repair a
+// same-size corruption the validators cannot see. An unreadable manifest
+// degrades to the pre-manifest behavior — the digest check has already reported
+// it, and refusing to restore over a damaged manifest would leave a wiped
+// /persist wiped. Returns the number of files written.
 func restorePersistFiles(backupDir, persist string) (int, error) {
 	if _, err := os.Stat(backupDir); os.IsNotExist(err) {
 		return 0, nil // nothing backed up
 	}
+	want, err := readBackupManifest(backupDir)
+	if err != nil {
+		want = nil
+	}
 	restored := 0
-	err := filepath.Walk(backupDir, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(backupDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -499,7 +513,7 @@ func restorePersistFiles(backupDir, persist string) (int, error) {
 			return nil // describes the backup; not a /persist file
 		}
 		dst := filepath.Join(persist, rel)
-		need, err := needsRestore(rel, dst)
+		need, err := needsRestore(rel, dst, want[rel])
 		if err != nil {
 			return err
 		}
@@ -523,15 +537,31 @@ func restorePersistFiles(backupDir, persist string) (int, error) {
 //
 //   - certs/keys (*.pem): a valid file ends each block with a "-----END" marker,
 //     so its absence means a truncated/corrupt cert -> restore.
-//   - the DevicePortConfigList (*.json): must parse as JSON; truncation always
-//     yields invalid JSON -> restore.
+//   - the DevicePortConfigList and VaultConfig (*.json): must parse as JSON;
+//     truncation always yields invalid JSON -> restore.
+//   - the fscrypt policies and protectors: must parse as the protobuf fscrypt
+//     reads them as and pass fscrypt's own validity check (see
+//     validFscryptMetadata) -> restore otherwise.
+//
+// wantDigest, when non-empty, is the file's pre-shrink digest from the backup's
+// manifest. A present, valid-looking file whose bytes no longer hash to it was
+// damaged by the interrupted relocation in a way the per-type checks above
+// cannot see (the same size, still ending in "-----END", still valid JSON), so
+// it is restored from the backup too — unless the file is volatile (see
+// isVolatileBackupFile), where the change may be an ordinary newer version EVE
+// wrote between backup and reboot: overwriting a newer lastconfig with the
+// stale backup would lose the ssh keys and network config it carries, so the
+// mismatch is only reported (see verifyPersistAgainstManifest). With no
+// manifest the digest never fires, and a pre-manifest backup behaves exactly
+// as before.
 //
 // Other backed-up files (the saved config lastconfig/.bak and controllercerts)
 // have no cheap standalone validator here and can be legitimately newer on the
-// live /persist than in the (stale) backup, so a present non-empty copy is kept.
+// live /persist than in the (stale) backup, so a present non-empty copy is kept
+// unless the digest proves the live copy no longer matches what was backed up.
 // pillar validates those itself and falls back to its .bak copies when one is
 // truncated, and both copies are in the backup set for the wiped case.
-func needsRestore(rel, dst string) (bool, error) {
+func needsRestore(rel, dst, wantDigest string) (bool, error) {
 	data, err := os.ReadFile(dst)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -544,12 +574,31 @@ func needsRestore(rel, dst string) (bool, error) {
 	}
 	switch {
 	case strings.HasSuffix(rel, ".pem"):
-		return !bytes.Contains(data, []byte("-----END")), nil
+		if !bytes.Contains(data, []byte("-----END")) {
+			return true, nil
+		}
 	case strings.HasSuffix(rel, ".json"):
-		return !json.Valid(data), nil
-	default:
-		return false, nil // present, non-empty, no validator -> keep the live copy
+		if !json.Valid(data) {
+			return true, nil
+		}
+	case isFscryptMetadata(rel):
+		if !validFscryptMetadata(rel, data) {
+			return true, nil
+		}
 	}
+	// Present and valid for its type. A digest mismatch is the one damage the
+	// checks above cannot see; on a volatile file it has the benign explanation
+	// (a newer version), so only the non-volatile ones are repaired.
+	if wantDigest != "" && !isVolatileBackupFile(rel) {
+		sum, err := sha256File(dst)
+		if err != nil {
+			return false, err
+		}
+		if sum != wantDigest {
+			return true, nil
+		}
+	}
+	return false, nil // present, valid, unchanged (or volatile) -> keep the live copy
 }
 
 // copyTree copies a file, or recursively a directory, from src to dst preserving
