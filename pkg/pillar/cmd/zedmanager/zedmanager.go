@@ -53,6 +53,7 @@ type zedmanagerContext struct {
 	subVolumeRefStatus        pubsub.Subscription
 	pubAppNetworkConfig       pubsub.Publication
 	subAppNetworkStatus       pubsub.Subscription
+	subAppRuntimeStatus       pubsub.Subscription
 	pubDomainConfig           pubsub.Publication
 	subDomainStatus           pubsub.Subscription
 	subENClusterAppStatus     pubsub.Subscription
@@ -291,6 +292,24 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	ctx.subAppNetworkStatus = subAppNetworkStatus
 	subAppNetworkStatus.Activate()
 
+	subAppRuntimeStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:     "zedrouter",
+		MyAgentName:   agentName,
+		TopicImpl:     types.AppRuntimeStatus{},
+		Activate:      false,
+		Ctx:           &ctx,
+		CreateHandler: handleAppRuntimeStatusImpl,
+		ModifyHandler: handleAppRuntimeStatusModify,
+		DeleteHandler: handleAppRuntimeStatusImpl,
+		WarningTime:   warningTime,
+		ErrorTime:     errorTime,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.subAppRuntimeStatus = subAppRuntimeStatus
+	subAppRuntimeStatus.Activate()
+
 	// Get DomainStatus from domainmgr
 	subDomainStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 		AgentName:     "domainmgr",
@@ -464,6 +483,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 
 		case change := <-subAppNetworkStatus.MsgChan():
 			subAppNetworkStatus.ProcessChange(change)
+
+		case change := <-subAppRuntimeStatus.MsgChan():
+			subAppRuntimeStatus.ProcessChange(change)
 
 		case change := <-subDomainStatus.MsgChan():
 			subDomainStatus.ProcessChange(change)
@@ -790,7 +812,7 @@ func publishAppInstanceStatus(ctx *zedmanagerContext,
 			}
 		}
 	}
-	if status.HasError() {
+	if status.HasError() || status.RuntimeErr.Error != "" {
 		if err := pub.CheckMaxSize(key, *status); err != nil {
 			log.Errorf("publishAppInstanceStatus(%s): status does not fit a pubsub "+
 				"message (%v): cutting its errors to %d bytes",
@@ -1250,7 +1272,8 @@ func handleCreateAppInstanceStatus(ctx *zedmanagerContext, config types.AppInsta
 	}
 
 	// If there are no errors, go ahead with Instance creation.
-	changed := doUpdate(ctx, config, &status)
+	c := syncRuntimeErr(ctx, &status)
+	changed := doUpdate(ctx, config, &status) || c
 	if changed {
 		log.Functionf("AppInstance(Name:%s, UUID:%s): handleCreate status change.",
 			config.DisplayName, config.UUIDandVersion.UUID)
