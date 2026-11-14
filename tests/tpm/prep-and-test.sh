@@ -123,16 +123,35 @@ tpm2 createprimary -C e -G rsa2048:aes128cfb -g sha256 -c ek.ctx \
     -L "$EVE_TPM_STATE/ek_policy.bin"
 flushtpm
 
-# create a self-signed EK cert and store it in the standard EK cert NV index (0x01C00002)
+# Issue an EK certificate from a test CA for the TCG EK (default template L-1,
+# derived transiently, as a vendor certifies it), and store it in the standard
+# EK cert NV index (0x01C00002) with the CA certificate in the EK certificate
+# chain range (0x01C00100).
 EK_CERT_HANDLE=0x01C00002
+EK_CHAIN_HANDLE=0x01C00100
 EK_CERT_FILE="$EVE_TPM_STATE/ek_test.cert.der"
-openssl req -x509 -newkey rsa:2048 -keyout "$EVE_TPM_STATE/ek_test.key" \
-    -out "$EVE_TPM_STATE/ek_test.cert.pem" \
-    -days 365 -nodes -subj "/CN=Test EK Cert/" 2>/dev/null
-openssl x509 -in "$EVE_TPM_STATE/ek_test.cert.pem" -outform DER -out "$EK_CERT_FILE"
-EK_CERT_SIZE=$(wc -c < "$EK_CERT_FILE")
-tpm2 nvdefine $EK_CERT_HANDLE -C o -s "$EK_CERT_SIZE" -a "authread|ownerwrite"
+EK_CA_FILE="$EVE_TPM_STATE/ek_test_ca.cert.der"
+tpm2 createek -G rsa -c tcg_ek.ctx -u /dev/null
+tpm2 readpublic -c tcg_ek.ctx -f pem -o "$EVE_TPM_STATE/tcg_ek.pub.pem" > /dev/null
+flushtpm
+openssl req -x509 -newkey rsa:2048 -nodes -keyout "$EVE_TPM_STATE/ek_test_ca.key" \
+    -out "$EVE_TPM_STATE/ek_test_ca.cert.pem" -days 365 -subj "/CN=Test EK CA/" 2>/dev/null
+openssl x509 -in "$EVE_TPM_STATE/ek_test_ca.cert.pem" -outform DER -out "$EK_CA_FILE"
+openssl req -new -newkey rsa:2048 -nodes -keyout "$EVE_TPM_STATE/ek_test.key" \
+    -subj "/CN=Test EK Cert/" -out "$EVE_TPM_STATE/ek_test.csr" 2>/dev/null
+# No authorityInfoAccess: TestValidGetEkCert in vcomlink downloads its URLs.
+printf '%s\n' 'basicConstraints=critical,CA:FALSE' 'keyUsage=critical,keyEncipherment' \
+    > "$EVE_TPM_STATE/ek_test.ext"
+openssl x509 -req -in "$EVE_TPM_STATE/ek_test.csr" \
+    -force_pubkey "$EVE_TPM_STATE/tcg_ek.pub.pem" \
+    -CA "$EVE_TPM_STATE/ek_test_ca.cert.pem" -CAkey "$EVE_TPM_STATE/ek_test_ca.key" \
+    -CAcreateserial -days 365 -extfile "$EVE_TPM_STATE/ek_test.ext" \
+    -outform DER -out "$EK_CERT_FILE" 2>/dev/null
+tpm2 nvdefine $EK_CERT_HANDLE -C o -s "$(wc -c < "$EK_CERT_FILE")" -a "authread|ownerwrite"
 tpm2 nvwrite $EK_CERT_HANDLE -C o -i "$EK_CERT_FILE"
+tpm2 nvdefine $EK_CHAIN_HANDLE -C o -s "$(wc -c < "$EK_CA_FILE")" -a "ownerread|ownerwrite"
+tpm2 nvwrite $EK_CHAIN_HANDLE -C o -i "$EK_CA_FILE"
+rm tcg_ek.ctx
 flushtpm
 
 # create srk
@@ -222,7 +241,7 @@ run_test() {
 }
 
 run_test sh -c "cd \"$CWD/pkg/pillar/evetpm\" && go test -v -coverprofile=\"evetpm.coverage.txt\" -covermode=atomic"
-run_test sh -c "cd \"$CWD/pkg/pillar/cmd/msrv\" && go test -v -test.run ^TestTpmActivateCred$ -coverprofile=\"actcred.coverage.txt\" -covermode=atomic"
+run_test sh -c "cd \"$CWD/pkg/pillar/cmd/msrv\" && go test -v -test.run '^(TestTpmActivateCred|TestTpmQuote)$' -coverprofile=\"actcred.coverage.txt\" -covermode=atomic"
 run_test sh -c "cd \"$CWD/pkg/pillar/cmd/vcomlink\" && go test -v -coverprofile=\"vcomlink.coverage.txt\" -covermode=atomic"
 run_test sh -c "cd \"$CWD/pkg/vtpm/swtpm-vtpm\" && go test -v -test.run ^TestLaunchWithRealTPMEncryption$ ./src/ -coverprofile=\"swtpm-vtpm.coverage.txt\" -covermode=atomic"
 
