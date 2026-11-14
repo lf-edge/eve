@@ -105,7 +105,7 @@ type Result struct {
 | `backup` | — | `backed up N file(s)…; wrote <flag-file>=<target>` | 0 / 1 / 2 | `/config/backup-persist/*`, then the `/config/repartition-inprogress` flag file |
 | `shrink` | — | `shrink <label> to <size>` | 0 / 1 / 2 | shrinks the persist partition, rewrites GPT |
 | `grow` | — | `grow <label>=…` | 0 / 1 / 2 | grows ESP/IMGA/IMGB, rewrites GPT |
-| `restore` | — | `digest check: checked=… mismatch=…` then `restored N file(s) …` | 0 / 1 | restores backed-up files whose live copy is missing/empty/invalid into `/persist`; flag file absent → GCs the backup dir; `--cleanup` removes the flag file then the backup dir |
+| `restore` | — | `digest check: checked=… mismatch=…` then `restored N file(s) …` | 0 / 1 | restores backed-up files whose live copy is missing/empty/invalid or no longer matches its pre-shrink digest into `/persist` (volatile files stay report-only); flag file absent → GCs the backup dir; `--cleanup` removes the flag file then the backup dir |
 | `cleanup` | — | `cleanup: …` on refusal | 0 / 1 | removes the backup dir once the flag file is gone; refuses (exit 1) while the flag file is present |
 
 The `check --json` schema (fields diskconvert reads in **bold**):
@@ -130,10 +130,11 @@ The `check --json` schema (fields diskconvert reads in **bold**):
   restoring anything and reports the comparison on the console. It catches what
   the per-type validators cannot: an interrupted relocation can leave a file at
   its original size and structurally valid while holding a partially-copied mix
-  of old and new bytes. It reports only — a mismatch on a file EVE rewrites on
-  its own (`checkpoint/lastconfig*`, the DPC list) is an ordinary newer version,
-  and overwriting it with the stale backup would lose the ssh keys and network
-  config it carries, so the restore decision stays with the validators.
+  of old and new bytes. On a non-volatile file such a mismatch is repaired by
+  restoring the pre-shrink copy; on a file EVE rewrites on its own
+  (`checkpoint/lastconfig*`, the DPC list) the change may be an ordinary newer
+  version — overwriting it with the stale backup would lose the ssh keys and
+  network config it carries — so it is reported only.
 
 ## SEE ALSO
 

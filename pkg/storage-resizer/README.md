@@ -98,9 +98,15 @@ copy is **missing, empty, or invalid for its type** — a cert/key missing its
 `-----END` marker, a DevicePortConfigList or VaultConfig that is not valid JSON
 (truncation always breaks both), or an fscrypt policy or protector that does not
 decode as the protobuf `fscrypt` reads, fails `fscrypt`'s own validity check, or
-(for a policy) wraps no key. A present, non-empty mutable file (the saved config
-`lastconfig`/`.bak`, `controllercerts`) is left untouched, since the live copy
-may be a legitimately newer version that the stale backup must not clobber —
+(for a policy) wraps no key. When the backup carries the `.sha256sums` digest
+manifest, a file that still looks valid but no longer hashes to its pre-shrink
+digest is restored too: the interrupted relocation can leave a file at its
+original size and structurally sound while holding a partially-copied mix of old
+and new bytes, which only the digest reveals. A present, non-empty mutable file
+(the saved config `lastconfig`/`.bak`, `controllercerts`) is left untouched,
+since the live copy may be a legitimately newer version that the stale backup
+must not clobber — the digest check likewise only *reports* a changed volatile
+file rather than overwriting it, so newer ssh keys and network config survive —
 pillar validates those itself and falls back to its `.bak` copies. Then
 `--cleanup` removes the **flag file first, then the backup dir** (the reverse of
 backup's flag-file-last order, so a crash mid-cleanup is safe). The flag file
