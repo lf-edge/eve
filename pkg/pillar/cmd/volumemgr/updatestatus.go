@@ -587,6 +587,19 @@ func deferVolumeWork(status *types.VolumeStatus, what string, err error) {
 	}
 }
 
+// volumeReferenceName returns the name of the image a volume created from
+// the content tree runs from (VolumeStatus.ReferenceName, the image of a
+// native container's pod on EVE-k), or "" while the tree has no digest.
+// Until it has one, a tree deployed by tag still has the tag in its
+// RelativeURL, and so in its ReferenceID, but the image is created in
+// containerd under the name with the digest.
+func volumeReferenceName(ctStatus *types.ContentTreeStatus) string {
+	if ctStatus == nil || ctStatus.ContentSha256 == "" {
+		return ""
+	}
+	return ctStatus.ReferenceID()
+}
+
 // Returns changed
 // XXX remove "done" boolean return?
 func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool) {
@@ -606,8 +619,14 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 		return true, true
 	}
 
-	// If volume is already created, do nothing
+	// If volume is already created, only take what it still lacks from
+	// its content tree
 	if status.State == types.CREATED_VOLUME {
+		if setFromContentTree(ctx, status) {
+			log.Noticef("doUpdateVol(%s) name %s: image %s format %s",
+				status.Key(), status.DisplayName, status.ReferenceName, status.ContentFormat)
+			return true, true
+		}
 		log.Functionf("doUpdateVol(%s) name %s nothing to do",
 			status.Key(), status.DisplayName)
 		return false, true
@@ -835,7 +854,7 @@ func doUpdateVol(ctx *volumemgrContext, status *types.VolumeStatus) (bool, bool)
 			status.State != types.CREATING_VOLUME &&
 			status.SubState == types.VolumeSubStateInitial {
 
-			imgName := ctStatus.ReferenceID()
+			imgName := volumeReferenceName(ctStatus)
 			_, err := ctx.casClient.GetImageHash(imgName)
 			if err != nil {
 				log.Functionf("doUpdateVol(%s): waiting for image create: %s", status.Key(), err.Error())
