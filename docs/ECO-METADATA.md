@@ -371,6 +371,69 @@ This can be done using a POST to `/eve/v1/tpm/signer` endpoint.
 The maximum support size is 64 kbytes.
 The returned object is binary with protobuf message of type `AuthContainer` carrying the signature with the embedded posted payload (possibly encrypted). This protobuf message is specified in [OBJECT-SIGNING](https://github.com/lf-edge/eve-api/tree/main/OBJECT-SIGNING.md).
 
+### TPM attestation endpoints
+
+These endpoints let an application prove to a remote verifier that a piece of data came from a named workload on a device whose measured boot state the verifier can check, and that the attestation key lives in a TPM certified by its manufacturer. The verifier needs no access to the controller.
+
+All three return 404 when the device has no TPM in use. They share the TPM with EVE, so they are rate limited to 1 request per second per application IP address (burst 5) and 4 per second across all callers (burst 8); a request over the per-IP limit gets 429, and one over the global limit or unable to get the TPM within 10 seconds gets 503; retry either later. Binary fields in the JSON are base64 encoded.
+
+#### `GET /eve/v1/tpm/identity`
+
+Describes the TPM and the keys a verifier needs:
+
+| Field | Content |
+|---|---|
+| `manufacturer_id`, `manufacturer`, `model`, `firmware_version` | TPM part description |
+| `ek_public` | `TPMT_PUBLIC` of the TCG endorsement key: the endorsement-hierarchy primary from the default template of the TCG EK Credential Profile (RSA template L-1, or ECC template L-2 when the TPM holds only an ECC EK certificate). This is the key the manufacturer's certificate certifies. |
+| `aik_public`, `aik_name` | `TPMT_PUBLIC` and `TPM2B_NAME` of the attestation key that signs quotes |
+| `aik_hierarchy` | Hierarchy of the attestation key (`owner`). Outside the endorsement and platform hierarchies the TPM obfuscates `resetCount`, `restartCount` and `firmwareVersion` in every attestation with a per-key constant (TPM 2.0 Part 3, 18.1); differences between quotes stay exact. |
+| `ek_certificates` | EK certificates from TPM NV: `nv_index`, `der`, and `issuer_urls` from the certificate's Authority Information Access extension. Empty on a TPM without them, such as swtpm. |
+| `ek_cert_chain` | CA certificates the manufacturer stored in NV, if any |
+
+#### `POST /eve/v1/tpm/activate`
+
+Proves that the attestation key is in the same TPM as `ek_public`. The verifier runs `TPM2_MakeCredential` for `ek_public` and `aik_name` with a secret of its choice, and posts the result:
+
+```json
+{"credential_blob": "<TPM2B_ID_OBJECT>", "encrypted_secret": "<TPM2B_ENCRYPTED_SECRET>"}
+```
+
+Both values include their 2-byte size prefix. EVE runs `TPM2_ActivateCredential` with the TCG EK and returns `{"secret": "<bytes>"}`. Only the TPM holding both keys can recover the secret. A credential the TPM refuses, for example one made for another key, gets 400.
+
+#### `POST /eve/v1/tpm/quote`
+
+Returns a quote by the attestation key over SHA-256 PCRs 0-15, bound to the calling application and to up to 1024 bytes of data the caller chooses (e.g. the digest of a key it generated):
+
+```json
+{"caller_data": "<base64>"}
+```
+
+EVE identifies the caller from the request's source address and fills it in itself; a source address that is not an application on one of the device's network instances gets 403. The `binding` in the response is the JSON object
+`{"caller": {...}, "caller_data": "<base64>"}`, where `caller` has `kind` `eve-app-instance` with `app_uuid`, `app_version` and `app_name`, or, for a Kubernetes workload on EVE-k, `kind` `k8s-pod` with `namespace`, `pod_name`, `pod_uid`, `service_account`, `node_name` and the `containers` with their resolved image digests.
+
+| Response field | Content |
+|---|---|
+| `quote.attest` | `TPMS_ATTEST` that was signed; authoritative over the decoded fields below |
+| `quote.signature`, `quote.sig_alg` | Signature over SHA-256 of `attest`: `RSASSA-SHA256`, or `ECDSA-SHA256` as an ASN.1 DER sequence of r and s |
+| `quote.pcrs` | `index` and `sha256` value of each quoted PCR |
+| `quote.clock`, `quote.reset_count`, `quote.restart_count`, `quote.safe`, `quote.firmware_version` | Decoded from `attest` |
+| `binding` | The exact bytes bound into the quote |
+| `manufacturer`, `model`, `firmware_version` | TPM part, as in the identity |
+| `event_log` | The raw TCG measured-boot event log, when the kernel exposes one |
+
+Before trusting `aik_public`, once per device:
+
+1. Check the EK certificate chain to the manufacturer, and that `ek_public` is the certificate's key.
+2. Check that the Name in `aik_name`, after its 2-byte size, is the `nameAlg` of `aik_public` followed by the `nameAlg` digest of `aik_public`. Credential activation proves only that the TPM holds a key with that Name, so without this check a relay could pair the real `aik_name` with a key of its own.
+3. Check that `aik_public` has the `restricted`, `sign`, `fixedTPM` and `fixedParent` attributes. The TPM signs nothing starting with `TPM_GENERATED_VALUE` with a restricted key unless the TPM produced it, so the key cannot sign a forged quote.
+4. Activate a credential for `ek_public` and that `aik_name` with `/eve/v1/tpm/activate`.
+
+Then, for each quote:
+
+1. Check `signature` over `attest` with `aik_public`, and that `attest` is a quote.
+2. Check that the quote's `extraData` equals SHA-256 of the bytes `EVE-MSRV-TPM-QUOTE-V1\0` followed by `binding`, and that `binding` names the expected caller and data.
+3. Check that the quote's PCR digest equals SHA-256 of the concatenated `pcrs` values, then evaluate those values, replaying `event_log` for PCRs 0-9.
+
 ### Diag API endpoint
 
 EVE is generating diagnostic output on a console (if there is one) which summarizes the state of connectivity to the controller, device status including remote attestation state, application status and errors, and download status and errors. In some cases it might make sense to have a local application instance retrieve this information.
