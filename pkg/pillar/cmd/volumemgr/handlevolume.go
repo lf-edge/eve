@@ -179,18 +179,7 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 			status.TotalSize = int64(actualSize)
 			status.CurrentSize = int64(actualSize)
 		}
-
-		// Fill the ReferenceName which will be used by domainmgr to launch native containers.
-		ctStatus := ctx.LookupContentTreeStatus(status.ContentID.String())
-
-		if ctStatus != nil {
-			status.ReferenceName = ctStatus.ReferenceID()
-			// In EVE 'k' though we created PVC from container image, we still set the content format as container.
-			// This will help domainmgr to load the external boot kernel (support shim VM container)
-			if ctStatus.Format == zconfig.Format_CONTAINER {
-				status.ContentFormat = zconfig.Format_CONTAINER
-			}
-		}
+		setFromContentTree(ctx, status)
 		publishVolumeStatus(ctx, status)
 		updateVolumeRefStatus(ctx, status)
 		if err := createOrUpdateAppDiskMetrics(ctx, agentName, status); err != nil {
@@ -208,6 +197,30 @@ func handleDeferredVolumeCreate(ctx *volumemgrContext, key string, config *types
 		log.Errorf("handleDeferredVolumeCreate(%s): exception while publishing diskmetric. %s", key, err.Error())
 	}
 	log.Tracef("handleDeferredVolumeCreate(%s) done", key)
+}
+
+// setFromContentTree fills in what a created volume takes from its content
+// tree, and returns whether it changed. A volume found created at boot can
+// be there before the tree has its digest, so the image is named once the
+// tree has it (see volumeReferenceName); a volume that has a name keeps
+// it, as the image of a created volume must not change under it.
+func setFromContentTree(ctx *volumemgrContext, status *types.VolumeStatus) bool {
+	ctStatus := ctx.LookupContentTreeStatus(status.ContentID.String())
+	if ctStatus == nil {
+		return false
+	}
+	changed := false
+	if name := volumeReferenceName(ctStatus); name != "" && status.ReferenceName == "" {
+		status.ReferenceName = name
+		changed = true
+	}
+	// In EVE 'k' though we created PVC from container image, we still set the content format as container.
+	// This will help domainmgr to load the external boot kernel (support shim VM container)
+	if ctStatus.Format == zconfig.Format_CONTAINER && status.ContentFormat != zconfig.Format_CONTAINER {
+		status.ContentFormat = zconfig.Format_CONTAINER
+		changed = true
+	}
+	return changed
 }
 
 func handleVolumeRestart(ctxArg interface{}, restartCount int) {
