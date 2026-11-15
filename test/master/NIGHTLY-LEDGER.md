@@ -2,6 +2,69 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-15 -- 0.0.0-master-368a44a3 (run #18)](https://github.com/lf-edge/eve/actions/runs/43645720578)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/18/)
+
+### TestAppRoutingSuite: failure analysis
+
+#### TestApplicationGateway
+
+##### Failure
+
+```
+
+Told to stop trying after 2.674s.
+Stop waiting for: ni-eth0 is ONLINE
+Network instance is in error state
+networkID:"dde0e918-3455-4f49-94d8-ece5659c1237"  networkVersion:"1"  instType:2  displayname:"ni-eth0"  bridgeNum:1  bridgeIPAddr:"10.50.0.1"  ipAssignments:{macAddress:"00:16:3e:63:82:01"  ipAddress:"10.50.0.1"}  networkErr:{description:"failed to select ports for network instance dde0e918-3455-4f49-94d8-ece5659c1237: no port is matching label 'ethernet0'"  timestamp:{seconds:1794695280  nanos:625484280}  severity:SEVERITY_ERROR}  state:ZNETINST_STATE_ERROR  mtu:1500
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence confirms this was a transient boot-time race, not a persistent problem: `evetest eve ni-info ni-eth0 -t=5` shows `ni-eth0` going `INIT` → `ERROR` (`no port is matching label 'ethernet0'`, at 22:28:00.625) → `ONLINE` (with `ethernet0` correctly assigned) a few seconds later, and it remains healthy now. The device's `DevicePortConfigList` shows why: the controller-sourced DPC (key `zedagent`, carrying the `ethernet0`/`ethernet1` logical labels the app's network instance requires) was submitted at 22:27:52.799 but was still in `DPC_ASYNC_WAIT` (being connectivity-tested) when zedrouter first processed the NI config moments later, so no port yet carried the `ethernet0` label in zedrouter's view, causing the brief error. zedrouter's own log shows the fix-up completing normally — `PortProber: Added ethernet0 to list of probed ports` and `Updated activated network instance ... (ni-eth0)` at 22:28:07.059/07.282, i.e. convergence took roughly 7-10 seconds after the device's full config landed. The test's `evetest status` reports giving up after only `2.674s` ("Told to stop trying after 2.674s"), which is shorter than this normal post-onboarding DPC-switch window, so the failure looks like the test's wait/retry budget being too tight for the expected boot-time DPC convergence rather than a real networking defect.
+
+This is a new failure signature — I grepped `live-ledger.md` for "no port is matching", "ZNETINST_STATE_ERROR", and "ni-eth0" and found no prior occurrences, so it's not a known/recurring issue, and it doesn't share a root cause with any other failure noted in this run. The recent commit history on master (watchdog bump, kube-init manifest re-staging, nvidia udev rule fix, fw-list tooling) has nothing touching zedrouter/nim/dpcmanager, consistent with this being an environment/timing flake rather than a code regression.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestDNIDandBackupDNID
+
+##### Failure
+
+```
+timed out after 30m0.008637124s (excluding download) waiting for app "fafb1261-ead8-4080-9f18-02f38780d829" (vm1) on device "edge-dev1" to reach RUNNING state (last state: BOOTING)
+```
+
+##### Claude's conclusion
+
+Only one prior occurrence found, from the 2026-10-31 run (#3). This is now the second time this exact signature has appeared, ~2 weeks apart.
+
+**Root cause:** `vm1` (app `fafb1261-...`, DNID = edge-dev1) is stuck reporting `BOOTING` because the VMI was actually scheduled onto `edge-dev3` instead of its designated node. Live logs confirm: `kubevirtContext.vmiScheduledOnMeFromVmirs` logs `vmi vm1-fafb1-0wbnnq scheduled on "edge-dev3" onMe:false elsewhereReady:true`, and `kubevirtTask.Info()` (`pkg/pillar/hypervisor/kubevirt.go:1800`) then logs `"vm1-fafb1-0 scheduled on a different node"` and returns `UNKNOWN` instead of `RUNNING` by design. `zedkube`'s `ENClusterAppStatus` on edge-dev1 shows `IsDNidNode:true ScheduledOnThisNode:false AppKubeStatus:RunningState` — the pod is genuinely healthy and ready on edge-dev3 (`getAppVMIInfo` shows `phase Running ... nodeName edge-dev3 ready true`) — but zedmanager never derives `RUNNING` for the DNID node's `AppInstanceStatus` from that cluster-wide view when `ScheduledOnThisNode` is false, leaving it permanently wedged at `BOOTING` (confirmed: `AppInstanceStatus`/`DomainStatus` both still show `State:114`=BOOTING, matching the 30-minute timeout almost exactly, `StartTime 00:23:46` vs. failure at `01:00:28`).
+
+This is the exact same root cause and code path (VMIRS using only a *preferred*, not required, node affinity toward the DNID, so the KubeVirt scheduler is free to place the VMI elsewhere even with no node outage) as a `TestDNIDandBackupDNID` failure already recorded in `live-ledger.md` for 2026-10-31 (run #3) — a gap in zedmanager/zedkube's backup-DNID status-reporting path that only handles failover-driven node moves, not ordinary scheduler placement decisions. That entry noted it wasn't yet a "recorded recurring" issue at the time; tonight is the second occurrence of the identical signature roughly two weeks later, so this is now a confirmed recurring (if infrequent) bug in the DNID/backup-DNID status-propagation gap, not a new one. No other failing tests appear in tonight's run so far, so there's nothing else in this run to compare root causes against.
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.000s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+This confirms the live loop: zedmanager perpetually logs `getKubeAppActivateStatus(...): not designated, node c48050f2 (edge-dev3), onTheDevice false` and never issues the activate that would create the new-generation VMIRS. I have enough evidence to write the conclusion.
+
+**Root cause:** This is the same long-recurring `TestVMAppPurgeDuringFailover` deadlock already recorded in the ledger (first seen 2026-10-29, recurring in nearly every nightly run since, including last night). Live evidence on edge-dev3 is identical to the pattern: after the DNID node (edge-dev1) was powered off and the app failed over, the purge deleted the old-generation VMIRS (`kubectl get vmirs,vmi -A` now returns zero resources), and zedmanager is stuck looping `getKubeAppActivateStatus(999e6655-...): not designated, node c48050f2..., onTheDevice false` forever — `AppInstanceStatus.IsDesignatedNodeID:false`, `ScheduledOnThisNode:false` in `ENClusterAppStatus`, so nothing ever re-requests a new VMIRS from domainmgr/zedkube. I confirmed this is *not* the same bug as this run's earlier `TestDNIDandBackupDNID`/`TestClusterPVCGCDeletesOnlyOrphans` failures (the zedkube `IsAppOpLeader`-stuck-false leader-election race): here leader election converged correctly, with `edge-dev3`'s `KubeLeaderElectInfo` showing `IsAppOpLeader:true` matching the real `AppOpLeaderIdentity`. This is the distinct, known designated-node/backup-DNID activation-gate bug that has been reproducing nightly since 2026-10-29.
+
 ## [2026-11-14 -- 0.0.0-master-368a44a3 (run #17)](https://github.com/lf-edge/eve/actions/runs/43515550867)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/17/)
