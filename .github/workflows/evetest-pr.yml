@@ -178,7 +178,7 @@ jobs:
               }
             }' >/dev/null
 
-      # The build job records the version it gave the EVE image (see build-eve), so
+      # The build job records the version it gave the EVE image (see build.yml), so
       # that the suites can ask the brokers for exactly that image. The build ran
       # the PR's code, so the file is only accepted in the shape of that PR's
       # versions.
@@ -591,7 +591,7 @@ jobs:
           # May be root-owned if a previous run was killed mid-way.
           sudo rm -fr "${EVETEST_COLLECT_ARTIFACTS:?}"/*
           # Self-hosted runner: /tmp isn't wiped between jobs.
-          rm -rf /tmp/eve-image /tmp/prev-attempt /tmp/upload /tmp/merged-coverage /tmp/coverage.txt
+          rm -rf /tmp/eve-image /tmp/prev-attempt /tmp/upload
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:

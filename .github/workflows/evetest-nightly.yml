@@ -74,7 +74,7 @@ jobs:
           for SHA in $(git log --format=%H -n "$MAX_COMMITS_BACK" HEAD); do
             SHA8=$(git rev-parse --short=8 "$SHA")
             CANDIDATE="0.0.0-${REPO_BRANCH}-${SHA8}"
-            if image_published "${CANDIDATE}-kvm-amd64" && image_published "${CANDIDATE}-k-amd64"; then
+            if image_published "${CANDIDATE}-kvm-amd64"; then
               VERSION="$CANDIDATE"
               break
             fi
@@ -82,7 +82,7 @@ jobs:
           done
 
           if [ -z "$VERSION" ]; then
-            echo "::error::no lfedge/eve image (kvm+k, amd64) published for any of the last $MAX_COMMITS_BACK commits on $REPO_BRANCH"
+            echo "::error::no lfedge/eve image (kvm, amd64) published for any of the last $MAX_COMMITS_BACK commits on $REPO_BRANCH"
             exit 1
           fi
 
@@ -115,7 +115,7 @@ jobs:
           # May be root-owned if a previous run was killed mid-way.
           sudo rm -fr "${EVETEST_COLLECT_ARTIFACTS:?}"/*
           # Self-hosted runner: /tmp isn't wiped between jobs.
-          rm -rf /tmp/eve-image /tmp/prev-attempt /tmp/upload /tmp/merged-coverage /tmp/coverage.txt
+          rm -rf /tmp/eve-image /tmp/prev-attempt /tmp/upload
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
