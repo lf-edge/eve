@@ -1623,6 +1623,15 @@ func (p *ProxmoxProvider) buildVMOptions(dev *proxmoxDevice, diskRefs []string,
 			" -global host-x86_64-cpu.kvm-asyncpf-int=off"
 	}
 
+	// PVE has no threads-per-core option: from "cores" it starts QEMU with
+	// "-smp N,sockets=1,cores=N,maxcpus=N", one thread per core. A requested
+	// SMT layout goes in through args: QEMU merges a later -smp over the first,
+	// key by key, so the guest gets the sockets/cores/threads the qemu and
+	// libvirt providers give it (CPUTopology) for the same N CPUs.
+	if _, _, threads := CPUTopology(cpus, spec.ThreadsPerCore); threads > 1 {
+		extraArgs += " -smp " + smpArg(cpus, spec.ThreadsPerCore)
+	}
+
 	// A VGA controller and a USB 3.0 (xHCI) host controller, for tests that
 	// pass either through to an application (EVE treats both classes
 	// specially, see debug.enable.vga and debug.enable.usb). Through args
