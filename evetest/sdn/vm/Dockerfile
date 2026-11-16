@@ -4,8 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Input arguments
-ARG ALPINE_VERSION=3.21
-ARG GOLANG_VERSION=1.25
+ARG ALPINE_VERSION=3.24
+ARG GOLANG_VERSION=1.26
 
 ###########################
 # Build stage
