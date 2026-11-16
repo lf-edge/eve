@@ -360,6 +360,7 @@ pkg:golang/k8s.io/component-base	Apache-2.0
 pkg:golang/k8s.io/cri-api	Apache-2.0
 pkg:golang/k8s.io/klog/v2	Apache-2.0
 pkg:golang/k8s.io/kube-openapi@v0.0.0-20240430033511-f0e62f92d13f	Apache-2.0 AND BSD-3-Clause
+pkg:golang/k8s.io/kube-openapi@v0.0.0-20250318190949-c8a335a9a2ff	Apache-2.0 AND BSD-3-Clause AND MIT
 pkg:golang/k8s.io/kube-openapi@v0.0.0-20260721132016-d427ff9ee9ad	Apache-2.0 AND BSD-3-Clause AND MIT
 pkg:golang/k8s.io/kubectl	Apache-2.0
 pkg:golang/k8s.io/metrics	Apache-2.0
