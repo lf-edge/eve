@@ -462,7 +462,12 @@ case "$1" in
           ID=$(${CTR_CMD} t ls | awk '/^'${2:-pillar}' /{print $2;}' 2>/dev/null)
           CMD="${3:-sh}"
           shift ; shift ; shift
-          echo "$$" > /sys/fs/cgroup/cgroup.procs
+          # Leave the debug service's cgroup for the host processes' group,
+          # which domainmgr keeps off the CPUs workloads hold, or the root
+          # where there is none.
+          CG=/sys/fs/cgroup/housekeeping
+          [ -d "$CG" ] || CG=/sys/fs/cgroup
+          echo "$$" > "$CG/cgroup.procs"
           # shellcheck disable=SC2086
           exec nsenter ${NO_FORK} -a -t "${ID:-1}" "$CMD" "$@"
           ;;
