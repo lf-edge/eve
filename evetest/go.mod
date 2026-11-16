@@ -1,8 +1,6 @@
 module github.com/lf-edge/eve/evetest
 
-go 1.25.2
-
-toolchain go1.25.11
+go 1.26.0
 
 require (
 	github.com/amitbet/vncproxy v0.0.0-20200118084310-ea8f9b510913
@@ -38,6 +36,8 @@ require (
 	libvirt.org/go/libvirt v1.11006.0
 	libvirt.org/go/libvirtxml v1.11007.0
 )
+
+require go.opentelemetry.io/otel/log v1.47.0 // indirect
 
 require (
 	github.com/Masterminds/semver v1.5.0 // indirect
@@ -100,10 +100,10 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.61.0 // indirect
-	go.opentelemetry.io/otel v1.45.0 // indirect
-	go.opentelemetry.io/otel/metric v1.45.0 // indirect
-	go.opentelemetry.io/otel/trace v1.45.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	go.opentelemetry.io/otel v1.47.0 // indirect
+	go.opentelemetry.io/otel/metric v1.47.0 // indirect
+	go.opentelemetry.io/otel/trace v1.47.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
