@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/luthermonson/go-proxmox"
+
+	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 )
 
 func TestIsVMNotFoundErr(t *testing.T) {
@@ -274,5 +276,44 @@ func TestSetVMPowerStateMissingVM(t *testing.T) {
 		func(*proxmox.VirtualMachine) error { calls++; return nil })
 	if !isVMNotFoundErr(err) || calls != 0 {
 		t.Fatalf("expected a not-found error without calling op, got err=%v calls=%d", err, calls)
+	}
+}
+
+// PVE starts QEMU with one thread per core whatever the device asks for, so a
+// requested SMT layout has to reach QEMU through args, as the -smp the qemu
+// provider passes; a device that asks for none gets no -smp of its own.
+func TestBuildVMOptionsThreadsPerCore(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		threadsPerCore uint
+		want           string
+	}{
+		{"SMT", 2, " -smp 8,sockets=1,cores=4,threads=2"},
+		{"no SMT", 0, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &ProxmoxProvider{conf: ProxmoxProviderConf{Storage: "local-lvm"}}
+			dev := &proxmoxDevice{name: "dev", vmID: 100, spec: DeviceSpec{
+				CPUs: 8, ThreadsPerCore: tc.threadsPerCore, MemoryBytes: 8 << 30,
+				Arch: api.ArchType_ARCH_AMD64,
+			}}
+			options, err := p.buildVMOptions(dev, nil, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var args string
+			for _, o := range options {
+				if o.Name == "args" {
+					args = fmt.Sprint(o.Value)
+				}
+			}
+			if tc.want == "" {
+				if strings.Contains(args, "-smp") {
+					t.Errorf("args carry a -smp for a device without SMT: %s", args)
+				}
+			} else if !strings.Contains(args, tc.want) {
+				t.Errorf("args lack %q: %s", tc.want, args)
+			}
+		})
 	}
 }
