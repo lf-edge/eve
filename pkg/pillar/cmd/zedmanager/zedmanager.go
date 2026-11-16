@@ -56,6 +56,7 @@ type zedmanagerContext struct {
 	subAppNetworkStatus       pubsub.Subscription
 	subAppRuntimeStatus       pubsub.Subscription
 	pubDomainConfig           pubsub.Publication
+	pubCPUDemandSet           pubsub.Publication
 	subDomainStatus           pubsub.Subscription
 	subENClusterAppStatus     pubsub.Subscription
 	subGlobalConfig           pubsub.Subscription
@@ -197,6 +198,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	ctx.pubDomainConfig = pubDomainConfig
 	pubDomainConfig.ClearRestarted()
+
+	pubCPUDemandSet, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.CPUDemandSet{},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.pubCPUDemandSet = pubCPUDemandSet
 
 	// Persist purge counter for each application.
 	mapPublisher, err := objtonum.NewObjNumPublisher(
@@ -833,6 +843,9 @@ func handleAADelete(ctxArg interface{}, key string, statusArg interface{}) {
 func handleConfigRestart(ctxArg interface{}, restartCounter int) {
 	ctx := ctxArg.(*zedmanagerContext)
 	log.Functionf("handleConfigRestart(%d)", restartCounter)
+	// The initial config has been delivered, so the demand set is complete,
+	// possibly empty.
+	publishCPUDemandSet(ctx)
 	if restartCounter != 0 {
 		ctx.pubAppNetworkConfig.SignalRestarted()
 	}
@@ -1002,6 +1015,11 @@ func handleAppInstanceConfigDelete(ctxArg interface{}, key string,
 
 	log.Functionf("handleAppInstanceConfigDelete(%s)", key)
 	ctx := ctxArg.(*zedmanagerContext)
+	// pubsub drops the key before calling us, so the set built here no longer
+	// holds the deleted app -- its CPUs are free for the plan again. Done even
+	// when there is no status, so a config that never reached a status does not
+	// leave a reservation behind.
+	publishCPUDemandSet(ctx)
 	status := lookupAppInstanceStatus(ctx, key)
 	if status == nil {
 		log.Functionf("handleAppInstanceConfigDelete: unknown %s", key)
@@ -1364,6 +1382,9 @@ func handleCreate(ctxArg interface{}, key string,
 	log.Functionf("handleCreate(%v) for %s",
 		config.UUIDandVersion, config.DisplayName)
 
+	// Before doUpdate, so domainmgr knows this app is coming before it is ever
+	// asked to place another one.
+	publishCPUDemandSet(ctx)
 	handleCreateAppInstanceStatus(ctx, config)
 }
 
@@ -1485,6 +1506,10 @@ func handleModify(ctxArg interface{}, key string,
 	if localConfig != nil {
 		config = *localConfig
 	}
+
+	// A modify can change vCPU count, the CPU policy, or whether the app is
+	// activated at all -- all of which move the demand set.
+	publishCPUDemandSet(ctx)
 
 	// Check if we need to roll back to a snapshot
 	if config.Snapshot.RollbackCmd.Counter > oldConfig.Snapshot.RollbackCmd.Counter {
@@ -1964,6 +1989,10 @@ func handleHostMemoryImpl(ctxArg interface{}, key string,
 // updateBasedOnProfile check all app instances with ctx.currentProfile and oldProfile
 // update AppInstance if change in effective activate detected
 func updateBasedOnProfile(ctx *zedmanagerContext, oldProfile string) {
+	// A profile change activates and deactivates apps without any config
+	// change, so it moves the demand set. Republish before acting on it, so an
+	// app the new profile starts is in the set before its DomainConfig is.
+	publishCPUDemandSet(ctx)
 	pub := ctx.subAppInstanceConfig
 	items := pub.GetAll()
 	for _, c := range items {

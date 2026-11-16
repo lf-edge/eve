@@ -905,6 +905,13 @@ func doActivate(ctx *zedmanagerContext, uuidStr string,
 	if c {
 		changed = true
 	}
+	// Where it stands with its CPUs, reported like the adapters assigned to
+	// it. A placement worse than planned or a part in a repack is advisory, so
+	// it travels apart from the error.
+	if !status.Placement.Equal(ds.Placement) {
+		status.Placement = ds.Placement
+		changed = true
+	}
 	// Are we doing a restart?
 	if status.RestartInprogress == types.BringDown {
 		if dc.Activate {
@@ -1178,6 +1185,12 @@ func doInactivate(ctx *zedmanagerContext, appInstID uuid.UUID,
 		return changed, done
 	}
 	log.Functionf("Done with DomainStatus removal/deactivate for %s", uuidStr)
+
+	// The workload holds no CPUs any more, so there is no placement to judge.
+	if !status.Placement.Equal(types.CPUPlacementState{}) {
+		status.Placement = types.CPUPlacementState{}
+		changed = true
+	}
 
 	if uninstall {
 		if lookupAppNetworkConfig(ctx, uuidStr) != nil {
