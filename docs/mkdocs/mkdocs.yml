@@ -40,6 +40,7 @@ nav:
   - 'Edge-View Containers API': 'docs/EDGEVIEW-CONTAINER-API.md'
   - 'Patch Envelopes': 'docs/PATCH-ENVELOPES.md'
   - Hypervisors: 'docs/HYPERVISORS.md'
+  - 'CPU Placement and Isolation': 'docs/CPU-PLACEMENT.md'
   - IPC: 'docs/IPC.md'
   - 'Keys and Certificates': 'docs/KEYS-AND-CERTS.md'
   - 'LED indication': 'docs/LED-INDICATION.md'
