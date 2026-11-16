@@ -11,7 +11,7 @@ description: >-
 
 inputs:
   hypervisor:
-    description: EVE hypervisor flavor, the "kvm" or "k" of eve-<hv>-<arch>-<platform>.
+    description: EVE hypervisor flavor ("kvm") of eve-<hv>-<arch>-<platform>.
     required: true
   arch:
     required: true
