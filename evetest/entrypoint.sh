@@ -112,13 +112,13 @@ GO_TEST_PID=$!
 # shellcheck disable=SC2317,SC2015  # false positives: function is called via trap
 cleanup() {
     echo "Received termination signal, forwarding to child processes..."
-    # Fix artifact ownership right away, before the graceful shutdown below:
+    # Fix ownership right away, before the graceful shutdown below:
     # a caller that sent this signal because it is tearing the whole
     # container down (e.g. a cancelled CI job) typically only grants a short
     # grace period before escalating to SIGKILL, which the wait_with_timeout
     # calls below can easily outlast (go test/broker teardown is not
     # instant) -- so this may be the only chance this ever gets to run.
-    set_artifact_ownership
+    set_host_ownership
 
     [ -n "$GO_TEST_PID" ] && kill -TERM "$GO_TEST_PID" 2>/dev/null || true
     [ -n "$BROKER_PID" ] && kill -TERM "$BROKER_PID" 2>/dev/null || true
@@ -131,7 +131,7 @@ cleanup() {
 
     # Fix ownership again for anything written during the graceful shutdown
     # above (final test/broker output, etc.), in case this does run to completion.
-    set_artifact_ownership
+    set_host_ownership
     echo "Cleanup completed"
     exit "$1"
 }
@@ -143,6 +143,25 @@ set_artifact_ownership() {
           chown -R "$EVETEST_HOST_UID:$EVETEST_HOST_GID" /artifacts
       fi
     fi
+}
+
+# Hand the host caches mounted by make evetest back to the user: bpftrace-compiler
+# writes into them as root, and the user's own linuxkit could neither add blobs to
+# root-owned directories nor update the root-owned index.json.
+set_cache_ownership() {
+    if [ -n "$EVETEST_HOST_UID" ] && [ -n "$EVETEST_HOST_GID" ]; then
+        for cache in /root/.linuxkit/cache /root/.bpftrace-compiler/cache; do
+            if [ -d "$cache" ]; then
+                chown -R "$EVETEST_HOST_UID:$EVETEST_HOST_GID" "$cache" || :
+            fi
+        done
+    fi
+}
+
+# Hand everything the container wrote into host directories back to the user.
+set_host_ownership() {
+    set_artifact_ownership
+    set_cache_ownership
 }
 
 # wait_with_timeout <process_name> <pid> <timeout_seconds>
@@ -181,7 +200,7 @@ trap 'cleanup 131' QUIT
 # Wait for go test to finish
 wait "$GO_TEST_PID"
 GO_TEST_RC=$?
-set_artifact_ownership
+set_host_ownership
 
 # Even if go test finishes naturally, still make sure that broker stopped (if it was started).
 # This is important in order to ensure proper cleanup of all VMs, images, etc.
