@@ -582,7 +582,9 @@ jobs:
       - name: Clean stale state from previous runs
         run: |
           sudo rm -fr "$GITHUB_WORKSPACE" && mkdir "$GITHUB_WORKSPACE"
-          rm -fr ~/.linuxkit
+          # May be root-owned if a previous run was killed before the evetest
+          # container could hand the linuxkit cache back (see entrypoint.sh).
+          sudo rm -fr ~/.linuxkit
           docker rm -f $(docker ps -aq) && docker volume rm -f $(docker volume ls -q) || :
           docker system prune --all --force --volumes
           mkdir -p "$EVETEST_COLLECT_ARTIFACTS"
