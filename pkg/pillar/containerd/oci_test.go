@@ -876,6 +876,41 @@ func TestAddLoader(t *testing.T) {
 	g.Expect(spec2.Mounts[1]).To(Equal(specs.Mount{Destination: "/dev", Type: "bind", Source: "/dev", Options: []string{"rw", "rbind", "rshared"}}))
 }
 
+// A domain holding CPUs of its own starts where its non-vCPU threads run, as
+// DomainStatus.StartCPUs says, not on its whole cpuset: what QEMU sets up while
+// it starts takes the CPUs it starts on.
+func TestUpdateFromDomainStartsOnTheStartCPUs(t *testing.T) {
+	for name, tc := range map[string]struct {
+		assigned types.CPUAssignment
+		cpus     []uint32
+		want     string
+	}{
+		"IO on the housekeeping CPUs": {
+			assigned: types.CPUAssignment{CPUs: []uint32{4, 5}, IOCPUs: []uint32{0, 1}},
+			cpus:     []uint32{4, 5, 0, 1},
+			want:     "0,1",
+		},
+		"IO on its own CPUs": {
+			assigned: types.CPUAssignment{CPUs: []uint32{4, 5}},
+			cpus:     []uint32{4, 5},
+			want:     "4,5",
+		},
+		"no CPUs of its own": {cpus: []uint32{0, 1, 2}, want: "0,1,2"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			spec, err := (&Client{}).NewOciSpec("test", false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			status := &types.DomainStatus{}
+			status.VmConfig.CPUs = tc.cpus
+			status.Placement.Assigned = tc.assigned
+			spec.UpdateFromDomain(&types.DomainConfig{VmConfig: types.VmConfig{VCpus: 2}}, status)
+			assert.Equal(t, tc.want, spec.Get().Linux.Resources.CPU.Cpus)
+		})
+	}
+}
+
 func TestDenyAllDevicesInSpec(t *testing.T) {
 	t.Parallel()
 
