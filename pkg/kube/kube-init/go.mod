@@ -1,11 +1,11 @@
 module github.com/lf-edge/eve/pkg/kube/kube-init
 
-go 1.25.12
+go 1.26.0
 
 require (
 	github.com/containerd/containerd/v2 v2.2.9
 	github.com/containerd/errdefs v1.0.0
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261105134359-c22104d6ca14
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261116211132-d577f4620e81
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
 	github.com/sirupsen/logrus v1.9.4
 	github.com/vishvananda/netlink v1.3.1
@@ -82,6 +82,7 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.19.2 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/lf-edge/eve-api/go v0.0.0-20261015104443-e46e4c3a39ce // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20261015084011-20eade920485 // indirect
@@ -108,11 +109,12 @@ require (
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.61.0 // indirect
-	go.opentelemetry.io/otel v1.45.0 // indirect
-	go.opentelemetry.io/otel/metric v1.45.0 // indirect
-	go.opentelemetry.io/otel/trace v1.45.0 // indirect
+	go.opentelemetry.io/otel v1.47.0 // indirect
+	go.opentelemetry.io/otel/log v1.47.0 // indirect
+	go.opentelemetry.io/otel/metric v1.47.0 // indirect
+	go.opentelemetry.io/otel/trace v1.47.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
