@@ -34,11 +34,10 @@ inputs:
   eve-version:
     description: >-
       Version of the EVE image that the run at source-run-id built, tagged as
-      <eve-repo>:<version>-<hv>-<arch>. When set, both flavors (kvm and k) are
-      made available on the evetest broker, downloaded and uploaded by whichever
-      job needs them first while the others wait, and evetest is pointed at
-      them. When empty, evetest pulls whatever is published for the checked-out
-      commit.
+      <eve-repo>:<version>-<hv>-<arch>. When set, the kvm image is made
+      available on the evetest broker, downloaded and uploaded by whichever job
+      needs it first while the others wait, and evetest is pointed at it. When
+      empty, evetest pulls whatever is published for the checked-out commit.
     required: false
     default: ''
   eve-repo:
@@ -175,7 +174,7 @@ runs:
       run: |
         "${GITHUB_ACTION_PATH}/retry.sh" make -C evetest install-cli
 
-    # The EVE images go to the broker, once per host, instead of into this
+    # The EVE image goes to the broker, once per host, instead of into this
     # runner's Docker: see stage-eve-image. The version is the one that runs of
     # the suites report, so the broker is asked for exactly this build.
     - name: Stage the EVE kvm image on the broker
@@ -189,18 +188,7 @@ runs:
         version: ${{ inputs.eve-version }}
         source-run-id: ${{ inputs.source-run-id }}
 
-    - name: Stage the EVE k image on the broker
-      if: inputs.eve-version != ''
-      uses: ./.github/actions/evetest-run-suite/stage-eve-image
-      with:
-        hypervisor: k
-        arch: ${{ env.EVE_ARCH }}
-        platform: ${{ env.EVE_PLATFORM }}
-        repo: ${{ inputs.eve-repo }}
-        version: ${{ inputs.eve-version }}
-        source-run-id: ${{ inputs.source-run-id }}
-
-    - name: Point evetest at the staged EVE images
+    - name: Point evetest at the staged EVE image
       if: inputs.eve-version != ''
       shell: bash
       env:
@@ -367,39 +355,6 @@ runs:
         path: ${{ env.ARTIFACT_DIR }}/${{ inputs.test-suite }}.xml
         if-no-files-found: ignore
 
-    - name: Coverage summary
-      if: always()
-      shell: bash
-      run: |
-        if [[ -z "$ARTIFACT_DIR" ]]; then
-          echo "No artifact directory located, skipping coverage."
-          exit 0
-        fi
-        # Build a comma-separated list of directories containing covcounters
-        # files anywhere under the artifact tree, for covdata merge -i.
-        COVER_DIRS=$(find "${ARTIFACT_DIR}" -type f -name "covcounters.*" \
-          -exec dirname {} \; | sort -u | paste -sd,)
-        if [[ -z "$COVER_DIRS" ]]; then
-          echo "No coverage data found."
-          exit 0
-        fi
-        mkdir -p /tmp/merged-coverage
-        go tool covdata merge -i "$COVER_DIRS" -o /tmp/merged-coverage
-        echo "### Coverage" >> $GITHUB_STEP_SUMMARY
-        go tool covdata percent -i /tmp/merged-coverage | tee -a $GITHUB_STEP_SUMMARY
-        go tool covdata textfmt -i /tmp/merged-coverage -o /tmp/coverage.txt
-        TOTAL=$(cd pkg/pillar && go tool cover -func=/tmp/coverage.txt | tail -1)
-        echo "$TOTAL"
-        echo "**$TOTAL**" >> $GITHUB_STEP_SUMMARY
-
-    - name: Upload coverage data
-      if: always()
-      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
-      with:
-        name: coverage-${{ inputs.test-suite }}
-        path: /tmp/merged-coverage/
-        if-no-files-found: ignore
-
     - name: Build claude-analysis.md
       if: ${{ failure() && inputs.analyze-failures == 'true' && env.ARTIFACT_DIR != '' }}
       continue-on-error: true
@@ -420,8 +375,8 @@ runs:
         } > "$OUT"
 
         # A copy nested one level under this same job's existing "###
-        # Test Results"/"### Coverage" sections, instead of the file's own
-        # "#" title outranking them.
+        # Test Results" section, instead of the file's own "#" title
+        # outranking it.
         "${GITHUB_ACTION_PATH}/shift-headings.sh" 3 < "$OUT" >> "$GITHUB_STEP_SUMMARY"
 
     # Only the latest run's analysis of this suite stays visible on the PR: the

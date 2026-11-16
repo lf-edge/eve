@@ -173,6 +173,28 @@ jobs:
       - name: Export docker container
         run: |
           make cache-export ZARCH=${{ matrix.arch }} IMAGE=lfedge/eve:$VERSION-${{ matrix.hv }} OUTFILE=eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar IMAGE_NAME=$TAG-${{ matrix.hv }}-${{ matrix.arch }}
+      # Also tag the image with its build version: the PR-number tag repeats across
+      # pushes, so the evetest broker, which caches images by name, would test a
+      # stale build. linuxkit exports a single name, hence the manifest edit.
+      # TODO: drop this step and the PR-number tag once Eden is gone (it cuts tags
+      # at the first '-', hence not compatible with the version tag).
+      - name: Add the per-build version tag to the exported image
+        if: ${{ matrix.hv == 'kvm' }}
+        run: |
+          python3 .github/scripts/add_repo_tag.py \
+            eve-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}.tar \
+            "evebuild/pr:$VERSION-${{ matrix.hv }}-${{ matrix.arch }}"
+      # evetest-pr.yml names the image to stage on the brokers from this, before
+      # it downloads anything.
+      - name: Upload EVE version
+        if: ${{ matrix.hv == 'kvm' }}
+        run: echo "$VERSION" > eve-version.txt
+      - name: Upload EVE version artifact
+        if: ${{ matrix.hv == 'kvm' }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: eve-version-${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
+          path: eve-version.txt
       - name: Upload EVE ${{ matrix.hv }}-${{ matrix.arch }}-${{ matrix.platform }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
         with:
