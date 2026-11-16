@@ -178,8 +178,8 @@ here, since Read can't look inside an archive on its own.
 
 Investigate the live system directly, not just static logs. Run
 \"evetest --help\" (and the per-command help, e.g. \"evetest eve --help\",
-\"evetest sdn --help\", \"evetest cluster --help\") to see the full range
-of commands available -- status, ssh, logs, collect-info, device/cluster
+\"evetest sdn --help\") to see the full range
+of commands available -- status, ssh, logs, collect-info, device
 info and metrics, and more -- and use whichever are relevant to this
 specific failure, rather than guessing from the failure message alone.
 evetest eve ssh/sdn ssh take a command argument and run it non-interactively
