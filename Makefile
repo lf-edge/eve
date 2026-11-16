@@ -589,6 +589,7 @@ test: $(LINUXKIT) pkg/pillar | $(DIST)
 	go test -C pkg/newlog/cmd/ -v -race
 	go test -C pkg/edgeview/src/ -v -race
 	go test -C pkg/kube/kube-init/ -v -race ./...
+	go test -C pkg/kube/lh-snap-revert/ -v -race ./...
 	$(QUIET): $@: Succeeded
 
 # The bpftrace-compiler tests boot QEMU for both amd64 and arm64, so they need
@@ -617,6 +618,14 @@ pillar-%: $(GOBUILDER) | $(DIST)
 	@echo Running make $* on pillar
 	$(QUIET)$(DOCKER_GO) "make $*" $(GOTREE)
 	$(QUIET): $@: Succeeded
+
+# Standalone build of the EVE-K Longhorn snapshot revert tool, for nodes
+# whose EVE release does not include it; see pkg/kube/lh-snap-revert/README.md.
+.PHONY: lh-snap-revert
+lh-snap-revert: $(GOBUILDER) | $(DIST)
+	$(QUIET)$(DOCKER_GO) "CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags '-s -w' \
+		-o /eve/dist/$(ZARCH)/lh-snap-revert ." $(CURDIR)/pkg/kube/lh-snap-revert
+	@echo Built $(DIST)/lh-snap-revert
 
 clean:
 	rm -rf $(DIST) images/out pkg-deps*.mk
@@ -1523,6 +1532,7 @@ help:
 	@echo "   proto                            generates Go and Python source from protobuf API definitions"
 	@echo "   proto-vendor                     update vendored API in packages that require it (e.g. pkg/pillar)"
 	@echo "   shell                            drop into docker container setup for Go development"
+	@echo "   lh-snap-revert                   build the EVE-K Longhorn snapshot revert tool into dist/$(ZARCH)"
 	@echo "   yetus                            run Apache Yetus to check the quality of the source tree"
 	@echo "   mini-yetus                       run Apache Yetus to check the quality of the source tree"
 	@echo "                                    only on the files that have changed in the source branch"

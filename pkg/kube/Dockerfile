@@ -62,6 +62,11 @@ COPY stale-mount-cleanup /plugins/stale-mount-cleanup
 WORKDIR /plugins/stale-mount-cleanup
 RUN GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /out/usr/bin/stale-mount-cleanup .
 
+# Longhorn snapshot revert tool, see lh-snap-revert/README.md.
+COPY lh-snap-revert /plugins/lh-snap-revert
+WORKDIR /plugins/lh-snap-revert
+RUN GO111MODULE=on CGO_ENABLED=0 go build -v -trimpath -ldflags "-s -w" -mod=vendor -o /out/usr/bin/lh-snap-revert .
+
 # kube-init is the Go daemon that replaces cluster-init.sh. The
 # binary built here is the container's entrypoint; k3s-sctl is the
 # operator-facing CLI client that talks to its control socket.
