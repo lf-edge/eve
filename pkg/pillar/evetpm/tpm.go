@@ -1290,6 +1290,12 @@ func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) erro
 		return fmt.Errorf("refusing to seal disk key: firmware anchor PCR(s) %v are all-zero in the SHA-256 bank, measured-boot chain is not anchored (TPM Carte Blanche attack)", zeroed)
 	}
 
+	if err := TryToSealDiskKeyWithEnhancedAuth(log, key); err == nil {
+		return nil
+	} else {
+		log.Warnf("falling back to PCR key sealing, enhanced authorization failed: %v", err)
+	}
+
 	if tpmSupportsAES128CFB() {
 		log.Noticef("TPM supports AES-128-CFB, sealing with parameter encryption")
 		if err := sealDiskKeyEncrypted(log, key, pcrSel); err != nil {
@@ -1380,6 +1386,12 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 // UnsealDiskKeyWithRecovery unseals key from TPM2.0, with recovery option
 // to try recovering PCR indexes if saved ones don't work.
 func UnsealDiskKeyWithRecovery(log *base.LogObject, pcrSel tpm2.PCRSelection) ([]byte, error) {
+	if key, err := TryToUnsealDiskKeyWithEnhancedAuth(log); err == nil {
+		return key, nil
+	} else {
+		log.Warnf("falling back to PCR key unsealing, enhanced authorization failed: %v", err)
+	}
+
 	log.Noticef("Trying to unseal disk key with PCRs %v", pcrSel.PCRs)
 
 	key, unsealErr := UnsealDiskKey(pcrSel)

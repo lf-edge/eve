@@ -49,6 +49,8 @@ const (
 	// names (one per line) recorded by pkg/watchdog at boot. A "CARDRESET"
 	// entry means the watchdog reset the device on the previous boot.
 	HWWatchdogBootStatusFile = PersistDir + "/hw_watchdog_bootstatus"
+	// TPMPolicyConfigDir - directory to keep tpm enhanced auth policies
+	TPMPolicyConfigDir = PersistConfigDir + "/tpmpolicy"
 
 	// IdentityDirname - Config dir
 	IdentityDirname = "/config"

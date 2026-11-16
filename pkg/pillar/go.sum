@@ -121,6 +121,12 @@ github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24
 github.com/beorn7/perks v1.0.0/go.mod h1:KWe93zE9D1o94FZ5RNwFwVgaQK1VOXiVxmqh+CedLV8=
 github.com/blang/semver/v4 v4.0.0 h1:1PFHFE6yCCTv8C1TeyNNarDzntLi7wMI5i/pzqYIsAM=
 github.com/blang/semver/v4 v4.0.0/go.mod h1:IbckMUScFkM3pff0VJDNKRiT6TG/YpiHIM2yvyW5YoQ=
+github.com/canonical/go-efilib v0.3.0/go.mod h1:9b2PNAuPcZsB76x75/uwH99D8CyH/A2y4rq1/+bvplg=
+github.com/canonical/go-sp800.108-kdf v0.0.0-20210314145419-a3359f2d21b9 h1:USzKjrfWo/ESzozv2i3OMM7XDgxrZRvaHFrKkIKRtwU=
+github.com/canonical/go-sp800.108-kdf v0.0.0-20210314145419-a3359f2d21b9/go.mod h1:Zrs3YjJr+w51u0R/dyLh/oWt/EcBVdLPCVFYC4daW5s=
+github.com/canonical/go-sp800.90a-drbg v0.0.0-20210314144037-6eeb1040d6c3/go.mod h1:qdP0gaj0QtgX2RUZhnlVrceJ+Qln8aSlDyJwelLLFeM=
+github.com/canonical/go-tpm2 v1.0.1-0.20230302101824-929183e212cc h1:EHHZh+k4WXEbjSb8jeJKd6z6oadotL8Gai0fORP2JTk=
+github.com/canonical/go-tpm2 v1.0.1-0.20230302101824-929183e212cc/go.mod h1:z9MV9mOPyfwSCTMQlBeiZNCOp4ujHf//TYsoH6ToUxE=
 github.com/cenkalti/backoff v2.2.1+incompatible h1:tNowT99t7UNflLxfYYSlKYsBpXdEet03Pg2g16Swow4=
 github.com/cenkalti/backoff v2.2.1+incompatible/go.mod h1:90ReRw6GdpyfrHakVjL/QHaoyV4aDUVVkXQJJJ3NXXM=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
@@ -176,6 +182,7 @@ github.com/coreos/bbolt v1.3.2/go.mod h1:iRUV2dpdMOn7Bo10OQBFzIJO9kkE559Wcmn+qkE
 github.com/coreos/etcd v3.3.10+incompatible/go.mod h1:uF7uidLiAD3TWHmW31ZFd/JWoc32PjwdhPthX9715RE=
 github.com/coreos/go-semver v0.2.0/go.mod h1:nnelYz7RCh+5ahJtPPxZlU+153eP4D4r3EedlOD2RNk=
 github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e/go.mod h1:F5haX7vjVVG0kc13fIWeqUViNPyEJxv/OmvnBo0Yme4=
+github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf/go.mod h1:F5haX7vjVVG0kc13fIWeqUViNPyEJxv/OmvnBo0Yme4=
 github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f/go.mod h1:E3G3o1h8I7cfcXa63jLwjI0eiQQMgzzUDFVpN/nH/eA=
 github.com/cpuguy83/dockercfg v0.3.2 h1:DlJTyZGBDlXqUZ2Dk2Q3xHs/FtnooJJVaad2S9GKorA=
 github.com/cpuguy83/dockercfg v0.3.2/go.mod h1:sugsbF4//dDlL/i+S+rtpIWp+5h0BHJHfjj5/jFyUJc=
@@ -308,6 +315,7 @@ github.com/go-task/slim-sprig/v3 v3.0.0/go.mod h1:W848ghGpv3Qj3dhTPRyJypKRiqCdHZ
 github.com/gobwas/httphead v0.1.0/go.mod h1:O/RXo79gxV8G+RqlR/otEwx4Q36zl9rqC5u12GKvMCM=
 github.com/gobwas/pool v0.2.1/go.mod h1:q8bcK0KcYlCgd9e7WYLm9LpyS+YeLd8JVDW6WezmKEw=
 github.com/gobwas/ws v1.2.1/go.mod h1:hRKAFb8wOxFROYNsT1bqfWnhX+b5MFeJM9r2ZSwg/KY=
+github.com/godbus/dbus v4.1.0+incompatible/go.mod h1:/YcGZj5zSblfDWMMoOzV4fas9FZnQYTkDnsGvmh2Grw=
 github.com/gogo/protobuf v1.1.1/go.mod h1:r8qH/GZQm5c6nD/R0oafs1akxWv10x8SbQlK7atdtwQ=
 github.com/gogo/protobuf v1.2.1/go.mod h1:hp+jE20tsWTFYpLwKvXlhS1hjn+gTNwPg2I6zVXpSg4=
 github.com/gogo/protobuf v1.3.1/go.mod h1:SlYgWuQ5SjCEi6WLHjHCa1yvBfUnHcTbrrZtXPKa29o=
@@ -390,6 +398,7 @@ github.com/googleapis/enterprise-certificate-proxy v0.3.11 h1:vAe81Msw+8tKUxi2Dq
 github.com/googleapis/enterprise-certificate-proxy v0.3.11/go.mod h1:RFV7MUdlb7AgEq2v7FmMCfeSMCllAzWxFgRdusoGks8=
 github.com/googleapis/gax-go/v2 v2.17.0 h1:RksgfBpxqff0EZkDWYuz9q/uWsTVz+kf43LsZ1J6SMc=
 github.com/googleapis/gax-go/v2 v2.17.0/go.mod h1:mzaqghpQp4JDh3HvADwrat+6M3MOIDp5YKHhb9PAgDY=
+github.com/gorilla/mux v1.8.0/go.mod h1:DVbg23sWSpFRCP0SfiEN6jmj59UnW/n46BH5rLB71So=
 github.com/gorilla/websocket v1.4.0/go.mod h1:E7qHFY5m1UJ88s3WnNqhKjPHQ0heANvMoAMk2YaljkQ=
 github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 h1:JeSE6pjso5THxAzdVpqr6/geYxZytqFMBCOtn/ujyeo=
 github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674/go.mod h1:r4w70xmWCQKmi1ONH4KIaBptdivuRPyosB9RmPlGEwA=
@@ -422,6 +431,7 @@ github.com/jackwakefield/gopac v1.0.2/go.mod h1:yR1sfJXcndScUFYPx7Xqxj7bkNlCWw9A
 github.com/jaypipes/pcidb v1.1.1 h1:QmPhpsbmmnCwZmHeYAATxEaoRuiMAJusKYkUncMC0ro=
 github.com/jaypipes/pcidb v1.1.1/go.mod h1:x27LT2krrUgjf875KxQXKB0Ha/YXLdZRVmw6hH0G7g8=
 github.com/jessevdk/go-flags v1.4.0/go.mod h1:4FA24M0QyGHXBuZZK/XkWh8h0e1EYbRYJSGM75WSRxI=
+github.com/jessevdk/go-flags v1.5.0/go.mod h1:Fw0T6WPc1dYxT4mKEZRfG5kJhaTDP9pj1c2EWnYs/m4=
 github.com/jinzhu/copier v0.4.0 h1:w3ciUoD19shMCRargcpm0cm91ytaBhDvuRpz1ODO/U8=
 github.com/jinzhu/copier v0.4.0/go.mod h1:DfbEm0FYsaqBcKcFuvmOZb218JkPGtvSHsKg8S8hyyg=
 github.com/joho/godotenv v1.5.1 h1:7eLL/+HRGLY0ldzfGMeQkb7vMd0as4CfYvUVzLqw0N0=
@@ -471,6 +481,8 @@ github.com/lf-edge/eve-api/go v0.0.0-20261015104443-e46e4c3a39ce h1:rmKaUyMA4frX
 github.com/lf-edge/eve-api/go v0.0.0-20261015104443-e46e4c3a39ce/go.mod h1:6HxNA/qKJVEqwpuOFkcQ0h3QyotvAs/cjHLC961FPOY=
 github.com/lf-edge/eve-libs v0.0.0-20260928172040-a59ba20797d0 h1:u7tFrmeaqkuIc06IYWLY/cEqHFzplnYgQ9MERTolKaY=
 github.com/lf-edge/eve-libs v0.0.0-20260928172040-a59ba20797d0/go.mod h1:TXOpIgx9kwsunYgGcyTAAJvI+faOAd+PWk7p8mt0I8Y=
+github.com/lf-edge/eve-tpmea v0.0.0-20230919075259-6fcd8746a710 h1:pPKrg2jQ8EHKCgCss4epmmvUpodmD4y262XYTSUUwUc=
+github.com/lf-edge/eve-tpmea v0.0.0-20230919075259-6fcd8746a710/go.mod h1:jG/tU9AsRvZxUfZSixM6EPO+uXnaZgqBKOjAXJt6zac=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20261015084011-20eade920485 h1:UI1G5IeecS+6wwO9LVEwstKkgZ9y9WvdSvwS44Qed6M=
 github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20261015084011-20eade920485/go.mod h1:Vq745ozk94M81lIQlQIQv88kvgYAWvO7/5OnCrRiCQc=
 github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56 h1:LmFp0jbNSwPLuxJA+nQ+mMQrQ53ESkvHP4CVMqR0zrY=
@@ -547,6 +559,7 @@ github.com/multiplay/go-edac v1.0.1/go.mod h1:hCc8kqu1vPLXKrezHneuuoNtKbex7fjpaS
 github.com/munnerz/goautoneg v0.0.0-20120707110453-a547fc61f48d/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq1c1nUAm88MOHcQC9l5mIlSMApZMrHA=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
+github.com/mvo5/goconfigparser v0.0.0-20221018104758-434073381f37/go.mod h1:inxjKzuGbpMDmdoI7kogueqBVRdf6fPAG5dAsU3gu60=
 github.com/mwitkow/go-conntrack v0.0.0-20161129095857-cc309e4a2223/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
 github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f h1:y5//uYreIhSUg3J1GEMiLbxo1LJaP8RfCpH6pymGZus=
 github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f/go.mod h1:ZdcZmHo+o7JKHSa8/e818NopupXU1YMK5fe1lsApnBw=
@@ -695,6 +708,12 @@ github.com/smallstep/pkcs7 v0.2.1 h1:6Kfzr/QizdIuB6LSv8y1LJdZ3aPSfTNhTLqAx9CTLfA
 github.com/smallstep/pkcs7 v0.2.1/go.mod h1:RcXHsMfL+BzH8tRhmrF1NkkpebKpq3JEM66cOFxanf0=
 github.com/smallstep/scep v0.0.0-20250318231241-a25cabb69492 h1:k23+s51sgYix4Zgbvpmy+1ZgXLjr4ZTkBTqXmpnImwA=
 github.com/smallstep/scep v0.0.0-20250318231241-a25cabb69492/go.mod h1:QQhwLqCS13nhv8L5ov7NgusowENUtXdEzdytjmJHdZQ=
+github.com/snapcore/go-gettext v0.0.0-20191107141714-82bbea49e785 h1:PaunR+BhraKSLxt2awQ42zofkP+NKh/VjQ0PjIMk/y4=
+github.com/snapcore/go-gettext v0.0.0-20191107141714-82bbea49e785/go.mod h1:D3SsWAXK7wCCBZu+Vk5hc1EuKj/L3XN1puEMXTU4LrQ=
+github.com/snapcore/secboot v0.0.0-20221114180054-b4be60e68879/go.mod h1:72paVOkm4sJugXt+v9ItmnjXgO921D8xqsbH2OekouY=
+github.com/snapcore/snapd v0.0.0-20201005140838-501d14ac146e h1:vqDZWKPBL9RKPA8KyOuTaSuXXlmRwn/ndvOkZaAmLJs=
+github.com/snapcore/snapd v0.0.0-20201005140838-501d14ac146e/go.mod h1:3xrn7QDDKymcE5VO2rgWEQ5ZAUGb9htfwlXnoel6Io8=
+github.com/snapcore/squashfuse v0.0.0-20171220165323-319f6d41a041/go.mod h1:8loYitFPSdoeCXBs/XjO0fyGcpgLAybOHLUsGwgMq90=
 github.com/soheilhy/cmux v0.1.4/go.mod h1:IM3LyeVVIOuxMH7sFAkER9+bJ4dT7Ms6E4xg4kGIyLM=
 github.com/spaolacci/murmur3 v0.0.0-20180118202830-f09979ecbc72/go.mod h1:JwIasOWyU6f++ZhiEuf87xNszmSA2myDM2Kzu9HwQUA=
 github.com/spf13/afero v1.1.2/go.mod h1:j4pytiNVoe2o6bmDsKpLACNPDBIoEAkihy7loJ1B0CQ=
@@ -779,6 +798,7 @@ github.com/zededa/ghw v0.0.0-20261027121606-e655b8f5a5a0/go.mod h1:TEtmeg0k7x13v
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.etcd.io/bbolt v1.3.11 h1:yGEzV1wPz2yVCLsD8ZAiGHhHVlczyC9d1rP43/VCRJ0=
 go.etcd.io/bbolt v1.3.11/go.mod h1:dksAq7YMXoljX0xu6VF5DMZGbhYYoLUalEiSySYAS4I=
+go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1/go.mod h1:SNgMg+EgDFwmvSmLRTNKC5fegJjB7v23qTQ0XLGUNHk=
 go.opencensus.io v0.24.0 h1:y73uSU6J157QMP2kn2r30vwW1A2W2WFwSCGnAVxeaD0=
 go.opencensus.io v0.24.0/go.mod h1:vNK8G9p7aAivkbmorf4v+7Hgx+Zs0yY+0fOtgBfjQKo=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
@@ -884,6 +904,7 @@ golang.org/x/net v0.0.0-20190923162816-aa69164e4478/go.mod h1:z5CRVTTTmAJ677TzLL
 golang.org/x/net v0.0.0-20200114155413-6afb5195e5aa/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
 golang.org/x/net v0.0.0-20200226121028-0de0cce0169b/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
 golang.org/x/net v0.0.0-20200520004742-59133d7f0dd7/go.mod h1:qpuaurCH72eLCgpAm/N6yyVIVM9cpaDIP3A8BGJEC5A=
+golang.org/x/net v0.0.0-20201002202402-0a1ea396d57c/go.mod h1:iQL9McJNjoIa5mjH6nYTCTZXUN6RP+XW3eib7Ya3XcI=
 golang.org/x/net v0.0.0-20201021035429-f5854403a974/go.mod h1:sp8m0HH+o8qH0wwXwYZr8TS3Oi6o0r6Gce1SSxlDquU=
 golang.org/x/net v0.0.0-20201110031124-69a78807bb2b/go.mod h1:sp8m0HH+o8qH0wwXwYZr8TS3Oi6o0r6Gce1SSxlDquU=
 golang.org/x/net v0.0.0-20210226172049-e18ecbb05110/go.mod h1:m0MpNAwzfU5UDzcl9v0D8zg8gWTRqZa9RBIspLL5mdg=
@@ -965,6 +986,8 @@ golang.org/x/sys v0.0.0-20200930185726-fdedc70b468f/go.mod h1:h1NjWce9XRLGQEsW7w
 golang.org/x/sys v0.0.0-20201119102817-f84b799fce68/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20210112080510-489259a85091/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20210303074136-134d130e1a04/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/sys v0.0.0-20210320140829-1e4c9ba3b0c4/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/sys v0.0.0-20210324051608-47abb6519492/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20210420072515-93ed5bcd2bfe/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20210423082822-04245dca01da/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20210423185535-09eb48e85fd7/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
@@ -1162,6 +1185,8 @@ gopkg.in/resty.v1 v1.12.0/go.mod h1:mDo4pnntr5jdWRML875a/NmxYqAlA73dVijT2AXvQQo=
 gopkg.in/sourcemap.v1 v1.0.5 h1:inv58fC9f9J3TK2Y2R1NPntXEn3/wjWHkonhIUODNTI=
 gopkg.in/sourcemap.v1 v1.0.5/go.mod h1:2RlvNNSMglmRrcvhfuzp4hQHwOtjxlbjX7UPY/GXb78=
 gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7/go.mod h1:dt/ZhP58zS4L8KSrWDmTeBkI65Dw0HsyUHuEVlX15mw=
+gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637 h1:yiW+nvdHb9LVqSHQBXfZCieqV4fzYhNBql77zY0ykqs=
+gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637/go.mod h1:BHsqpu/nsuzkT5BpiH1EMZPLyqSMM8JbIavyFACoFNk=
 gopkg.in/yaml.v2 v2.0.0-20170812160011-eb3733d160e7/go.mod h1:JAlM8MvJe8wmxCU4Bli9HhUf9+ttbYbLASfIpnQbh74=
 gopkg.in/yaml.v2 v2.2.1/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
 gopkg.in/yaml.v2 v2.2.2/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=

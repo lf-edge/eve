@@ -78,6 +78,11 @@ require (
 )
 
 require (
+	github.com/canonical/go-sp800.108-kdf v0.0.0-20210314145419-a3359f2d21b9 // indirect
+	github.com/canonical/go-tpm2 v1.0.1-0.20230302101824-929183e212cc // indirect
+)
+
+require (
 	cloud.google.com/go v0.121.6 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	cloud.google.com/go/iam v1.5.3 // indirect
@@ -231,6 +236,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jinzhu/copier v0.4.0 // indirect
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 // indirect
+	github.com/lf-edge/eve-tpmea v0.0.0-20230919075259-6fcd8746a710
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
 	github.com/miekg/dns v1.1.43 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
