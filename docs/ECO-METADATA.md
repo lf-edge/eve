@@ -371,6 +371,10 @@ This can be done using a POST to `/eve/v1/tpm/signer` endpoint.
 The maximum support size is 64 kbytes.
 The returned object is binary with protobuf message of type `AuthContainer` carrying the signature with the embedded posted payload (possibly encrypted). This protobuf message is specified in [OBJECT-SIGNING](https://github.com/lf-edge/eve-api/tree/main/OBJECT-SIGNING.md).
 
+### Legacy credential-activation endpoint
+
+`GET /eve/v1/tpm/activatecredential/` and `POST /eve/v1/tpm/activatecredential/` are the original credential-activation exchange: the GET returns `{"ek": ..., "aikpub": ..., "aikname": ...}` (base64 `TPMT_PUBLIC`s and the AIK name), and the POST takes `{"data": ..., "cred": ..., "secret": ...}`, runs `TPM2_ActivateCredential` with the AIK and the EK at handle `0x81000001`, and returns the recovered `secret` plus the AIK's `sig` over `data`. This predates the endpoints below and is kept for existing callers only; new integrations should use `/eve/v1/tpm/identity` and `/eve/v1/tpm/activate` for proving key co-residency, and a quote with caller-bound `caller_data` where a signature over caller-chosen data is needed. Unlike those endpoints, it is not rate limited.
+
 ### TPM attestation endpoints
 
 These endpoints let an application prove to a remote verifier that a piece of data came from a named workload on a device whose measured boot state the verifier can check, and that the attestation key lives in a TPM certified by its manufacturer. The verifier needs no access to the controller.
