@@ -538,8 +538,6 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedagentCtx.deferredLOCPeriodicQueue = controllerconn.CreateDeferredQueue(log, ctrlClient,
 		zedagentCtx.ps, agentName, "DeferredLOCPeriodic",
 		warningTime, errorTime, nil)
-	// XXX defer this until we have some config from cloud or saved copy
-	getconfigCtx.pubAppInstanceConfig.SignalRestarted()
 
 	// Initialize remote attestation context. Do this before we get events
 	// from the AttestQuote and EncryptedKeyFromDevice subscriptions
