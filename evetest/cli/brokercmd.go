@@ -79,7 +79,7 @@ func (f *imageFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.repo, "repo", viper.GetString(constants.EVERepoEnv),
 		"EVE image repository, e.g. evebuild/pr ("+constants.EnvPrefix+constants.EVERepoEnv+")")
 	cmd.Flags().StringVar(&f.version, "version", "", "EVE image version")
-	cmd.Flags().StringVar(&f.hypervisor, "hypervisor", "kvm", "hypervisor flavor: kvm, k or xen")
+	cmd.Flags().StringVar(&f.hypervisor, "hypervisor", "kvm", "hypervisor flavor: kvm or xen")
 	cmd.Flags().StringVar(&f.arch, "arch", "amd64", "architecture: amd64 or arm64")
 	_ = cmd.MarkFlagRequired("version")
 }
@@ -89,8 +89,6 @@ func (f *imageFlags) ref() (*pb.ImageRef, error) {
 	switch f.hypervisor {
 	case "kvm":
 		ref.Hypervisor = pb.HypervisorType_HV_KVM
-	case "k":
-		ref.Hypervisor = pb.HypervisorType_HV_KUBEVIRT
 	case "xen":
 		ref.Hypervisor = pb.HypervisorType_HV_XEN
 	default:
