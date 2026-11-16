@@ -1377,7 +1377,7 @@ endif
 %/Dockerfile: %/Dockerfile.in $(LINUXKIT) $(RESCAN_DEPS)
 	@echo "Building $@ from $<"
 	$(QUIET)$(PARSE_PKGS) $< > $@
-	$(QUIET)sed -i -E 's#^(FROM[[:space:]]+)docker\.io/#\1#' $@
+	$(QUIET)sed -E 's#^(FROM[[:space:]]+)docker\.io/#\1#' $@ > $@.tmp && mv $@.tmp $@
 	$(QUIET): $@: Succeeded
 
 # If DEV=y and file pkg/my_package/build-dev.yml exists, returns the path to that file.
