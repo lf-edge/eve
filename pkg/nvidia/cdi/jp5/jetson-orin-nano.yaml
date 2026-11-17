@@ -1668,7 +1668,7 @@ devices:
             - nodev
             - bind
     name: '0'
-  - containerEdits:
+  - containerEdits: &tegra-edits
       deviceNodes:
         - path: /dev/fb0
         - path: /dev/nvhost-as-gpu
@@ -3332,4 +3332,6 @@ devices:
             - nodev
             - bind
     name: tegra
+  - containerEdits: *tegra-edits
+    name: all
 kind: nvidia.com/gpu
