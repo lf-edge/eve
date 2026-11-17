@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"slices"
@@ -442,6 +443,24 @@ func diskRootLayerSize(casClient cas.CAS, image string) (size int64, found bool,
 	return 0, false, nil
 }
 
+// errRootfsTooLarge is returned by boundedWriter once the limit is exceeded.
+var errRootfsTooLarge = errors.New("rootfs exceeds the partition size")
+
+// boundedWriter refuses to write more than remaining bytes to w.
+type boundedWriter struct {
+	w         io.Writer
+	remaining uint64
+}
+
+func (b *boundedWriter) Write(p []byte) (int, error) {
+	if uint64(len(p)) > b.remaining {
+		return 0, errRootfsTooLarge
+	}
+	n, err := b.w.Write(p)
+	b.remaining -= uint64(n)
+	return n, err
+}
+
 // WriteToPartition write the image to partition partName
 func WriteToPartition(log *base.LogObject, image string, partName string) error {
 
@@ -522,9 +541,13 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 	}
 	defer f.Close()
 
-	// The rootfs fit was checked above against the partition capacity, so write
-	// the disk-root layer straight to the partition device.
-	if _, _, err := puller.Pull(&registry.FilesTarget{Root: f, AcceptHash: true}, 0, false, os.Stderr, resolver); err != nil {
+	// The check above only knows the rootfs size when it is a layer of its
+	// own; a rootfs packed inside a tar layer is bounded here instead.
+	var root io.Writer = f
+	if partSize := GetPartitionSizeInBytes(partName); partSize > 0 {
+		root = &boundedWriter{w: f, remaining: partSize}
+	}
+	if _, _, err := puller.Pull(&registry.FilesTarget{Root: root, AcceptHash: true}, 0, false, os.Stderr, resolver); err != nil {
 		errStr := fmt.Sprintf("error pulling %s from containerd: %v", image, err)
 		log.Error(errStr)
 		return errors.New(errStr)
