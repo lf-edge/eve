@@ -55,6 +55,13 @@ const (
 	EVEDownloadedLabel = "eve-downloaded"
 	// EVEDownloadedValue : Value to set on the label
 	EVEDownloadedValue = "true"
+	// EVEOCIArchiveLabel is set on an image loaded from an OCI image-layout
+	// archive; its value is the sha256 of that archive.
+	EVEOCIArchiveLabel = "eve-oci-archive-sha256"
+	// EVEOCIArchiveManifestLabel is set together with EVEOCIArchiveLabel; its
+	// value is the digest of the manifest that archive held. An image whose
+	// target has since been replaced no longer matches it.
+	EVEOCIArchiveManifestLabel = "eve-oci-archive-manifest"
 )
 
 // Key returns the pubsub Key.

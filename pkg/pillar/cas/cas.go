@@ -155,6 +155,18 @@ type CAS interface {
 	// this API will GC all blobs that were loaded until that point.
 	IngestBlobsAndCreateImage(reference string, root types.BlobStatus, blobs ...types.BlobStatus) ([]types.BlobStatus, error)
 
+	// IngestOCILayoutAndCreateImage points reference at the single image held
+	// by the OCI image-layout tar archive at archivePath, after loading those
+	// of its blobs that are listed in blobs by their sha256, in hex without
+	// the algorithm. The other blobs of the image are left to whoever loads
+	// them. The image is labelled with types.EVEOCIArchiveLabel and
+	// types.EVEOCIArchiveManifestLabel, so that it can later be matched to
+	// the archive it came from.
+	// Returns the sha256 of the blobs it loaded, or nil with an error.
+	// As with IngestBlobsAndCreateImage, blobs loaded before an error are
+	// left for the CAS to garbage collect.
+	IngestOCILayoutAndCreateImage(reference, archivePath, archiveSha256 string, blobs []string) ([]string, error)
+
 	// Resolver get an interface that satisfies resolver.ResolverCloser to communicate directly with a generic CAS
 	Resolver(ctx context.Context) (resolver.ResolverCloser, error)
 
