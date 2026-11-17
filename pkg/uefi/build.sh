@@ -51,15 +51,9 @@ case $(uname -m) in
     aarch64) build -b ${TARGET} -t GCC5 -a AARCH64 -n "$(nproc)" -p ArmVirtPkg/ArmVirtQemu.dsc -D TPM2_ENABLE=TRUE -D TPM2_CONFIG_ENABLE=TRUE
              cp Build/ArmVirtQemu-AARCH64/${TARGET}_GCC5/FV/QEMU_EFI.fd OVMF.fd
              cp Build/ArmVirtQemu-AARCH64/${TARGET}_GCC5/FV/QEMU_VARS.fd OVMF_VARS.fd
-             # now let's build PVH UEFI kernel
-             make -C BaseTools/Source/C -j "$(nproc)"
-             build -b ${TARGET} -t GCC5 -a AARCH64 -n "$(nproc)" -p ArmVirtPkg/ArmVirtXen.dsc
-             cp Build/ArmVirtXen-AARCH64/${TARGET}_*/FV/XEN_EFI.fd OVMF_PVH.fd
              ;;
      x86_64) build -b ${TARGET} -t GCC5 -a X64 -n "$(nproc)" -p OvmfPkg/OvmfPkgX64.dsc ${OVMF_COMMON_FLAGS}
              cp Build/OvmfX64/${TARGET}_*/FV/OVMF*.fd .
-             build -b ${TARGET} -t GCC5 -a X64 -n "$(nproc)" -p OvmfPkg/OvmfXen.dsc
-             cp Build/OvmfXen/${TARGET}_*/FV/OVMF.fd OVMF_PVH.fd
              # When UEFI_TARGET=DEBUG: layer the diagnostic patches and
              # adjust the VfioIgdPkg DSC.  RELEASE builds skip this
              # entire block so production images carry no trace code.
