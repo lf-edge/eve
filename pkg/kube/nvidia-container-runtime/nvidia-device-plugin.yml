@@ -170,7 +170,7 @@ spec:
         - name: NVIDIA_DEV_ROOT
           value: /
         - name: DEVICE_DISCOVERY_STRATEGY
-          value: nvml
+          value: auto
         - name: NVIDIA_CTK_PATH
           value: /usr/bin/nvidia-cdi-hook-eve
         - name: CONTAINER_DRIVER_ROOT
