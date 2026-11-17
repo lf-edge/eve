@@ -43,6 +43,9 @@ type casIngestWorkDescription struct {
 	claimedBlobs []string
 	// used for results
 	loaded []string
+	// archiveBlobs are the blobs of the image loaded from an OCI archive,
+	// the manifest first. Empty unless the content was such an archive.
+	archiveBlobs []types.BlobStatus
 }
 
 // What we track for the result
@@ -335,6 +338,18 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 
 	appImgName := status.ReferenceID()
 
+	if isArchiveTree(&status, root) {
+		archiveBlobs, err := ctx.casClient.IngestOCILayoutAndCreateImage(appImgName, root.Path, root.Sha256)
+		if err != nil {
+			result.Error = err
+			result.ErrorTime = time.Now()
+			return result
+		}
+		d.archiveBlobs = archiveBlobs
+		result.Description = d
+		return result
+	}
+
 	// load the blobs
 	loadedBlobs, err := ctx.casClient.IngestBlobsAndCreateImage(appImgName, *root, loadBlobs...)
 	// loadedBlobs are BlobStatus for the ones we loaded
@@ -432,7 +447,11 @@ func processCasIngestWorkResult(ctxPtr interface{}, res worker.WorkResult) error
 		blob.State = types.LOADED
 		publishBlobStatus(ctx, blob)
 	}
-	updateStatusByBlob(ctx, d.status.Blobs...)
+	changedBlobs := append([]string{}, d.status.Blobs...)
+	if res.Error == nil && len(d.archiveBlobs) > 0 {
+		changedBlobs = append(changedBlobs, adoptArchiveBlobs(ctx, d)...)
+	}
+	updateStatusByBlob(ctx, changedBlobs...)
 	// See processVolumeWorkResult: this frees a slot in the shared pool.
 	reevaluatePendingVolumes(ctx)
 	reevaluatePendingContentTrees(ctx, types.VERIFIED)
