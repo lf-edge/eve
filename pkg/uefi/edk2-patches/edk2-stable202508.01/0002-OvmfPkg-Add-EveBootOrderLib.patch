@@ -21,8 +21,7 @@ Signed-off-by: Renê de Souza Pinto <rene@renesp.com.br>
  .../PlatformBootManagerLib.inf                |   1 +
  OvmfPkg/OvmfPkg.dec                           |   5 +
  OvmfPkg/OvmfPkgX64.dsc                        |   1 +
- OvmfPkg/OvmfXen.dsc                           |   1 +
- 9 files changed, 263 insertions(+)
+ 8 files changed, 262 insertions(+)
  create mode 100644 OvmfPkg/Include/Library/EveBootOrderLib.h
  create mode 100644 OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.c
  create mode 100644 OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.inf
@@ -362,18 +361,6 @@ index f859db6acd..da7e10ecde 100644
    PlatformBootManagerCommonLib|OvmfPkg/Library/PlatformBootManagerCommonLib/PlatformBootManagerCommonLib.inf
    CpuExceptionHandlerLib|UefiCpuPkg/Library/CpuExceptionHandlerLib/DxeCpuExceptionHandlerLib.inf
  !if $(SMM_REQUIRE) == TRUE
-diff --git a/OvmfPkg/OvmfXen.dsc b/OvmfPkg/OvmfXen.dsc
-index 4e99acb800..37a359eb31 100644
---- a/OvmfPkg/OvmfXen.dsc
-+++ b/OvmfPkg/OvmfXen.dsc
-@@ -334,6 +334,7 @@
-   PlatformBootManagerLib|OvmfPkg/Library/PlatformBootManagerLib/PlatformBootManagerLib.inf
-   PlatformBmPrintScLib|OvmfPkg/Library/PlatformBmPrintScLib/PlatformBmPrintScLib.inf
-   QemuBootOrderLib|OvmfPkg/Library/QemuBootOrderLib/QemuBootOrderLib.inf
-+  EveBootOrderLib|OvmfPkg/Library/EveBootOrderLib/EveBootOrderLib.inf
-   PlatformBootManagerCommonLib|OvmfPkg/Library/PlatformBootManagerCommonLib/PlatformBootManagerCommonLib.inf
-   CpuExceptionHandlerLib|UefiCpuPkg/Library/CpuExceptionHandlerLib/DxeCpuExceptionHandlerLib.inf
-   LockBoxLib|OvmfPkg/Library/LockBoxLib/LockBoxDxeLib.inf
 -- 
 2.43.0
 
