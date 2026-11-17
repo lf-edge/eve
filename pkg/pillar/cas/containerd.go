@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/edge-containers/pkg/resolver"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
+	"github.com/lf-edge/eve/pkg/pillar/ocilayout"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/moby/sys/mountinfo"
@@ -1027,6 +1028,88 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, root types.B
 		}
 	}
 	return loadedBlobs, nil
+}
+
+// IngestOCILayoutAndCreateImage loads the image held by an OCI image-layout
+// tar archive, streaming each blob from the archive into containerd.
+func (c *containerdCAS) IngestOCILayoutAndCreateImage(reference, archivePath, archiveSha256 string) ([]types.BlobStatus, error) {
+	logrus.Infof("IngestOCILayoutAndCreateImage: loading %s from archive %s", reference, archivePath)
+	archive, err := ocilayout.Open(archivePath)
+	if err != nil {
+		return nil, fmt.Errorf("IngestOCILayoutAndCreateImage: opening %s: %w", archivePath, err)
+	}
+	defer archive.Close()
+	img, err := archive.Image(runtime.GOARCH)
+	if err != nil {
+		return nil, fmt.Errorf("IngestOCILayoutAndCreateImage: %s: %w", archivePath, err)
+	}
+
+	ctxWithLease, deleteLease, err := c.ctrdClient.CtrNewUserServicesCtxWithLease()
+	if err != nil {
+		return nil, fmt.Errorf("IngestOCILayoutAndCreateImage: creating lease for %s: %w", reference, err)
+	}
+	defer deleteLease()
+
+	loaded := make([]types.BlobStatus, 0, len(img.Layers)+2)
+	for _, desc := range append([]ocispec.Descriptor{img.Config}, img.Layers...) {
+		r, err := archive.Blob(desc)
+		if err != nil {
+			return nil, fmt.Errorf("IngestOCILayoutAndCreateImage: %w", err)
+		}
+		// containerd verifies digest and size on commit
+		if err := c.ctrdClient.CtrWriteBlob(ctxWithLease, desc.Digest.String(), uint64(desc.Size), r); err != nil {
+			return nil, fmt.Errorf("IngestOCILayoutAndCreateImage: loading blob %s: %w", desc.Digest, err)
+		}
+		loaded = append(loaded, loadedBlobStatus(desc))
+	}
+
+	// Through IngestBlob, so that the manifest gets the labels that keep its
+	// children from being garbage collected.
+	manifest := loadedBlobStatus(img.Manifest)
+	manifest.State = types.VERIFIED
+	manifest.Content = img.ManifestRaw
+	if _, err := c.IngestBlob(ctxWithLease, manifest); err != nil {
+		return nil, fmt.Errorf("IngestOCILayoutAndCreateImage: loading manifest: %w", err)
+	}
+	loaded = append([]types.BlobStatus{loadedBlobStatus(img.Manifest)}, loaded...)
+
+	labels := getEVEDownloadedLabel()
+	labels[types.EVEOCIArchiveLabel] = strings.ToLower(archiveSha256)
+	labels[types.EVEOCIArchiveManifestLabel] = img.Manifest.Digest.String()
+	image := images.Image{
+		Name:      reference,
+		Labels:    labels,
+		Target:    img.Manifest,
+		CreatedAt: time.Now(),
+	}
+	_, err = c.GetImageHash(reference)
+	switch {
+	case errors.Is(err, ErrImageNotFound):
+		_, err = c.ctrdClient.CtrCreateImage(ctxWithLease, image)
+	case err == nil:
+		// target and labels together: a stale label would tie the new
+		// target to an archive it did not come from
+		_, err = c.ctrdClient.CtrUpdateImage(ctxWithLease, image, "target", "labels")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("IngestOCILayoutAndCreateImage: pointing %s at %s: %w",
+			reference, img.Manifest.Digest, err)
+	}
+	return loaded, nil
+}
+
+func loadedBlobStatus(desc ocispec.Descriptor) types.BlobStatus {
+	return types.BlobStatus{
+		Sha256:                 desc.Digest.Encoded(),
+		Size:                   uint64(desc.Size),
+		MediaType:              desc.MediaType,
+		State:                  types.LOADED,
+		TotalSize:              desc.Size,
+		CurrentSize:            desc.Size,
+		Progress:               100,
+		CreateTime:             time.Now(),
+		LastRefCountChangeTime: time.Now(),
+	}
 }
 
 // Resolver get a resolver.ResolverCloser for containerd
