@@ -23,6 +23,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sirupsen/logrus" // Used for log.Fatal only
 )
 
@@ -507,11 +508,20 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 	}
 
 	// Reject an oversized rootfs before pulling and writing gigabytes: compare
-	// the disk-root layer size (what actually lands in the partition) against
-	// the partition capacity. This is exact for the squashfs rootfs and avoids
-	// wrongly rejecting an image whose extra disks (e.g. a split-rootfs
-	// Extension) push the whole-image size beyond the partition.
-	if size, found, derr := diskRootLayerSize(casClient, image); derr != nil {
+	// the rootfs size (what actually lands in the partition) against the
+	// partition capacity. This avoids wrongly rejecting an image whose extra
+	// disks (e.g. a split-rootfs Extension) push the whole-image size beyond
+	// the partition.
+	size, found, derr := diskRootLayerSize(casClient, image)
+	if derr == nil && !found {
+		// no layer of its own: the rootfs is a file inside a tar layer
+		var config *ocispec.Image
+		if _, config, derr = puller.Config(false, io.Discard, resolver); derr == nil {
+			size, found, derr = rootFileSize(ctrdCtx, casClient, image,
+				config.Config.Labels[registry.AnnotationRootPath])
+		}
+	}
+	if derr != nil {
 		log.Warnf("WriteToPartition(%s): cannot determine rootfs size (%v); relying on partition write bound", partName, derr)
 	} else if found {
 		partSize := GetPartitionSizeInBytes(partName)
@@ -522,6 +532,8 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 			return errors.New(errStr)
 		}
 		log.Functionf("WriteToPartition(%s): rootfs %d bytes fits partition size %d", partName, size, partSize)
+	} else {
+		log.Warnf("WriteToPartition(%s): rootfs not found in the image manifest; relying on partition write bound", partName)
 	}
 
 	// Make sure we have nothing mounted on the target
@@ -542,8 +554,7 @@ func WriteToPartition(log *base.LogObject, image string, partName string) error 
 	}
 	defer f.Close()
 
-	// The check above only knows the rootfs size when it is a layer of its
-	// own; a rootfs packed inside a tar layer is bounded here instead.
+	// Backstop for an image whose rootfs size could not be determined above.
 	var root io.Writer = f
 	if partSize := GetPartitionSizeInBytes(partName); partSize > 0 {
 		root = &boundedWriter{w: f, remaining: partSize}
