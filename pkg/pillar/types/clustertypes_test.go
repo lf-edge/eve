@@ -6,12 +6,16 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -225,4 +229,153 @@ func TestOwnerAlive(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testENCC() EdgeNodeClusterConfig {
+	_, prefix, _ := net.ParseCIDR("192.0.2.1/28")
+	return EdgeNodeClusterConfig{
+		Initialized:      true,
+		Valid:            true,
+		ClusterName:      "cluster1",
+		ClusterID:        UUIDandVersion{UUID: uuid.FromStringOrNil("11111111-2222-3333-4444-555555555555")},
+		ClusterInterface: "eth0",
+		ClusterIPPrefix:  prefix,
+		JoinServerIP:     net.ParseIP("192.0.2.1"),
+		BootstrapNode:    true,
+		ClusterType:      ClusterTypeK3sBase,
+		CipherToken: CipherBlockStatus{
+			CipherBlockID: "block1",
+			IsCipher:      true,
+			CipherData:    []byte("secret-token-ciphertext"),
+		},
+	}
+}
+
+func TestEdgeNodeClusterConfigChangedFields(t *testing.T) {
+	old := testENCC()
+
+	// No change, including nil vs empty slices
+	same := testENCC()
+	same.MasterNodeIDs = []uuid.UUID{}
+	assert.Empty(t, same.changedFields(old))
+
+	// Type flip plus the native orchestration flag
+	cfg := testENCC()
+	cfg.ClusterType = ClusterTypeReplicatedStorage
+	cfg.EnableNativeK8SOrchestration = true
+	assert.Equal(t, []string{
+		"ClusterType: K3sBase(1) -> ReplicatedStorage(2)",
+		"EnableNativeK8SOrchestration: false -> true",
+	}, cfg.changedFields(old))
+
+	// Network and membership fields
+	cfg = testENCC()
+	_, cfg.ClusterIPPrefix, _ = net.ParseCIDR("198.51.100.0/28")
+	cfg.JoinServerIP = net.ParseIP("198.51.100.1")
+	cfg.MasterNodeIDs = []uuid.UUID{uuid.FromStringOrNil("aaaaaaaa-2222-3333-4444-555555555555")}
+	cfg.LBInterfaces = []LBInterfaceConfig{{Interface: "eth1", IPPrefix: "192.168.1.24/29"}}
+	assert.Equal(t, []string{
+		"ClusterIPPrefix: 192.0.2.0/28 -> 198.51.100.0/28",
+		"JoinServerIP: 192.0.2.1 -> 198.51.100.1",
+		"LBInterfaces: [] -> [{eth1 192.168.1.24/29}]",
+		"MasterNodeIDs: [] -> [aaaaaaaa-2222-3333-4444-555555555555]",
+	}, cfg.changedFields(old))
+
+	// Cipher block changes are named and counted but the content is not printed
+	cfg = testENCC()
+	cfg.CipherToken.CipherData = []byte("other-token-ciphertext")
+	cfg.CipherGzipRegistrationManifestYaml = cfg.CipherToken
+	changes := cfg.changedFields(old)
+	// Both fields carry the same block, so it is one change
+	assert.Equal(t, []string{
+		"CipherToken+CipherGzipRegistrationManifestYaml: changed",
+	}, changes)
+
+	// Different blocks are separate changes
+	cfg.CipherGzipRegistrationManifestYaml.CipherData = []byte("manifest-ciphertext")
+	changes = cfg.changedFields(old)
+	assert.Equal(t, []string{
+		"CipherToken: changed",
+		"CipherGzipRegistrationManifestYaml: changed",
+	}, changes)
+	for _, c := range changes {
+		assert.NotContains(t, c, "ciphertext")
+	}
+
+	// A locally resolved cipher context or error is not a controller change
+	cfg = testENCC()
+	cfg.CipherToken.CipherContext = &CipherContext{ContextID: "ctx"}
+	cfg.CipherToken.SetErrorNow("decrypt failed")
+	assert.Empty(t, cfg.changedFields(old))
+
+	// Every field is covered, so a change to any of them is named
+	cfg = testENCC()
+	cfg.QuorumRecoveryGeneration = 3
+	cfg.WitnessIP = net.ParseIP("192.0.2.5")
+	cfg.TieBreakerNodeID = UUIDandVersion{UUID: uuid.FromStringOrNil("bbbbbbbb-2222-3333-4444-555555555555")}
+	assert.Equal(t, []string{
+		"TieBreakerNodeID: 00000000-0000-0000-0000-000000000000 -> bbbbbbbb-2222-3333-4444-555555555555",
+		"WitnessIP: <nil> -> 192.0.2.5",
+		"QuorumRecoveryGeneration: 0 -> 3",
+	}, cfg.changedFields(old))
+
+	// Same prefix behind a different pointer is not a change
+	cfg = testENCC()
+	_, cfg.ClusterIPPrefix, _ = net.ParseCIDR("192.0.2.1/28")
+	cfg.JoinServerIP = net.ParseIP("192.0.2.1").To4()
+	assert.Empty(t, cfg.changedFields(old))
+
+	// Nil prefix must not panic
+	cfg = testENCC()
+	cfg.ClusterIPPrefix = nil
+	assert.Equal(t, []string{"ClusterIPPrefix: 192.0.2.0/28 -> <nil>"}, cfg.changedFields(old))
+}
+
+func TestEdgeNodeClusterConfigLog(t *testing.T) {
+	logBuf := &strings.Builder{}
+	logger := logrus.New()
+	logger.SetOutput(logBuf)
+	log := base.NewSourceLogObject(logger, t.Name(), 0) //nolint:staticcheck
+
+	old := testENCC()
+	cfg := testENCC()
+	cfg.ClusterType = ClusterTypeReplicatedStorage
+	cfg.CipherToken.CipherData = []byte("other-token-ciphertext")
+
+	EdgeNodeClusterConfig{Initialized: true}.LogCreate(log)
+	old.LogCreate(log)
+	cfg.LogModify(log, old)
+	cfg.LogModify(log, "not a cluster config") // logs an error, must not exit
+	cfg.LogDelete(log)
+
+	out := logBuf.String()
+	assert.Contains(t, out, "EdgeNodeClusterConfig create: no cluster")
+	assert.Contains(t, out, "EdgeNodeClusterConfig create: Initialized: true, Valid: true, "+
+		"ClusterName: cluster1, ClusterID: 11111111-2222-3333-4444-555555555555, "+
+		"ClusterInterface: eth0, ClusterIPPrefix: 192.0.2.0/28, IsWorkerNode: false, "+
+		"JoinServerIP: 192.0.2.1, BootstrapNode: true, ClusterType: K3sBase(1), ")
+	assert.Contains(t, out, "QuorumRecoveryGeneration: 0")
+	assert.Contains(t, out, "EdgeNodeClusterConfig modify: old object is string")
+	assert.Contains(t, out, "EdgeNodeClusterConfig modify: 2 field(s) changed: "+
+		"ClusterType: K3sBase(1) -> ReplicatedStorage(2), CipherToken: changed")
+	assert.Contains(t, out, "EdgeNodeClusterConfig delete")
+	assert.NotContains(t, out, "ciphertext")
+}
+
+// A new field is logged by LogCreate and LogModify. Before adding it here,
+// check that it holds no secret; cipher blocks need adding to cipherChanges.
+func TestEdgeNodeClusterConfigLoggedFields(t *testing.T) {
+	var names []string
+	typ := reflect.TypeOf(EdgeNodeClusterConfig{})
+	for i := 0; i < typ.NumField(); i++ {
+		names = append(names, typ.Field(i).Name)
+	}
+	assert.Equal(t, []string{
+		"Initialized", "Valid", "ClusterName", "ClusterID", "ClusterInterface",
+		"ClusterIPPrefix", "IsWorkerNode", "JoinServerIP", "BootstrapNode",
+		"CipherToken", "CipherGzipRegistrationManifestYaml", "ClusterType",
+		"TieBreakerNodeID", "EnableNativeK8SOrchestration", "LBInterfaces",
+		"MasterNodeIDs", "WitnessIP", "WitnessConfigError",
+		"QuorumRecoveryGeneration",
+	}, names)
 }
