@@ -84,6 +84,13 @@ import (
 //   - TestAppUserData -- plain key=value user-data becomes container
 //     environment; cloud-config write_files is applied once per user-data
 //     version and survives an app restart.
+//   - TestAppUserDataEscapedQuotes -- a JSON document whose double quotes the
+//     user-data spells as \" reaches the container's environment intact;
+//     regression test for the shim VM of a container app panicking at every
+//     boot while the app was still reported as RUNNING.
+//   - TestAppUserDataRuncmdExpansion -- a variable which a cloud-config sets
+//     as an entry of runcmd is expanded by the shell of the container's shim
+//     VM: ${PATH} in its value reaches the container as the search path.
 //   - TestAppLogs -- application stdout is collected and delivered to the
 //     controller, including after the app is stopped and started again.
 //   - TestCgroupTree -- the cgroup v2 tree EVE builds, and where its
@@ -194,6 +201,12 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestAppUserData,
+		},
+		evetest.TestCase{
+			Test: TestAppUserDataEscapedQuotes,
+		},
+		evetest.TestCase{
+			Test: TestAppUserDataRuncmdExpansion,
 		},
 		evetest.TestCase{
 			Test: TestAppLogs,

@@ -444,6 +444,10 @@ type DomainStatus struct {
 	WritableFiles  []cloudconfig.WritableFile // List of files from CloudInit scripts to be created in container
 	VmConfig                                  // From DomainConfig
 	Service        bool
+	// ExpandEnvVariables tells that the values of EnvVariables are shell text,
+	// which the shell of a shim VM expands: they come from the runcmd entries
+	// of a cloud-config. Otherwise the container gets the values as they are.
+	ExpandEnvVariables bool
 	// VirtualTPM is a flag to signal the hypervisor implementation
 	// that vTPM is available for the domain.
 	VirtualTPM bool
