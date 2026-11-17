@@ -91,6 +91,9 @@ import (
 //   - TestAppUserDataRuncmdExpansion -- a variable which a cloud-config sets
 //     as an entry of runcmd is expanded by the shell of the container's shim
 //     VM: ${PATH} in its value reaches the container as the search path.
+//   - TestAppUserDataRuncmdSpaces -- an entry of runcmd whose value has a
+//     space and no quotes sets the variable to the whole value in a container;
+//     in a VM the guest's cloud-init runs the same entry as a line of shell.
 //   - TestAppLogs -- application stdout is collected and delivered to the
 //     controller, including after the app is stopped and started again.
 //   - TestCgroupTree -- the cgroup v2 tree EVE builds, and where its
@@ -207,6 +210,9 @@ func TestAppsSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestAppUserDataRuncmdExpansion,
+		},
+		evetest.TestCase{
+			Test: TestAppUserDataRuncmdSpaces,
 		},
 		evetest.TestCase{
 			Test: TestAppLogs,
