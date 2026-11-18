@@ -921,7 +921,9 @@ func Init(t *testing.T, opts ...InitOption) *T {
 
 	// Connect to the broker.
 	ctx, cancel := context.WithTimeout(th.ctx, brokerConnectTimeout)
-	connectResp, err := th.brokerClient.Connect(ctx, &api.ConnectRequest{})
+	connectResp, err := th.brokerClient.Connect(ctx, &api.ConnectRequest{
+		ClientInfo: utils.BrokerClientInfo(viper.GetString(constants.VersionEnv)),
+	})
 	cancel()
 	if err != nil {
 		th.t.Fatalf("failed to connect to the broker at %s: %v", brokerAddr, err)
@@ -1854,7 +1856,7 @@ func (th *TestHarness) runBrokerKeepAlive() {
 	}
 
 	// Send initial ping with client ID
-	err = stream.Send(&api.KeepAlivePing{ClientId: th.brokerClientID})
+	err = stream.Send(th.brokerKeepAlivePing())
 	if err != nil {
 		th.log.Errorf("Failed to send initial keepalive ping: %v", err)
 		return
@@ -1871,7 +1873,7 @@ func (th *TestHarness) runBrokerKeepAlive() {
 			return
 		case <-ticker.C:
 			// Send ping
-			err = stream.Send(&api.KeepAlivePing{ClientId: th.brokerClientID})
+			err = stream.Send(th.brokerKeepAlivePing())
 			if err != nil {
 				th.log.Errorf("Failed to send keepalive ping: %v", err)
 				return
@@ -1885,6 +1887,18 @@ func (th *TestHarness) runBrokerKeepAlive() {
 			th.log.Tracef("Received keepalive pong")
 		}
 	}
+}
+
+// brokerKeepAlivePing also tells the broker which test runs, for
+// "evetest broker status".
+func (th *TestHarness) brokerKeepAlivePing() *api.KeepAlivePing {
+	th.testM.Lock()
+	currentTest := th.test.name
+	if th.suite != nil && th.test.name != th.suite.name {
+		currentTest = th.suite.name + "/" + th.test.name
+	}
+	th.testM.Unlock()
+	return &api.KeepAlivePing{ClientId: th.brokerClientID, CurrentTest: currentTest}
 }
 
 func (th *TestHarness) runBrokerLogStream() {

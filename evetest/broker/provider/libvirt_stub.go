@@ -120,3 +120,8 @@ func (p *LibvirtProvider) ReconfigureDeviceDisks(_ context.Context, _ string, _ 
 func (p *LibvirtProvider) Close() error {
 	panic("unreachable")
 }
+
+// HostStatus is not implemented in CGO-disabled builds.
+func (p *LibvirtProvider) HostStatus(_ context.Context) (*api.HostStatus, error) {
+	panic("unreachable")
+}

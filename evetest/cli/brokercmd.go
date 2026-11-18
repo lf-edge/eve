@@ -16,6 +16,7 @@ import (
 
 	"github.com/lf-edge/eve/evetest/constants"
 	pb "github.com/lf-edge/eve/evetest/grpcapi/go"
+	"github.com/lf-edge/eve/evetest/utils"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -43,10 +44,11 @@ const (
 func brokerCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "broker",
-		Short: "Commands for staging EVE images on the evetest-broker",
-		Long: `Commands for staging EVE container images on the evetest-broker, for CI jobs
-that run many suites against the same freshly built image. They talk to the
-broker at ` + constants.EnvPrefix + constants.BrokerAddressEnv + `:` + constants.EnvPrefix + constants.BrokerPortEnv + `
+		Short: "Commands that talk to the evetest-broker directly",
+		Long: `Commands that talk to the evetest-broker directly: "status" shows the broker
+and its clients, and the "image" commands stage EVE container images on it, for
+CI jobs that run many suites against the same freshly built image. They talk to
+the broker at ` + constants.EnvPrefix + constants.BrokerAddressEnv + `:` + constants.EnvPrefix + constants.BrokerPortEnv + `
 and need no running evetest instance.
 
 The first job to need an image obtains a claim ("claim-upload" prints a ticket),
@@ -66,7 +68,7 @@ fetches the image and uploads it ("upload"); the other jobs wait inside
 		Short: "Stage an EVE container image on the broker",
 	}
 	image.AddCommand(imageClaimCmd(), imageUploadCmd(), imageReleaseCmd())
-	cmd.AddCommand(image)
+	cmd.AddCommand(brokerStatusCmd(), image)
 	return cmd
 }
 
@@ -188,7 +190,8 @@ func claimImage(ctx context.Context, broker pb.BrokerClient, ref *pb.ImageRef,
 	deadline := time.Now().Add(timeout)
 	for {
 		callCtx, cancel := context.WithTimeout(ctx, time.Minute)
-		resp, err := broker.ClaimEVEImageUpload(callCtx, &pb.ClaimEVEImageUploadRequest{Image: ref})
+		resp, err := broker.ClaimEVEImageUpload(callCtx, &pb.ClaimEVEImageUploadRequest{
+			Image: ref, ClientInfo: utils.BrokerClientInfo(version)})
 		cancel()
 		switch {
 		case status.Code(err) == codes.Unimplemented:
@@ -275,7 +278,7 @@ func uploadImage(ctx context.Context, broker pb.BrokerClient, ticket, path strin
 		return err
 	}
 	err = stream.Send(&pb.PushImageChunk{Payload: &pb.PushImageChunk_Request{
-		Request: &pb.PushImageRequest{ClaimTicket: ticket},
+		Request: &pb.PushImageRequest{ClaimTicket: ticket, ArchiveSizeBytes: uint64(st.Size())},
 	}})
 	if err != nil {
 		return fmt.Errorf("failed to send the upload request: %w", err)

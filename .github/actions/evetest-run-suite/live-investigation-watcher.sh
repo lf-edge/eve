@@ -190,6 +190,18 @@ evidence you're trying to diagnose. Do not call \"evetest continue\" or
 \"evetest exit\" yourself -- that happens separately once you finish (and
 is blocked for you at the tool-permission level regardless).
 
+\"evetest broker status\" shows the broker side of the run: the host running
+the device VMs (CPU load, available memory and swap, how much memory the
+running VMs are assigned compared to the host's RAM, free storage) and
+every client session on the broker, this one included, with the test it
+runs and its VMs. Check it when the failure could come from the environment
+rather than from EVE or the test -- e.g. timeouts, slow boots, a VM that was
+killed or stopped responding, k3s/etcd instability -- since an overcommitted
+or swapping host, or many heavy suites running at once, can cause those. It
+shows the state now, not at the time of the failure, so treat it as a hint
+and look for corroborating evidence (e.g. in the device logs) before
+blaming the host.
+
 Investigate everything yourself, directly, in this same turn. Do not
 delegate any part of this to a background/async subagent (e.g. the Agent
 tool) and then wait for it -- this action runs once and exits after your

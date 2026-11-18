@@ -142,6 +142,13 @@ endif
 ifndef EVETEST_SDN_VERSION
 	$(eval ENV_VARS += -e EVETEST_SDN_VERSION=$(SDN_VERSION))
 endif
+	@# Identify this client to the broker (see "evetest broker status"): the
+	@# host, and the GitHub Actions run, job and runner when in CI.
+ifndef EVETEST_CLIENT_HOSTNAME
+	$(eval ENV_VARS += -e $(call shq,EVETEST_CLIENT_HOSTNAME=$(shell hostname)))
+endif
+	$(eval ENV_VARS += $(foreach v,GITHUB_SERVER_URL GITHUB_REPOSITORY GITHUB_RUN_ID GITHUB_RUN_ATTEMPT GITHUB_JOB RUNNER_NAME, \
+		$(if $($(v)),-e $(call shq,$(v)=$($(v))))))
 	$(eval ARTIFACTS_MOUNT :=)
 ifneq ($(EVETEST_COLLECT_ARTIFACTS),)
 	$(eval ARTIFACTS_MOUNT := -v $(call shq,$(EVETEST_COLLECT_ARTIFACTS):/artifacts))
@@ -505,6 +512,7 @@ proxmox-broker-installer:
 	  /^@@OOM_HOOKSCRIPT@@$$/ { f="$(PROXMOX_DEPLOY)/evetest-oom-hook.pl";         while ((getline l < f) > 0) print l; close(f); next } \
 	  /^@@CLOUDINIT@@$$/      { f="$(PROXMOX_DEPLOY)/broker-cloudinit.yaml";       while ((getline l < f) > 0) print l; close(f); next } \
 	  /^@@MIRRORS_SCRIPT@@$$/ { f="$(PROXMOX_DEPLOY)/broker-registry-mirrors.sh";  while ((getline l < f) > 0) print l; close(f); next } \
+	  /^@@AUTO_UPGRADE_SCRIPT@@$$/ { f="$(PROXMOX_DEPLOY)/broker-auto-upgrade.sh"; while ((getline l < f) > 0) print l; close(f); next } \
 	  { print }' $(PROXMOX_DEPLOY)/installer.sh.tmpl \
 	  | sed 's|@@VERSION@@|$(EVETEST_VERSION)|g' > $(PROXMOX_INSTALLER)
 	@chmod +x $(PROXMOX_INSTALLER)
