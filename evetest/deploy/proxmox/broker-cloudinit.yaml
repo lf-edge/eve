@@ -7,7 +7,9 @@
 #   __BROKER_ENV_B64__     - base64 of the broker's /etc/evetest/broker.env
 #                            (the EVETEST_BROKER_PROXMOX_* / EVETEST_SDN_*
 #                            values)
-#   __BROKER_IMAGE__       - the broker container image:tag to run
+#   __BROKER_IMAGE__       - the broker container image:tag to run; written
+#                            to /etc/evetest/broker-image.env, which the
+#                            auto-upgrade rewrites to switch versions
 #   __MIRRORS_SCRIPT_B64__ - base64 of the OCI registry mirrors setup script;
 #                            a no-op unless --with-oci-registry-mirrors was
 #                            passed to the installer. Writes the
@@ -22,6 +24,10 @@
 #   __DOCKER_CONFIG_JSON_B64__ - base64 of /root/.docker/config.json; holds the
 #                            registry credentials from --docker-username/
 #                            --docker-password, or {"auths":{}} if not passed
+#   __AUTO_UPGRADE_SCRIPT_B64__ - base64 of broker-auto-upgrade.sh
+#   __AUTO_UPGRADE__       - "true" to enable evetest-broker-auto-upgrade.timer
+#   __AUTO_UPGRADE_REPO__  - git repository the auto-upgrade follows
+#   __AUTO_UPGRADE_BRANCH__ - branch of that repository
 #
 # It installs Docker and runs the broker container with host networking so the
 # broker gRPC binds on the VM's own NICs (the VM is dual-homed: LAN + SDN uplink).
@@ -46,6 +52,19 @@ write_files:
     encoding: b64
     permissions: '0600'
     content: __BROKER_ENV_B64__
+  - path: /etc/evetest/broker-image.env
+    permissions: '0644'
+    content: |
+      EVETEST_BROKER_IMAGE=__BROKER_IMAGE__
+  - path: /etc/evetest/auto-upgrade.env
+    permissions: '0644'
+    content: |
+      EVETEST_AUTO_UPGRADE_REPO=__AUTO_UPGRADE_REPO__
+      EVETEST_AUTO_UPGRADE_BRANCH=__AUTO_UPGRADE_BRANCH__
+  - path: /usr/local/bin/evetest-broker-auto-upgrade.sh
+    encoding: b64
+    permissions: '0755'
+    content: __AUTO_UPGRADE_SCRIPT_B64__
   - path: /etc/evetest/broker-mirrors.env
     permissions: '0600'
     content: ""
@@ -67,9 +86,12 @@ write_files:
       Requires=docker.service
 
       [Service]
+      # systemd substitutes ${EVETEST_BROKER_IMAGE} below, even inside the
+      # quoted sh -c script; $DOCKER_ROOT is left for the shell.
+      EnvironmentFile=/etc/evetest/broker-image.env
       ExecStartPre=-/usr/bin/docker rm -f evetest-broker
       ExecStartPre=/usr/bin/mkdir -p /root/.evetest/images
-      ExecStartPre=/usr/bin/docker pull __BROKER_IMAGE__
+      ExecStartPre=/usr/bin/docker pull ${EVETEST_BROKER_IMAGE}
       ExecStart=/bin/sh -c '\
         DOCKER_ROOT=$(docker info -f {{.DockerRootDir}}) && \
         exec /usr/bin/docker run --rm --name evetest-broker \
@@ -79,7 +101,7 @@ write_files:
         -v /root/.docker:/root/.docker:ro \
         -v /root/.evetest/images:/root/.evetest/images \
         -v "$DOCKER_ROOT":"$DOCKER_ROOT":ro \
-        __BROKER_IMAGE__'
+        ${EVETEST_BROKER_IMAGE}'
       # A crashed broker restarts and removes the resources its sessions
       # left behind. The delay keeps a broker that fails right at startup
       # from hammering the Proxmox API and Docker Hub in a tight loop.
@@ -99,6 +121,33 @@ write_files:
       # the stock needrestart.conf; containerd and evetest-broker are not.
       $nrconf{override_rc}{qr(^containerd)} = 0;
       $nrconf{override_rc}{qr(^evetest-broker)} = 0;
+  - path: /etc/systemd/system/evetest-broker-auto-upgrade.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Upgrade the evetest broker while no tests run
+      Wants=network-online.target
+      After=network-online.target evetest-broker.service
+
+      [Service]
+      Type=oneshot
+      # The timer only fires again once this run has finished, so a hung git
+      # fetch or docker pull must not block upgrades forever.
+      TimeoutStartSec=30min
+      ExecStart=/usr/local/bin/evetest-broker-auto-upgrade.sh
+  - path: /etc/systemd/system/evetest-broker-auto-upgrade.timer
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Periodically upgrade the evetest broker while no tests run
+
+      [Timer]
+      OnBootSec=15min
+      OnUnitInactiveSec=10min
+      RandomizedDelaySec=1min
+
+      [Install]
+      WantedBy=timers.target
   - path: /etc/systemd/system/evetest-registry-mirrors.service
     permissions: '0644'
     content: |
@@ -120,6 +169,8 @@ packages:
   # qemu-guest-agent lets the PVE host query the VM (e.g. its LAN IP via
   # `qm guest cmd <vmid> network-get-interfaces`); the VM is created with agent=1.
   - qemu-guest-agent
+  # The auto-upgrade checks out the broker sources to compute the latest version.
+  - git
 
 runcmd:
   - [systemctl, enable, --now, qemu-guest-agent.service]
@@ -128,3 +179,4 @@ runcmd:
   - [systemctl, daemon-reload]
   - [systemctl, enable, --now, evetest-registry-mirrors.service]
   - [systemctl, enable, --now, evetest-broker.service]
+  - [sh, -c, "[ __AUTO_UPGRADE__ != true ] || systemctl enable --now evetest-broker-auto-upgrade.timer"]
