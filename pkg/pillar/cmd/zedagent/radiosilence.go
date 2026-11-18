@@ -1,4 +1,4 @@
-// Copyright (c) 2021 Zededa, Inc.
+// Copyright (c) 2021-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package zedagent
@@ -206,7 +206,8 @@ func getRadioConfig(ctx *getconfigContext, radioStatus *profile.RadioStatus) *pr
 				touchRadioConfig()
 				return nil
 			}
-			if radioConfig.GetServerToken() != ctx.sideController.profileServerToken {
+			if ctx.sideController.profileServerToken == "" ||
+				radioConfig.GetServerToken() != ctx.sideController.profileServerToken {
 				errList = append(errList,
 					fmt.Sprintf("invalid token submitted by local server (%s)", radioConfig.GetServerToken()))
 				continue
