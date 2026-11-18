@@ -1074,6 +1074,107 @@ func (p *ProxmoxProvider) WatchDeviceStatus(
 	return ch
 }
 
+// proxmoxNodeStatus is the part of /nodes/<node>/status that HostStatus
+// reports. go-proxmox's Node lacks memory.available (PVE 9+).
+type proxmoxNodeStatus struct {
+	LoadAvg []string `json:"loadavg"`
+	CPUInfo struct {
+		CPUs int `json:"cpus"`
+	} `json:"cpuinfo"`
+	Memory struct {
+		Total     uint64 `json:"total"`
+		Used      uint64 `json:"used"`
+		Available uint64 `json:"available"`
+	} `json:"memory"`
+	Swap struct {
+		Total uint64 `json:"total"`
+		Used  uint64 `json:"used"`
+	} `json:"swap"`
+}
+
+// proxmoxNodeResource is a node in /cluster/resources. Its cpu is the
+// utilization pvestatd last measured, unlike the cpu of /nodes/<node>/status,
+// which PVE 9.1 reports as 0.
+type proxmoxNodeResource struct {
+	Node string  `json:"node"`
+	CPU  float64 `json:"cpu"`
+}
+
+// HostStatus describes the Proxmox node the devices run on, all its VMs,
+// and the storages for device disks and image uploads.
+func (p *ProxmoxProvider) HostStatus(ctx context.Context) (*api.HostStatus, error) {
+	node := p.conf.Node
+	var ns proxmoxNodeStatus
+	if err := p.client.Get(ctx, fmt.Sprintf("/nodes/%s/status", node), &ns); err != nil {
+		return nil, fmt.Errorf("failed to get status of node %s: %w", node, err)
+	}
+	st := &api.HostStatus{
+		Name:                 node,
+		Cpus:                 uint32(ns.CPUInfo.CPUs),
+		MemoryTotalBytes:     ns.Memory.Total,
+		MemoryAvailableBytes: ns.Memory.Available,
+		SwapTotalBytes:       ns.Swap.Total,
+		SwapUsedBytes:        ns.Swap.Used,
+	}
+	if st.MemoryAvailableBytes == 0 && ns.Memory.Total >= ns.Memory.Used {
+		// PVE before 9 reports no "available"; its "used" excludes the
+		// page cache, so this is close.
+		st.MemoryAvailableBytes = ns.Memory.Total - ns.Memory.Used
+	}
+	if loads, err := parseLoadAverage(ns.LoadAvg); err == nil {
+		st.LoadAverage = loads
+	}
+	var nodes []proxmoxNodeResource
+	if err := p.client.Get(ctx, "/cluster/resources?type=node", &nodes); err == nil {
+		for _, n := range nodes {
+			if n.Node == node {
+				st.CpuUsage = &n.CPU
+			}
+		}
+	}
+
+	var version proxmox.Version
+	if err := p.client.Get(ctx, "/version", &version); err == nil {
+		st.Description = "Proxmox VE " + version.Version
+	}
+
+	var vms []struct {
+		Status string `json:"status"`
+		MaxMem uint64 `json:"maxmem"`
+	}
+	if err := p.client.Get(ctx, fmt.Sprintf("/nodes/%s/qemu", node), &vms); err != nil {
+		return nil, fmt.Errorf("failed to list VMs of node %s: %w", node, err)
+	}
+	for _, vm := range vms {
+		st.Vms++
+		if vm.Status == "running" {
+			st.VmsRunning++
+			st.VmsRunningMemoryBytes += vm.MaxMem
+		}
+	}
+
+	storages := []struct{ name, usage string }{{p.conf.Storage, "VM disks"}}
+	if p.conf.ImportStorage == p.conf.Storage {
+		storages[0].usage = "VM disks, image uploads"
+	} else {
+		storages = append(storages, struct{ name, usage string }{p.conf.ImportStorage, "image uploads"})
+	}
+	for _, s := range storages {
+		var ss struct {
+			Total uint64 `json:"total"`
+			Avail uint64 `json:"avail"`
+		}
+		if err := p.client.Get(ctx,
+			fmt.Sprintf("/nodes/%s/storage/%s/status", node, s.name), &ss); err != nil {
+			return nil, fmt.Errorf("failed to get status of storage %s: %w", s.name, err)
+		}
+		st.Storages = append(st.Storages, &api.StorageStatus{
+			Name: s.name, Usage: s.usage, TotalBytes: ss.Total, AvailableBytes: ss.Avail,
+		})
+	}
+	return st, nil
+}
+
 // ListDevices returns the names of all devices created by this provider.
 func (p *ProxmoxProvider) ListDevices(ctx context.Context) ([]string, error) {
 	p.devMutex.Lock()

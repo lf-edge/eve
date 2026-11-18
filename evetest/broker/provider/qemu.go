@@ -1078,6 +1078,26 @@ func (p *QemuProvider) ListDevices(ctx context.Context) ([]string, error) {
 	return devices, nil
 }
 
+// HostStatus describes the host the broker, and so QEMU, runs on. Only
+// devices of this provider are counted as VMs.
+func (p *QemuProvider) HostStatus(ctx context.Context) (*api.HostStatus, error) {
+	st, err := localHostStatus("/proc")
+	if err != nil {
+		return nil, err
+	}
+	st.Description = "QEMU on the broker host"
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	for _, dev := range p.devices {
+		st.Vms++
+		if dev.status == DeviceStatusRunning {
+			st.VmsRunning++
+			st.VmsRunningMemoryBytes += dev.spec.MemoryBytes
+		}
+	}
+	return st, nil
+}
+
 // TeardownAll removes all VMs and networks created by this provider.
 func (p *QemuProvider) TeardownAll(ctx context.Context) error {
 	log := logger.FromContext(ctx)
