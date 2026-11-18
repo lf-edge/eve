@@ -142,6 +142,9 @@ type zedkube struct {
 	lastPublishedClusterIfName string
 	nodeuuid                   string
 	nodeName                   string
+	// kubeComponentsGate tells whether kube-init is done with the kube
+	// component update pass of this boot.
+	kubeComponentsGate *kubeapi.KubeComponentsGate
 	// statsElection arbitrates the stats collector and the node-prune sweep.
 	// appOpElection decides the one node allowed to act on an app whose
 	// designated node is down, isDecisionNode included. elections is every
@@ -838,6 +841,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	zedkubeCtx.subAssignableAdapters = subAssignableAdapters
 	subAssignableAdapters.Activate()
 
+	zedkubeCtx.kubeComponentsGate, err = kubeapi.NewKubeComponentsGate(ps, agentName)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning, zedkubeCtx.nodeName,
 		kubeapi.WaitForKubernetesOptions{},
 		// Make sure we keep ClusterIPIsReady up to date while we wait
@@ -928,9 +936,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// handshake on top of its pod LIST.
 		case <-appStatusTimer.C:
 			zedkubeCtx.checkAppsFailover(zedkubeWdUpdate)
-			zedkubeCtx.checkStuckPendingVMI()
-			zedkubeWdUpdate()
-			zedkubeCtx.checkStuckVolumeMount()
+			// A launcher can sit Pending, waiting on its volume mount,
+			// while kube-init rolls the CSI plugin or an instance
+			// manager; that is not stuck, and the mount recovery's
+			// k3s restart would restart kube-init's pass.
+			if zedkubeCtx.kubeComponentsGate.Ready() {
+				zedkubeCtx.checkStuckPendingVMI()
+				zedkubeWdUpdate()
+				zedkubeCtx.checkStuckVolumeMount()
+			}
 			zedkubeWdUpdate()
 			zedkubeCtx.checkAppsStatus()
 			zedkubeCtx.reconcileVMIRSAffinity(zedkubeWdUpdate)

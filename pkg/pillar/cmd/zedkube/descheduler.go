@@ -6,6 +6,7 @@
 package zedkube
 
 import (
+	"context"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
@@ -18,7 +19,17 @@ const deschedulerOnBootTimeout = 30 * time.Minute
 // returns, so kubernetes is ready and OnBoot=true is guaranteed by the caller.
 // It gives up after deschedulerOnBootTimeout so it does not run indefinitely
 // if the cluster never reaches a fully healthy state this boot.
+//
+// It first waits, without a deadline, for kube-init's component update
+// pass. The readiness checks below can all pass between two steps of a
+// component upgrade, and bringing apps back onto this node then would have
+// them attach volumes mid-upgrade. The pass can also outlast the timeout,
+// which would otherwise mean no failback at all this boot.
 func (z *zedkube) deschedulerOnBootWatcher() {
+	if !z.kubeComponentsGate.Ready() {
+		log.Noticef("deschedulerOnBootWatcher: waiting for the kube component update pass")
+		_ = z.kubeComponentsGate.Wait(context.Background())
+	}
 	deadline := time.NewTimer(deschedulerOnBootTimeout)
 	defer deadline.Stop()
 	ticker := time.NewTicker(15 * time.Second)

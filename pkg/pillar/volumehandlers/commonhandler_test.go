@@ -9,6 +9,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -48,6 +49,10 @@ func (m *mockVolumeMgr) GetNodeName() string {
 
 func (m *mockVolumeMgr) IsTwoNodeHACluster() bool {
 	return false
+}
+
+func (m *mockVolumeMgr) GetKubeComponentsGate() *kubeapi.KubeComponentsGate {
+	return nil
 }
 
 func newTestLog(t *testing.T) *base.LogObject {

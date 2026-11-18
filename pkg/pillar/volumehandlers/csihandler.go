@@ -103,6 +103,9 @@ func (handler *volumeHandlerCSI) PrepareVolume() error {
 		}
 	}()
 
+	if err := handler.volumeManager.GetKubeComponentsGate().Wait(ctx); err != nil {
+		return err
+	}
 	return kubeapi.WaitForLonghornReady(ctx, handler.log, handler.volumeManager.GetNodeName())
 }
 

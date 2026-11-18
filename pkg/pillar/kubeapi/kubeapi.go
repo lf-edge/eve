@@ -178,6 +178,10 @@ type WaitForKubernetesOptions struct {
 	// and Ready on this node. Set by callers that attach persistent volumes
 	// (e.g., volumemgr).
 	WaitForLonghorn bool
+	// ComponentsGate, if set, is waited on before KubeVirt or Longhorn
+	// are checked, so that neither is trusted while kube-init is still
+	// upgrading the kube components.
+	ComponentsGate *KubeComponentsGate
 }
 
 // WaitForKubernetes waits until the kubernetes API server is reachable, this
@@ -244,6 +248,11 @@ func WaitForKubernetes(agentName string, ps *pubsub.PubSub, stillRunning *time.T
 		nodeReadyErr = wait.PollImmediate(time.Second, componentsReadyTimeout(opts), func() (bool, error) {
 			if err := nodeReadyByName(client, nodeName); err != nil {
 				lastUnmet = fmt.Errorf("node not ready: %w", err)
+				return false, nil
+			}
+			if (opts.WaitForKubevirt || opts.WaitForLonghorn) &&
+				!opts.ComponentsGate.Ready() {
+				lastUnmet = errors.New("kube component update pass not finished")
 				return false, nil
 			}
 			if opts.WaitForKubevirt {

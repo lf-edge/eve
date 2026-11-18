@@ -8,6 +8,7 @@ import (
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/cas"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/persist"
 )
@@ -59,6 +60,9 @@ type VolumeMgr interface {
 	// != nil). With only two nodes able to host a Longhorn replica, callers use this to
 	// cap the replica count at 2 instead of the usual 3.
 	IsTwoNodeHACluster() bool
+	// GetKubeComponentsGate returns the gate on kube-init's component
+	// update pass. Nil, which is always ready, off EVE-k.
+	GetKubeComponentsGate() *kubeapi.KubeComponentsGate
 }
 
 func useVhost(log *base.LogObject, volumeManager VolumeMgr) bool {

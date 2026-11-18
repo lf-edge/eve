@@ -102,6 +102,12 @@ func isKubeClusterUpdating(ctx *zedagentContext) bool {
 		if (status.Component == types.CompLonghorn) && (status.Status == types.CompStatusCompleted) {
 			return false
 		}
+		// A failed update is not retried by the running image, so it
+		// is not in progress either. Its error is still reported.
+		if status.Status == types.CompStatusFailed ||
+			status.Status == types.CompStatusDownloadFailed {
+			return false
+		}
 		return true
 	}
 	return false
