@@ -6,7 +6,6 @@ package sysconf
 
 import (
 	"bufio"
-	"io/ioutil"
 	"os"
 	"runtime"
 	"strconv"
@@ -26,11 +25,11 @@ const (
 )
 
 func readProcFsInt64(path string, fallback int64) int64 {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return fallback
 	}
-	i, err := strconv.ParseInt(string(data[:len(data)-1]), 0, 64)
+	i, err := strconv.ParseInt(strings.TrimRight(string(data), "\n"), 0, 64)
 	if err != nil {
 		return fallback
 	}
@@ -56,7 +55,7 @@ func getPhysPages() int64 {
 	var si unix.Sysinfo_t
 	err := unix.Sysinfo(&si)
 	if err != nil {
-		return int64(0)
+		return -1
 	}
 	return getMemPages(uint64(si.Totalram), si.Unit)
 }
@@ -65,7 +64,7 @@ func getAvPhysPages() int64 {
 	var si unix.Sysinfo_t
 	err := unix.Sysinfo(&si)
 	if err != nil {
-		return int64(0)
+		return -1
 	}
 	return getMemPages(uint64(si.Freeram), si.Unit)
 }
@@ -86,10 +85,16 @@ func getNprocsProcStat() (int64, error) {
 	s := bufio.NewScanner(f)
 	for s.Scan() {
 		if line := strings.TrimSpace(s.Text()); strings.HasPrefix(line, "cpu") {
-			l := strings.SplitN(line, " ", 2)
-			_, err := strconv.ParseInt(l[0][3:], 10, 64)
-			if err == nil {
-				count++
+			cpu, _, found := strings.Cut(line, " ")
+			if found {
+				// skip first line with accumulated values
+				if cpu == "cpu" {
+					continue
+				}
+				_, err := strconv.ParseInt(cpu[len("cpu"):], 10, 64)
+				if err == nil {
+					count++
+				}
 			}
 		} else {
 			// The current format of /proc/stat has all the
@@ -97,6 +102,9 @@ func getNprocsProcStat() (int64, error) {
 			// stays this way.
 			break
 		}
+	}
+	if err := s.Err(); err != nil {
+		return -1, err
 	}
 	return count, nil
 }
@@ -134,13 +142,6 @@ func hasClock(clockid int32) bool {
 		return false
 	}
 	return true
-}
-
-func max(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func sysconf(name int) (int64, error) {
