@@ -235,7 +235,7 @@ func (lc *LocalCmdAgent) getRadioConfig(
 				lc.updateRadioTicker(true)
 				return nil, false
 			case http.StatusOK, http.StatusCreated:
-				if radioConfig.GetServerToken() != lc.lpsConfig.LpsToken {
+				if lc.lpsConfig.LpsToken == "" || radioConfig.GetServerToken() != lc.lpsConfig.LpsToken {
 					errList = append(errList, "invalid token submitted by LPS")
 					continue
 				}

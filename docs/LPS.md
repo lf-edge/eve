@@ -48,6 +48,9 @@ However, it may also run externally. Its role is to:
     (so that EVE and LPS agree on it).
   - Whenever LPS issues a command/change request, it must **include this token**.
   - EVE rejects any requests with a missing or invalid token.
+  - LPS is disabled when `profile_server_token` is empty, including when the token
+    is cleared from an existing configuration. Configure a non-empty token on both
+    EVE and LPS to enable local commands.
 
 ## API Endpoints
 

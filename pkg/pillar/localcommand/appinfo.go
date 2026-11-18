@@ -260,7 +260,7 @@ func (lc *LocalCmdAgent) postAppInfo() (appCmds *profile.LocalAppCmdList, discar
 				return nil, false
 			case http.StatusOK, http.StatusCreated:
 				if len(appCmds.AppCommands) != 0 {
-					if appCmds.GetServerToken() != lc.lpsConfig.LpsToken {
+					if lc.lpsConfig.LpsToken == "" || appCmds.GetServerToken() != lc.lpsConfig.LpsToken {
 						errList = append(errList, "invalid token submitted by LPS")
 						continue
 					}
