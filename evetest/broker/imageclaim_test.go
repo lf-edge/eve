@@ -6,6 +6,8 @@ package main
 import (
 	"testing"
 	"time"
+
+	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 )
 
 // Leases of the tests: 10 minutes to start the upload, 1 minute without progress.
@@ -166,5 +168,48 @@ func TestImageClaimImageOf(t *testing.T) {
 	c.release("img", ticket)
 	if _, ok := c.imageOf(ticket); ok {
 		t.Fatal("imageOf found an image for a released ticket")
+	}
+}
+
+// TestImageClaimStatus covers the claims listed in the broker status: from
+// the grant through the upload, until the lease lapses with no upload running.
+func TestImageClaimStatus(t *testing.T) {
+	c, now := newTestImageClaims()
+	waiting, _ := c.claim("waiting")
+	c.describe("waiting", waiting, "10.0.0.7:41000", &api.ClientInfo{CiJob: "stage-image"})
+	*now = now.Add(time.Second)
+	uploading, _ := c.claim("uploading")
+	c.attach("uploading", uploading, func() {})
+	c.renew("uploading", uploading)
+	c.started("uploading", uploading, 1000)
+	c.loaded("uploading", uploading, 100)
+	c.loaded("uploading", uploading, 50)
+
+	st := c.status()
+	if len(st) != 2 || st[0].Image != "waiting" || st[1].Image != "uploading" {
+		t.Fatalf("got %v, want the waiting claim, then the uploading one", st)
+	}
+	if st[0].PeerAddress != "10.0.0.7:41000" || st[0].ClientInfo.GetCiJob() != "stage-image" {
+		t.Errorf("claimer not described: %v", st[0])
+	}
+	if st[0].UploadStartedAt != nil || st[0].LoadedBytes != 0 ||
+		!st[0].ExpiresAt.AsTime().Equal(time.Unix(1000, 0).Add(testStartLease)) {
+		t.Errorf("unexpected status of a claim whose upload has not started: %v", st[0])
+	}
+	if st[1].UploadStartedAt == nil || st[1].LoadedBytes != 150 || st[1].ArchiveSizeBytes != 1000 {
+		t.Errorf("unexpected status of an upload in progress: %v", st[1])
+	}
+
+	// Past both leases: the claim without an upload has lapsed, the stalled
+	// upload still runs until it fails or another client takes over.
+	*now = now.Add(testStartLease)
+	st = c.status()
+	if len(st) != 1 || st[0].Image != "uploading" {
+		t.Fatalf("got %v, want only the running upload", st)
+	}
+	c.release("uploading", uploading)
+	c.release("waiting", waiting)
+	if st = c.status(); len(st) != 0 {
+		t.Fatalf("got %v after the release, want no claims", st)
 	}
 }

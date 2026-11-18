@@ -31,6 +31,9 @@ var (
 
 func main() {
 	constants.InitViperConfig()
+	if len(os.Args) == 2 && os.Args[1] == checkIdleArg {
+		os.Exit(runCheckIdle())
+	}
 
 	// Setup logging
 	logLevelStr := viper.GetString(constants.LogLevelEnv)

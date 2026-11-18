@@ -9,6 +9,7 @@ option go_package = "github.com/lf-edge/eve/evetest/grpcapi/go";
 
 import "common.proto";
 import "sdn.proto";
+import "google/protobuf/timestamp.proto";
 
 // Evetest-Broker API.
 // Used by running evetest container (the client) to provision EVE devices
@@ -25,6 +26,10 @@ service Broker {
   rpc KeepAlive(stream KeepAlivePing) returns (stream KeepAlivePong);
   // Stream broker logs for the given client session.
   rpc StreamLogs(LogsRequest) returns (stream LogMessage);
+  // GetStatus reports the broker version and every client session: who the
+  // client is, which test it runs and which devices it has. It does not need a
+  // client session.
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
 
   // Build a new EVE image with the given configuration.
   rpc BuildImage(BuildImageRequest) returns (BuildImageResponse);
@@ -105,6 +110,23 @@ service Broker {
 // Request to initiate a session with the broker.
 message ConnectRequest {
   string existing_client_id = 1; // optional
+  // Describes the client, for GetStatus only. Ignored when reconnecting.
+  ClientInfo client_info = 2;
+}
+
+// ClientInfo identifies an evetest client for whoever inspects the broker.
+// Every field is optional.
+message ClientInfo {
+  // Host running the evetest container.
+  string hostname = 1;
+  // Version (content hash) of the evetest container image.
+  string evetest_version = 2;
+  // GitHub Actions workflow run attempt the client runs in, e.g.
+  // https://github.com/lf-edge/eve/actions/runs/123/attempts/1.
+  string ci_run_url = 3;
+  // GitHub Actions job ID (the job's key in the workflow) and runner name.
+  string ci_job = 4;
+  string ci_runner = 5;
 }
 
 // Response containing the assigned client session ID.
@@ -142,10 +164,122 @@ message CloseResponse {}
 // KeepAlivePing is sent by the client to notify the broker that it is still alive.
 message KeepAlivePing {
   string client_id = 1;
+  // Test the client is running, e.g. "TestNodeClusterSuite/TestFailover";
+  // empty between tests.
+  string current_test = 2;
 }
 
 // KeepAlivePong is sent by the broker in response to a KeepAlivePing.
 message KeepAlivePong {
+}
+
+message GetStatusRequest {}
+
+message GetStatusResponse {
+  string broker_version = 1;
+  // Device provider, e.g. "proxmox".
+  string provider = 2;
+  google.protobuf.Timestamp started_at = 3;
+  // -1 for unlimited.
+  int32 max_clients = 4;
+  // Ordered by connected_at.
+  repeated ClientSessionStatus sessions = 5;
+  // Resources of the host running the devices, as reported by the provider.
+  HostStatus host = 6;
+  // Why host is unset, if the provider failed to report it.
+  string host_error = 7;
+  // EVE image uploads claimed with ClaimEVEImageUpload, which need no client
+  // session; ordered by claimed_at.
+  repeated ImageUploadStatus image_uploads = 8;
+}
+
+// ImageUploadStatus describes a claim granted by ClaimEVEImageUpload, from the
+// grant until the upload finishes or the claim lapses.
+message ImageUploadStatus {
+  // Docker image name.
+  string image = 1;
+  google.protobuf.Timestamp claimed_at = 2;
+  // Unset while the claim holder is still obtaining the image.
+  google.protobuf.Timestamp upload_started_at = 3;
+  // Bytes of the image archive (decompressed) loaded into Docker so far.
+  uint64 loaded_bytes = 4;
+  // When the claim lapses unless the upload starts or makes progress.
+  google.protobuf.Timestamp expires_at = 5;
+  // Size of the image archive as announced by the client; 0 if unknown.
+  uint64 archive_size_bytes = 6;
+  // Address of the claimer as seen by the broker when it claimed the upload.
+  string peer_address = 7;
+  ClientInfo client_info = 8;
+}
+
+// HostStatus describes the resources of the host running the devices (e.g.
+// the Proxmox node, or for the qemu provider the host of the evetest
+// container). Zero means unknown, except where noted.
+message HostStatus {
+  string name = 1;
+  // Hypervisor and its version, e.g. "Proxmox VE 9.1.1".
+  string description = 2;
+  uint32 cpus = 3;
+  // CPU utilization, from 0 to 1.
+  optional double cpu_usage = 4;
+  // 1, 5 and 15 minute load averages; empty if unknown.
+  repeated double load_average = 5;
+  uint64 memory_total_bytes = 6;
+  // Memory available for new VMs without swapping (MemAvailable on Linux).
+  uint64 memory_available_bytes = 7;
+  uint64 swap_total_bytes = 8;
+  uint64 swap_used_bytes = 9;
+  // All VMs on the host, not only those of the broker, except with the qemu
+  // provider, which sees only its own.
+  uint32 vms = 10;
+  uint32 vms_running = 11;
+  // Memory assigned to the running VMs; above memory_total_bytes when the
+  // host is overcommitted.
+  uint64 vms_running_memory_bytes = 12;
+  // Storages the provider puts device disks and images on.
+  repeated StorageStatus storages = 13;
+}
+
+message StorageStatus {
+  string name = 1;
+  // What the broker uses the storage for, e.g. "VM disks".
+  string usage = 2;
+  uint64 total_bytes = 3;
+  uint64 available_bytes = 4;
+}
+
+message ClientSessionStatus {
+  string client_id = 1;
+  // Client address as seen by the broker when it connected.
+  string peer_address = 2;
+  ClientInfo client_info = 3;
+  google.protobuf.Timestamp connected_at = 4;
+  // Unset until the client opens its KeepAlive stream.
+  google.protobuf.Timestamp last_keep_alive = 5;
+  // As last reported in KeepAlivePing.
+  string current_test = 6;
+  // Long-running broker operation in progress for the session, e.g.
+  // "SetupDevices"; empty when idle. Devices are reported as they were before
+  // the operation started.
+  string operation = 7;
+  google.protobuf.Timestamp operation_started_at = 8;
+  // The SDN device first, then EVE devices by name.
+  repeated DeviceStatus devices = 9;
+}
+
+message DeviceStatus {
+  // Device name given by the client ("sdn" for the SDN device).
+  string name = 1;
+  bool is_sdn = 2;
+  // Name of the device's VM at the provider.
+  string vm_name = 3;
+  // False while only the device's image exists, not its VM.
+  bool created = 4;
+  ArchType arch = 5;
+  uint32 cpus = 6;
+  uint64 memory_bytes = 7;
+  // Image the device boots, e.g. "lfedge/eve:14.5.0-lts (kvm)".
+  string image = 8;
 }
 
 // Request to stream logs associated with a client session.
@@ -248,6 +382,9 @@ message PushImageRequest {
   // lease is renewed with every chunk, and the claim is released when the
   // upload ends.
   string claim_ticket = 3;
+  // Size of the image archive (the "docker save" output, before gzip), for
+  // the broker status to show the upload progress; 0 if unknown.
+  uint64 archive_size_bytes = 4;
 }
 
 // State of a claim request for an EVE container image.
@@ -264,6 +401,8 @@ enum ImageUploadClaimState {
 
 message ClaimEVEImageUploadRequest {
   ImageRef image = 1;
+  // Describes the claimer in the broker status.
+  ClientInfo client_info = 2;
 }
 
 message ClaimEVEImageUploadResponse {
