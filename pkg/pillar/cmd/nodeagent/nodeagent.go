@@ -30,6 +30,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentbase"
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -118,7 +119,13 @@ type nodeagentContext struct {
 	configGetSuccess            bool                             // got config from controller success
 	vaultmgrReported            bool                             // got reports from vaultmgr
 	hvTypeKube                  bool                             // image is kubernetes cluster type
-	waitDrainInProgress         bool
+	// kubeComponentsReady reports whether kube-init is done with the kube
+	// component update pass of this boot. Nil, meaning ready, unless the
+	// image is of kubernetes cluster type.
+	kubeComponentsReady func() bool
+	kubeHolding         bool   // test complete is held for kube-init's pass
+	kubeHoldStart       uint32 // timeTickCount when that hold began
+	waitDrainInProgress bool
 
 	// Some constants.. Declared here as variables to enable unit tests
 	minRebootDelay          uint32
@@ -287,6 +294,14 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	}
 	ctxPtr.subVaultStatus = subVaultStatus
 	subVaultStatus.Activate()
+
+	if ctxPtr.hvTypeKube {
+		componentsGate, err := kubeapi.NewKubeComponentsGate(ps, agentName)
+		if err != nil {
+			log.Fatal(err)
+		}
+		ctxPtr.kubeComponentsReady = componentsGate.Ready
+	}
 
 	// Look for VolumeMgrStatus
 	subVolumeMgrStatus, err := ps.NewSubscription(pubsub.SubscriptionOptions{

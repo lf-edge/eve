@@ -148,12 +148,14 @@ component at its target version, and records the new number.
 
 While the pass is pending kube-init is in the state `WAIT_UPGRADE`, before
 `RUNNING`. `eve exec kube k3s-status` shows it, as does the
-`eve.lfedge.org/kube-init-state` annotation on the Node object.
+`eve.lfedge.org/kube-init-state` annotation on the Node object. Until the pass
+ends the new EVE partition is not marked active, however long the pass takes,
+so the controller does not start upgrading the next node.
 
 Every step of the pass is bounded, so it always ends, in success or in
 failure. A failed pass is not retried by the same image. The node carries on
-with the components as they are, and the failure is reported in the device's
-cluster update status. A later image with a higher
+with the components as they are, the partition is committed, and the failure
+is reported in the device's cluster update status. A later image with a higher
 kube version number runs the pass again.
 
 #### Longhorn

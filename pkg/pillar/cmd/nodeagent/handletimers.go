@@ -15,6 +15,11 @@ import (
 
 // node health timer functions
 
+// kubeComponentsHoldLimit caps, in seconds, how long test complete waits
+// for kube-init's component update pass once the test time is up. It is
+// above the sum of the bounds kube-init puts on the steps of the pass.
+const kubeComponentsHoldLimit uint32 = 8 * 60 * 60
+
 // ticker function
 func handleDeviceTimers(ctxPtr *nodeagentContext) {
 	updateTickerTime(ctxPtr)
@@ -95,6 +100,30 @@ func handleUpgradeTestValidation(ctxPtr *nodeagentContext) {
 		return
 	}
 	if checkUpgradeValidationTestTimeExpiry(ctxPtr) {
+		// Committing this partition tells the controller the upgrade is
+		// done, and in a cluster lets it move on to the next node. An
+		// EVE upgrade can make kube-init upgrade the kube components,
+		// which may take far longer than the test time, so the commit
+		// waits for that pass to end, in success or in failure. The
+		// wait is capped: while the partition is inprogress the
+		// controller can neither reboot the device nor send it another
+		// image, so a pass that never gets to run (k3s never Ready)
+		// must not hold it forever.
+		if ctxPtr.kubeComponentsReady != nil && !ctxPtr.kubeComponentsReady() {
+			if !ctxPtr.kubeHolding {
+				log.Noticef("CurPart: %s, upgrade validation test time is up, "+
+					"holding test complete until the kube component update pass ends",
+					ctxPtr.curPart)
+				ctxPtr.kubeHolding = true
+				ctxPtr.kubeHoldStart = ctxPtr.timeTickCount
+			}
+			if ctxPtr.timeTickCount-ctxPtr.kubeHoldStart < kubeComponentsHoldLimit {
+				return
+			}
+			log.Warnf("CurPart: %s, kube component update pass still not over "+
+				"after %d seconds, completing the test anyway",
+				ctxPtr.curPart, kubeComponentsHoldLimit)
+		}
 		log.Functionf("CurPart: %s, Upgrade Validation Test Complete",
 			ctxPtr.curPart)
 		resetTestStartTime(ctxPtr)
@@ -186,6 +215,7 @@ func resetTestStartTime(ctxPtr *nodeagentContext) {
 	}
 	log.Functionf("Resetting upgrade validation")
 	ctxPtr.testInprogress = false
+	ctxPtr.kubeHolding = false
 	ctxPtr.remainingTestTime = time.Second * time.Duration(0)
 }
 
