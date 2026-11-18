@@ -2,6 +2,91 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-18 -- 0.0.0-master-c82bcfeb (run #23)](https://github.com/lf-edge/eve/actions/runs/44185588947)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/23/)
+
+### TestDeviceConnectivitySuite: failure analysis
+
+#### TestActiveBackupBond
+
+##### Failure
+
+```
+Device "edge-dev" failed to confirm the latest config (version 1): timed out waiting for LastProcessedConfig >= 2026-11-18 00:07:47.877494691 +0000 UTC
+```
+
+##### Claude's conclusion
+
+This confirms the exact match: the very first `publishMetrics` call (at boot, before the controller-assigned bond config took effect) tried sending via `eth1 with src IP 172.20.20.42` — an address from the old/bootstrap network — and the HTTP client blocked for the full 120s timeout, finally failing at 00:09:48.240 with `context deadline exceeded`, right as the device's mgmt interface had already moved to `bond1`/172.20.20.123. Since `LastProcessedConfig` is only surfaced via that periodic metrics POST (`handlemetrics.go:648`), and this one attempt got wedged on a stale connection/route from before the DPC switch to the bond, the updated value was never delivered within evetest's 2-minute wait window, which expired at almost the same instant.
+
+This is a known, recurring issue, not new. The ledger documents the identical mechanism at least twice before in this same ledger file (line 1605, and again similarly at line 2619): a metrics-send attempt starts just before/at the DPC network switch, binds to the pre-switch route/IP, and blocks for the full 120s HTTP client timeout before failing, missing the test's 2-minute `LastProcessedConfig` wait by mere seconds. No other failure in this run shares this exact root cause (the other `TestDeviceConnectivitySuite` failures in run #21's PNAC/DNS entries are unrelated mechanisms). No PR diff was provided for this investigation, so no RELATED verdict is given.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.001s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+Leader election converged correctly (edge-dev3 is `IsAppOpLeader:true`), ruling out the leader-election-race variant seen in some other nights — this is specifically the designated-node/backup-DNID activation-gate failure mode.
+
+###### Root cause
+
+Live inspection on edge-dev3 (the node the app failed over to) confirms the known deadlock: `kubectl get vmirs,vmi,vm -A` returns zero objects cluster-wide (matching the test's `found []`), while `AppInstanceStatus` for the app shows `PurgeInprogress:4`, `Activated:false`, `IsDesignatedNodeID:false`, and `ENClusterAppStatus` shows `IsDNidNode:false, ScheduledOnThisNode:false`. The purge deleted the old-generation VMIRS, but because the app isn't recognized as designated/scheduled on this node, zedmanager never re-requests a new VMIRS from domainmgr/zedkube — it's permanently stuck. Leader election is healthy (edge-dev3's `KubeLeaderElectInfo` shows `IsAppOpLeader:true` matching the actual lease holder), ruling out the separate leader-election-race variant that causes this same test to fail on other nights.
+
+This is **not a new issue**: per `live-ledger.md`, this exact `TestVMAppPurgeDuringFailover` designated-node/backup-DNID activation-gate deadlock has been recurring nightly since **2026-10-29** (first seen run #1), reproducing in nearly every nightly run since (explicitly logged again as recently as 2026-11-15, run #18, and many runs in between) — tonight's failure continues that same unbroken, still-unfixed streak rather than being a new bug.
+
+No PR diff was supplied for this investigation, so there's nothing to assess for code-change relatedness.
+
+### TestUpgradeSuite: failure analysis
+
+#### TestEVEUpgradeKubevirtToKubevirt
+
+##### Failure
+
+```
+timed out after 10m0.000875214s (excluding download) waiting for app "3204205c-0647-4565-b027-e96cf3d8c6f3" (upgrade-test-app) on device "edge-dev" to reach RUNNING state (last state: INITIAL)
+```
+
+##### Claude's conclusion
+
+I have enough evidence now. No PR diff was provided for this investigation, so I'll omit the RELATED line.
+
+###### Root cause
+
+The app `upgrade-test-app` never got scheduled onto `edge-dev` because Longhorn's storage stack (CSI driver, instance-manager, csi-attacher/provisioner/resizer/snapshotter) took far longer than the test's budget to come up: `zedkube`'s `ENClusterAppStatus` shows `ScheduledOnThisNode: false` for the app even after the full 10-minute window, and `kubectl describe pod` on `longhorn-csi-plugin` shows its `node-driver-registrar` image alone took 1m55s to pull, while k8s events show the `instance-manager` pod took **7m18s** to pull a 441MB image and the csi-attacher/provisioner/resizer/snapshotter images each took ~2 minutes — all occurring well after the "k3s-ready" checkpoint was already reached 16 minutes late (22:56:58→23:13:00). Live `top` on `edge-dev` confirms the cause: 23.7% iowait with load average climbing from 6.3 to 11.6 on a 4-vCPU box, 28 minutes after boot — classic shared-host storage contention, not an application or pillar logic bug (`AppInstanceStatus`/`VolumeRefStatus` both sit cleanly at state 100/INITIAL, simply never progressing because the CSI plugin wasn't registered in time).
+
+This is a well-established, recurring infra issue per `live-ledger.md`: this exact test (`TestEVEUpgradeKubevirtToKubevirt`) has failed from this same "host storage/iowait contention stalling K3s/Longhorn/CDI work past fixed test timeouts" pattern repeatedly — explicitly recorded in runs #7, #8, #10, #14, and #17, with the broader pattern traced back to **2026-10-29**. This run is a fresh instance of that same long-standing flake, not a new bug.
+#### TestThreeNodesUpgrade
+
+##### Failure
+
+```
+Timed out waiting for cluster nodes [edge-dev1 edge-dev2 edge-dev3] to become ready in cluster "test-cluster" (device "edge-dev1")
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+All three devices are stuck because kube-init bootstrapped each one as its own independent single-node k3s cluster instead of joining them into one HA/etcd cluster, even though zedkube had already correctly distributed cluster config to all three before k3s started. Live evidence: `kubectl get nodes` on each device shows only itself (never edge-dev2/3 from edge-dev1 or vice versa); each node's k3s server process was launched as a local/non-HA server (`/usr/bin/k3s init` seen in `ps`, no `/etc/rancher/k3s/config.yaml` anywhere, no etcd datastore); and zedkube's own logs show the *correct* `EdgeNodeClusterConfig` was already published to all three nodes before this (edge-dev1: `BootstrapNode:true, JoinServerIP:10.244.244.2` i.e. itself; edge-dev2/3: `BootstrapNode:false, JoinServerIP:10.244.244.2` i.e. correctly pointing at edge-dev1) — so the config distribution worked, but kube-init's install path ignored/raced past it. Consistent with this, `getKubeNodeInfo` has logged `usesEtcd false` for edge-dev1 every 30s continuously since node creation at 23:42:15 through the current time (00:14+), over 30 minutes with no self-correction, which keeps each node's `NodeAdmission` pinned at `JOINING` forever (per `pkg/pillar/cmd/zedkube/kubestatscollect.go`, `NodeAdmissionJoined` requires the `node-role.kubernetes.io/etcd` label, which never gets set).
+
+All three devices are running the exact same pinned pre-upgrade base image (`0.0.0-master-66475696`) as the `live-ledger.md` entry from run #20 (2026-11-16), which diagnosed this identical "kube-init bootstraps each node standalone despite correct zedkube cluster config" mechanism for `TestThreeNodesUpgrade`'s "become ready" timeout. Since the base image is pinned and hasn't been bumped since, this is the same known bug recurring one night later — not a new, independent failure. It is unrelated to this run's other investigated failure (`TestEVEUpgradeKubevirtToKubevirt`'s Longhorn CSI image-pull/iowait stall on a single-node cluster), which is a different mechanism.
+
+No PR diff was provided for this investigation, so no relatedness assessment is given.
+
 ## [2026-11-17 -- 0.0.0-master-9c8800d2 (run #21)](https://github.com/lf-edge/eve/actions/runs/43965677211)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/21/)
