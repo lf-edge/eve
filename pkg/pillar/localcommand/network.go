@@ -482,7 +482,7 @@ func (lc *LocalCmdAgent) applyLocalNetworkConfig(
 	if localConfig == nil {
 		return nil
 	}
-	if localConfig.GetServerToken() != lc.lpsConfig.LpsToken {
+	if lc.lpsConfig.LpsToken == "" || localConfig.GetServerToken() != lc.lpsConfig.LpsToken {
 		err = errors.New("invalid token submitted by LPS")
 		lc.Log.Errorf("%s: %v", logPrefix, err)
 		return err

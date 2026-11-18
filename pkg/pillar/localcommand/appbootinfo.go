@@ -201,7 +201,7 @@ func (lc *LocalCmdAgent) postAppBootInfo() (config *profile.AppBootConfigList, d
 				return &profile.AppBootConfigList{AppConfigs: nil}, false
 			case http.StatusOK, http.StatusCreated:
 				// Validate token for all 200/201 responses
-				if config.GetServerToken() != lc.lpsConfig.LpsToken {
+				if lc.lpsConfig.LpsToken == "" || config.GetServerToken() != lc.lpsConfig.LpsToken {
 					errList = append(errList, "invalid token submitted by LPS")
 					continue
 				}
