@@ -133,6 +133,8 @@ token), so the installer always prompts you interactively for that account's pas
 are written into the broker VM's `/etc/evetest/broker.env`. The broker container image
 tag is **baked into the installer** at assembly time from the content hash of the
 evetest sources (`make version`, e.g. `lfedge/evetest-broker:27f0c790bfbf2936`); override with `--broker-image`.
+Unless `--no-auto-upgrade` is passed, the broker then follows the newest published
+version (see "Broker auto-upgrade" below).
 
 ### Stable LAN IP across reinstalls
 
@@ -186,6 +188,41 @@ default `5000`) to also run pull-through cache containers on the broker VM for
 no manual configuration needed. If you already export one of the
 `EVETEST_REGISTRY_MIRROR_*` env vars on your own evetest container, that value
 wins over the broker-provided one for that registry.
+
+### Broker auto-upgrade
+
+By default the broker VM keeps its broker up to date with the evetest sources on
+the `master` branch of `https://github.com/lf-edge/eve.git`. Every 10 minutes
+`evetest-broker-auto-upgrade.timer` runs `evetest-broker-auto-upgrade.sh`, which
+upgrades the broker only if all of the following hold:
+
+- the broker is idle, checked again two minutes later, right before the restart: no
+  evetest client is connected (each client keeps a connection to port `50221` open
+  for its whole session), no session's devices are being torn down, and no EVE image
+  upload is claimed with `evetest broker image claim-upload` (the claimer holds no
+  connection while it fetches the image, which may take a while); the broker reports
+  the latter two (`docker exec evetest-broker evetest-broker check-idle`), except a
+  broker older than this check, for which only the connections count;
+- the broker version on the branch, i.e. the content hash computed by
+  `content-hash.sh` on a shallow, sparse checkout of it, differs from the running
+  one;
+- that version is published to the image repository of `--broker-image` (e.g.
+  `lfedge/evetest-broker`), which the publish workflow does after each merge.
+
+The new image is pulled before the broker is restarted. If it is not running and
+listening within three minutes, the previous image is restored, and that version
+is tried again an hour later at the earliest, at most three times in all, since the
+failure may have been transient (e.g. the host short of memory). The failed
+versions are recorded in `/var/lib/evetest-broker-auto-upgrade/failed-tags` as
+`<tag> <attempts> <time of the last attempt>`; remove a line to let that version be
+tried three more times. Pass `--auto-upgrade-repo URL` and `--auto-upgrade-branch
+NAME` to follow another repository or branch, or `--no-auto-upgrade` to keep
+running `--broker-image`.
+
+The running image is set in `/etc/evetest/broker-image.env` on the broker VM, so
+to switch it by hand, edit that file and run `systemctl restart evetest-broker`.
+Each auto-upgrade run logs to the journal: `journalctl -u
+evetest-broker-auto-upgrade`.
 
 ## Point evetest at the broker
 
@@ -309,6 +346,8 @@ broker-created test VMs `evetest-hook.pl` runs it.
 - `evetest-oom-hook.pl` — the OOM-priority hookscript (same directory).
 - `broker-cloudinit.yaml` — cloud-init user-data template for the broker VM (installs
   Docker, runs the broker container with host networking).
+- `broker-auto-upgrade.sh` — upgrades the broker container while no tests run; see
+  "Broker auto-upgrade" above.
 - `installer.sh.tmpl` — installer template. `make proxmox-broker-installer` assembles it
   with the files above into the self-contained
   `evetest-broker-proxmox-installer.sh`.

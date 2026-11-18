@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -63,6 +64,7 @@ type broker struct {
 	proxyCACerts    []*pem.Block
 	registryMirrors map[string][]string // key: registry hostname
 	maxClients      int                 // -1 means unlimited
+	startedAt       time.Time
 
 	// Periodic Docker image cleanup
 	imgRetention     time.Duration
@@ -87,6 +89,7 @@ type broker struct {
 	// session's mutex) -- this avoids an AB-BA deadlock between two sessions.
 	mutex             sync.Mutex
 	sessions          map[string]*session      // key: client ID
+	closingSessions   map[string]*session      // removed from sessions, devices being torn down
 	imageUploads      map[string]chan struct{} // key: docker image name; closed on completion
 	imageClaims       *imageClaims             // internally synchronized, not guarded by mutex
 	usedSDNUplinkMACs map[string]struct{}      // key: MAC address
@@ -107,6 +110,11 @@ type session struct {
 	log        *logrus.Entry
 	logHook    *logger.LogrusGrpcHook
 	closed     chan struct{} // closed when the session is intentionally terminated
+
+	// statusMu protects status. It is a leaf lock: nothing else is acquired
+	// while holding it.
+	statusMu sync.Mutex
+	status   sessionStatus
 }
 
 type device struct {
@@ -124,6 +132,9 @@ type device struct {
 
 	// Uplink IPs are set only for SDN device.
 	uplinkIPs []net.IP
+
+	// image describes what the device boots, for GetStatus.
+	image string
 
 	// Flag to indicate that device has been successfully set up and should be eventually
 	// torn down.
@@ -213,6 +224,7 @@ func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 		proxyCACerts:         proxyCACerts,
 		registryMirrors:      constants.LoadRegistryMirrors(),
 		maxClients:           maxClients,
+		startedAt:            time.Now(),
 		imgRetention:         imgRetention,
 		diskThresholdPct:     diskThresholdPct,
 		dockerMinFreeGiB:     dockerMinFreeGiB,
@@ -222,6 +234,7 @@ func newBroker(log *logrus.Logger, provider provider.DeviceProvider,
 		tmplDiskThresholdPct: tmplDiskThresholdPct,
 		tmplMinFreeGiB:       tmplMinFreeGiB,
 		sessions:             make(map[string]*session),
+		closingSessions:      make(map[string]*session),
 		imageUploads:         make(map[string]chan struct{}),
 		imageClaims:          newImageClaims(imageClaimStartLease, imageClaimProgressLease),
 		usedSDNUplinkMACs:    make(map[string]struct{}),
@@ -349,6 +362,13 @@ func (b *broker) Connect(
 			log:      clientLogger,
 			logHook:  logHook,
 			closed:   make(chan struct{}),
+			status: sessionStatus{
+				clientInfo:  req.GetClientInfo(),
+				connectedAt: time.Now(),
+			},
+		}
+		if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
+			clientSession.status.peerAddress = p.Addr.String()
 		}
 		b.sessions[clientID] = clientSession
 		clientLogger.Infof("New client connected: %s", clientID)
@@ -414,9 +434,19 @@ func (b *broker) removeSession(clientID string) *session {
 // session was already removed, concurrent lookups for this client fail fast
 // instead of blocking on clientSession.mutex.
 func (b *broker) closeSession(clientSession *session) {
+	b.mutex.Lock()
+	b.closingSessions[clientSession.clientID] = clientSession
+	b.mutex.Unlock()
+
 	clientSession.mutex.Lock()
+	endOperation := clientSession.beginOperation(closeOperation)
 	b.teardownDevices(clientSession)
+	endOperation()
 	clientSession.mutex.Unlock()
+
+	b.mutex.Lock()
+	delete(b.closingSessions, clientSession.clientID)
+	b.mutex.Unlock()
 
 	// Signal any goroutines (e.g. KeepAlive timer) that the session is gone.
 	close(clientSession.closed)
@@ -462,6 +492,7 @@ func (b *broker) KeepAlive(
 	}
 
 	log := clientSession.log
+	clientSession.recordKeepAlive(firstPing)
 
 	// Timer for automatic session cleanup
 	timer := time.NewTimer(keepAliveTimeout)
@@ -490,11 +521,12 @@ func (b *broker) KeepAlive(
 
 	// Loop to receive keepalive pings
 	for {
-		_, err := stream.Recv()
+		ping, err := stream.Recv()
 		if err != nil {
 			log.Infof("KeepAlive stream closed for client %s: %v", clientID, err)
 			break
 		}
+		clientSession.recordKeepAlive(ping)
 
 		// Reset timer on each ping
 		if !timer.Reset(keepAliveTimeout) {
@@ -555,6 +587,7 @@ func (b *broker) BuildImage(
 	}
 	clientSession.mutex.Lock()
 	defer clientSession.mutex.Unlock()
+	defer clientSession.beginOperation("BuildImage")()
 	log := clientSession.log
 
 	imageArch := req.GetImage().GetArch()
@@ -736,6 +769,7 @@ func (b *broker) BuildImage(
 		},
 		deviceName:      req.DeviceName,
 		providerDevName: providerDevName,
+		image:           eveImageDescription(req, dockerImageName),
 		installerImage:  eveImage.installerImage,
 		disks:           eveImage.disks,
 		templateKey:     templateKey,
@@ -833,6 +867,7 @@ func (b *broker) PushEVEContainerImage(
 		}
 		return chunk.GetDataGzipChunk(), nil
 	}
+	var onLoaded func(n int)
 	if claimTicket != "" {
 		log = log.WithField("image", dockerImageName)
 		if !b.imageClaims.renew(dockerImageName, claimTicket) {
@@ -849,6 +884,8 @@ func (b *broker) PushEVEContainerImage(
 		ctx, cancel = context.WithCancel(ctx)
 		defer cancel()
 		b.imageClaims.attach(dockerImageName, claimTicket, cancel)
+		b.imageClaims.started(dockerImageName, claimTicket, req.GetArchiveSizeBytes())
+		onLoaded = func(n int) { b.imageClaims.loaded(dockerImageName, claimTicket, n) }
 		plainRecv := recv
 		recv = func() ([]byte, error) {
 			data, err := plainRecv()
@@ -863,7 +900,7 @@ func (b *broker) PushEVEContainerImage(
 	// concurrent-upload wait of receiveDockerImage must not apply: it would make
 	// a client that took over a stalled holder's claim wait for that holder.
 	alreadyExists, err := b.receiveDockerImage(ctx, log, dockerImageName,
-		claimTicket != "", recv)
+		claimTicket != "", recv, onLoaded)
 	if err != nil {
 		return err
 	}
@@ -931,7 +968,12 @@ func (b *broker) ClaimEVEImageUpload(
 		resp.State = api.ImageUploadClaimState_IMAGE_UPLOAD_CLAIM_HELD
 		return resp, nil
 	}
-	b.globalLog.Infof("Granted the claim of image %q", dockerImageName)
+	var peerAddress string
+	if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
+		peerAddress = p.Addr.String()
+	}
+	b.imageClaims.describe(dockerImageName, ticket, peerAddress, req.GetClientInfo())
+	b.globalLog.Infof("Granted the claim of image %q to %s", dockerImageName, peerAddress)
 	resp.State = api.ImageUploadClaimState_IMAGE_UPLOAD_CLAIM_GRANTED
 	resp.Ticket = ticket
 	return resp, nil
@@ -1049,7 +1091,7 @@ func (b *broker) PushSDNContainerImage(
 				return nil, err
 			}
 			return chunk.GetDataGzipChunk(), nil
-		})
+		}, nil)
 	if err != nil {
 		return err
 	}
@@ -1070,7 +1112,7 @@ func (b *broker) PushSDNContainerImage(
 // registers an upload.
 func (b *broker) receiveDockerImage(ctx context.Context, log *logrus.Entry,
 	dockerImageName string, claimed bool,
-	recv func() ([]byte, error)) (alreadyExists bool, err error) {
+	recv func() ([]byte, error), onLoaded func(n int)) (alreadyExists bool, err error) {
 	// Check if image already exists locally. This is a Docker-daemon query, so
 	// it must not run under b.mutex -- that's the broker-wide lock every RPC
 	// handler also takes just to look up a session, and a stalled daemon would
@@ -1162,7 +1204,7 @@ func (b *broker) receiveDockerImage(ctx context.Context, log *logrus.Entry,
 	}()
 
 	// Load image directly from streamed gzip
-	if err := utils.LoadDockerImageFromReader(ctx, log, pr, dockerImageName); err != nil {
+	if err := utils.LoadDockerImageFromReader(ctx, log, pr, dockerImageName, onLoaded); err != nil {
 		err = fmt.Errorf("failed to load Docker image from stream: %w", err)
 		log.Error(err)
 		return false, err
@@ -1318,6 +1360,7 @@ func (b *broker) SetupDevices(
 	}
 	clientSession.mutex.Lock()
 	defer clientSession.mutex.Unlock()
+	defer clientSession.beginOperation("SetupDevices")()
 
 	log := clientSession.log
 	ctx = logger.WithLogger(ctx, log)
@@ -1407,6 +1450,7 @@ func (b *broker) SetupDevices(
 	sdnDevice := &device{
 		deviceName:      constants.SDNDeviceName,
 		providerDevName: sdnProvDevName,
+		image:           sdnDockerImageName,
 		disks:           sdnDisks,
 		DeviceSpec: provider.DeviceSpec{
 			Disks:       sdnDisks,
@@ -1758,6 +1802,7 @@ func (b *broker) TeardownDevices(
 	}
 	clientSession.mutex.Lock()
 	defer clientSession.mutex.Unlock()
+	defer clientSession.beginOperation("TeardownDevices")()
 	b.teardownDevices(clientSession)
 	return &api.TeardownDevicesResponse{}, nil
 }

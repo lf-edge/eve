@@ -830,6 +830,44 @@ func (p *LibvirtProvider) WatchDeviceStatus(
 	return ch
 }
 
+// HostStatus describes the host running libvirt, which is always the
+// broker's own host (qemu:///system), and all its libvirt domains.
+func (p *LibvirtProvider) HostStatus(ctx context.Context) (*api.HostStatus, error) {
+	st, err := localHostStatus("/proc")
+	if err != nil {
+		return nil, err
+	}
+	// The broker may run in a container, which has a hostname of its own.
+	if hostname, err := p.conn.GetHostname(); err == nil {
+		st.Name = hostname
+	}
+	st.Description = "libvirt"
+	if v, err := p.conn.GetVersion(); err == nil {
+		st.Description = fmt.Sprintf("QEMU %d.%d.%d via libvirt", v/1000000, v/1000%1000, v%1000)
+	}
+
+	doms, err := p.conn.ListAllDomains(0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list domains: %w", err)
+	}
+	defer func() {
+		for _, d := range doms {
+			_ = d.Free()
+		}
+	}()
+	for _, d := range doms {
+		st.Vms++
+		if active, err := d.IsActive(); err != nil || !active {
+			continue
+		}
+		st.VmsRunning++
+		if maxMemKiB, err := d.GetMaxMemory(); err == nil {
+			st.VmsRunningMemoryBytes += maxMemKiB * 1024
+		}
+	}
+	return st, nil
+}
+
 // ListDevices returns the names of all devices created by this provider.
 func (p *LibvirtProvider) ListDevices(ctx context.Context) ([]string, error) {
 	log := logger.FromContext(ctx)

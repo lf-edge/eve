@@ -519,7 +519,7 @@ func (th *TestHarness) pullEVEImageFromBroker(
 			log.Warnf("failed to close the pipe of image %s: %v", dockerImageName, closeErr)
 		}
 	}()
-	if err := utils.LoadDockerImageFromReader(ctx, log, pr, dockerImageName); err != nil {
+	if err := utils.LoadDockerImageFromReader(ctx, log, pr, dockerImageName, nil); err != nil {
 		return false, err
 	}
 	return true, nil
