@@ -420,11 +420,8 @@ func (h *Ext4Handler) getVaultStatus(vaultName string, vaultPath string,
 	status := types.VaultStatus{}
 	status.Name = vaultName
 
-	if etpm.PCRBankSHA256Enabled() {
-		status.PCRStatus = info.PCRStatus_PCR_ENABLED
-	} else {
-		status.PCRStatus = info.PCRStatus_PCR_DISABLED
-	}
+	var pcrErr error
+	status.PCRStatus, pcrErr = pcrStatus(h.log)
 
 	if fscryptStatus != info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED {
 		status.Status = fscryptStatus
@@ -436,13 +433,18 @@ func (h *Ext4Handler) getVaultStatus(vaultName string, vaultPath string,
 			// check further on few things like PCR bank, non-empty dir etc.
 			// which are not errors per se, and other agents can use vault
 			// folder in those cases
-			if !etpm.PCRBankSHA256Enabled() {
+			switch {
+			case status.PCRStatus == info.PCRStatus_PCR_DISABLED:
 				status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED
 				status.SetErrorDescription(types.ErrorDescription{Error: "No PCR-SHA256 bank available"})
-			} else if !isDirEmpty(h.log, vaultPath) {
+			case pcrErr != nil:
+				status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
+				status.SetErrorDescription(types.ErrorDescription{
+					Error: fmt.Sprintf("%v; %s", pcrErr, stdOut+stdErr)})
+			case !isDirEmpty(h.log, vaultPath):
 				status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_DISABLED
 				status.SetErrorDescription(types.ErrorDescription{Error: "Directory is not empty"})
-			} else {
+			default:
 				status.Status = info.DataSecAtRestStatus_DATASEC_AT_REST_ERROR
 				status.SetErrorDescription(types.ErrorDescription{Error: stdOut + stdErr})
 			}
@@ -476,9 +478,13 @@ func (h *Ext4Handler) getVaultStatus(vaultName string, vaultPath string,
 
 // createVault expects an empty, existing dir at vaultPath
 func (h *Ext4Handler) createVault(vaultPath string) error {
-	if !etpm.IsTpmEnabled() || !etpm.PCRBankSHA256Enabled() {
+	sha256Bank, err := etpm.PCRBankSHA256Supported(h.log)
+	if err != nil {
+		return err
+	}
+	if !etpm.IsTpmEnabled() || !sha256Bank {
 		h.log.Noticef("Ignoring vault create request on no-TPM(%v) or no-PCR (%v) platform",
-			!etpm.IsTpmEnabled(), !etpm.PCRBankSHA256Enabled())
+			!etpm.IsTpmEnabled(), !sha256Bank)
 		return nil
 	}
 	if err := h.removeProtectorIfAny(vaultPath); err != nil {

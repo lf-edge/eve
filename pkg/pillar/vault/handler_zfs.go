@@ -904,11 +904,7 @@ func (h *ZFSHandler) getVaultStatus(vaultName, vaultPath string) *types.VaultSta
 	status := types.VaultStatus{}
 	status.Name = vaultName
 
-	if etpm.PCRBankSHA256Enabled() {
-		status.PCRStatus = info.PCRStatus_PCR_ENABLED
-	} else {
-		status.PCRStatus = info.PCRStatus_PCR_DISABLED
-	}
+	status.PCRStatus, _ = pcrStatus(h.log)
 
 	zfsEncryptStatus, zfsEncryptError := h.GetOperationalInfo()
 	if zfsEncryptStatus != info.DataSecAtRestStatus_DATASEC_AT_REST_ENABLED {
