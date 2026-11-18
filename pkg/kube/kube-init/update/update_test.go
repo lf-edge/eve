@@ -5,10 +5,13 @@ package update
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kcus"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -246,49 +249,61 @@ func TestK3sArchSuffixOnlyAcceptsKnownArches(t *testing.T) {
 
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
 
-// TestK3sStatusParked pins the condition that decides whether a
-// converged pass retroactively finishes an update the k3s step left
-// open. Both halves of the condition are load-bearing: a status on a
-// different component, or on k3s at any stage other than completed,
-// belongs to a pass still in flight and must not be advanced.
-func TestK3sStatusParked(t *testing.T) {
+// TestUpdateStatusUnfinished pins the condition that decides whether a
+// converged pass retroactively finishes a status an earlier step left
+// open. A k3s update parks the status on "k3s completed" across its
+// reboot, and an interrupted pass leaves an in-flight step. A failed
+// status is terminal and must be kept, and a completed component other
+// than k3s is the pass's own last word.
+func TestUpdateStatusUnfinished(t *testing.T) {
 	cases := []struct {
 		name string
-		seed *types.KubeClusterUpdateStatus // nil = no delivery yet
+		seed types.KubeClusterUpdateStatus
 		want bool
 	}{
 		{
-			name: "no delivery -> not parked",
-			seed: nil,
-			want: false,
-		},
-		{
-			name: "k3s completed -> parked",
-			seed: &types.KubeClusterUpdateStatus{
+			name: "k3s completed -> unfinished",
+			seed: types.KubeClusterUpdateStatus{
 				Component: types.CompK3s,
 				Status:    types.CompStatusCompleted,
 			},
 			want: true,
 		},
 		{
-			name: "k3s still in progress -> not parked",
-			seed: &types.KubeClusterUpdateStatus{
+			name: "k3s download -> unfinished",
+			seed: types.KubeClusterUpdateStatus{
 				Component: types.CompK3s,
-				Status:    types.CompStatusInProgress,
+				Status:    types.CompStatusDownload,
 			},
-			want: false,
+			want: true,
 		},
 		{
-			name: "k3s failed -> not parked",
-			seed: &types.KubeClusterUpdateStatus{
+			name: "longhorn in progress -> unfinished",
+			seed: types.KubeClusterUpdateStatus{
+				Component: types.CompLonghorn,
+				Status:    types.CompStatusInProgress,
+			},
+			want: true,
+		},
+		{
+			name: "k3s failed -> kept",
+			seed: types.KubeClusterUpdateStatus{
 				Component: types.CompK3s,
 				Status:    types.CompStatusFailed,
 			},
 			want: false,
 		},
 		{
-			name: "a different component completed -> not parked",
-			seed: &types.KubeClusterUpdateStatus{
+			name: "longhorn failed -> kept",
+			seed: types.KubeClusterUpdateStatus{
+				Component: types.CompLonghorn,
+				Status:    types.CompStatusFailed,
+			},
+			want: false,
+		},
+		{
+			name: "longhorn completed -> finished",
+			seed: types.KubeClusterUpdateStatus{
 				Component: types.CompLonghorn,
 				Status:    types.CompStatusCompleted,
 			},
@@ -297,15 +312,249 @@ func TestK3sStatusParked(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			kcus.ResetForTest()
-			t.Cleanup(kcus.ResetForTest)
-			if c.seed != nil {
-				kcus.SetForTest(*c.seed)
-			}
-			if got := k3sStatusParked(); got != c.want {
+			if got := updateStatusUnfinished(c.seed); got != c.want {
 				t.Errorf("got %v, want %v", got, c.want)
 			}
 		})
+	}
+}
+
+// fakeUpdateComponent installs a stand-in for the update-component
+// helper that logs each invocation's action and exits with the code
+// the test assigns to that action, printing the given text first.
+type fakeUpdateComponent struct {
+	dir string
+}
+
+func newFakeUpdateComponent(t *testing.T) *fakeUpdateComponent {
+	t.Helper()
+	f := &fakeUpdateComponent{dir: t.TempDir()}
+	script := `#!/bin/sh
+action=""
+for arg in "$@"; do
+	case "$arg" in
+	--compare|--upgrade|--check-comp-ready|--finalize) action="${arg#--}" ;;
+	esac
+done
+echo "$action" >> "` + f.dir + `/calls"
+[ -f "` + f.dir + `/$action.out" ] && cat "` + f.dir + `/$action.out" >&2
+[ -f "` + f.dir + `/$action.rc" ] && exit "$(cat "` + f.dir + `/$action.rc")"
+exit 0
+`
+	path := filepath.Join(f.dir, "update-component")
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake update-component: %v", err)
+	}
+
+	oldPath, oldApplied := compUpdatePath, AppliedKubeVersion
+	oldInterval, oldTimeout := readyPollInterval, readyPollTimeout
+	compUpdatePath = path
+	// No applied version: PublishUpdateStatus stays a no-op.
+	AppliedKubeVersion = filepath.Join(f.dir, "applied-kube-version")
+	readyPollInterval = 10 * time.Millisecond
+	readyPollTimeout = 200 * time.Millisecond
+	passFailed.Store(false)
+	kcus.ResetForTest()
+	t.Cleanup(func() {
+		compUpdatePath, AppliedKubeVersion = oldPath, oldApplied
+		readyPollInterval, readyPollTimeout = oldInterval, oldTimeout
+		passFailed.Store(false)
+		kcus.ResetForTest()
+	})
+	return f
+}
+
+// set makes the helper exit with rc on action, after printing out.
+func (f *fakeUpdateComponent) set(t *testing.T, action string, rc int, out string) {
+	t.Helper()
+	for name, body := range map[string]string{
+		action + ".rc":  strconv.Itoa(rc),
+		action + ".out": out,
+	} {
+		if err := os.WriteFile(filepath.Join(f.dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// calls returns the actions the helper was invoked with, consecutive
+// repeats collapsed, since the ready poll may run more than once.
+func (f *fakeUpdateComponent) calls(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(f.dir, "calls"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seq []string
+	for _, c := range strings.Fields(string(data)) {
+		if len(seq) == 0 || seq[len(seq)-1] != c {
+			seq = append(seq, c)
+		}
+	}
+	return strings.Join(seq, " ")
+}
+
+// TestUpgradeComponent drives one component through the pass against a
+// fake helper. Multus is used because it needs no cluster to decide
+// whether it is installed.
+func TestUpgradeComponent(t *testing.T) {
+	t.Run("already at version runs the owed finalize only", func(t *testing.T) {
+		f := newFakeUpdateComponent(t)
+		if err := upgradeComponent(context.Background(), CompMultus); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := f.calls(t); got != "compare finalize" {
+			t.Errorf("helper calls = %q", got)
+		}
+	})
+
+	t.Run("drift upgrades, waits ready, then finalizes", func(t *testing.T) {
+		f := newFakeUpdateComponent(t)
+		f.set(t, "compare", 1, "")
+		if err := upgradeComponent(context.Background(), CompMultus); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := f.calls(t); got != "compare upgrade check-comp-ready finalize" {
+			t.Errorf("helper calls = %q", got)
+		}
+		if passFailed.Load() {
+			t.Error("a successful upgrade latched the pass as failed")
+		}
+	})
+
+	t.Run("denied upgrade is terminal and carries the reason", func(t *testing.T) {
+		f := newFakeUpdateComponent(t)
+		f.set(t, "compare", 1, "")
+		f.set(t, "upgrade", 1, "denied upgrade srcVer:v1.9.1 dstVer:v1.13.0")
+		err := upgradeComponent(context.Background(), CompMultus)
+		if !errors.Is(err, ErrUpdateFailed) {
+			t.Fatalf("err = %v, want ErrUpdateFailed", err)
+		}
+		if !contains(err.Error(), "denied upgrade srcVer:v1.9.1") {
+			t.Errorf("err = %v, want the helper's reason", err)
+		}
+		if got := f.calls(t); got != "compare upgrade" {
+			t.Errorf("helper calls = %q", got)
+		}
+		if !passFailed.Load() {
+			t.Error("a failed upgrade did not latch the pass as failed")
+		}
+	})
+
+	t.Run("never ready is terminal and names what is not ready", func(t *testing.T) {
+		f := newFakeUpdateComponent(t)
+		f.set(t, "compare", 1, "")
+		f.set(t, "check-comp-ready", 1, "volumes not yet on engine v1.13.0: pvc-1")
+		err := upgradeComponent(context.Background(), CompMultus)
+		if !errors.Is(err, ErrUpdateFailed) {
+			t.Fatalf("err = %v, want ErrUpdateFailed", err)
+		}
+		if !contains(err.Error(), "pvc-1") {
+			t.Errorf("err = %v, want the helper's detail", err)
+		}
+		if got := f.calls(t); got != "compare upgrade check-comp-ready" {
+			t.Errorf("helper calls = %q", got)
+		}
+	})
+
+	t.Run("finalize failure is terminal", func(t *testing.T) {
+		f := newFakeUpdateComponent(t)
+		f.set(t, "compare", 1, "")
+		f.set(t, "finalize", 1, "longhorn-manager not ready")
+		err := upgradeComponent(context.Background(), CompMultus)
+		if !errors.Is(err, ErrUpdateFailed) {
+			t.Fatalf("err = %v, want ErrUpdateFailed", err)
+		}
+		if got := f.calls(t); got != "compare upgrade check-comp-ready finalize" {
+			t.Errorf("helper calls = %q", got)
+		}
+	})
+
+	t.Run("an upgrade that did not start is deferred, not terminal", func(t *testing.T) {
+		f := newFakeUpdateComponent(t)
+		f.set(t, "compare", 1, "")
+		f.set(t, "upgrade", compUpdateExitNotStarted, "not ready at version:v1.9.1")
+		err := upgradeComponent(context.Background(), CompMultus)
+		if !errors.Is(err, ErrUpdateDeferred) || errors.Is(err, ErrUpdateFailed) {
+			t.Fatalf("err = %v, want ErrUpdateDeferred only", err)
+		}
+		if passFailed.Load() {
+			t.Error("a deferred upgrade latched the pass as failed")
+		}
+	})
+
+	interrupted := func() {
+		kcus.SetForTest(types.KubeClusterUpdateStatus{
+			Component:                    types.CompMultus,
+			Status:                       types.CompStatusInProgress,
+			DestinationKubeUpdateVersion: uint32(KubeVersion),
+		})
+	}
+
+	t.Run("an interrupted update waits for ready before finalizing", func(t *testing.T) {
+		f := newFakeUpdateComponent(t)
+		interrupted()
+		if err := upgradeComponent(context.Background(), CompMultus); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := f.calls(t); got != "compare check-comp-ready finalize" {
+			t.Errorf("helper calls = %q", got)
+		}
+	})
+
+	t.Run("an interrupted update that never gets ready is terminal", func(t *testing.T) {
+		f := newFakeUpdateComponent(t)
+		interrupted()
+		f.set(t, "check-comp-ready", 1, "volumes not yet on engine v1.13.0: pvc-1")
+		err := upgradeComponent(context.Background(), CompMultus)
+		if !errors.Is(err, ErrUpdateFailed) {
+			t.Fatalf("err = %v, want ErrUpdateFailed", err)
+		}
+		if got := f.calls(t); got != "compare check-comp-ready" {
+			t.Errorf("helper calls = %q", got)
+		}
+	})
+
+	t.Run("a cancelled pass is not terminal", func(t *testing.T) {
+		newFakeUpdateComponent(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		err := failUpdate(ctx, CompMultus, "wait ready", ctx.Err())
+		if errors.Is(err, ErrUpdateFailed) || passFailed.Load() {
+			t.Fatalf("err = %v, passFailed = %v: cancellation latched a failure",
+				err, passFailed.Load())
+		}
+	})
+
+	t.Run("an unusable helper is not terminal", func(t *testing.T) {
+		newFakeUpdateComponent(t)
+		compUpdatePath = filepath.Join(t.TempDir(), "missing")
+		err := upgradeComponent(context.Background(), CompMultus)
+		if err == nil || errors.Is(err, ErrUpdateFailed) {
+			t.Fatalf("err = %v, want a transient error", err)
+		}
+		if passFailed.Load() {
+			t.Error("a helper that could not run latched the pass as failed")
+		}
+	})
+}
+
+// TestCheckClusterComponentsAfterFailure pins that a failed pass is not
+// run again in the same process, and says so with ErrUpdateFailed.
+func TestCheckClusterComponentsAfterFailure(t *testing.T) {
+	f := newFakeUpdateComponent(t)
+	kcus.ResetForTest()
+	t.Cleanup(kcus.ResetForTest)
+	if !ComponentPassPending() {
+		t.Fatal("a node without an applied version must have a pass pending")
+	}
+	passFailed.Store(true)
+	err := CheckClusterComponents(context.Background())
+	if !errors.Is(err, ErrUpdateFailed) {
+		t.Fatalf("err = %v, want ErrUpdateFailed", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(f.dir, "calls")); statErr == nil {
+		t.Error("the helper was invoked although the pass had failed")
 	}
 }
 

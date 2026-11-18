@@ -11,11 +11,15 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"sync/atomic"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/kube/kube-init/edgenodeinfo"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/kcus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeclient"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
+	"github.com/lf-edge/eve/pkg/pillar/types"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -43,6 +47,61 @@ var readyPollInterval = 5 * time.Second
 // caller instead of spinning forever.
 var readyPollTimeout = 15 * time.Minute
 
+// longhornReadyPollTimeout is readyPollTimeout for Longhorn, whose
+// readiness includes the live engine upgrade of every attached
+// volume, one volume per node at a time.
+var longhornReadyPollTimeout = 60 * time.Minute
+
+// compUpdateTimeout bounds one update-component --upgrade run. The
+// helper bounds its own waits (ready before applying, version after
+// applying, uptime); this covers them with some slack so a hung
+// helper cannot keep the pass from ending.
+var compUpdateTimeout = 40 * time.Minute
+
+// compFinalizeTimeout bounds one update-component --finalize run,
+// which at most waits for one longhorn-manager rollout.
+var compFinalizeTimeout = 15 * time.Minute
+
+// uncordonTimeout bounds the wait for the local node to be
+// schedulable before Longhorn is upgraded.
+var uncordonTimeout = 10 * time.Minute
+
+// uncordonPollInterval is the cadence of that wait.
+var uncordonPollInterval = 15 * time.Second
+
+// tieBreakerNodeLabel marks the node of a three-node cluster that
+// holds no workloads and stays cordoned.
+const tieBreakerNodeLabel = "tie-breaker-node"
+
+// ErrUpdateFailed marks a component update that ended in failure
+// and will not be retried for this KubeVersion. Errors that do not
+// wrap it are transient: the pass did not get as far as changing a
+// component and can simply be run again.
+var ErrUpdateFailed = errors.New("kube component update failed")
+
+// ErrUpdateDeferred marks a pass that stopped before changing a
+// component, for a reason that can clear up on its own: a component
+// not ready at its current version, or this node still cordoned. It
+// is not latched; the pass runs again later.
+var ErrUpdateDeferred = errors.New("kube component update deferred")
+
+// compUpdateExitNotStarted is update-component's exit code for an
+// --upgrade that stopped before changing anything.
+const compUpdateExitNotStarted = 2
+
+// passFailed latches a failed pass for the lifetime of the process.
+// updateFailed reads the same fact from the status pillar keeps,
+// but that status is not published on a device without an applied
+// version, and the pass must not be re-run either way.
+var passFailed atomic.Bool
+
+// ComponentPassPending reports whether this build still has a
+// component update pass to run on this node: its KubeVersion is
+// above the one the node last applied.
+func ComponentPassPending() bool {
+	return !appliedVersionGEQ(VersionGet(), KubeVersion)
+}
+
 // CheckClusterComponents iterates the managed cluster components,
 // detects version drift via the update-component binary, and runs
 // the upgrade-then-wait-ready cycle for any out-of-date component.
@@ -62,15 +121,15 @@ func CheckClusterComponents(ctx context.Context) error {
 	if appliedVersionGEQ(appliedVersion, KubeVersion) {
 		log.Printf("update: cluster components at applied=%s, target=%d — no update",
 			appliedVersion, KubeVersion)
-		releaseK3sUpdateStatus()
+		releaseStaleUpdateStatus()
 		return nil
 	}
 
-	if updateFailed() {
+	if passFailed.Load() || updateFailed() {
 		log.Printf("update: previous attempt at version %s failed, will not retry",
 			kubeVersionStr)
-		return fmt.Errorf("previous update to kube version %s failed",
-			kubeVersionStr)
+		return fmt.Errorf("previous update to kube version %s: %w",
+			kubeVersionStr, ErrUpdateFailed)
 	}
 
 	if err := checkClusterReady(ctx); err != nil {
@@ -93,23 +152,39 @@ func CheckClusterComponents(ctx context.Context) error {
 	return nil
 }
 
-// releaseK3sUpdateStatus advances a KubeClusterUpdateStatus still
-// parked on the k3s step to completion.
+// releaseStaleUpdateStatus advances a KubeClusterUpdateStatus that
+// names an unfinished step to completion.
 //
 // zedagent keeps the device in BaseOsUpdating for as long as that
-// status names an unfinished component. A k3s update publishes
-// "k3s completed" and then reboots; on the way back up the component
-// pass has nothing left to do and publishes nothing, so without this
-// the device reports BaseOsUpdating forever. Reaching this point means
-// the components are converged, so the last step is retroactively
-// finished.
-func releaseK3sUpdateStatus() {
-	if !k3sStatusParked() {
+// status names an unfinished component. Two things leave one behind
+// although nothing is left to do. A k3s update publishes "k3s
+// completed" and then reboots; on the way back up the component
+// pass has nothing left to do and publishes nothing. And a pass
+// interrupted by a reboot into the other partition leaves its last
+// in-flight step. Reaching this point means the components are
+// converged for this build, so the last step is retroactively
+// finished. A failed status is left alone: it is terminal and its
+// error is worth keeping.
+func releaseStaleUpdateStatus() {
+	status, ok := kcus.Get()
+	if !ok || !updateStatusUnfinished(status) {
 		return
 	}
-	log.Printf("update: status parked at k3s completed — advancing to %s completed",
-		CompLonghorn)
+	log.Printf("update: status left at %v/%v — advancing to %s completed",
+		status.Component, status.Status, CompLonghorn)
 	PublishUpdateStatus(CompLonghorn, StatusCompleted, "")
+}
+
+// updateStatusUnfinished reports whether a status names a step that
+// a later step was still expected to follow.
+func updateStatusUnfinished(status types.KubeClusterUpdateStatus) bool {
+	switch status.Status {
+	case types.CompStatusDownload, types.CompStatusInProgress:
+		return true
+	case types.CompStatusCompleted:
+		return status.Component == types.CompK3s
+	}
+	return false
 }
 
 func upgradeComponent(ctx context.Context, comp string) error {
@@ -128,25 +203,117 @@ func upgradeComponent(ctx context.Context, comp string) error {
 	}
 	if atVersion {
 		log.Printf("update: component %s already at expected version", comp)
+		// A pass interrupted after the version moved comes back
+		// here, its post-upgrade step possibly still owed. The
+		// version can move before the component has converged
+		// (Longhorn's does before the engines are upgraded), so a
+		// pass this node was in the middle of waits for that first.
+		if interruptedUpgrade(comp) {
+			log.Printf("update: resuming the interrupted update of %s", comp)
+			PublishUpdateStatus(comp, StatusInProgress, "")
+			if err := waitComponentReady(ctx, comp); err != nil {
+				return failUpdate(ctx, comp, "wait ready", err)
+			}
+		}
+		if err := compFinalize(ctx, comp); err != nil {
+			log.Printf("WARNING: finalize component %s: %v", comp, err)
+		}
 		PublishUpdateStatus(comp, StatusCompleted, "")
 		return nil
 	}
 
 	log.Printf("update: upgrading component %s", comp)
-	PublishUpdateStatus(comp, StatusDownload, "")
-
-	if err := compUpdate(ctx, comp); err != nil {
-		PublishUpdateStatus(comp, StatusFailed, err.Error())
-		return fmt.Errorf("update component %s: %w", comp, err)
+	if comp == CompLonghorn {
+		if err := waitNodeUncordoned(ctx); err != nil {
+			if ctx.Err() == nil {
+				err = fmt.Errorf("%w: %w", ErrUpdateDeferred, err)
+			}
+			return fmt.Errorf("pre-update component %s: %w", comp, err)
+		}
 	}
-
+	PublishUpdateStatus(comp, StatusDownload, "")
+	if err := compUpdate(ctx, comp); err != nil {
+		if errors.Is(err, ErrUpdateDeferred) {
+			return fmt.Errorf("update component %s: %w", comp, err)
+		}
+		return failUpdate(ctx, comp, "update", err)
+	}
+	PublishUpdateStatus(comp, StatusInProgress, "")
 	if err := waitComponentReady(ctx, comp); err != nil {
-		PublishUpdateStatus(comp, StatusFailed, err.Error())
-		return fmt.Errorf("wait component %s ready: %w", comp, err)
+		return failUpdate(ctx, comp, "wait ready", err)
+	}
+	if err := compFinalize(ctx, comp); err != nil {
+		return failUpdate(ctx, comp, "finalize", err)
 	}
 	PublishUpdateStatus(comp, StatusCompleted, "")
 	log.Printf("update: component %s ready", comp)
 	return nil
+}
+
+// failUpdate ends the update of comp, which may have changed it, in
+// failure: published, latched, and not retried for this KubeVersion.
+// A cancelled ctx is not a failure of the update but kube-init or k3s
+// going away; the pass resumes on the way back up.
+func failUpdate(ctx context.Context, comp, step string, err error) error {
+	if ctx.Err() != nil {
+		return fmt.Errorf("%s component %s: %w", step, comp, err)
+	}
+	passFailed.Store(true)
+	PublishUpdateStatus(comp, StatusFailed, err.Error())
+	return fmt.Errorf("%s component %s: %w: %w", step, comp, ErrUpdateFailed, err)
+}
+
+// interruptedUpgrade reports whether this node's last published
+// update status has it in the middle of updating comp to this
+// KubeVersion.
+func interruptedUpgrade(comp string) bool {
+	status, ok := kcus.Get()
+	return ok && status.Component == types.KubeCompFromStr(comp) &&
+		status.DestinationKubeUpdateVersion == uint32(KubeVersion) &&
+		updateStatusUnfinished(status)
+}
+
+// waitNodeUncordoned waits until the local node is schedulable.
+// Longhorn treats a cordoned node as one being drained: it stops
+// scheduling replicas onto it and marks its instance manager not
+// ready, which is not a state to upgrade engines in. pillar
+// uncordons the node once it is Ready after boot. A tie-breaker node
+// stays cordoned for good and holds no replicas, so it is exempt.
+func waitNodeUncordoned(ctx context.Context) error {
+	nodeName := state.ToK8sName(edgenodeinfo.DeviceName())
+	deadline := time.Now().Add(uncordonTimeout)
+	ticker := time.NewTicker(uncordonPollInterval)
+	defer ticker.Stop()
+	for {
+		node, err := kubeclient.Default().Clientset.CoreV1().Nodes().
+			Get(ctx, nodeName, metav1.GetOptions{})
+		switch {
+		case err != nil:
+			log.Printf("update: get node %s: %v", nodeName, err)
+		case !node.Spec.Unschedulable:
+			return nil
+		case node.Labels[tieBreakerNodeLabel] == "true":
+			log.Printf("update: node %s is the tie-breaker, staying cordoned", nodeName)
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("node %s still cordoned after %s", nodeName, uncordonTimeout)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+// compReadyTimeout returns how long comp may take to report ready
+// after an upgrade.
+func compReadyTimeout(comp string) time.Duration {
+	if comp == CompLonghorn {
+		return longhornReadyPollTimeout
+	}
+	return readyPollTimeout
 }
 
 // waitComponentReady polls compCheckReady until it returns true,
@@ -156,14 +323,16 @@ func upgradeComponent(ctx context.Context, comp string) error {
 // indefinitely on a configuration fault with only StatusDownload
 // visible to the controller.
 func waitComponentReady(ctx context.Context, comp string) error {
+	timeout := compReadyTimeout(comp)
 	log.Printf("update: waiting for component %s to be ready (timeout %s)",
-		comp, readyPollTimeout)
-	deadline := time.Now().Add(readyPollTimeout)
+		comp, timeout)
+	deadline := time.Now().Add(timeout)
 	ticker := time.NewTicker(readyPollInterval)
 	defer ticker.Stop()
 
+	var notReady string
 	for {
-		ready, err := compCheckReady(ctx, comp)
+		ready, detail, err := compCheckReady(ctx, comp)
 		if err != nil {
 			// Probe could not execute — distinct from "ran and
 			// reported not-ready". Log and continue polling: a
@@ -173,10 +342,16 @@ func waitComponentReady(ctx context.Context, comp string) error {
 			log.Printf("update: check ready %s: %v", comp, err)
 		} else if ready {
 			return nil
+		} else if detail != "" {
+			notReady = detail
 		}
 		if time.Now().After(deadline) {
+			if notReady != "" {
+				return fmt.Errorf("component %s not ready within %s: %s",
+					comp, timeout, notReady)
+			}
 			return fmt.Errorf("component %s not ready within %s",
-				comp, readyPollTimeout)
+				comp, timeout)
 		}
 		select {
 		case <-ctx.Done():
@@ -277,6 +452,8 @@ func compIsRunningExpectedVersion(ctx context.Context, comp string) (bool, error
 // it is later attached to a PublishUpdateStatus argv and a
 // megabyte of helper noise would hit E2BIG on a small device.
 func compUpdate(ctx context.Context, comp string) error {
+	ctx, cancel := context.WithTimeout(ctx, compUpdateTimeout)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, compUpdatePath,
 		"--versions-file", versionsFile,
 		"--component", comp,
@@ -284,18 +461,51 @@ func compUpdate(ctx context.Context, comp string) error {
 	cmd.Env = append(os.Environ(), "KUBECONFIG="+state.K3sKubeconfig)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("update-component %s did not finish within %s",
+				comp, compUpdateTimeout)
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == compUpdateExitNotStarted {
+			return fmt.Errorf("update-component %s: %w: %s",
+				comp, ErrUpdateDeferred, truncateForLog(string(out), 4096))
+		}
 		return fmt.Errorf("update-component %s: %w (output: %s)",
 			comp, err, truncateForLog(string(out), 4096))
 	}
 	return nil
 }
 
-// compCheckReady asks update-component to verify that comp's
-// in-cluster resources have converged to a Ready state. Returns
-// (true, nil) on exit 0, (false, nil) when the helper ran and
-// reported not-ready, and (false, err) when the helper could not
-// be executed.
-func compCheckReady(ctx context.Context, comp string) (bool, error) {
+// compFinalize asks update-component to run comp's post-upgrade
+// step. Only Longhorn has one: it puts back the upgrade version
+// check that a large step starts longhorn-manager without. A no-op
+// for the other components and whenever nothing is owed.
+func compFinalize(ctx context.Context, comp string) error {
+	ctx, cancel := context.WithTimeout(ctx, compFinalizeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, compUpdatePath,
+		"--versions-file", versionsFile,
+		"--component", comp,
+		"--finalize")
+	cmd.Env = append(os.Environ(), "KUBECONFIG="+state.K3sKubeconfig)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("update-component --finalize %s did not finish within %s",
+				comp, compFinalizeTimeout)
+		}
+		return fmt.Errorf("update-component --finalize %s: %w (output: %s)",
+			comp, err, truncateForLog(string(out), 4096))
+	}
+	return nil
+}
+
+// compCheckReady asks update-component to verify that comp has
+// converged on its expected version and is Ready. Returns (true,
+// "", nil) on exit 0, (false, detail, nil) when the helper ran and
+// reported not-ready, with what it said was not ready, and (false,
+// "", err) when the helper could not be executed.
+func compCheckReady(ctx context.Context, comp string) (bool, string, error) {
 	cmd := exec.CommandContext(ctx, compUpdatePath,
 		"--versions-file", versionsFile,
 		"--component", comp,
@@ -303,12 +513,12 @@ func compCheckReady(ctx context.Context, comp string) (bool, error) {
 	cmd.Env = append(os.Environ(), "KUBECONFIG="+state.K3sKubeconfig)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
-		return true, nil
+		return true, "", nil
 	}
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
-		return false, nil
+		return false, truncateForLog(string(out), 1024), nil
 	}
-	return false, fmt.Errorf("update-component --check-comp-ready %s: %w (output: %s)",
+	return false, "", fmt.Errorf("update-component --check-comp-ready %s: %w (output: %s)",
 		comp, err, truncateForLog(string(out), 1024))
 }

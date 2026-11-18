@@ -86,6 +86,12 @@ func (d *daemon) buildStatus() kubeinitstatus.KubeInitStatus {
 	if d.lastError != nil {
 		s.LastError = d.lastError.Error()
 	}
+	s.ComponentsReady = d.componentsReady
+	s.UpdateState = d.updateState
+	if s.UpdateState == "" {
+		s.UpdateState = updateStateNone
+	}
+	s.UpdateError = d.updateError
 	// Cluster identity comes from the live status when there is one;
 	// a standalone node simply has none to report.
 	if cs, err := k3s.GetClusterStatus(); err == nil && cs != nil {

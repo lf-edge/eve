@@ -127,6 +127,58 @@ to the `HV=k` zvol layout has no path back to a filesystem dataset the other
 flavors can read once the conversion is committed. Before that, the automatic
 fallback described below restores the old vault.
 
+### Kubernetes component upgrades
+
+An EVE upgrade can carry newer versions of the cluster components the kube
+container manages: Multus, KubeVirt, CDI and Longhorn. kube-init upgrades them
+in that order in one pass, on the first boot of the new image.
+
+Each image carries a kube version number, and each node records the number of
+the last pass it completed in `/var/lib/applied-kube-version` inside the kube
+container. The pass runs only when the image's number is higher than the
+node's. A component version changed without raising the number is therefore
+never applied, and booting an older image never downgrades anything. The pass
+only runs on devices with replicated cluster storage, or with no cluster
+configuration at all.
+
+In a cluster the controller upgrades one node at a time. The first node to boot
+the new image upgrades the components for the whole cluster while the others
+still run the old image. Each later node runs the same pass, finds every
+component at its target version, and records the new number.
+
+While the pass is pending kube-init is in the state `WAIT_UPGRADE`, before
+`RUNNING`. `eve exec kube k3s-status` shows it, as does the
+`eve.lfedge.org/kube-init-state` annotation on the Node object.
+
+Every step of the pass is bounded, so it always ends, in success or in
+failure. A failed pass is not retried by the same image. The node carries on
+with the components as they are, and the failure is reported in the device's
+cluster update status. A later image with a higher
+kube version number runs the pass again.
+
+#### Longhorn
+
+Longhorn supports upgrading by one minor version at a time and refuses
+anything wider, and kube-init applies the same rule before it touches
+anything: same major version, at most one minor version up, never down. A
+wider upgrade is only attempted for an exact pair of versions listed as a
+validated large step in
+`pkg/kube/update-component/longhorn_upgrade.go`. For such a step
+longhorn-manager is started without its own upgrade version check, and the
+check is restored once every volume runs the new engine.
+
+Before applying a Longhorn upgrade kube-init requires that no volume is
+faulted, that no Longhorn CRD still stores objects of an API version the
+target no longer serves, that the node is not cordoned (the tie-breaker node
+excepted), and, for a large step, that every engine image in use is at the
+version being upgraded from. An upgrade that is refused for any of these
+reasons fails the pass with the reason in its error.
+
+The upgrade is complete when Longhorn reports the new version as installed and
+every volume has been moved to the new engine image. Attached volumes are
+upgraded live, one per node at a time, which is what makes this the longest
+step: it is given 60 minutes.
+
 ### Carrying app volumes from EVE-kvm
 
 Every volume except container volumes becomes a Longhorn PVC on `HV=k`. When

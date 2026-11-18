@@ -96,6 +96,7 @@ const (
 	EvImagesDone                       // images.ImportAll finished
 	EvK3sReady                         // k3s node reports Ready
 	EvDeployDone                       // components.DeployAll finished
+	EvUpgradeDone                      // component update pass finished
 	EvSnapshotDone                     // /var/lib snapshot + markers written
 	EvK3sExited                        // supervisor.Done fired
 	EvStopDone                         // supervisor.Stop finished, ports freed
@@ -142,6 +143,8 @@ func (e EventType) String() string {
 		return "EvK3sReady"
 	case EvDeployDone:
 		return "EvDeployDone"
+	case EvUpgradeDone:
+		return "EvUpgradeDone"
 	case EvSnapshotDone:
 		return "EvSnapshotDone"
 	case EvK3sExited:
@@ -230,6 +233,7 @@ const (
 	StateImporting                      // import container images
 	StateWaitK3sReady                   // wait for node Ready
 	StateDeploying                      // deploy cluster components
+	StateWaitUpgrade                    // run the pending component update pass
 	StateSnapshot                       // quiesce k3s and snapshot /var/lib
 	StateRunning                        // steady-state supervision
 	StateBackoff                        // exponential wait after exit
@@ -261,6 +265,8 @@ func (s State) String() string {
 		return "WAIT_K3S_READY"
 	case StateDeploying:
 		return "DEPLOYING"
+	case StateWaitUpgrade:
+		return "WAIT_UPGRADE"
 	case StateSnapshot:
 		return "SNAPSHOT"
 	case StateRunning:
@@ -309,6 +315,16 @@ func (p Phase) String() string {
 	}
 	return fmt.Sprintf("phase(%d)", p)
 }
+
+// Component update pass outcomes, as published in
+// KubeInitStatus.UpdateState. The empty value means no pass was needed.
+const (
+	updateStateNone       = "none"
+	updateStateInProgress = "in_progress"
+	updateStateCompleted  = "completed"
+	updateStateFailed     = "failed"
+	updateStateDeferred   = "deferred"
+)
 
 // ===========================================================================
 // Restart reasons
@@ -547,6 +563,20 @@ type daemon struct {
 	// per-attempt and would stop informers after each deploy pass.
 	rootCtx context.Context
 
+	// componentsReady, updateState and updateError describe the
+	// component update pass of this boot and are published in
+	// KubeInitStatus for pillar. Written on the event loop only.
+	componentsReady bool
+	updateState     string
+	updateError     string
+
+	// stateMirrorCh carries the latest FSM state to the goroutine
+	// that mirrors it onto the Node object. Nil in tests.
+	stateMirrorCh chan stateMirrorMsg
+
+	// passPendingFn overrides componentPassPending in tests.
+	passPendingFn func() bool
+
 	// enterStateFn is the state-entry dispatcher. Defaults to
 	// d.enterState; tests replace it with a no-op to isolate the
 	// transition graph from real work.
@@ -748,6 +778,9 @@ func (d *daemon) run(ctx context.Context) {
 		go d.watchWitnessConfig(ctx)
 	}
 
+	d.stateMirrorCh = make(chan stateMirrorMsg, 1)
+	go d.runStateMirror(ctx)
+
 	d.transition(ctx, StateInit, "startup")
 
 	for {
@@ -841,6 +874,8 @@ func (d *daemon) handleEvent(ctx context.Context, ev Event) {
 		d.handleWaitK3sReady(ctx, ev)
 	case StateDeploying:
 		d.handleDeploying(ctx, ev)
+	case StateWaitUpgrade:
+		d.handleWaitUpgrade(ctx, ev)
 	case StateSnapshot:
 		d.handleSnapshot(ctx, ev)
 	case StateRunning:
@@ -1059,9 +1094,11 @@ func (d *daemon) handleWaitK3sReady(ctx context.Context, ev Event) {
 		} else {
 			witnessstatus.SetState(types.WitnessEtcdStateJoined, d.witnessIP)
 		}
-		switch d.phase {
-		case PhaseFirstBoot:
+		switch {
+		case d.phase == PhaseFirstBoot:
 			d.transition(ctx, StateDeploying, "k3s-ready/first-boot")
+		case d.componentPassPending():
+			d.transition(ctx, StateWaitUpgrade, "k3s-ready/update-pending")
 		default:
 			d.transition(ctx, StateRunning, "k3s-ready/skip-deploy")
 		}
@@ -1117,6 +1154,88 @@ func (d *daemon) handleDeploying(ctx context.Context, ev Event) {
 	case EvError:
 		d.lastError = ev.Err
 		log.Printf("DEPLOYING error: %v — retrying in %v", ev.Err, errorRetryDelay)
+		d.retryCurrentState(ctx)
+
+	case EvSocketRestart, EvSIGHUP, EvConfigChange, EvClusterRecycle,
+		EvSingleToCluster:
+		d.queueRestart(restartForEvent(ev.Type))
+	}
+}
+
+// componentPassPending reports whether this boot still owes the
+// cluster a component update pass, in which case WAIT_UPGRADE runs it
+// before RUNNING. Only replicated clusters are updated this way, as
+// in the health worker. A pass that already failed in this process is
+// not pending: it is not retried.
+func (d *daemon) componentPassPending() bool {
+	if d.passPendingFn != nil {
+		return d.passPendingFn()
+	}
+	if d.kc == nil || d.updateState == updateStateFailed {
+		return false
+	}
+	ct, err := k3s.GetClusterType()
+	if err != nil {
+		log.Printf("WARNING: get cluster type: %v", err)
+		return false
+	}
+	return ct == k3s.ClusterTypeReplicated && update.ComponentPassPending()
+}
+
+// workUpgrade runs the k3s version check and then the component
+// update pass. They share a state because a k3s update has to finish,
+// k3s restart included, before the components are touched.
+func (d *daemon) workUpgrade(workCtx context.Context) error {
+	updated, err := update.CheckNodeComponents(workCtx, d.supervisor)
+	if err != nil {
+		return fmt.Errorf("k3s version check: %w", err)
+	}
+	if updated {
+		// The update stopped k3s. Its exit moves the FSM to BACKOFF,
+		// and the restart brings it back here with k3s current.
+		log.Printf("k3s updated; waiting for the supervisor to restart it")
+		<-workCtx.Done()
+		return workCtx.Err()
+	}
+	return update.CheckClusterComponents(workCtx)
+}
+
+func (d *daemon) handleWaitUpgrade(ctx context.Context, ev Event) {
+	switch ev.Type {
+	case EvUpgradeDone:
+		d.lastError = nil
+		d.updateState = updateStateCompleted
+		d.updateError = ""
+		d.transition(ctx, StateRunning, "update-done")
+
+	case EvK3sExited:
+		d.lastError = ev.Err
+		log.Printf("k3s exited during the component update pass: %v", ev.Err)
+		d.computeBackoff()
+		d.transition(ctx, StateBackoff, "k3s-exited-during-update")
+
+	case EvError:
+		d.lastError = ev.Err
+		if errors.Is(ev.Err, update.ErrUpdateFailed) {
+			// Not retried for this build. Go on to RUNNING so the
+			// node keeps serving whatever state the components are
+			// in; the failure stays visible in the status.
+			log.Printf("WAIT_UPGRADE failed: %v", ev.Err)
+			d.updateState = updateStateFailed
+			d.updateError = ev.Err.Error()
+			d.transition(ctx, StateRunning, "update-failed")
+			return
+		}
+		if errors.Is(ev.Err, update.ErrUpdateDeferred) {
+			// Nothing was changed. Go on to RUNNING rather than keep
+			// pillar waiting; its health tick runs the pass again.
+			log.Printf("WAIT_UPGRADE deferred: %v", ev.Err)
+			d.updateState = updateStateDeferred
+			d.updateError = ev.Err.Error()
+			d.transition(ctx, StateRunning, "update-deferred")
+			return
+		}
+		log.Printf("WAIT_UPGRADE error: %v — retrying in %v", ev.Err, errorRetryDelay)
 		d.retryCurrentState(ctx)
 
 	case EvSocketRestart, EvSIGHUP, EvConfigChange, EvClusterRecycle,
@@ -1534,6 +1653,20 @@ func (d *daemon) transition(ctx context.Context, newState State, reason string) 
 		d.stopBackoffTimer()
 	}
 
+	switch newState {
+	case StateWaitUpgrade:
+		d.updateState = updateStateInProgress
+		d.updateError = ""
+	case StateRunning:
+		// Reaching RUNNING means the component pass for this boot is
+		// over or was not needed. Latched: a later k3s restart does
+		// not reopen the question for pillar. A failed pass leaves it
+		// unset and says so in the update state.
+		if d.updateState != updateStateFailed {
+			d.componentsReady = true
+		}
+	}
+
 	now := time.Now()
 	log.Printf("%s → %s (reason: %s, %s took %s, boot+%s)",
 		oldState, newState, reason, oldState,
@@ -1547,6 +1680,7 @@ func (d *daemon) transition(ctx context.Context, newState State, reason string) 
 	// point is that an observer sees which state the node is stuck in
 	// while it is stuck, not afterwards.
 	d.publishStatus()
+	d.mirrorState(newState)
 	d.enterStateFn(ctx)
 }
 
@@ -1564,7 +1698,7 @@ func joinStageRank(s State) int {
 		return 2
 	case StateWaitK3sReady:
 		return 3
-	case StateDeploying:
+	case StateDeploying, StateWaitUpgrade:
 		return 4
 	case StateSnapshot:
 		return 5
@@ -1590,7 +1724,10 @@ func (d *daemon) noteJoinProgress(newState State) {
 		return
 	}
 	d.joinStageReached = rank
-	if newState == StateRunning {
+	// WAIT_UPGRADE is entered on the same evidence as RUNNING, a
+	// successful WaitReady, and can then take far longer than the
+	// watchdog's stall limit.
+	if newState == StateRunning || newState == StateWaitUpgrade {
 		monitor.MarkJoinComplete()
 		d.joinStageReached = 0
 		return
@@ -1641,6 +1778,9 @@ func (d *daemon) enterState(ctx context.Context) {
 
 	case StateDeploying:
 		d.startAsync(ctx, d.workDeploy, EvDeployDone)
+
+	case StateWaitUpgrade:
+		d.startAsync(ctx, d.workUpgrade, EvUpgradeDone)
 
 	case StateSnapshot:
 		d.enterSnapshot(ctx)
@@ -2984,8 +3124,13 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 			}
 		}
 
+		// A pending pass normally runs in WAIT_UPGRADE before RUNNING.
+		// This covers a node that only became replicated since, and
+		// advances a status an earlier step left unfinished.
 		if err := update.CheckClusterComponents(ctx); err != nil {
-			log.Printf("WARNING: cluster component update: %v", err)
+			if !errors.Is(err, update.ErrUpdateFailed) {
+				log.Printf("WARNING: cluster component update: %v", err)
+			}
 			return
 		}
 	}

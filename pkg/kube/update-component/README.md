@@ -121,11 +121,13 @@ Example Output:
 
 ## EVE Runtime Usage
 
-After the kube service container has started and k3s has been started, the main run loop will call
-Update_CheckClusterComponents which checks a series of prerequisites:
+After k3s is ready, kube-init runs the component update pass
+(`CheckClusterComponents` in `pkg/kube/kube-init/update`) if:
 
-- if applied overall kube version (integer in /var/lib/applied-kube-version) is less than requested version as defined in cluster-update.sh
-- if previous update is not failed
+- the applied overall kube version (integer in /var/lib/applied-kube-version) is less than the version of this image, `KubeVersion` in `pkg/kube/kube-init/update/version.go`
+- a previous update to that version has not failed
 
-If both above checks pass then cluster-update proceeds to check component health and initiate upgrades serially.
-After all component upgrades are complete then the applied overall kube version is incremented.
+For each component in turn the pass compares the running version with the
+expected one and, if they differ, runs `--upgrade`, polls `--check-comp-ready`
+and then runs `--finalize`. After all component upgrades are complete the
+applied overall kube version is set to that of the image.

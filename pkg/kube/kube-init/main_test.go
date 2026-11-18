@@ -797,6 +797,7 @@ func TestGlobalSIGTERM(t *testing.T) {
 	allStates := []State{
 		StateInit, StateInstalling, StateStartingCtrd, StateConfiguring,
 		StateStartingK3s, StateImporting, StateWaitK3sReady, StateDeploying,
+		StateWaitUpgrade,
 		StateSnapshot, StateRunning, StateBackoff, StateStoppingK3s,
 		StateRunningHooks, StateClusterTransition, StateWitnessIdle,
 	}
@@ -819,6 +820,7 @@ func TestGlobalSocketStop(t *testing.T) {
 	allStates := []State{
 		StateInit, StateInstalling, StateStartingCtrd, StateConfiguring,
 		StateStartingK3s, StateImporting, StateWaitK3sReady, StateDeploying,
+		StateWaitUpgrade,
 		StateSnapshot, StateRunning, StateBackoff, StateStoppingK3s,
 		StateRunningHooks, StateClusterTransition, StateWitnessIdle,
 	}
