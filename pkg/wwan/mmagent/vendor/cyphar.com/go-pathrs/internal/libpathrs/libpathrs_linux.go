@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: MPL-2.0
 /*
  * libpathrs: safe path resolution on Linux
- * Copyright (C) 2019-2025 Aleksa Sarai <cyphar@cyphar.com>
  * Copyright (C) 2019-2025 SUSE LLC
+ * Copyright (C) 2026 Aleksa Sarai <cyphar@cyphar.com>
  *
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -60,8 +60,8 @@ func OpenRoot(path string) (uintptr, error) {
 }
 
 // Reopen wraps pathrs_reopen.
-func Reopen(fd uintptr, flags int) (uintptr, error) {
-	newFd := C.pathrs_reopen(C.int(fd), C.int(flags))
+func Reopen(fd uintptr, flags uint64) (uintptr, error) {
+	newFd := C.pathrs_reopen(C.int(fd), C.uint64_t(flags))
 	return uintptr(newFd), fetchError(newFd)
 }
 
@@ -84,11 +84,11 @@ func InRootResolveNoFollow(rootFd uintptr, path string) (uintptr, error) {
 }
 
 // InRootOpen wraps pathrs_inroot_open.
-func InRootOpen(rootFd uintptr, path string, flags int) (uintptr, error) {
+func InRootOpen(rootFd uintptr, path string, flags uint64) (uintptr, error) {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 
-	fd := C.pathrs_inroot_open(C.int(rootFd), cPath, C.int(flags))
+	fd := C.pathrs_inroot_open(C.int(rootFd), cPath, C.uint64_t(flags))
 	return uintptr(fd), fetchError(fd)
 }
 
@@ -100,7 +100,7 @@ func InRootReadlink(rootFd uintptr, path string) (string, error) {
 	size := 128
 	for {
 		linkBuf := make([]byte, size)
-		n := C.pathrs_inroot_readlink(C.int(rootFd), cPath, C.cast_ptr(unsafe.Pointer(&linkBuf[0])), C.ulong(len(linkBuf)))
+		n := C.pathrs_inroot_readlink(C.int(rootFd), cPath, C.cast_ptr(unsafe.Pointer(&linkBuf[0])), C.size_t(len(linkBuf)))
 		switch {
 		case int(n) < C.__PATHRS_MAX_ERR_VALUE:
 			return "", fetchError(n)
@@ -145,23 +145,23 @@ func InRootRemoveAll(rootFd uintptr, path string) error {
 }
 
 // InRootCreat wraps pathrs_inroot_creat.
-func InRootCreat(rootFd uintptr, path string, flags int, mode uint32) (uintptr, error) {
+func InRootCreat(rootFd uintptr, path string, flags uint64, mode uint32) (uintptr, error) {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 
-	fd := C.pathrs_inroot_creat(C.int(rootFd), cPath, C.int(flags), C.uint(mode))
+	fd := C.pathrs_inroot_creat(C.int(rootFd), cPath, C.uint64_t(flags), C.uint(mode))
 	return uintptr(fd), fetchError(fd)
 }
 
 // InRootRename wraps pathrs_inroot_rename.
-func InRootRename(rootFd uintptr, src, dst string, flags uint) error {
-	cSrc := C.CString(src)
-	defer C.free(unsafe.Pointer(cSrc))
+func InRootRename(oldRootFd uintptr, oldPath string, newRootFd uintptr, newPath string, flags uint64) error {
+	cOldPath := C.CString(oldPath)
+	defer C.free(unsafe.Pointer(cOldPath))
 
-	cDst := C.CString(dst)
-	defer C.free(unsafe.Pointer(cDst))
+	cNewPath := C.CString(newPath)
+	defer C.free(unsafe.Pointer(cNewPath))
 
-	err := C.pathrs_inroot_rename(C.int(rootFd), cSrc, cDst, C.uint(flags))
+	err := C.pathrs_inroot_rename(C.int(oldRootFd), cOldPath, C.int(newRootFd), cNewPath, C.uint64_t(flags))
 	return fetchError(err)
 }
 
@@ -193,36 +193,44 @@ func InRootMknod(rootFd uintptr, path string, mode uint32, dev uint64) error {
 }
 
 // InRootSymlink wraps pathrs_inroot_symlink.
-func InRootSymlink(rootFd uintptr, path, target string) error {
-	cPath := C.CString(path)
-	defer C.free(unsafe.Pointer(cPath))
+func InRootSymlink(target string, rootFd uintptr, linkpath string) error {
+	cLinkpath := C.CString(linkpath)
+	defer C.free(unsafe.Pointer(cLinkpath))
 
 	cTarget := C.CString(target)
 	defer C.free(unsafe.Pointer(cTarget))
 
-	err := C.pathrs_inroot_symlink(C.int(rootFd), cPath, cTarget)
+	err := C.pathrs_inroot_symlink(cTarget, C.int(rootFd), cLinkpath)
 	return fetchError(err)
 }
 
 // InRootHardlink wraps pathrs_inroot_hardlink.
-func InRootHardlink(rootFd uintptr, path, target string) error {
-	cPath := C.CString(path)
-	defer C.free(unsafe.Pointer(cPath))
+func InRootHardlink(oldRootFd uintptr, oldPath string, newRootFd uintptr, newPath string, flags uint64) error {
+	cNewPath := C.CString(newPath)
+	defer C.free(unsafe.Pointer(cNewPath))
 
-	cTarget := C.CString(target)
-	defer C.free(unsafe.Pointer(cTarget))
+	cOldPath := C.CString(oldPath)
+	defer C.free(unsafe.Pointer(cOldPath))
 
-	err := C.pathrs_inroot_hardlink(C.int(rootFd), cPath, cTarget)
+	err := C.pathrs_inroot_hardlink(C.int(oldRootFd), cOldPath, C.int(newRootFd), cNewPath, C.uint64_t(flags))
 	return fetchError(err)
 }
 
 // ProcBase is pathrs_proc_base_t (uint64_t).
-type ProcBase C.pathrs_proc_base_t
+//
+// FIXME: cbindgen v0.29.3 switched to outputting C23 fixed-type enum syntax
+// and making pathrs_proc_base_t a typedef of the enum. CGo treats all enum
+// members as an int64 despite the fixed-type declaration, causing spurious
+// errors about overflows. Thus we have to hardcode the type on the Go side.
+// See <https://github.com/mozilla/cbindgen/pull/1156>.
+type ProcBase uint64
 
-// FIXME: We need to open-code the constants because CGo unfortunately will
-// implicitly convert any non-literal constants (i.e. those resolved using gcc)
-// to signed integers. See <https://github.com/golang/go/issues/39136> for some
-// more information on the underlying issue (though.
+// FIXME: We need to open-code the constants because CGo's handling of
+// non-literal constants (i.e., those resolved using the C compiler) that don't
+// fit in an int64 is compiler-dependent -- GCC gives us implicitly-converted
+// (negative) signed integers while Clang gives us the actual unsigned values.
+// See <https://github.com/golang/go/issues/39136> for some more information on
+// the underlying issue.
 const (
 	// ProcRoot is PATHRS_PROC_ROOT.
 	ProcRoot ProcBase = 0xFFFF_FFFE_7072_6F63 // C.PATHRS_PROC_ROOT
@@ -246,16 +254,26 @@ func assertEqual[T comparable](a, b T, msg string) {
 	}
 }
 
+// u64Mask is used to convert the C constants below into plain uint64 values,
+// regardless of how CGo decided to interpret their signedness.
+//
+// In particular, CGo gives us the PATHRS_PROC_* values as negative (signed)
+// constants with GCC and as (unsigned) constants that overflow int64 with
+// Clang, so neither int64 nor uint64 can hold them with both compilers.
+//
+// Luckily, Go constant expressions are arbitrary-precision and bitwise
+// operations on negative constants operate on their infinite two's complement
+// representation, so masking off the lower 64 bits yields the same uint64
+// value no matter which compiler CGo used.
+const u64Mask = 0xFFFF_FFFF_FFFF_FFFF
+
 // Verify that the values above match the actual C values. Unfortunately, Go
-// only allows us to forcefully cast int64 to uint64 if you use a temporary
-// variable, which means we cannot do it in a const context and thus need to do
-// it at runtime (even though it is a check that fundamentally could be done at
-// compile-time)...
+// has no way of doing compile-time assertions, so we need to do it at runtime.
 func init() {
 	var (
-		actualProcRoot       int64 = C.PATHRS_PROC_ROOT
-		actualProcSelf       int64 = C.PATHRS_PROC_SELF
-		actualProcThreadSelf int64 = C.PATHRS_PROC_THREAD_SELF
+		actualProcRoot       uint64 = C.PATHRS_PROC_ROOT & u64Mask
+		actualProcSelf       uint64 = C.PATHRS_PROC_SELF & u64Mask
+		actualProcThreadSelf uint64 = C.PATHRS_PROC_THREAD_SELF & u64Mask
 	)
 
 	assertEqual(ProcRoot, ProcBase(actualProcRoot), "PATHRS_PROC_ROOT")
@@ -263,8 +281,8 @@ func init() {
 	assertEqual(ProcThreadSelf, ProcBase(actualProcThreadSelf), "PATHRS_PROC_THREAD_SELF")
 
 	var (
-		actualProcBaseTypeMask uint64 = C.__PATHRS_PROC_TYPE_MASK
-		actualProcBaseTypePid  uint64 = C.__PATHRS_PROC_TYPE_PID
+		actualProcBaseTypeMask uint64 = C.__PATHRS_PROC_TYPE_MASK & u64Mask
+		actualProcBaseTypePid  uint64 = C.__PATHRS_PROC_TYPE_PID & u64Mask
 	)
 
 	assertEqual(ProcBaseTypeMask, ProcBase(actualProcBaseTypeMask), "__PATHRS_PROC_TYPE_MASK")
@@ -277,13 +295,13 @@ func init() {
 func ProcPid(pid uint32) ProcBase { return ProcBaseTypePid | ProcBase(pid) }
 
 // ProcOpenat wraps pathrs_proc_openat.
-func ProcOpenat(procRootFd int, base ProcBase, path string, flags int) (uintptr, error) {
+func ProcOpenat(procRootFd int, base ProcBase, path string, flags uint64) (uintptr, error) {
 	cBase := C.pathrs_proc_base_t(base)
 
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 
-	fd := C.pathrs_proc_openat(C.int(procRootFd), cBase, cPath, C.int(flags))
+	fd := C.pathrs_proc_openat(C.int(procRootFd), cBase, cPath, C.uint64_t(flags))
 	return uintptr(fd), fetchError(fd)
 }
 
@@ -301,7 +319,7 @@ func ProcReadlinkat(procRootFd int, base ProcBase, path string) (string, error) 
 		linkBuf := make([]byte, size)
 		n := C.pathrs_proc_readlinkat(
 			C.int(procRootFd), cBase, cPath,
-			C.cast_ptr(unsafe.Pointer(&linkBuf[0])), C.ulong(len(linkBuf)))
+			C.cast_ptr(unsafe.Pointer(&linkBuf[0])), C.size_t(len(linkBuf)))
 		switch {
 		case int(n) < C.__PATHRS_MAX_ERR_VALUE:
 			return "", fetchError(n)
@@ -334,4 +352,32 @@ func (how *ProcfsOpenHow) Flags() *C.uint64_t { return &how.flags }
 func ProcfsOpen(how *ProcfsOpenHow) (uintptr, error) {
 	fd := C.pathrs_procfs_open((*C.pathrs_procfs_open_how)(how), C.size_t(unsafe.Sizeof(*how)))
 	return uintptr(fd), fetchError(fd)
+}
+
+// VersionInfo is a Go-friendly form of pathrs_version_info_t (struct).
+type VersionInfo struct {
+	VersionString string
+}
+
+// versionInfo is pathrs_version_info_t (struct).
+type versionInfo C.pathrs_version_info_t
+
+// Version is pathrs_version_info_t (sizeof(version) is passed automatically).
+func Version() (*VersionInfo, error) {
+	var rawVersion versionInfo
+	size := C.pathrs_version((*C.pathrs_version_info_t)(&rawVersion), C.size_t(unsafe.Sizeof(rawVersion)))
+	switch {
+	case size < 0:
+		return nil, fetchError(size)
+	case size > 0:
+		// TODO(log): Logging?
+		fallthrough
+	default:
+		// TODO(log): Add a log statement if sizeof(rawVersion) is bigger than
+		// the number of fields we store in VersionInfo. Otherwise a rebuild
+		// will mask that Go callers cannot see any new fields.
+		return &VersionInfo{
+			VersionString: C.GoString(rawVersion.version_string),
+		}, nil
+	}
 }

@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
+	"path/filepath"
 )
 
-// Uncompress takes a given path to a tgz file and extracts the contents
-// to the target directory.
-// contains only that file.
+// Uncompress extracts the regular files in the tgz file infile into outdir,
+// creating parent directories as needed. Directory entries are skipped; any
+// other entry type, and any name that is absolute or escapes outdir, is an
+// error.
 func Uncompress(infile, outdir string) error {
 	tgzfile, err := os.Open(infile)
 	if err != nil {
@@ -34,8 +35,20 @@ func Uncompress(infile, outdir string) error {
 			return fmt.Errorf("error reading tar entry header: %v", err)
 		}
 		filename := hdr.Name
-		fullFilename := path.Join(outdir, filename)
-		// open a file to write
+		if !filepath.IsLocal(filename) {
+			return fmt.Errorf("invalid tar entry path %q: not local to output directory", filename)
+		}
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			continue
+		case tar.TypeReg:
+		default:
+			return fmt.Errorf("unsupported tar entry type %q for %s", hdr.Typeflag, filename)
+		}
+		fullFilename := filepath.Join(outdir, filename)
+		if err := os.MkdirAll(filepath.Dir(fullFilename), 0o755); err != nil {
+			return fmt.Errorf("error creating directory for %s: %w", fullFilename, err)
+		}
 		f, err := os.Create(fullFilename)
 		if err != nil {
 			return fmt.Errorf("error creating file %s: %w", fullFilename, err)
@@ -44,7 +57,9 @@ func Uncompress(infile, outdir string) error {
 			_ = f.Close()
 			return fmt.Errorf("error reading tar file %s and writing to %s: %v", filename, fullFilename, err)
 		}
-		_ = f.Close()
+		if err := f.Close(); err != nil {
+			return fmt.Errorf("error closing %s: %w", fullFilename, err)
+		}
 	}
 	return nil
 }
