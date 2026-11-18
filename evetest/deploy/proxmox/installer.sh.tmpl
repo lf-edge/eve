@@ -7,9 +7,10 @@
 # @@TEMPLATE_NOTE_BEGIN@@
 # This is a TEMPLATE. The `make proxmox-broker-installer` target assembles the
 # self-contained `evetest-broker-proxmox-installer.sh` by replacing the
-# whole-line HOOKSCRIPT, CLOUDINIT and MIRRORS_SCRIPT markers below with the
-# contents of evetest-hook.pl, broker-cloudinit.yaml and
-# broker-registry-mirrors.sh. The assembled script is what users download and
+# whole-line HOOKSCRIPT, OOM_HOOKSCRIPT, CLOUDINIT, MIRRORS_SCRIPT and
+# AUTO_UPGRADE_SCRIPT markers below with the contents of evetest-hook.pl,
+# evetest-oom-hook.pl, broker-cloudinit.yaml, broker-registry-mirrors.sh and
+# broker-auto-upgrade.sh. The assembled script is what users download and
 # run on the Proxmox host:
 # @@TEMPLATE_NOTE_END@@
 #   ssh root@<pve-host>
@@ -94,6 +95,12 @@ DOCKER_REGISTRY="https://index.docker.io/v1/"
 # Shared directory for the broker's Docker-out-of-Docker image builds; must be
 # bind-mounted at this SAME path on both sides (see broker-cloudinit.yaml).
 BROKER_IMAGE_DIR="/root/.evetest/images"
+# Periodically upgrade the broker to the latest version on this git repository
+# branch, published to the repository of --broker-image, while no evetest
+# client is connected (see broker-auto-upgrade.sh).
+AUTO_UPGRADE="true"
+AUTO_UPGRADE_REPO="https://github.com/lf-edge/eve.git"
+AUTO_UPGRADE_BRANCH="master"
 
 SDN_ZONE="evetest"
 SNIPPETS_DIR="/var/lib/vz/snippets"
@@ -174,6 +181,17 @@ the OCI registry mirrors above, which only cache pulls made by evetest clients):
   --docker-password PASS   Registry password/token.
   --docker-registry SERVER Default: Docker Hub (https://index.docker.io/v1/).
 
+Broker auto-upgrade:
+  --no-auto-upgrade           Keep running --broker-image. By default, the broker VM
+                              checks every 10 minutes whether no evetest client is
+                              connected and the broker version on the branch below
+                              differs from the running one and is published to the
+                              image repository of --broker-image; if so, it upgrades
+                              the broker to it (rolled back if it fails to start).
+  --auto-upgrade-repo URL     Git repository to follow.
+                              Default: https://github.com/lf-edge/eve.git
+  --auto-upgrade-branch NAME  Branch of that repository. Default: master
+
 Other:
   --destroy     Tear everything down: stop+destroy the broker VM, delete
                 the evetest SDN zone + its uplink/xconnect VNets, and
@@ -212,6 +230,9 @@ while [ $# -gt 0 ]; do
         --docker-username)             DOCKER_USERNAME="$2"; shift 2 ;;
         --docker-password)             DOCKER_PASSWORD="$2"; shift 2 ;;
         --docker-registry)             DOCKER_REGISTRY="$2"; shift 2 ;;
+        --no-auto-upgrade)             AUTO_UPGRADE=false; shift ;;
+        --auto-upgrade-repo)           AUTO_UPGRADE_REPO="$2"; shift 2 ;;
+        --auto-upgrade-branch)         AUTO_UPGRADE_BRANCH="$2"; shift 2 ;;
         --destroy)                     DESTROY=true; shift ;;
         -h|--help)                     usage; exit 0 ;;
         *) echo "error: unknown flag: $1" >&2; usage >&2; exit 2 ;;
@@ -236,6 +257,12 @@ if [ -n "$DOCKER_USERNAME" ] || [ -n "$DOCKER_PASSWORD" ]; then
     [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ] \
         || die "--docker-username and --docker-password must be used together"
 fi
+# The auto-upgrade swaps the tag, so require one (and no digest).
+case "${BROKER_IMAGE##*/}" in
+    *@*|*:) die "--broker-image must be of the form <repository>:<tag>" ;;
+    *:*) : ;;
+    *) die "--broker-image must be of the form <repository>:<tag>" ;;
+esac
 
 # delete_vnet removes an SDN VNet after removing its subnets (PVE requires
 # bottom-up deletion). Best-effort.
@@ -424,6 +451,11 @@ else
 fi
 DOCKER_CONFIG_JSON_B64="$(printf '%s' "$DOCKER_CONFIG_JSON" | base64 | tr -d '\n')"
 
+cat > /tmp/evetest-auto-upgrade-script <<'EVETEST_AUTO_UPGRADE_EOF'
+@@AUTO_UPGRADE_SCRIPT@@
+EVETEST_AUTO_UPGRADE_EOF
+AUTO_UPGRADE_SCRIPT_B64="$(base64 < /tmp/evetest-auto-upgrade-script | tr -d '\n')"
+
 cat > /tmp/evetest-broker-cloudinit.tmpl <<'EVETEST_CLOUDINIT_EOF'
 @@CLOUDINIT@@
 EVETEST_CLOUDINIT_EOF
@@ -433,6 +465,10 @@ sed -e "s|__BROKER_ENV_B64__|${BROKER_ENV_B64}|g" \
     -e "s|__BROKER_VM_USERNAME__|${BROKER_VM_USERNAME}|g" \
     -e "s|__SSH_AUTHORIZED_KEYS__|${SSH_AUTHORIZED_KEYS_YAML}|g" \
     -e "s|__DOCKER_CONFIG_JSON_B64__|${DOCKER_CONFIG_JSON_B64}|g" \
+    -e "s|__AUTO_UPGRADE_SCRIPT_B64__|${AUTO_UPGRADE_SCRIPT_B64}|g" \
+    -e "s|__AUTO_UPGRADE__|${AUTO_UPGRADE}|g" \
+    -e "s|__AUTO_UPGRADE_REPO__|${AUTO_UPGRADE_REPO}|g" \
+    -e "s|__AUTO_UPGRADE_BRANCH__|${AUTO_UPGRADE_BRANCH}|g" \
     /tmp/evetest-broker-cloudinit.tmpl > "${SNIPPETS_DIR}/evetest-broker-cloudinit.yaml"
 echo "Installed cloud-init at ${SNIPPETS_DIR}/evetest-broker-cloudinit.yaml"
 
