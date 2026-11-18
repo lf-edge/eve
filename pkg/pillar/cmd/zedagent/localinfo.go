@@ -1,4 +1,4 @@
-// Copyright (c) 2022 Zededa, Inc.
+// Copyright (c) 2022-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package zedagent
@@ -163,7 +163,8 @@ func postLocalAppInfo(ctx *getconfigContext) *profile.LocalAppCmdList {
 				return nil
 			case http.StatusOK, http.StatusCreated:
 				if len(appCmds.AppCommands) != 0 {
-					if appCmds.GetServerToken() != ctx.sideController.profileServerToken {
+					if ctx.sideController.profileServerToken == "" ||
+						appCmds.GetServerToken() != ctx.sideController.profileServerToken {
 						errList = append(errList,
 							fmt.Sprintf("invalid token submitted by local server (%s)", appCmds.GetServerToken()))
 						continue
@@ -660,7 +661,8 @@ func postLocalDevInfo(ctx *getconfigContext) *profile.LocalDevCmd {
 				updateLocalDevInfoTicker(ctx, true)
 				return nil
 			case http.StatusOK, http.StatusCreated:
-				if devCmd.GetServerToken() != ctx.sideController.profileServerToken {
+				if ctx.sideController.profileServerToken == "" ||
+					devCmd.GetServerToken() != ctx.sideController.profileServerToken {
 					errList = append(errList,
 						fmt.Sprintf("invalid token submitted by local server (%s)",
 							devCmd.GetServerToken()))
@@ -940,7 +942,8 @@ func postLocalAppBootInfo(ctx *getconfigContext) *profile.AppBootConfigList {
 				log.Noticef("LPS returned 404 - clearing all app boot configs")
 				return &profile.AppBootConfigList{AppConfigs: nil}
 			case http.StatusOK, http.StatusCreated:
-				if bootConfig.GetServerToken() != ctx.sideController.profileServerToken {
+				if ctx.sideController.profileServerToken == "" ||
+					bootConfig.GetServerToken() != ctx.sideController.profileServerToken {
 					errList = append(errList,
 						fmt.Sprintf("invalid token submitted by local server (%s)", bootConfig.GetServerToken()))
 					continue

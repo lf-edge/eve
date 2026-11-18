@@ -223,6 +223,8 @@ the controller is at least used to deploy the application, mark it as a Local pr
 and to specify string token that the application will have to present to EVE with each request
 to authenticate itself. This is submitted to the edge node using the `local_profile_server` and
 `profile_server_token` fields from `EdgeDevConfig`.
+EVE disables LPS communication when `profile_server_token` is empty, including when
+the token is cleared from an existing configuration.
 
 #### Radio endpoint semantic
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2021 Zededa, Inc.
+// Copyright (c) 2021-2026 Zededa, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 package zedagent
@@ -90,6 +90,9 @@ func parseLocalProfile(localProfileBytes []byte) (*profile.LocalProfile, error) 
 	if err != nil {
 		return nil, fmt.Errorf("unmarshalling failed: %v", err)
 	}
+	if localProfile.GetServerToken() == "" {
+		return nil, fmt.Errorf("saved local profile has an empty authentication token")
+	}
 	return localProfile, nil
 }
 
@@ -103,7 +106,11 @@ func readSavedLocalProfile(getconfigCtx *getconfigContext) (*profile.LocalProfil
 	if localProfileMessage != nil {
 		log.Noticef("Using saved local profile dated %s",
 			ts.Format(time.RFC3339Nano))
-		return parseLocalProfile(localProfileMessage)
+		localProfile, err := parseLocalProfile(localProfileMessage)
+		if err != nil {
+			log.Errorf("readSavedLocalProfile: %v", err)
+		}
+		return localProfile, err
 	}
 	return nil, nil
 }
@@ -145,7 +152,8 @@ func getLocalProfileConfig(getconfigCtx *getconfigContext, localServerURL string
 					resp.StatusCode))
 				continue
 			}
-			if localProfile.GetServerToken() != getconfigCtx.sideController.profileServerToken {
+			if getconfigCtx.sideController.profileServerToken == "" ||
+				localProfile.GetServerToken() != getconfigCtx.sideController.profileServerToken {
 				errList = append(errList,
 					fmt.Sprintf("invalid token submitted by local server (%s)", localProfile.GetServerToken()))
 				continue
@@ -184,11 +192,16 @@ func parseProfile(ctx *getconfigContext, config *zconfig.EdgeDevConfig) {
 			ctx.sideController.globalProfile, config.GlobalProfile)
 		ctx.sideController.globalProfile = config.GlobalProfile
 	}
+	localProfileServer := config.LocalProfileServer
+	if localProfileServer != "" && config.ProfileServerToken == "" {
+		log.Errorf("Disabling LPS %s: authentication token is empty", localProfileServer)
+		localProfileServer = ""
+	}
 	ctx.sideController.profileServerToken = config.ProfileServerToken
-	if ctx.sideController.localProfileServer != config.LocalProfileServer {
+	if ctx.sideController.localProfileServer != localProfileServer {
 		log.Noticef("parseProfile: LocalProfileServer changed from %s to %s",
-			ctx.sideController.localProfileServer, config.LocalProfileServer)
-		ctx.sideController.localProfileServer = config.LocalProfileServer
+			ctx.sideController.localProfileServer, localProfileServer)
+		ctx.sideController.localProfileServer = localProfileServer
 		triggerGetLocalProfile(ctx)
 		triggerRadioPOST(ctx)
 		updateLocalAppInfoTicker(ctx, false)
