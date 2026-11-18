@@ -183,7 +183,7 @@ func (lc *LocalCmdAgent) postDevInfo() (devCmd *profile.LocalDevCmd, discarded b
 				lc.updateDevInfoTicker(true)
 				return nil, false
 			case http.StatusOK, http.StatusCreated:
-				if devCmd.GetServerToken() != lc.lpsConfig.LpsToken {
+				if lc.lpsConfig.LpsToken == "" || devCmd.GetServerToken() != lc.lpsConfig.LpsToken {
 					errList = append(errList, "invalid token submitted by LPS")
 					continue
 				}
