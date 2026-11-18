@@ -1060,8 +1060,26 @@ evetest sdn ssh [command...]            # SSH into SDN VM
 ### Broker Commands
 
 These talk to the evetest-broker at `EVETEST_BROKER_ADDRESS`:`EVETEST_BROKER_PORT`
-directly and need no running test. CI uses them to stage the EVE image built by a
-workflow run on the broker once per host, no matter how many suite jobs need it:
+directly and need no running test.
+
+```bash
+evetest broker status [--json]          # broker version, image uploads, client sessions
+```
+
+`status` lists the EVE image uploads claimed with `evetest broker image claim-upload`
+(see below), with the claimer's address, host and, in GitHub Actions, run, job and
+runner, and whether the upload has started or the claimer is still fetching the
+image, and every client session: the client's address and host (`make evetest`
+passes the host name in `EVETEST_CLIENT_HOSTNAME`), the GitHub Actions run, job and
+runner when the client runs in CI, the test it is running, the broker operation in
+progress for it (e.g. `SetupDevices`, or `Close` while a finished session's devices
+are torn down), and its devices with their VMs and images. It also shows the host
+running the devices, as reported by the provider (e.g. the Proxmox node): CPUs and
+load, available memory and swap, how many VMs run there and how much memory they are
+assigned, and the free space of the storages the devices use.
+
+CI uses the `image` commands to stage the EVE image built by a workflow run on the
+broker once per host, no matter how many suite jobs need it:
 
 ```bash
 # Exits 0 and prints a ticket if this job has to provide the image; exits 10 if the broker
@@ -1127,6 +1145,7 @@ non-default behavior.
 |----------|-------------|---------|
 | `EVETEST_BROKER_ADDRESS` | Broker IP (unset = embedded broker) | -- |
 | `EVETEST_BROKER_PORT` | Broker gRPC port | `50221` |
+| `EVETEST_CLIENT_HOSTNAME` | Host name reported to the broker (see `evetest broker status`) | set by `make evetest` |
 | `EVETEST_BROKER_DEVICE_PROVIDER` | `qemu`, `libvirt`, or `proxmox` | `libvirt` |
 | `EVETEST_API_PORT` | gRPC API port exposed by evetest container | `50021` |
 | `EVETEST_API_ADDRESS` | IP/hostname of the machine running the evetest container, used by the CLI to connect remotely (unset = `localhost`) | -- |

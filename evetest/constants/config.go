@@ -89,6 +89,11 @@ const (
 	// This is read by the broker and the evetest container.
 	BrokerPortEnv = "BROKER_PORT"
 
+	// ClientHostnameEnv specifies the host running the evetest container, which
+	// the evetest container reports to the broker (see "evetest broker
+	// status"). Set by "make evetest"; defaults to the container's hostname.
+	ClientHostnameEnv = "CLIENT_HOSTNAME"
+
 	// TestNameEnv specifies the name of the test or test suite to run.
 	// This is read by the evetest container.
 	TestNameEnv = "NAME"

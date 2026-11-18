@@ -26,6 +26,7 @@ const (
 	Broker_Close_FullMethodName                      = "/org.lfedge.evetest.Broker/Close"
 	Broker_KeepAlive_FullMethodName                  = "/org.lfedge.evetest.Broker/KeepAlive"
 	Broker_StreamLogs_FullMethodName                 = "/org.lfedge.evetest.Broker/StreamLogs"
+	Broker_GetStatus_FullMethodName                  = "/org.lfedge.evetest.Broker/GetStatus"
 	Broker_BuildImage_FullMethodName                 = "/org.lfedge.evetest.Broker/BuildImage"
 	Broker_PushEVEContainerImage_FullMethodName      = "/org.lfedge.evetest.Broker/PushEVEContainerImage"
 	Broker_ClaimEVEImageUpload_FullMethodName        = "/org.lfedge.evetest.Broker/ClaimEVEImageUpload"
@@ -66,6 +67,10 @@ type BrokerClient interface {
 	KeepAlive(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[KeepAlivePing, KeepAlivePong], error)
 	// Stream broker logs for the given client session.
 	StreamLogs(ctx context.Context, in *LogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogMessage], error)
+	// GetStatus reports the broker version and every client session: who the
+	// client is, which test it runs and which devices it has. It does not need a
+	// client session.
+	GetStatus(ctx context.Context, in *GetStatusRequest, opts ...grpc.CallOption) (*GetStatusResponse, error)
 	// Build a new EVE image with the given configuration.
 	BuildImage(ctx context.Context, in *BuildImageRequest, opts ...grpc.CallOption) (*BuildImageResponse, error)
 	// PushEVEContainerImage streams a pre-built EVE container image to the broker.
@@ -193,6 +198,16 @@ func (c *brokerClient) StreamLogs(ctx context.Context, in *LogsRequest, opts ...
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Broker_StreamLogsClient = grpc.ServerStreamingClient[LogMessage]
+
+func (c *brokerClient) GetStatus(ctx context.Context, in *GetStatusRequest, opts ...grpc.CallOption) (*GetStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetStatusResponse)
+	err := c.cc.Invoke(ctx, Broker_GetStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 func (c *brokerClient) BuildImage(ctx context.Context, in *BuildImageRequest, opts ...grpc.CallOption) (*BuildImageResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -427,6 +442,10 @@ type BrokerServer interface {
 	KeepAlive(grpc.BidiStreamingServer[KeepAlivePing, KeepAlivePong]) error
 	// Stream broker logs for the given client session.
 	StreamLogs(*LogsRequest, grpc.ServerStreamingServer[LogMessage]) error
+	// GetStatus reports the broker version and every client session: who the
+	// client is, which test it runs and which devices it has. It does not need a
+	// client session.
+	GetStatus(context.Context, *GetStatusRequest) (*GetStatusResponse, error)
 	// Build a new EVE image with the given configuration.
 	BuildImage(context.Context, *BuildImageRequest) (*BuildImageResponse, error)
 	// PushEVEContainerImage streams a pre-built EVE container image to the broker.
@@ -514,6 +533,9 @@ func (UnimplementedBrokerServer) KeepAlive(grpc.BidiStreamingServer[KeepAlivePin
 }
 func (UnimplementedBrokerServer) StreamLogs(*LogsRequest, grpc.ServerStreamingServer[LogMessage]) error {
 	return status.Errorf(codes.Unimplemented, "method StreamLogs not implemented")
+}
+func (UnimplementedBrokerServer) GetStatus(context.Context, *GetStatusRequest) (*GetStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetStatus not implemented")
 }
 func (UnimplementedBrokerServer) BuildImage(context.Context, *BuildImageRequest) (*BuildImageResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method BuildImage not implemented")
@@ -646,6 +668,24 @@ func _Broker_StreamLogs_Handler(srv interface{}, stream grpc.ServerStream) error
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type Broker_StreamLogsServer = grpc.ServerStreamingServer[LogMessage]
+
+func _Broker_GetStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrokerServer).GetStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Broker_GetStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrokerServer).GetStatus(ctx, req.(*GetStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 func _Broker_BuildImage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(BuildImageRequest)
@@ -941,6 +981,10 @@ var Broker_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Close",
 			Handler:    _Broker_Close_Handler,
+		},
+		{
+			MethodName: "GetStatus",
+			Handler:    _Broker_GetStatus_Handler,
 		},
 		{
 			MethodName: "BuildImage",
