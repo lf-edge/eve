@@ -107,6 +107,11 @@ type DeviceProvider interface {
 	// ListDevices returns the names of all created devices.
 	ListDevices(ctx context.Context) ([]string, error)
 
+	// HostStatus reports the resources of the host running the devices (CPU,
+	// memory, VMs, storage), for the broker's GetStatus. Fields the provider
+	// cannot tell are left zero.
+	HostStatus(ctx context.Context) (*api.HostStatus, error)
+
 	// TeardownAll removes all VMs, networks, etc., created by the provider.
 	TeardownAll(ctx context.Context) error
 
