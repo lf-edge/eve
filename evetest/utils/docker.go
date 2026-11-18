@@ -180,8 +180,10 @@ func StreamDockerImageGzip(ctx context.Context, imageName string) (io.ReadCloser
 //
 // Image data is consumed incrementally and decompressed on the fly, allowing
 // large images to be loaded without buffering the entire archive in memory.
-func LoadDockerImageFromReader(
-	ctx context.Context, log *logrus.Entry, r io.Reader, imageName string) error {
+// onLoaded, if not nil, is called with the number of decompressed bytes
+// passed to Docker after each read.
+func LoadDockerImageFromReader(ctx context.Context, log *logrus.Entry, r io.Reader,
+	imageName string, onLoaded func(n int)) error {
 	dockerClient, err := client.New(client.FromEnv)
 	if err != nil {
 		return fmt.Errorf("failed to create docker client: %w", err)
@@ -193,7 +195,11 @@ func LoadDockerImageFromReader(
 	}
 	defer gzr.Close()
 
-	resp, err := dockerClient.ImageLoad(ctx, gzr, client.ImageLoadWithQuiet(false))
+	var archive io.Reader = gzr
+	if onLoaded != nil {
+		archive = &progressReader{r: gzr, onRead: onLoaded}
+	}
+	resp, err := dockerClient.ImageLoad(ctx, archive, client.ImageLoadWithQuiet(false))
 	if err != nil {
 		return fmt.Errorf("failed to load Docker image: %w", err)
 	}
@@ -608,4 +614,17 @@ func logDockerResp(log *logrus.Entry, resp io.ReadCloser, imageName string) erro
 		}
 	}
 	return nil
+}
+
+type progressReader struct {
+	r      io.Reader
+	onRead func(n int)
+}
+
+func (p *progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	if n > 0 {
+		p.onRead(n)
+	}
+	return n, err
 }
