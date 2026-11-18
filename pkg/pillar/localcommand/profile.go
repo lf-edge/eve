@@ -96,14 +96,17 @@ func (lc *LocalCmdAgent) updateProfileTicker() {
 	lc.profileTicker.update(false, lc.lpsIntervalFromConfig(types.LpsProfileInterval))
 }
 
-// parseLocalProfile decodes a LocalProfile protobuf message from bytes.
-// Returns the parsed LocalProfile or an error if unmarshalling fails.
+// parseLocalProfile decodes a saved LocalProfile protobuf message.
+// Reject profiles persisted with an empty token before LPS authentication was enforced.
 func (lc *LocalCmdAgent) parseLocalProfile(
 	localProfileBytes []byte) (*profile.LocalProfile, error) {
 	var localProfile = &profile.LocalProfile{}
 	err := proto.Unmarshal(localProfileBytes, localProfile)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshalling failed: %v", err)
+	}
+	if localProfile.GetServerToken() == "" {
+		return nil, fmt.Errorf("saved local profile has an empty server token")
 	}
 	return localProfile, nil
 }
@@ -120,7 +123,11 @@ func (lc *LocalCmdAgent) readSavedLocalProfile() (*profile.LocalProfile, error) 
 	if localProfileMessage != nil {
 		lc.Log.Noticef("%s: Using saved local profile dated %s",
 			logPrefix, ts.Format(time.RFC3339Nano))
-		return lc.parseLocalProfile(localProfileMessage)
+		localProfile, err := lc.parseLocalProfile(localProfileMessage)
+		if err != nil {
+			lc.Log.Errorf("%s: failed to parse saved local profile: %v", logPrefix, err)
+		}
+		return localProfile, err
 	}
 	return nil, nil
 }
@@ -170,7 +177,7 @@ func (lc *LocalCmdAgent) getLocalProfileConfig() (
 					resp.StatusCode))
 				continue
 			}
-			if localProfile.GetServerToken() != lc.lpsConfig.LpsToken {
+			if lc.lpsConfig.LpsToken == "" || localProfile.GetServerToken() != lc.lpsConfig.LpsToken {
 				errList = append(errList, "invalid token submitted by LPS")
 				continue
 			}

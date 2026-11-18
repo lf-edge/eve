@@ -468,10 +468,16 @@ func (lc *LocalCmdAgent) UpdateLocConfig(locConfig types.LOCConfig) {
 
 // UpdateLpsConfig updates the LPS configuration.
 // If the LPS URL changes, the agent re-discovers all the LPS addresses.
+// LPS is disabled if its authentication token is empty.
 // Task execution is suspended while the update is applied.
 func (lc *LocalCmdAgent) UpdateLpsConfig(globalProfile, lpsAddr, lpsToken string) error {
 	resume := lc.tc.pause()
 	defer resume()
+
+	if lpsAddr != "" && lpsToken == "" {
+		lc.Log.Errorf("%s: disabling LPS: profile_server_token is empty", logPrefix)
+		lpsAddr = ""
+	}
 
 	// Re-discover LPS addresses if the LPS URL changed.
 	lc.lpsConfig.LpsToken = lpsToken
