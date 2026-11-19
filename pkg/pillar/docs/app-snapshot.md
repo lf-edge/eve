@@ -636,6 +636,22 @@ the current state of the app instance on the device.
    status and deleting the snapshot files, the `reactToSnapshotDelete` function
    publishes the updated AppInstanceStatus.
 
+### Waiting for Volumemgr
+
+zedmanager does not start the application while volumemgr works on one of its
+snapshots, as `qemu-img` needs the disk images to itself. The
+`snapshotOpInProgress` function tells this from what is published:
+
+- a `VolumesSnapshotConfig` without a `VolumesSnapshotStatus` is a creation
+  that volumemgr has not answered yet;
+- a `VolumesSnapshotStatus` without a `VolumesSnapshotConfig` is a deletion
+  that volumemgr has not answered yet.
+
+In both cases `doUpdate` does not activate the application, and a purge does not
+go on from bringing the application down to recreating its volumes. The answer
+from volumemgr takes the application up again: `handleVolumesSnapshotStatusImpl`
+calls `updateAIStatusUUID` after a creation and after a deletion.
+
 ## Low-Level Snapshot Management for ext4
 
 In EVE, managing snapshots for ext4 file systems involves interactions with the
