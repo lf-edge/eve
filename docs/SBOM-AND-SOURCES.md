@@ -26,6 +26,12 @@ For each _release_ of EVE-OS, one SPDX json file per image variant is attached t
 
 There is one SBoM per image variant rather than one per release because the package set differs between variants: the `k` hypervisor flavor adds the kube service, the NVIDIA platforms add their own drivers, and the kernel version is selected per architecture and platform in `kernel-version.mk`.
 
+#### Identifying a variant by digest
+
+VEX statements and scanners identify a variant by its image digest, which the SBoM cannot carry: the SBoM is inside the image, so recording the digest would change it. Each release names the digest in its `<arch>.<hv>.<platform>.images.txt` asset, on the `docker.io/lfedge/eve@sha256:<digest>` line, signed through that variant's `sha256sums` (see [SIGNING.md](SIGNING.md)). It is the digest of the per-architecture tag, such as `17.13.0-kvm-amd64` or `17.13.0-nvidia-jp6-kvm-arm64`, not of the multi-architecture index such as `17.13.0-kvm`.
+
+As a VEX product ID, use the `pkg:oci` purl Trivy derives from that digest, `pkg:oci/eve@sha256:<digest>?repository_url=index.docker.io/lfedge/eve`, one per variant. Trivy does not match a tag in a product ID.
+
 ### Sources
 
 The sources for EVE-OS are collected in a gzipped tar file
