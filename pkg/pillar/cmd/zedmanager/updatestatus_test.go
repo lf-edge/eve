@@ -158,3 +158,48 @@ func TestDoInstallWaitsForStaleVolumeRefWithLiveStatus(t *testing.T) {
 			"must be marked pending removal while waiting for volumemgr's delete")
 	}
 }
+
+// Once a purge has brought the app down, it must be published as HALTED: what
+// follows may wait for a long time, or leave the app stopped for good.
+func TestPurgeReportsHaltedOnceDown(t *testing.T) {
+	ctx := newCPUPlacementTestContext(t, nil, nil)
+	ps := pubsub.New(pubsub.NewMemoryDriver(), logrus.StandardLogger(), log)
+	var err error
+	ctx.pubAppInstanceStatus, err = ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: agentName,
+		TopicType: types.AppInstanceStatus{},
+	})
+	assert.NoError(t, err)
+	newConfigSub := func(agent string) pubsub.Subscription {
+		sub, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+			AgentName:   agent,
+			MyAgentName: agentName,
+			TopicImpl:   types.AppInstanceConfig{},
+			Persistent:  true,
+		})
+		assert.NoError(t, err)
+		assert.NoError(t, sub.Activate())
+		return sub
+	}
+	ctx.subAppInstanceConfig = newConfigSub("zedagent")
+	ctx.subLocalAppInstanceConfig = newConfigSub(agentName)
+	snap := newSnapshotWaitTestContext(t, nil, nil)
+	ctx.pubVolumesSnapConfig = snap.pubVolumesSnapConfig
+	ctx.subVolumesSnapStatus = snap.subVolumesSnapStatus
+
+	status := &types.AppInstanceStatus{
+		UUIDandVersion: types.UUIDandVersion{
+			UUID:    uuid.Must(uuid.FromString("11111111-1111-1111-1111-111111111111")),
+			Version: "1",
+		},
+		State:           types.HALTING,
+		PurgeInprogress: types.BringDown,
+	}
+	removeAIStatus(ctx, status)
+
+	published := lookupAppInstanceStatus(ctx, status.Key())
+	if assert.NotNil(t, published) {
+		assert.Equal(t, types.RecreateVolumes, published.PurgeInprogress)
+		assert.Equal(t, types.HALTED, published.State)
+	}
+}
