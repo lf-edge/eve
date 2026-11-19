@@ -409,6 +409,9 @@ data integrity and operational consistency.
    zedmanager waits for the application to be deactivated. The detection of the
    application deactivation is done in the `doUpdate` function, which is called
    as part of the process that handles status changes from the domain manager.
+   An application that has no `DomainStatus`, because it was not started since
+   boot, counts as deactivated unless zedmanager has activated it or is
+   activating it.
 9. **Triggering Rollback**: The `triggerRollback` function is called to trigger
    the rollback process. It first checks if there is an
    existing `VolumesSnapshotConfig` in the channel for the active snapshot. If
