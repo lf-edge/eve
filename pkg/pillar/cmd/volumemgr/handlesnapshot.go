@@ -17,6 +17,15 @@ func createSnapshot(ctx *volumemgrContext, config *types.VolumesSnapshotConfig) 
 	// Check if snapshot volumesSnapshotStatus already exists, or it's a new snapshot request
 	volumesSnapshotStatus := lookupVolumesSnapshotStatus(ctx, config.SnapshotID)
 	if volumesSnapshotStatus != nil {
+		if volumesSnapshotStatus.ResultOfAction == types.VolumesSnapshotCreate &&
+			volumesSnapshotStatus.HasError() &&
+			volumesSnapshotStatus.ErrorSeverity != types.ErrorSeverityWarning {
+			// Its creation failed, possibly half way. That is not a
+			// snapshot one could roll back to.
+			log.Errorf("Snapshot %s was not created: %s", config.SnapshotID,
+				volumesSnapshotStatus.Error)
+			return volumesSnapshotStatus
+		}
 		warnMsg := fmt.Sprintf("Snapshot %s already exists", config.SnapshotID)
 		log.Warn(warnMsg)
 		errDesc := types.ErrorDescription{}
@@ -111,12 +120,24 @@ func deserializeVolumesSnapshotStatus(snapshotID string) (*types.VolumesSnapshot
 func rollbackSnapshot(ctx *volumemgrContext, config *types.VolumesSnapshotConfig) *types.VolumesSnapshotStatus {
 	// Check if snapshot status already exists, or it's a new snapshot request
 	volumesSnapshotStatus := lookupVolumesSnapshotStatus(ctx, config.SnapshotID)
+	// The status of the previous rollback is the starting point. Every
+	// answer has to differ from it whatever the outcome, or pubsub does not
+	// deliver it to zedmanager.
+	refCount := 1
+	if volumesSnapshotStatus != nil {
+		refCount = volumesSnapshotStatus.RefCount + 1
+		if volumesSnapshotStatus.VolumeSnapshotMeta == nil {
+			// Only the error of an earlier attempt that found no record.
+			volumesSnapshotStatus, _ = deserializeVolumesSnapshotStatus(config.SnapshotID)
+		}
+	}
 	if volumesSnapshotStatus == nil {
 		// Create a new volumesSnapshotStatus to report an error. zedmanager
 		// finds the app by AppUUID.
 		volumesSnapshotStatus = &types.VolumesSnapshotStatus{
 			SnapshotID: config.SnapshotID,
 			AppUUID:    config.AppUUID,
+			RefCount:   refCount,
 		}
 		errDesc := types.ErrorDescription{}
 		errDesc.Error = fmt.Sprintf("rollbackSnapshot: snapshot %s not found", config.SnapshotID)
@@ -124,6 +145,8 @@ func rollbackSnapshot(ctx *volumemgrContext, config *types.VolumesSnapshotConfig
 		volumesSnapshotStatus.SetErrorWithSourceAndDescription(errDesc, types.VolumesSnapshotStatus{})
 		return volumesSnapshotStatus
 	}
+	volumesSnapshotStatus.ClearErrorWithSource()
+	volumesSnapshotStatus.RefCount = refCount
 	for volumeID, snapMeta := range volumesSnapshotStatus.VolumeSnapshotMeta {
 		volumeStatus := ctx.lookupVolumeStatusByUUID(volumeID)
 		if volumeStatus == nil {
