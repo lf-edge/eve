@@ -472,22 +472,20 @@ performs the appropriate action based on the Action field of the config.
    function returns. The `AppInstanceStatus` object is necessary for updating
    the status of the snapshot, which is done in the next step.
 3. **Handling Errors**: If the `volumesSnapshotStatus` object has an error (as
-   indicated by the `HasError` function), the function logs the error and sets
-   the `Error`, `ErrorTime`, and `ErrorDescription` fields of
-   the `AppInstanceStatus` object. The `setSnapshotStatusError` function is
-   called to update the error status of the snapshot. The `AppInstanceStatus`
-   object is then published to reflect the error status.
-4. **Rollback Completion**: If there is no error, the function sets
-   the `RollbackInProgress` field of the `SnapStatus` field of
-   the `AppInstanceStatus` object to false, indicating that the rollback is
-   complete. The function then unpublishes the local app instance config, as
-   once the rollback is complete, it’s no longer needed. The app instance has
-   been successfully reverted to the state it was in at the time of the
-   snapshot, and any subsequent operations should use the latest app instance
-   config received from the controller. Therefore, zedmanager unpublishes the
-   local app instance config, removing it from consideration in future
-   operations. The `AppInstanceStatus` object is then published to reflect the
-   changes made during the rollback process. The local
+   indicated by the `HasError` function), the function logs the error and calls
+   the `setSnapshotStatusError` function to record it with the snapshot. The
+   application itself gets no error. A successful rollback clears the error of
+   the snapshot.
+4. **Rollback Completion**: Whether the rollback worked or failed, the function
+   sets the `RollbackInProgress` field of the `SnapStatus` field of
+   the `AppInstanceStatus` object to false and unpublishes the local app
+   instance config: any subsequent operations should use the latest app
+   instance config received from the controller. The `AppInstanceStatus` object
+   is then published. After a failure the application goes on with the volumes
+   as they are. If the app instance config was deleted meanwhile, the function
+   calls `removeAIStatus` to finish the removal of the application. Otherwise
+   it calls `doUpdate` to start the application again and publishes what that
+   changed.
 5. **Zedagent Handling**: After the publication of the AppInstanceStatus, the
    updated status is sent to zedagent. Zedagent then parses the list of
    available snapshots in the AppInstanceStatus and forms a reply to the
