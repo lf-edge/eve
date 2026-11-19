@@ -35,6 +35,11 @@ import (
 //   - TestVaultKeyModeRecovery -- the vault still opens when the file recording
 //     which key derivation it was created with names the wrong one; run once per
 //     /persist filesystem, since ext4 and ZFS are separate vault handlers.
+//   - TestVaultWithoutControllerKey -- the TPM will not unseal the vault key
+//     (PCRs changed) and the controller has no copy of it: a controller that
+//     lost the key must not cost the device its data (the vault stays locked
+//     until the key is back), while a device that never escrowed recreates its
+//     empty vault; run once per /persist filesystem.
 func TestSecuritySuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -86,6 +91,29 @@ func TestSecuritySuite(test *testing.T) {
 				},
 				{
 					Name: "TestVaultKeyModeRecoveryOnZFS",
+					Parameters: []evetest.TestParameterValue{
+						{
+							Key:   evetest.FilesystemParameterKey,
+							Value: evetest.FilesystemZFS,
+						},
+					},
+				},
+			},
+		},
+		evetest.TestCase{
+			Test: TestVaultWithoutControllerKey,
+			Variants: []evetest.TestVariant{
+				{
+					Name: "TestVaultWithoutControllerKeyOnExt4",
+					Parameters: []evetest.TestParameterValue{
+						{
+							Key:   evetest.FilesystemParameterKey,
+							Value: evetest.FilesystemEXT4,
+						},
+					},
+				},
+				{
+					Name: "TestVaultWithoutControllerKeyOnZFS",
 					Parameters: []evetest.TestParameterValue{
 						{
 							Key:   evetest.FilesystemParameterKey,
