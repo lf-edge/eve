@@ -412,7 +412,9 @@ data integrity and operational consistency.
 9. **Triggering Rollback**: The `triggerRollback` function is called to trigger
    the rollback process. It first checks if there is an
    existing `VolumesSnapshotConfig` in the channel for the active snapshot. If
-   found, it updates the action to rollback and publishes the updated config. If
+   found, it updates the action to rollback, increments `RollbackCount` so that
+   a repeated rollback to the same snapshot is still a change that pubsub
+   delivers, and publishes the updated config. If
    not found (which can occur if the system has been rebooted), it creates a
    new `VolumesSnapshotConfig` with the necessary information, including the
    snapshot ID, volume IDs, action set to rollback, and app UUID. It then
