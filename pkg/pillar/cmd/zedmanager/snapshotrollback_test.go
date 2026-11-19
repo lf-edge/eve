@@ -267,3 +267,20 @@ func TestRollbackConfigKeepsCurrentSnapshotLimit(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, rollbackTestMaxSnapshots, fixed.Snapshot.MaxSnapshots)
 }
+
+// pubsub does not deliver an item that is published unchanged, so the second
+// rollback to a snapshot must not publish the request of the first one again.
+func TestEveryRollbackRequestDiffers(t *testing.T) {
+	ctx, config := newRollbackTestContext(t)
+	status := lookupAppInstanceStatus(ctx, config.Key())
+
+	assert.NoError(t, triggerRollback(ctx, status))
+	first := lookupVolumesSnapshotConfig(ctx, rollbackTestSnapshot)
+	assert.NoError(t, triggerRollback(ctx, status))
+	second := lookupVolumesSnapshotConfig(ctx, rollbackTestSnapshot)
+
+	if assert.NotNil(t, first) && assert.NotNil(t, second) {
+		assert.Equal(t, types.VolumesSnapshotRollback, second.Action)
+		assert.NotEqual(t, *first, *second)
+	}
+}

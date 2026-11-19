@@ -357,16 +357,18 @@ func triggerRollback(ctx *zedmanagerContext, status *types.AppInstanceStatus) er
 		// We have found the VolumesSnapshotConfig in the channel
 		// Switch the action to rollback
 		volumesSnapshotConfig.Action = types.VolumesSnapshotRollback
+		volumesSnapshotConfig.RollbackCount++
 		publishVolumesSnapshotConfig(ctx, volumesSnapshotConfig)
 		return nil
 	}
 	// We have not found the VolumesSnapshotConfig in the channel, maybe the system was rebooted
 	// Create a new one and publish it
 	volumesSnapshotConfig = &types.VolumesSnapshotConfig{
-		SnapshotID: status.SnapStatus.ActiveSnapshot,
-		VolumeIDs:  make([]uuid.UUID, 0),
-		Action:     types.VolumesSnapshotRollback,
-		AppUUID:    status.UUIDandVersion.UUID,
+		SnapshotID:    status.SnapStatus.ActiveSnapshot,
+		VolumeIDs:     make([]uuid.UUID, 0),
+		Action:        types.VolumesSnapshotRollback,
+		AppUUID:       status.UUIDandVersion.UUID,
+		RollbackCount: 1,
 	}
 	for _, volumeRefConfig := range status.VolumeRefStatusList {
 		volumesSnapshotConfig.VolumeIDs = append(volumesSnapshotConfig.VolumeIDs, volumeRefConfig.VolumeID)

@@ -874,6 +874,7 @@ type VolumesSnapshotConfig struct {
     Action     VolumesSnapshotAction
     VolumeIDs  []uuid.UUID
     AppUUID    uuid.UUID
+    RollbackCount int  // makes every rollback request a change for pubsub
 }
 func (config VolumesSnapshotConfig) Key() string  // SnapshotID
 
