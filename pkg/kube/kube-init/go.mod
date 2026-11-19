@@ -3,7 +3,7 @@ module github.com/lf-edge/eve/pkg/kube/kube-init
 go 1.26.0
 
 require (
-	github.com/containerd/containerd/v2 v2.2.9
+	github.com/containerd/containerd/v2 v2.2.10
 	github.com/containerd/errdefs v1.0.0
 	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261116211132-d577f4620e81
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
