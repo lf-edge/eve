@@ -98,6 +98,26 @@ func newRollbackTestContext(t *testing.T) (*zedmanagerContext, types.AppInstance
 	return ctx, config
 }
 
+// useDomainStatus makes domainmgr report the given status to ctx.
+func useDomainStatus(t *testing.T, ctx *zedmanagerContext, domain types.DomainStatus) {
+	t.Helper()
+	ps := pubsub.New(pubsub.NewMemoryDriver(), logrus.StandardLogger(), log)
+	pub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: "domainmgr",
+		TopicType: types.DomainStatus{},
+	})
+	assert.NoError(t, err)
+	assert.NoError(t, pub.Publish(domain.Key(), domain))
+	ctx.subDomainStatus, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "domainmgr",
+		MyAgentName: agentName,
+		TopicImpl:   types.DomainStatus{},
+		Persistent:  true,
+	})
+	assert.NoError(t, err)
+	assert.NoError(t, ctx.subDomainStatus.Activate())
+}
+
 // A rollback that volumemgr could not do must not leave the app waiting for
 // it: nothing else is going to end the rollback.
 func TestFailedRollbackDoesNotKeepTheAppDown(t *testing.T) {
@@ -186,4 +206,46 @@ func TestRollbackResultIsPublished(t *testing.T) {
 		assert.False(t, published.SnapStatus.RollbackInProgress)
 		assert.Equal(t, types.BringUp, published.PurgeInprogress)
 	}
+}
+
+// An app that was not started since boot has no DomainStatus. A rollback
+// requested for it must still be handed to volumemgr.
+func TestRollbackIsTriggeredWithoutDomain(t *testing.T) {
+	ctx, config := newRollbackTestContext(t)
+	status := lookupAppInstanceStatus(ctx, config.Key())
+	status.SnapStatus.HasRollbackRequest = true
+
+	assert.True(t, doUpdate(ctx, config, status))
+
+	published := lookupVolumesSnapshotConfig(ctx, rollbackTestSnapshot)
+	if assert.NotNil(t, published) {
+		assert.Equal(t, types.VolumesSnapshotRollback, published.Action)
+	}
+	assert.False(t, status.SnapStatus.HasRollbackRequest)
+}
+
+// qemu-img must not get the disk images while the domain runs or is about to.
+func TestRollbackWaitsForTheDomainToBeDown(t *testing.T) {
+	t.Run("zedmanager is activating the app", func(t *testing.T) {
+		ctx, config := newRollbackTestContext(t)
+		status := lookupAppInstanceStatus(ctx, config.Key())
+		status.SnapStatus.HasRollbackRequest = true
+		status.ActivateInprogress = true
+
+		doUpdate(ctx, config, status)
+
+		assert.Nil(t, lookupVolumesSnapshotConfig(ctx, rollbackTestSnapshot))
+		assert.True(t, status.SnapStatus.HasRollbackRequest)
+	})
+	t.Run("the domain runs", func(t *testing.T) {
+		ctx, config := newRollbackTestContext(t)
+		status := lookupAppInstanceStatus(ctx, config.Key())
+		status.SnapStatus.HasRollbackRequest = true
+		useDomainStatus(t, ctx, types.DomainStatus{UUIDandVersion: status.UUIDandVersion, Activated: true})
+
+		doUpdate(ctx, config, status)
+
+		assert.Nil(t, lookupVolumesSnapshotConfig(ctx, rollbackTestSnapshot))
+		assert.True(t, status.SnapStatus.HasRollbackRequest)
+	})
 }
