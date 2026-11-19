@@ -72,6 +72,10 @@ func newRollbackTestContext(t *testing.T) (*zedmanagerContext, types.AppInstance
 		subDomainStatus:           newSub("domainmgr", types.DomainStatus{}),
 		subVolumeRefStatus:        newSub("volumemgr", types.VolumeRefStatus{}),
 		pubAppInstanceSummary:     newPub(agentName, types.AppInstanceSummary{}),
+		pubDomainConfig:           newPub(agentName, types.DomainConfig{}),
+		pubAppNetworkConfig:       newPub(agentName, types.AppNetworkConfig{}),
+		pubVolumeRefConfig:        newPub(agentName, types.VolumeRefConfig{}),
+		subAppNetworkStatus:       newSub("zedrouter", types.AppNetworkStatus{}),
 	}
 	status := types.AppInstanceStatus{
 		UUIDandVersion:  snapped.UUIDandVersion,
@@ -92,6 +96,78 @@ func newRollbackTestContext(t *testing.T) (*zedmanagerContext, types.AppInstance
 	}}
 	publishAppInstanceStatus(ctx, &status)
 	return ctx, config
+}
+
+// A rollback that volumemgr could not do must not leave the app waiting for
+// it: nothing else is going to end the rollback.
+func TestFailedRollbackDoesNotKeepTheAppDown(t *testing.T) {
+	ctx, config := newRollbackTestContext(t)
+
+	result := types.VolumesSnapshotStatus{
+		SnapshotID:     rollbackTestSnapshot,
+		AppUUID:        config.UUIDandVersion.UUID,
+		ResultOfAction: types.VolumesSnapshotRollback,
+	}
+	result.SetErrorWithSourceAndDescription(
+		types.ErrorDescription{Error: "qemu-img failed"}, types.VolumesSnapshotStatus{})
+	reactToSnapshotRollback(ctx, result)
+
+	published := lookupAppInstanceStatus(ctx, config.Key())
+	if assert.NotNil(t, published) {
+		assert.False(t, published.SnapStatus.RollbackInProgress)
+		assert.Equal(t, "qemu-img failed",
+			published.SnapStatus.AvailableSnapshots[0].Error.Error)
+		assert.Equal(t, types.BringUp, published.PurgeInprogress, "the app must be started again")
+	}
+	_, err := ctx.pubLocalAppInstanceConfig.Get(config.Key())
+	assert.Error(t, err, "the config saved with the snapshot must no longer replace the one from the controller")
+}
+
+// The error of a failed rollback goes away with a rollback that works.
+func TestSuccessfulRollbackClearsTheSnapshotError(t *testing.T) {
+	ctx, config := newRollbackTestContext(t)
+	status := lookupAppInstanceStatus(ctx, config.Key())
+	status.SnapStatus.AvailableSnapshots[0].Error = types.ErrorDescription{Error: "qemu-img failed"}
+	publishAppInstanceStatus(ctx, status)
+
+	reactToSnapshotRollback(ctx, types.VolumesSnapshotStatus{
+		SnapshotID:     rollbackTestSnapshot,
+		AppUUID:        config.UUIDandVersion.UUID,
+		ResultOfAction: types.VolumesSnapshotRollback,
+	})
+
+	published := lookupAppInstanceStatus(ctx, config.Key())
+	if assert.NotNil(t, published) {
+		assert.Empty(t, published.SnapStatus.AvailableSnapshots[0].Error.Error)
+	}
+}
+
+// The app can be deleted while its rollback is pending. The answer from
+// volumemgr must then not bring the device down, and the app must not be left
+// behind half removed.
+func TestRollbackResultForDeletedApp(t *testing.T) {
+	ctx, config := newRollbackTestContext(t)
+	// Persistent subscriptions were filled at Activate; drop the config there.
+	ps := pubsub.New(pubsub.NewMemoryDriver(), logrus.StandardLogger(), log)
+	sub, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		MyAgentName: agentName,
+		TopicImpl:   types.AppInstanceConfig{},
+		Persistent:  true,
+	})
+	assert.NoError(t, err)
+	assert.NoError(t, sub.Activate())
+	ctx.subAppInstanceConfig = sub
+
+	reactToSnapshotRollback(ctx, types.VolumesSnapshotStatus{
+		SnapshotID:     rollbackTestSnapshot,
+		AppUUID:        config.UUIDandVersion.UUID,
+		ResultOfAction: types.VolumesSnapshotRollback,
+	})
+
+	assert.Nil(t, lookupAppInstanceStatus(ctx, config.Key()), "the app must be removed")
+	_, err = ctx.pubLocalAppInstanceConfig.Get(config.Key())
+	assert.Error(t, err)
 }
 
 // What doUpdate changes once the rollback is over has to be published; here
