@@ -117,17 +117,11 @@ func NewEdgeClusterConfig(
 	// not re-report its cluster info on an ID change alone, and k3s cannot
 	// change the token of a running cluster, which a node joining it must
 	// then use.
-	var err error
 	if id, token, ok := th.reusedClusterIdentity(nodes); ok {
 		th.log.Infof("Reusing cluster %s formed by the reused devices", id)
 		cc.ClusterID, cc.Token = id, token
 	} else {
-		cc.ClusterID = th.newUUID("edge cluster")
-		tokenBytes := make([]byte, 20)
-		if _, err = cryptorand.Read(tokenBytes); err != nil {
-			th.t.Fatalf("Failed to generate cluster token: %v", err)
-		}
-		cc.Token = base64.StdEncoding.EncodeToString(tokenBytes)
+		cc.newClusterIdentity()
 	}
 
 	// Resolve the tie-breaker device name to the UUID that EVE knows it
@@ -152,6 +146,27 @@ func NewEdgeClusterConfig(
 	}
 
 	return cc
+}
+
+// newClusterIdentity generates a fresh cluster UUID and join token.
+func (cc *EdgeClusterConfig) newClusterIdentity() {
+	cc.ClusterID = cc.th.newUUID("edge cluster")
+	tokenBytes := make([]byte, 20)
+	if _, err := cryptorand.Read(tokenBytes); err != nil {
+		cc.th.t.Fatalf("Failed to generate cluster token: %v", err)
+	}
+	cc.Token = base64.StdEncoding.EncodeToString(tokenBytes)
+}
+
+// ReplaceClusterIdentity gives the cluster a new UUID and join token and
+// rebuilds every node's cluster block with them, as a controller does when it
+// replaces a cluster with a new one over the same nodes. Nodes, cluster IPs
+// and roles are unchanged. Call ApplyConfig to push the result.
+func (cc *EdgeClusterConfig) ReplaceClusterIdentity() {
+	cc.newClusterIdentity()
+	for _, node := range cc.nodes {
+		cc.setNodeClusterConfig(node)
+	}
 }
 
 // setNodeClusterConfig (re)builds one node's EdgeNodeCluster block from the
