@@ -3453,3 +3453,87 @@ func TestPCIAddressAllocator(t *testing.T) {
 	g.Expect(err.Error()).To(ContainSubstring("User-defined network interface order " +
 		"disrupts the function sequence of the multifunction PCI devices 0000:06:00 and 0000:08:00"))
 }
+
+// SR-IOV VFs take part in the user-defined network interface order like any
+// other directly assigned NIC.
+func TestCreateDomConfigVFInterfaceOrder(t *testing.T) {
+	t.Parallel()
+	g := NewGomegaWithT(t)
+
+	id, err := uuid.NewV4()
+	g.Expect(err).ToNot(HaveOccurred())
+	config := types.DomainConfig{
+		UUIDandVersion: types.UUIDandVersion{UUID: id, Version: "1.0"},
+		VmConfig: types.VmConfig{
+			Memory:                       1024 * 1024,
+			VCpus:                        1,
+			VirtualizationMode:           types.HVM,
+			EnforceNetworkInterfaceOrder: true,
+		},
+		VifList: []types.VifConfig{
+			{Bridge: "bn1", Vif: "nbu1x1", VifOrder: 2,
+				Mac: net.HardwareAddr{0x02, 0x16, 0x3e, 0x00, 0x00, 0x01}},
+		},
+	}
+	aa := types.AssignableAdapters{Initialized: true}
+	// eth1vf0 and eth2vf0 are functions of one host device and share a bridge.
+	for _, vf := range []struct {
+		name, pciLong string
+		order         uint32
+	}{
+		{"eth1vf0", "0000:06:10.0", 4},
+		{"eth2vf0", "0000:06:10.1", 3},
+		{"eth3vf0", "0000:07:10.0", 1},
+	} {
+		config.IoAdapterList = append(config.IoAdapterList, types.IoAdapter{
+			Type: types.IoNetEthVF, Name: vf.name, IntfOrder: vf.order})
+		aa.IoBundleList = append(aa.IoBundleList, types.IoBundle{
+			Type:            types.IoNetEthVF,
+			AssignmentGroup: vf.name,
+			Phylabel:        vf.name,
+			PciLong:         vf.pciLong,
+			UsedByUUID:      id,
+		})
+	}
+	conf, err := os.CreateTemp("", "config")
+	g.Expect(err).ToNot(HaveOccurred())
+	defer os.Remove(conf.Name())
+
+	err = kvmIntel.CreateDomConfig(DefaultDomainName, config, types.DomainStatus{},
+		nil, &aa, nil, swtpmCtrlSock, conf)
+	g.Expect(err).ToNot(HaveOccurred())
+	result, err := os.ReadFile(conf.Name())
+	g.Expect(err).ToNot(HaveOccurred())
+
+	// Without disks the first free slot on the root bus is 4, so the expected
+	// order is eth3vf0 (pci.4), nbu1x1 (pci.5), then eth2vf0 and eth1vf0 behind
+	// their bridge (pci.6).
+	for _, device := range []string{`
+[device]
+  driver = "vfio-pci"
+  host = "07:10.0"
+  bus = "pci.4"
+  addr = "0x0"
+`, `
+[device "net0"]
+  driver = "virtio-net-pci"
+  netdev = "hostnet0"
+  mac = "02:16:3e:00:00:01"
+  bus = "pci.5"
+  addr = "0x0"
+`, `
+[device]
+  driver = "vfio-pci"
+  host = "06:10.1"
+  bus = "pcie-bridge.6"
+  addr = "0x1"
+`, `
+[device]
+  driver = "vfio-pci"
+  host = "06:10.0"
+  bus = "pcie-bridge.6"
+  addr = "0x2"
+`} {
+		g.Expect(string(result)).To(ContainSubstring(device))
+	}
+}
