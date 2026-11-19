@@ -26,7 +26,7 @@ ARG TARGET_DEV_PKGS="musl-dev libgcc linux-headers glib-dev pixman-dev zlib-dev 
     libusb-dev zstd-dev libaio-dev bzip2-dev libcap-ng-dev attr-dev util-linux-dev dtc-dev"
 ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:3a8c6b2742af0f1e40d16063fb5ccfb1a1aece6f
 
-FROM lfedge/eve-uefi:e9ae8647714d06083df34e667cdf575641b75738 AS uefi-build
+FROM lfedge/eve-uefi:027a513dc4fc6f551c6f5605e87218c5e0d4f6db AS uefi-build
 
 # The base the scripts run on, and the Alpine libraries QEMU links.
 # hadolint ignore=DL3006
