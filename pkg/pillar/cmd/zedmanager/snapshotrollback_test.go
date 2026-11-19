@@ -14,7 +14,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const rollbackTestSnapshot = "s1"
+const (
+	rollbackTestSnapshot            = "s1"
+	rollbackTestMaxSnapshots uint32 = 3
+)
 
 // newRollbackTestContext publishes an app that waits for volumemgr to roll it
 // back to rollbackTestSnapshot: purged, domain down, running on the config
@@ -52,6 +55,7 @@ func newRollbackTestContext(t *testing.T) (*zedmanagerContext, types.AppInstance
 			Version: "2",
 		},
 	}
+	config.Snapshot.MaxSnapshots = rollbackTestMaxSnapshots
 	volumeID := uuid.Must(uuid.FromString("22222222-2222-2222-2222-222222222222"))
 	config.VolumeRefConfigList = []types.VolumeRefConfig{
 		{VolumeID: volumeID, AppUUID: config.UUIDandVersion.UUID},
@@ -248,4 +252,18 @@ func TestRollbackWaitsForTheDomainToBeDown(t *testing.T) {
 		assert.Nil(t, lookupVolumesSnapshotConfig(ctx, rollbackTestSnapshot))
 		assert.True(t, status.SnapStatus.HasRollbackRequest)
 	})
+}
+
+// The config saved with a snapshot is as old as the snapshot. A rollback must
+// go by the snapshot limit that is valid now, or it flags snapshots for
+// deletion that the current limit allows.
+func TestRollbackConfigKeepsCurrentSnapshotLimit(t *testing.T) {
+	ctx, config := newRollbackTestContext(t)
+	status := lookupAppInstanceStatus(ctx, config.Key())
+	saved := config
+	saved.Snapshot.MaxSnapshots = 1
+
+	fixed, err := fixupAppInstanceConfig(ctx, status, &saved)
+	assert.NoError(t, err)
+	assert.Equal(t, rollbackTestMaxSnapshots, fixed.Snapshot.MaxSnapshots)
 }
