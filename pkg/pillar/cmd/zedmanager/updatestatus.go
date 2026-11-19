@@ -95,6 +95,12 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 		}
 	}
 
+	if !uninstall && snapshotOpInProgress(ctx, status.UUIDandVersion.UUID) {
+		log.Noticef("removeAIStatus(%s): PurgeInprogress waiting for snapshot",
+			uuidStr)
+		return
+	}
+
 	changed, done := doRemove(ctx, status, uninstall)
 	if changed {
 		log.Functionf("removeAIStatus status change for %s",
@@ -184,6 +190,12 @@ func doUpdate(ctx *zedmanagerContext,
 			publishAppInstanceStatus(ctx, status)
 			return true
 		}
+	}
+
+	// handleVolumesSnapshotStatusImpl comes back here once volumemgr is done.
+	if snapshotOpInProgress(ctx, status.UUIDandVersion.UUID) {
+		log.Noticef("doUpdate(%s): waiting for snapshot", uuidStr)
+		return changed
 	}
 
 	// An app that was not active before the reboot is low-priority, but it is
