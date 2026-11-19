@@ -173,6 +173,10 @@ validated large step in
 longhorn-manager is started without its own upgrade version check, and the
 check is restored once every volume runs the new engine.
 
+This build ships Longhorn v1.13.0 and upgrades to it only from v1.9.1, as a
+validated large step. A node running any other Longhorn version is refused,
+and its pass fails with the reason in its error.
+
 Before applying a Longhorn upgrade kube-init requires that no volume is
 faulted, that no Longhorn CRD still stores objects of an API version the
 target no longer serves, that the node is not cordoned (the tie-breaker node
@@ -377,7 +381,7 @@ falls back to volume creation time, which is equivalent to a full rebuild for an
 long-running volume.
 
 EVE-k automatically creates a Longhorn
-[`RecurringJob`](https://longhorn.io/docs/1.9.1/snapshots-and-backups/scheduling-backups-and-snapshots/)
+[`RecurringJob`](https://longhorn.io/docs/1.13.0/snapshots-and-backups/scheduling-backups-and-snapshots/)
 that snapshots all enrolled volumes on a configurable interval (default: daily). This caps
 the maximum delta rebuild data at approximately one interval's worth of writes regardless
 of volume age or size.

@@ -35,7 +35,9 @@ type longhornUpgradeStep struct {
 // Longhorn only supports and tests upgrades of one minor version, so each
 // entry needs its own validation, recorded in the commit that adds it.
 // Source and destination are exact versions, never ranges.
-var validatedLonghornLargeSteps = []longhornUpgradeStep{}
+var validatedLonghornLargeSteps = []longhornUpgradeStep{
+	{from: "v1.9.1", to: "v1.13.0"},
+}
 
 // longhornUpgradeAllowed decides whether Longhorn may be upgraded from
 // sourceVer to destVer. It mirrors longhorn-manager's own rule (same major

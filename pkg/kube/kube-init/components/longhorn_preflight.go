@@ -21,7 +21,7 @@ const (
 	// Longhorn documents a 4 GiB per-node minimum, and that is for
 	// Longhorn alone. It runs alongside k3s and kubevirt here, so
 	// a node at the floor is already tight.
-	// https://longhorn.io/docs/1.9.1/best-practices/
+	// https://longhorn.io/docs/1.13.0/best-practices/
 	longhornMinMemGiB = 4
 
 	// Longhorn refuses to place replicas once a disk drops below
