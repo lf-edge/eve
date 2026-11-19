@@ -4,6 +4,8 @@
 package volumemgr
 
 import (
+	"strings"
+
 	"github.com/lf-edge/eve/pkg/pillar/cas"
 	"github.com/lf-edge/eve/pkg/pillar/ocilayout"
 	"github.com/lf-edge/eve/pkg/pillar/types"
@@ -14,7 +16,9 @@ import (
 // (see getManifestsForBareBlob). If it is an OCI image-layout tar archive, it
 // holds a whole image instead: the ingest worker loads that image into the
 // CAS, and the content tree then swaps the archive blob for the blobs of the
-// image. The archive is not kept.
+// image. The archive is not kept: a content tree created later for the same
+// archive finds the image through its label and starts from the manifest
+// (see loadedArchiveManifest), so nothing is downloaded again.
 
 // isOCIArchive reports whether a verified blob is an OCI image-layout archive.
 func isOCIArchive(blob *types.BlobStatus) bool {
@@ -82,4 +86,41 @@ func adoptArchiveBlobs(ctx *volumemgrContext, d casIngestWorkDescription) []stri
 	}
 	publishContentTreeStatus(ctx, status)
 	return shas
+}
+
+// loadedArchiveManifest returns the manifest hash of the image that was
+// loaded earlier from the OCI archive this content tree refers to, or "" if
+// there is no such image or it is not complete.
+func loadedArchiveManifest(ctx *volumemgrContext, status *types.ContentTreeStatus) string {
+	if status.IsOCIRegistry {
+		return ""
+	}
+	reference := status.ReferenceID()
+	manifestHash, err := ctx.casClient.GetImageHash(reference)
+	if err != nil || manifestHash == "" {
+		return ""
+	}
+	labels, err := ctx.casClient.GetImageLabels(reference)
+	// The manifest label catches an image whose target was replaced by other
+	// content while it kept its labels.
+	if err != nil || status.ContentSha256 == "" ||
+		labels[types.EVEOCIArchiveLabel] != strings.ToLower(status.ContentSha256) ||
+		labels[types.EVEOCIArchiveManifestLabel] != manifestHash {
+		return ""
+	}
+	manifest := ctx.LookupBlobStatus(strings.TrimPrefix(manifestHash, "sha256:"))
+	if manifest == nil || manifest.State != types.LOADED || !manifest.IsManifest() {
+		return ""
+	}
+	children, err := ctx.casClient.Children(manifestHash)
+	if err != nil || len(children) == 0 {
+		return ""
+	}
+	for _, child := range children {
+		blob := ctx.LookupBlobStatus(strings.TrimPrefix(child, "sha256:"))
+		if blob == nil || blob.State != types.LOADED {
+			return ""
+		}
+	}
+	return manifest.Sha256
 }
