@@ -2,6 +2,166 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-19 -- 0.0.0-master-feaf8860 (run #25)](https://github.com/lf-edge/eve/actions/runs/44407188114)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/25/)
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.001s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence confirms this is the long-known `TestVMAppPurgeDuringFailover` deadlock. `edge-dev1` (the designated node for `failover-purge-app`) is currently `EVE_DEVICE_STATE_SUSPECT` (deliberately powered off by the test), and `kubectl get vmirs,vmi,vm -A` on `edge-dev2` returns **zero resources cluster-wide**, exactly matching the test's `found []`. `edge-dev2`'s live zedmanager logs show an unbroken loop since the purge completed: `getKubeAppActivateStatus(4ecede59-...): not designated, node ea2cdecb-..., onTheDevice false, statusRunning false` repeating every ~10-20s continuously up through the current moment (02:16+), with `zedkube` correspondingly reporting `AppKubeStatus:Unknown` the whole time — nothing ever re-requests a new VMIRS once the old one is purged with no designated node available to originate a fresh one.
+
+This exact test/failure line (`purge_during_failover_test.go:169`, "expected exactly one VMIRS for the app, found []") is a well-documented, long-recurring issue in `live-ledger.md`: first seen 2026-10-29 (run #1, introduced by commit `98acf1411`), and it has reproduced in the overwhelming majority of nightly runs since (explicitly logged again through at least 2026-11-18, run #23) — tonight's failure is a continuation of that unbroken, still-unfixed streak rather than a new bug. No PR diff was provided for this investigation, so no relatedness verdict is given.
+#### TestClusterPVCRedownload
+
+##### Failure
+
+```
+
+vm1's content tree is in state LOADED, not REMOTELOADED -- it was re-downloaded despite the PVC already being complete
+Expected
+    <types.SwState>: 108
+to equal
+    <types.SwState>: 125
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live `volumemgr` logs on `edge-dev1` show the identical PVC-adoption race already catalogued repeatedly in `live-ledger.md` for this exact test. For content tree `246d41d3-7867-4250-90dd-11bf2428d2f0` (`vm1-image`), right after vm1's reactivation, `doUpdateContentTree` at `02:51:53.503–515` finds all blobs already present/verified in the local CAS, logs `"image ... exists in CAS, Content Tree load is completely LOADED"`, and self-completes `LOADING → LOADED` (108) in that single pass — while the matching `VolumeRefStatus`/`VolumeStatus` for volume `70ef2e93-...` (PVC `70ef2e93-5636-43d7-bd7a-90fa3e071eb0-pvc-0`) only shows up as `CREATED_VOLUME` in zedmanager's app-instance status later (confirmed by `02:54:19`), i.e. the content tree races ahead of PVC/volume publication and never takes the `REMOTELOADED` (125) path. This is the exact same mechanism, same log signature, and same test as the `TestClusterPVCRedownload` entries already investigated multiple times earlier tonight and on many prior nights in this run's own `live-investigation.md`/`live-ledger.md` — a long-standing, well-known recurring issue first seen 2026-10-30 (run #2) and reproducing in the large majority of nightly runs since, including repeatedly within this very run. It does not share a root cause with this run's earlier `TestVMAppPurgeDuringFailover` failure (an unrelated zedmanager/zedkube purge-after-failover deadlock). The SDN gRPC "connection reset"/reconnect churn seen around 02:42:48–50 is unrelated harness noise (the cluster reformed and vm1 came up RUNNING fine afterward) and not the cause of this failure.
+
+### TestNodeClusterSuite: failure analysis
+
+#### TestMgmtProxy
+
+##### Failure
+
+```
+Timed out waiting for app "60983c37-34f5-4d64-9303-2a30e7ff41df" to be scheduled in cluster "mgmtproxy-test-cluster"
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+`TestMgmtProxy`'s app (UUID `60983c37-...`) never got scheduled because its root volume (`6e5604cf-536b-4438-93f7-0f2173ea04f0`) is permanently stuck in `CREATING_VOLUME` on its designated node, `edge-dev1`. Live `volumemgr` logs show a single `RolloutDiskToPVC` attempt starting at 23:06:22, which failed at 23:06:53 with `error uploading image after 10 retries: unexpected return value 503,: exit status 1` from the `cdi-uploadproxy` service — and then nothing: no further `RolloutDiskToPVC`/`virtctl` attempt, no `retryFailedClusterVolumeCreate` log line, and the live `AppInstanceStatus`/`VolumeStatus` on edge-dev1 (checked at 23:16-23:17, well past the test's 23:14:08 timeout) still shows `State:109 (CREATING_VOLUME)`, `SubState:2 (PrepareDone)`, with an **empty `Error` field** — meaning the transient-error-driven retry path in `pkg/pillar/cmd/volumemgr/retryclustervolume.go` (`clusterVolumeRetryActionFor`, which only re-drives a volume while `status.HasError()` is true) never saw this failure recorded and therefore never fired. zedbox itself is healthy and continuously running (uptime 30m50s, `restartcounter:1`, no panics/watchdog reboots), so this isn't a crash — the failed worker result simply never got persisted back onto the VolumeStatus.
+
+This is the same mechanism already documented in the ledger for `TestMgmtProxy` on 2026-11-07 (run #10): a single CDI-uploadproxy `503` stalling `CREATING_VOLUME` with zero further retry activity, which that entry flagged as possibly "a distinct, unretried-hang variant worth separate attention" rather than the classic repeated-503 pattern seen since 2026-11-01/11-02. Tonight reproduces that exact signature again, so this is a known, recurring issue dating back to at least 2026-11-07 (and the broader CDI-upload-503-stalls-CREATING_VOLUME family since 2026-11-01), not a new regression — though the fact that the bounded retry mechanism added for this (`retryclustervolume.go`) still doesn't recover from it suggests the specific "error result never recorded onto VolumeStatus" gap remains unfixed. No other test in this run has failed yet, so there's no shared root cause to report there, and no PR diff was provided for a relatedness verdict.
+
+### TestSecuritySuite: failure analysis
+
+#### TestAppVTPMIsolation
+
+##### Failure
+
+```
+
+Timed out after 300.000s.
+The function passed to Eventually failed at /evetest/tests/security/vtpm_helpers_test.go:127 with:
+read guest TPM NV marker: ERROR:tcti:src/tss2-tcti/tcti-device.c:451:Tss2_Tcti_Device_Init() Failed to open specified TCTI device file /dev/tpmrm0: No such file or directory 
+ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-device.so.0 
+ERROR:tcti:src/tss2-tcti/tcti-device.c:451:Tss2_Tcti_Device_Init() Failed to open specified TCTI device file /dev/tpm0: No such file or directory 
+ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-device.so.0 
+WARNING:tcti:src/util/io.c:262:socket_connect() Failed to connect to host 127.0.0.1, port 2321: errno 111: Connection refused 
+ERROR:tcti:src/tss2-tcti/tcti-swtpm.c:613:Tss2_Tcti_Swtpm_Init() Cannot connect to swtpm TPM socket 
+ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-swtpm.so.0 
+WARNING:tcti:src/util/io.c:262:socket_connect() Failed to connect to host 127.0.0.1, port 2321: errno 111: Connection refused 
+ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-mssim.so.0 
+ERROR:tcti:src/tss2-tcti/tctildr-dl.c:269:tctildr_get_default() No standard TCTI could be loaded 
+ERROR:tcti:src/tss2-tcti/tctildr.c:430:Tss2_TctiLdr_Initialize_Ex() Failed to instantiate TCTI 
+ERROR: Could not load tcti, got: "(null)"
+
+Unexpected error:
+    <*fmt.wrapError | 0x2657ccc46a40>: 
+    failed to execute script over SSH for app bbe4324d-706d-4a3f-b0e7-58cc777f412d: Process exited with status 1 (stderr: ERROR:tcti:src/tss2-tcti/tcti-device.c:451:Tss2_Tcti_Device_Init() Failed to open specified TCTI device file /dev/tpmrm0: No such file or directory 
+    ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-device.so.0 
+    ERROR:tcti:src/tss2-tcti/tcti-device.c:451:Tss2_Tcti_Device_Init() Failed to open specified TCTI device file /dev/tpm0: No such file or directory 
+    ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-device.so.0 
+    WARNING:tcti:src/util/io.c:262:socket_connect() Failed to connect to host 127.0.0.1, port 2321: errno 111: Connection refused 
+    ERROR:tcti:src/tss2-tcti/tcti-swtpm.c:613:Tss2_Tcti_Swtpm_Init() Cannot connect to swtpm TPM socket 
+    ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-swtpm.so.0 
+    WARNING:tcti:src/util/io.c:262:socket_connect() Failed to connect to host 127.0.0.1, port 2321: errno 111: Connection refused 
+    ERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-mssim.so.0 
+    ERROR:tcti:src/tss2-tcti/tctildr-dl.c:269:tctildr_get_default() No standard TCTI could be loaded 
+    ERROR:tcti:src/tss2-tcti/tctildr.c:430:Tss2_TctiLdr_Initialize_Ex() Failed to instantiate TCTI 
+    ERROR: Could not load tcti, got: "(null)"
+    )
+    {
+        msg: "failed to execute script over SSH for app bbe4324d-706d-4a3f-b0e7-58cc777f412d: Process exited with status 1 (stderr: ERROR:tcti:src/tss2-tcti/tcti-device.c:451:Tss2_Tcti_Device_Init() Failed to open specified TCTI device file /dev/tpmrm0: No such file or directory \nERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-device.so.0 \nERROR:tcti:src/tss2-tcti/tcti-device.c:451:Tss2_Tcti_Device_Init() Failed to open specified TCTI device file /dev/tpm0: No such file or directory \nERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-device.so.0 \nWARNING:tcti:src/util/io.c:262:socket_connect() Failed to connect to host 127.0.0.1, port 2321: errno 111: Connection refused \nERROR:tcti:src/tss2-tcti/tcti-swtpm.c:613:Tss2_Tcti_Swtpm_Init() Cannot connect to swtpm TPM socket \nERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-swtpm.so.0 \nWARNING:tcti:src/util/io.c:262:socket_connect() Failed to connect to host 127.0.0.1, port 2321: errno 111: Connection refused \nERROR:tcti:src/tss2-tcti/tctildr-dl.c:169:tcti_from_file() Could not initialize TCTI file: libtss2-tcti-mssim.so.0 \nERROR:tcti:src/tss2-tcti/tctildr-dl.c:269:tctildr_get_default() No standard TCTI could be loaded \nERROR:tcti:src/tss2-tcti/tctildr.c:430:Tss2_TctiLdr_Initialize_Ex() Failed to instantiate TCTI \nERROR: Could not load tcti, got: \"(null)\"\n)",
+        err: <*ssh.ExitError | 0x2657cea9d980>{
+            Waitmsg: {status: 1, signal: "", msg: "", lang: ""},
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live `domainmgr` logs for app `bbe4324d-706d-4a3f-b0e7-58cc777f412d` (`vtpm-isolation-a`) show the exact same domainmgr/vtpmd timeout race documented repeatedly earlier in this same run and in prior nights: at `23:21:08.072` domainmgr logged `Failed to setup vTPM for bbe4324d...: ... context deadline exceeded` (its fixed swtpm-launch client timeout fired), but `vtpmd` actually succeeded ~4s later at `23:21:12.000` (`"vTPM launched SWTPM instance with id: bbe4324d-..., pid: 82"`). By then domainmgr had already set `status.VirtualTPM = false` and built the qemu domain config without a TPM device — confirmed live: `/run/domainmgr/domains/dom1.cfg` has zero `tpm` references, while `swtpm` is in fact alive and healthy on the host for this UUID (`pid 24146`). This is exactly why the guest has no `/dev/tpm0`/`/dev/tpmrm0`, matching the TCTI "no such file"/connection-refused errors in the failure.
+
+This shares the same root cause as the two earlier vTPM failures already analyzed in tonight's run (`TestAppVTPMProtectedFailurePreservesState` and an earlier instance of `TestAppVTPMIsolation` on app `bd60d956-...`), both logged in `live-ledger.md`. It's a known, recurring issue: first diagnosed on 2026-11-02 (`TestAppVTPMIdentitySurvivesReboots`), recurring on 2026-11-05 (`TestAppVTPMBackupRecoversPrimaryCorruption`), and now hitting this same mechanism a fifth+ time overall (including twice already tonight). No PR diff was provided for this investigation, so no RELATED verdict is given.
+
+### TestTelemetrySuite: failure analysis
+
+#### TestKernelPanicReport
+
+##### Failure
+
+```
+
+/persist/newlog holds no kernel_panic_stacks lines
+Expected
+    <int>: 0
+to be >
+    <int>: 0
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+`TestKernelPanicReport`'s final phase checks `/persist/newlog` for `kernel_panic_stacks` lines only ~94 seconds after nodeagent logged the panic dump (logged at 23:31:53.476, checked at 23:33:27.378) and found 0. Re-running the identical check (`eve exec pillar sh -c 'find /persist/newlog -name "dev.log.*" -exec zcat -f {} \;' | grep -c kernel_panic_stacks`) live right now returns **384** — the full data is there. Per-chunk inspection shows the 384 lines landed in `keepSentQueue/dev.log.1795044814958.gz` and `dev.log.1795044823562.gz`, whose rotation timestamps are 23:33:34 and 23:33:43 UTC — i.e. newlogd only flushed the active buffer into a `dev.log.*`-named file 7–16 seconds *after* the test's check already failed. With `newlog.allow.fastupload` enabled (as this test expects), the log-file rotation timeout is only 10s (`fastlogfileDelay` in `pkg/newlog/cmd/newlogd.go:32`), so normally this should have rotated out well within the 94s window; here it took ~100s, likely because the burst of boot-time kernel/device logs around the post-panic reboot (384 panic-stack lines plus the rest of the boot log) backed up newlogd's collector loop long enough to delay the routine 5-second `checklogTimer` rotation past the test's one-shot check.
+
+This is **not** the same root cause as the earlier `TestKernelPanicReport` failures recorded in the ledger (first 2026-10-29, recurring 2026-11-04/11-07/11-08) — those all failed with a different assertion ("the kernel panic stack trace end marker was not uploaded") caused by a known `AdamClient.SubscribeToDeviceLogs` live-subscription bug (data sitting in Adam's DB but never delivered to the test's `WatchLogs` channel). Tonight's failure is a different phase/assertion (the final `persist-checked` phase, which greps the device's own `/persist/newlog` directly via SSH, with no Adam/controller involvement at all), and this exact message does not appear anywhere earlier in `live-ledger.md`, so it is a new failure mode, not a recurrence of the documented issue. There are no other failed suites in this run to correlate with. This looks like a flush-timing race between newlogd's log-rotation under boot-time log volume and the test's single immediate check, rather than a data-loss bug — but I can't rule out a newlogd regression without further investigation (e.g. whether this rotation delay is typical or itself anomalous).
+
+### TestUpgradeSuite: failure analysis
+
+#### TestThreeNodesUpgrade
+
+##### Failure
+
+```
+Timed out waiting for cluster nodes [edge-dev1 edge-dev2 edge-dev3] to become ready in cluster "test-cluster" (device "edge-dev1")
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence: all three k8s nodes are actually `Ready` (`kubectl get nodes` shows edge-dev1/2/3 all `Ready, control-plane,etcd`), but `evetest cluster info` shows cluster storage stuck `SERVICE_STATUS_DEGRADED` continuously from 23:01:12 until the 23:23:30 timeout (and still degraded now) — and the harness's `clusterNodeReady` check (`evetest/edgecluster.go:207-211`) requires storage `HEALTHY` in addition to node-ready, so the whole wait was gated on storage alone. The cause is isolated to `edge-dev3`: its `longhorn-csi-plugin` pod is in `CrashLoopBackOff` (15 restarts) and `longhorn-manager` is `1/2` ready, both unable to reach cluster-internal Services from their pod network namespace — logs show repeated `dial tcp: lookup longhorn-backend on 10.43.0.10:53 ... i/o timeout` and earlier `no route to host` to the apiserver ClusterIP, even though the node's own host network (routes, flannel VTEPs, iptables KUBE-SVC rules) all look normal and `edge-dev3`'s host-netns can reach those same ClusterIPs fine.
+
+This is the identical mechanism already diagnosed twice before in `live-ledger.md` for `TestThreeNodesUpgrade`/`TestEVEUpgradeKubevirtToKubevirt`-adjacent runs on **2026-11-07 (run #10)** and again **2026-11-08**: a node's CNI/service-routing state not being correctly reconciled after its identity/IP switch during cluster admission, leaving its Longhorn (and sometimes virt-handler) pods permanently `CrashLoopBackOff` on "no route to host"/CoreDNS timeout against their own ClusterIP/pod network, which keeps cluster storage `DEGRADED` forever — just affecting `edge-dev2` in those prior instances versus `edge-dev3` tonight. This is therefore a **known, recurring issue since at least 2026-11-07**, not a new failure, and no PR diff was supplied for this investigation.
+
 ## [2026-11-18 -- 0.0.0-master-c82bcfeb (run #23)](https://github.com/lf-edge/eve/actions/runs/44185588947)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/23/)
