@@ -235,12 +235,41 @@ func handleVolumesSnapshotStatusImpl(ctx *zedmanagerContext, volumesSnapshotStat
 	switch volumesSnapshotStatus.ResultOfAction {
 	case types.VolumesSnapshotCreate:
 		reactToSnapshotCreate(ctx, volumesSnapshotStatus)
+		updateAIStatusUUID(ctx, volumesSnapshotStatus.AppUUID.String())
 	case types.VolumesSnapshotRollback:
 		reactToSnapshotRollback(ctx, volumesSnapshotStatus)
 	case types.VolumesSnapshotDelete:
 		reactToSnapshotDelete(ctx, volumesSnapshotStatus)
+		updateAIStatusUUID(ctx, volumesSnapshotStatus.AppUUID.String())
 	}
 	log.Noticef("handleVolumesSnapshotStatusImpl done")
+}
+
+// snapshotOpInProgress reports whether volumemgr still has to create or delete
+// a snapshot of the app. QEMU and qemu-img cannot open the same disk image at
+// once, so the app must stay down meanwhile.
+// A creation is a published VolumesSnapshotConfig not yet answered with a
+// VolumesSnapshotStatus; a deletion is a status whose config is gone.
+func snapshotOpInProgress(ctx *zedmanagerContext, appUUID uuid.UUID) bool {
+	for key, c := range ctx.pubVolumesSnapConfig.GetAll() {
+		config := c.(types.VolumesSnapshotConfig)
+		if config.AppUUID != appUUID {
+			continue
+		}
+		if st, _ := ctx.subVolumesSnapStatus.Get(key); st == nil {
+			return true
+		}
+	}
+	for key, st := range ctx.subVolumesSnapStatus.GetAll() {
+		snapStatus := st.(types.VolumesSnapshotStatus)
+		if snapStatus.AppUUID != appUUID {
+			continue
+		}
+		if c, _ := ctx.pubVolumesSnapConfig.Get(key); c == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func reactToSnapshotDelete(ctx *zedmanagerContext, volumesSnapshotStatus types.VolumesSnapshotStatus) {
