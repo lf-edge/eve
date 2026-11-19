@@ -4165,7 +4165,9 @@ func updatePortAndPciBackIoMember(ctx *domainContext, ib *types.IoBundle, isPort
 		} else if errStr := ib.Error.HardErrorString(); errStr != "" {
 			log.Warningf("Not assigning %s (%s) to pciback due to error: %s at %s",
 				ib.Phylabel, ib.PciLong, errStr, ib.Error.ErrorTime())
-		} else if ctx.deviceNetworkStatus.Testing && ib.Type.IsNet() {
+		} else if ctx.deviceNetworkStatus.Testing && ib.Type.IsNet() &&
+			ib.Type != types.IoNetEthVF {
+			// A VF is never an EVE port, so it is not held back.
 			log.Noticef("Not assigning %s (%s) to pciback due to Testing",
 				ib.Phylabel, ib.PciLong)
 		} else if ib.PciLong != "" && ib.UsbAddr == "" {

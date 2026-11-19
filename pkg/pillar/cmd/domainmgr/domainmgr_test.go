@@ -704,11 +704,10 @@ func TestMistypedNetworkPortKeptInHost(t *testing.T) {
 	}
 }
 
-// TestVfsAssignedToPciBackWhileTestingStarts covers the race behind SR-IOV VFs
-// not being treated as network adapters (IoType.IsNet): NIM can start testing a
-// network config at any point while domainmgr hands the VFs to pciback. VFs
-// handled after that point used to be held back like regular NICs, so only a
-// part of them was passed through.
+// TestVfsAssignedToPciBackWhileTestingStarts covers a race with SR-IOV VFs:
+// NIM can start testing a network config at any point while domainmgr hands
+// the VFs to pciback. VFs handled after that point used to be held back like
+// regular NICs, so only a part of them was passed through.
 func TestVfsAssignedToPciBackWhileTestingStarts(t *testing.T) {
 	const numVfs = 4
 	// NIM starts testing right before the VF with this index is handled;

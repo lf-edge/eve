@@ -536,7 +536,7 @@ const (
 // IsNet checks if the type is any of the networking types.
 func (ioType IoType) IsNet() bool {
 	switch ioType {
-	case IoNetEth, IoNetWLAN, IoNetWWAN, IoNetEthPF:
+	case IoNetEth, IoNetWLAN, IoNetWWAN, IoNetEthPF, IoNetEthVF:
 		return true
 	default:
 		return false
@@ -544,10 +544,9 @@ func (ioType IoType) IsNet() bool {
 }
 
 // IsNetEthVF returns true when the adapter is an SR-IOV Virtual Function.
-// VFs are intentionally excluded from IsNet() because:
-//   - They must be bound to vfio-pci (pciback) regardless of testing mode.
-//   - They are never EVE network ports (keepInHost logic must not apply).
-//
+// A VF is a network adapter (see IsNet), but it only exists to be passed
+// through to an application and is never an EVE network port, so it must be
+// bound to vfio-pci (pciback) regardless of testing mode.
 // Use this predicate wherever VF-specific behaviour is required.
 func (ioType IoType) IsNetEthVF() bool {
 	return ioType == IoNetEthVF
