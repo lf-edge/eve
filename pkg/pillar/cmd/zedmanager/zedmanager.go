@@ -1082,6 +1082,10 @@ func snapshotRequestedType(status *types.AppInstanceStatus, config types.AppInst
 		if lookupAvailableSnapshot(status, snap.SnapshotID) != nil {
 			continue
 		}
+		// Exists, although it is about to be deleted.
+		if isSnapshotDescInSlice(&status.SnapStatus.SnapshotsToBeDeleted, snap.SnapshotID) {
+			continue
+		}
 
 		switch snap.SnapshotType {
 		case types.SnapshotTypeUnspecified:
@@ -1147,6 +1151,10 @@ func adjustToMaxSnapshots(status *types.AppInstanceStatus, toBeDeleted []types.S
 		return snapState.AvailableSnapshots[i].TimeCreated.Before(snapState.AvailableSnapshots[j].TimeCreated)
 	})
 	for i := 0; i < len(snapState.AvailableSnapshots) && snapshotsToBeDeletedNum != 0; i++ {
+		// Already counted as going away.
+		if isSnapshotDescInSlice(&toBeDeleted, snapState.AvailableSnapshots[i].Snapshot.SnapshotID) {
+			continue
+		}
 		log.Noticef("Flagging available snapshot %s for deletion", snapState.AvailableSnapshots[i].Snapshot.SnapshotID)
 		toBeDeleted = append(toBeDeleted, snapState.AvailableSnapshots[i].Snapshot)
 		snapshotsToBeDeletedNum--
@@ -1220,8 +1228,11 @@ func getNewSnapshotRequests(config types.AppInstanceConfig, status *types.AppIns
 }
 
 // isNewSnapshotRequest checks if the snapshot is already present at least in one of the lists:
-// the list of the snapshots to be taken or available snapshots.
+// the list of the snapshots to be taken, available snapshots or snapshots to be deleted.
 func isNewSnapshotRequest(id string, status *types.AppInstanceStatus) bool {
+	if isSnapshotDescInSlice(&status.SnapStatus.SnapshotsToBeDeleted, id) {
+		return false
+	}
 	// Check if the snapshot is already present in the list of the snapshots to be taken.
 	for _, snapRequest := range status.SnapStatus.RequestedSnapshots {
 		if snapRequest.Snapshot.SnapshotID == id {
@@ -1237,8 +1248,53 @@ func isNewSnapshotRequest(id string, status *types.AppInstanceStatus) bool {
 	return true
 }
 
+// withdrawSnapshotDeletions takes back the deletion of the snapshots that the
+// config lists again, as long as they fit under the limit. A snapshot that was
+// flagged to make room for a new one stays flagged.
+// loadRecord reads the record of a snapshot that was dropped from the available
+// ones when it was flagged.
+func withdrawSnapshotDeletions(status *types.AppInstanceStatus, config types.AppInstanceConfig,
+	loadRecord func(snapshotID string) (*types.SnapshotInstanceStatus, error)) {
+	snapState := &status.SnapStatus
+	// Available snapshots that this config drops do not take up room.
+	wanted := len(snapState.RequestedSnapshots)
+	for _, snap := range snapState.AvailableSnapshots {
+		if isSnapshotPresentInConfig(config, snap.Snapshot.SnapshotID) {
+			wanted++
+		}
+	}
+	var stillToBeDeleted []types.SnapshotDesc
+	for _, snap := range snapState.SnapshotsToBeDeleted {
+		if uint32(wanted) >= config.Snapshot.MaxSnapshots ||
+			!isSnapshotPresentInConfig(config, snap.SnapshotID) {
+			stillToBeDeleted = append(stillToBeDeleted, snap)
+			continue
+		}
+		if lookupAvailableSnapshot(status, snap.SnapshotID) != nil {
+			continue
+		}
+		record, err := loadRecord(snap.SnapshotID)
+		if err != nil {
+			// Not a reason to delete what the controller asks for.
+			log.Errorf("withdrawSnapshotDeletions: no record for snapshot %s: %v",
+				snap.SnapshotID, err)
+			record = &types.SnapshotInstanceStatus{
+				Snapshot:      snap,
+				Reported:      true,
+				AppInstanceID: status.UUIDandVersion.UUID,
+			}
+		}
+		log.Noticef("Snapshot %s is in the config again, not deleting it", snap.SnapshotID)
+		snapState.AvailableSnapshots = append(snapState.AvailableSnapshots, *record)
+		wanted++
+	}
+	snapState.SnapshotsToBeDeleted = stillToBeDeleted
+}
+
 // Update the snapshot related fields in the AppInstanceStatus
-func updateSnapshotsInAIStatus(status *types.AppInstanceStatus, config types.AppInstanceConfig) {
+func updateSnapshotsInAIStatus(status *types.AppInstanceStatus, config types.AppInstanceConfig,
+	loadRecord func(snapshotID string) (*types.SnapshotInstanceStatus, error)) {
+	withdrawSnapshotDeletions(status, config, loadRecord)
 	status.SnapStatus.SnapshotTakenType = snapshotRequestedType(status, config)
 	//markReportedSnapshots(status, config)
 	status.SnapStatus.MaxSnapshots = config.Snapshot.MaxSnapshots
@@ -1404,7 +1460,7 @@ func handleCreateAppInstanceStatus(ctx *zedmanagerContext, config types.AppInsta
 
 	restoreAvailableSnapshots(&status)
 
-	updateSnapshotsInAIStatus(&status, config)
+	updateSnapshotsInAIStatus(&status, config, deserializeSnapshotInstanceStatus)
 
 	// Do we have a PurgeCmd counter from before the reboot?
 	// Note that purgeCmdCounter is a sum of the remote and the local purge counter.
@@ -1537,7 +1593,7 @@ func handleModify(ctxArg interface{}, key string,
 
 	status.StartTime = appStartTime(ctx, config)
 
-	updateSnapshotsInAIStatus(status, config)
+	updateSnapshotsInAIStatus(status, config, deserializeSnapshotInstanceStatus)
 
 	effectiveActivate := effectiveActivateCombined(config, ctx)
 
