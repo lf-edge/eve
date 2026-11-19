@@ -185,6 +185,16 @@ every volume has been moved to the new engine image. Attached volumes are
 upgraded live, one per node at a time, which is what makes this the longest
 step: it is given 60 minutes.
 
+In a cluster with a tie-breaker node, a Longhorn upgrade recreates the CSI
+plugin DaemonSet and the CSI sidecar Deployments, which drops the node
+selector and replica count the tie-breaker configuration gave them. kube-init
+sets both again once the upgrade is complete. It leaves the engine-image
+DaemonSets alone, because changing them restarts their pods while volumes are
+attached, so the tie-breaker runs an engine-image pod for the new engine
+image. No replica is placed on the tie-breaker either way: that is a setting
+on its Longhorn node, which an upgrade keeps. A failure to set them again is
+logged and does not fail the upgrade.
+
 ### Carrying app volumes from EVE-kvm
 
 Every volume except container volumes becomes a Longhorn PVC on `HV=k`. When

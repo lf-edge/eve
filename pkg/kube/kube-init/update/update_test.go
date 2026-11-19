@@ -539,6 +539,48 @@ func TestUpgradeComponent(t *testing.T) {
 	})
 }
 
+// TestCompPostUpgrade covers the step between a component being
+// finalized and its update being reported complete.
+func TestCompPostUpgrade(t *testing.T) {
+	stub := func(t *testing.T, applied bool, err error) *int {
+		t.Helper()
+		calls := 0
+		old := reapplyTieBreakerLonghorn
+		reapplyTieBreakerLonghorn = func(context.Context) (bool, error) {
+			calls++
+			return applied, err
+		}
+		t.Cleanup(func() { reapplyTieBreakerLonghorn = old })
+		return &calls
+	}
+
+	t.Run("longhorn re-applies the tie-breaker config", func(t *testing.T) {
+		calls := stub(t, true, nil)
+		compPostUpgrade(context.Background(), CompLonghorn)
+		if *calls != 1 {
+			t.Errorf("re-apply calls = %d, want 1", *calls)
+		}
+	})
+
+	t.Run("other components do not", func(t *testing.T) {
+		calls := stub(t, true, nil)
+		for _, comp := range []string{CompMultus, CompKubevirt, CompCDI} {
+			compPostUpgrade(context.Background(), comp)
+		}
+		if *calls != 0 {
+			t.Errorf("re-apply calls = %d, want 0", *calls)
+		}
+	})
+
+	t.Run("a re-apply failure does not fail the pass", func(t *testing.T) {
+		stub(t, false, errors.New("api down"))
+		compPostUpgrade(context.Background(), CompLonghorn)
+		if passFailed.Load() {
+			t.Error("pass latched as failed")
+		}
+	})
+}
+
 // TestCheckClusterComponentsAfterFailure pins that a failed pass is not
 // run again in the same process, and says so with ErrUpdateFailed.
 func TestCheckClusterComponentsAfterFailure(t *testing.T) {

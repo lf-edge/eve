@@ -19,6 +19,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeclient"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/tiebreaker"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -72,6 +73,9 @@ var uncordonPollInterval = 15 * time.Second
 // tieBreakerNodeLabel marks the node of a three-node cluster that
 // holds no workloads and stays cordoned.
 const tieBreakerNodeLabel = "tie-breaker-node"
+
+// reapplyTieBreakerLonghorn is a variable so tests can replace it.
+var reapplyTieBreakerLonghorn = tiebreaker.LonghornConfigReapply
 
 // ErrUpdateFailed marks a component update that ended in failure
 // and will not be retried for this KubeVersion. Errors that do not
@@ -218,6 +222,7 @@ func upgradeComponent(ctx context.Context, comp string) error {
 		if err := compFinalize(ctx, comp); err != nil {
 			log.Printf("WARNING: finalize component %s: %v", comp, err)
 		}
+		compPostUpgrade(ctx, comp)
 		PublishUpdateStatus(comp, StatusCompleted, "")
 		return nil
 	}
@@ -245,6 +250,7 @@ func upgradeComponent(ctx context.Context, comp string) error {
 	if err := compFinalize(ctx, comp); err != nil {
 		return failUpdate(ctx, comp, "finalize", err)
 	}
+	compPostUpgrade(ctx, comp)
 	PublishUpdateStatus(comp, StatusCompleted, "")
 	log.Printf("update: component %s ready", comp)
 	return nil
@@ -498,6 +504,24 @@ func compFinalize(ctx context.Context, comp string) error {
 			comp, err, truncateForLog(string(out), 4096))
 	}
 	return nil
+}
+
+// compPostUpgrade restores cluster configuration that upgrading
+// comp undoes. Only Longhorn has any: its upgrade recreates objects
+// the tie-breaker configuration had patched. A failure is logged and
+// does not fail the update, since the component itself is upgraded
+// and no volume data is placed differently because of it.
+func compPostUpgrade(ctx context.Context, comp string) {
+	if comp != CompLonghorn {
+		return
+	}
+	applied, err := reapplyTieBreakerLonghorn(ctx)
+	switch {
+	case err != nil:
+		log.Printf("WARNING: re-apply tie-breaker config after %s update: %v", comp, err)
+	case applied:
+		log.Printf("update: tie-breaker config re-applied after %s update", comp)
+	}
 }
 
 // compCheckReady asks update-component to verify that comp has
