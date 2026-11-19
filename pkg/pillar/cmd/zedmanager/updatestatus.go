@@ -155,8 +155,13 @@ func doUpdate(ctx *zedmanagerContext,
 	// This is different from instances where the VM is deactivated due to a purge&update
 	// command from the controller, which is taken care of in the removeAIStatus function.
 	domainStatus := lookupDomainStatus(ctx, uuidStr)
-	// Is the VM already shutdown?
-	if domainStatus != nil && !domainStatus.Activated {
+	// Is the VM already shutdown? An app that was not started since boot
+	// has no DomainStatus at all.
+	domainDown := !status.Activated && !status.ActivateInprogress
+	if domainStatus != nil {
+		domainDown = !domainStatus.Activated
+	}
+	if domainDown {
 		// Trigger snapshot removal
 		// Note, that we do not restart the VM explicitly for the snapshot removal, we just wait for the next restart,
 		// which ends in this line of code.

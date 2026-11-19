@@ -74,6 +74,7 @@ func newRollbackTestContext(t *testing.T) (*zedmanagerContext, types.AppInstance
 		pubAppNetworkConfig:       newPub(agentName, types.AppNetworkConfig{}),
 		pubVolumeRefConfig:        newPub(agentName, types.VolumeRefConfig{}),
 		subAppNetworkStatus:       newSub("zedrouter", types.AppNetworkStatus{}),
+		pubVolumesSnapConfig:      newPub(agentName, types.VolumesSnapshotConfig{}),
 	}
 	status := types.AppInstanceStatus{
 		UUIDandVersion:  snapped.UUIDandVersion,
@@ -164,4 +165,20 @@ func TestRollbackResultIsPublished(t *testing.T) {
 		assert.False(t, published.SnapStatus.RollbackInProgress)
 		assert.Equal(t, types.BringUp, published.PurgeInprogress)
 	}
+}
+
+// An app that was not started since boot has no DomainStatus. A rollback
+// requested for it must still be handed to volumemgr.
+func TestRollbackIsTriggeredWithoutDomain(t *testing.T) {
+	ctx, config := newRollbackTestContext(t)
+	status := lookupAppInstanceStatus(ctx, config.Key())
+	status.SnapStatus.HasRollbackRequest = true
+
+	assert.True(t, doUpdate(ctx, config, status))
+
+	published := lookupVolumesSnapshotConfig(ctx, rollbackTestSnapshot)
+	if assert.NotNil(t, published) {
+		assert.Equal(t, types.VolumesSnapshotRollback, published.Action)
+	}
+	assert.False(t, status.SnapStatus.HasRollbackRequest)
 }
