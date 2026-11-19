@@ -704,6 +704,70 @@ func TestMistypedNetworkPortKeptInHost(t *testing.T) {
 	}
 }
 
+// TestVfsAssignedToPciBackWhileTestingStarts covers the race behind SR-IOV VFs
+// not being treated as network adapters (IoType.IsNet): NIM can start testing a
+// network config at any point while domainmgr hands the VFs to pciback. VFs
+// handled after that point used to be held back like regular NICs, so only a
+// part of them was passed through.
+func TestVfsAssignedToPciBackWhileTestingStarts(t *testing.T) {
+	const numVfs = 4
+	// NIM starts testing right before the VF with this index is handled;
+	// numVfs stands for after the last one.
+	for testingStartsAt := 0; testingStartsAt <= numVfs; testingStartsAt++ {
+		name := fmt.Sprintf("testing starts before VF %d", testingStartsAt)
+		t.Run(name, func(t *testing.T) {
+			ps := pubsub.New(pubsub.NewMemoryDriver(), logger, log)
+			aa := &types.AssignableAdapters{}
+			ctx := &domainContext{
+				assignableAdapters:    aa,
+				pubAssignableAdapters: testPublication(t, ps, types.AssignableAdapters{}),
+			}
+			dns := types.DeviceNetworkStatus{DPCKey: "zedagent"}
+			handleDNSImpl(ctx, "global", dns)
+
+			addAdapter := func(ib types.IoBundle) {
+				t.Cleanup(func() { _ = hyper.PCIRelease(ib.PciLong) })
+				aa.AddOrUpdateIoBundle(log, ib)
+				updatePortAndPciBackIoBundle(ctx, aa.LookupIoBundlePhylabel(ib.Phylabel))
+			}
+			for i := 0; i <= numVfs; i++ {
+				if i == testingStartsAt {
+					dns.Testing = true
+					handleDNSImpl(ctx, "global", dns)
+				}
+				if i == numVfs {
+					break
+				}
+				label := fmt.Sprintf("eth1vf%d", i)
+				addAdapter(types.IoBundle{
+					Phylabel:        label,
+					Type:            types.IoNetEthVF,
+					AssignmentGroup: label,
+					PciLong:         fmt.Sprintf("0000:b3:%02x.0", 0x10+i),
+				})
+			}
+			// A regular NIC is held back while testing, as it might become a port.
+			addAdapter(types.IoBundle{
+				Phylabel:        "eth2",
+				Type:            types.IoNetEth,
+				AssignmentGroup: "eth2",
+				PciLong:         "0000:b4:00.0",
+			})
+
+			for _, ib := range aa.IoBundleList {
+				if ib.Type == types.IoNetEthVF && !ib.IsPCIBack {
+					t.Errorf("VF %s (%s) should be assigned to pciback",
+						ib.Phylabel, ib.PciLong)
+				}
+				if ib.Type == types.IoNetEth && ib.IsPCIBack {
+					t.Errorf("NIC %s (%s) should not be assigned to pciback "+
+						"during network testing", ib.Phylabel, ib.PciLong)
+				}
+			}
+		})
+	}
+}
+
 // TestReserveAdaptersWarningVsError checks that an advisory warning on an I/O
 // bundle leaves the adapter assignable, while a hard error refuses it and is
 // the only text reported back.
