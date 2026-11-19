@@ -81,7 +81,7 @@ var (
 		_, err := os.Stat(etpm.TpmDevicePath)
 		return err == nil
 	}
-	sha256PCRAvailable = etpm.PCRBankSHA256Enabled
+	sha256PCRAvailable = func() (bool, error) { return etpm.PCRBankSHA256Supported(log) }
 	// Read the legacy key without FetchVaultKey's generate-on-miss behavior.
 	getLegacyEncryptionKey = func() ([]byte, error) {
 		rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
@@ -98,16 +98,20 @@ var (
 		return utils.WriteRename(filepath.Join(statePath, protectedStateMarker), []byte("Y"))
 	}
 	getEncryptionKey = func() ([]byte, error) {
-		if sha256PCRAvailable() {
+		sha256Bank, err := sha256PCRAvailable()
+		if err != nil {
+			return nil, err
+		}
+		if sha256Bank {
 			pcrSelection := etpm.GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
 			return etpm.UnsealDiskKeyWithRecovery(log, pcrSelection)
 		}
 
-		// call FetchVaultKey directly, we can just call FetchSealedVaultKey
+		// call FetchLegacyVaultKey directly, we can just call FetchSealedVaultKey
 		// and be happy and not care about the SHA256 banks, but FetchSealedVaultKey
 		// creates the missing keys if not exist, and we don't want vTPM mess
 		// with the keys and TPM state even if the chance is close to zero.
-		return etpm.FetchVaultKey(log)
+		return etpm.FetchLegacyVaultKey(log)
 	}
 )
 
@@ -956,7 +960,14 @@ func handleLaunch(w http.ResponseWriter, r *http.Request) {
 			m.Unlock()
 		}
 	}()
-	protectedMode := isTPMAvailable() && sha256PCRAvailable()
+	protectedMode := false
+	if isTPMAvailable() {
+		var err error
+		if protectedMode, err = sha256PCRAvailable(); err != nil {
+			http.Error(w, fmt.Sprintf("failed to check for the SHA-256 PCR bank: %v", err), http.StatusFailedDependency)
+			return
+		}
+	}
 	statePath := fmt.Sprintf(workDir, id.String())
 	_, markerErr := os.Stat(filepath.Join(statePath, protectedStateMarker))
 	if markerErr != nil && !errors.Is(markerErr, os.ErrNotExist) {
