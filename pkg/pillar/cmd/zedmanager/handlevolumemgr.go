@@ -533,6 +533,7 @@ func fixupAppInstanceConfig(ctx *zedmanagerContext, appInstanceStatus *types.App
 	// Sync the information about available snapshots
 	snappedAppInstanceConfig.Snapshot.Snapshots = make([]types.SnapshotDesc, len(currentAppInstanceConfig.Snapshot.Snapshots))
 	copy(snappedAppInstanceConfig.Snapshot.Snapshots, currentAppInstanceConfig.Snapshot.Snapshots)
+	snappedAppInstanceConfig.Snapshot.MaxSnapshots = currentAppInstanceConfig.Snapshot.MaxSnapshots
 	// Restore the restart and purge commands counters
 	snappedAppInstanceConfig.PurgeCmd = currentAppInstanceConfig.PurgeCmd
 	snappedAppInstanceConfig.LocalPurgeCmd = currentAppInstanceConfig.LocalPurgeCmd
