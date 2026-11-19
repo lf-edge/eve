@@ -112,8 +112,12 @@ func rollbackSnapshot(ctx *volumemgrContext, config *types.VolumesSnapshotConfig
 	// Check if snapshot status already exists, or it's a new snapshot request
 	volumesSnapshotStatus := lookupVolumesSnapshotStatus(ctx, config.SnapshotID)
 	if volumesSnapshotStatus == nil {
-		// Create a new volumesSnapshotStatus to report an error
-		volumesSnapshotStatus = &types.VolumesSnapshotStatus{SnapshotID: config.SnapshotID}
+		// Create a new volumesSnapshotStatus to report an error. zedmanager
+		// finds the app by AppUUID.
+		volumesSnapshotStatus = &types.VolumesSnapshotStatus{
+			SnapshotID: config.SnapshotID,
+			AppUUID:    config.AppUUID,
+		}
 		errDesc := types.ErrorDescription{}
 		errDesc.Error = fmt.Sprintf("rollbackSnapshot: snapshot %s not found", config.SnapshotID)
 		log.Error(errDesc.Error)
