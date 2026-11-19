@@ -861,6 +861,83 @@ func (ac *AdamClient) GetDeviceECDHCert(ctx context.Context,
 	return ecdhCert, nil
 }
 
+// storageKeysPath returns where Adam's file backend keeps the storage keys
+// (the vault key) a device escrowed with the controller. Adam reads this file
+// afresh on every attestation, so changes to it take effect on the device's
+// next attestation without restarting Adam.
+func (ac *AdamClient) storageKeysPath(devUUID uuid.UUID) string {
+	return filepath.Join(ac.runDir, "adam-db", "device", devUUID.String(),
+		"storage-keys.json")
+}
+
+// GetEscrowedStorageKeys returns the storage keys the device escrowed with
+// Adam, as Adam stores them (attest.AttestStorageKeys in JSON), or nil if the
+// device has not escrowed any.
+func (ac *AdamClient) GetEscrowedStorageKeys(devUUID uuid.UUID) ([]byte, error) {
+	if err := ac.checkAdamRunning(); err != nil {
+		return nil, err
+	}
+	ac.mutex.Lock()
+	_, known := ac.knownDevices[devUUID]
+	ac.mutex.Unlock()
+	if !known {
+		return nil, fmt.Errorf("unknown device UUID %q", devUUID)
+	}
+	keys, err := os.ReadFile(ac.storageKeysPath(devUUID))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to read escrowed storage keys: %w", err)
+	}
+	return keys, nil
+}
+
+// SetEscrowedStorageKeys replaces the storage keys Adam holds for the device
+// with keys, as returned by GetEscrowedStorageKeys. Empty keys remove them, so
+// that Adam answers the device's next attestation with no keys, as a controller
+// that lost them would.
+//
+// Adam has no admin API for storage keys (DELETE /admin/device/{uuid} would
+// drop the whole device, and the device options do not cover them), so this
+// edits Adam's database directly. That is safe here: evetest starts Adam
+// itself, always with the file backend and its database in the harness-owned
+// run directory; Adam keeps no cached copy of the keys but reads the file
+// afresh on every attestation, so the change applies without a restart; and the
+// file is replaced by rename, so an attestation served meanwhile reads either
+// the old or the new keys, never a partial file. It does depend on the file
+// backend's layout (storageKeysPath), which can change only with the pinned
+// Adam version (DefaultAdamVersion).
+func (ac *AdamClient) SetEscrowedStorageKeys(devUUID uuid.UUID, keys []byte) error {
+	if err := ac.checkAdamRunning(); err != nil {
+		return err
+	}
+	ac.mutex.Lock()
+	_, known := ac.knownDevices[devUUID]
+	ac.mutex.Unlock()
+	if !known {
+		return fmt.Errorf("unknown device UUID %q", devUUID)
+	}
+	path := ac.storageKeysPath(devUUID)
+	if len(keys) == 0 {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("failed to remove escrowed storage keys: %w", err)
+		}
+		return nil
+	}
+	// Write and rename, so that an attestation served meanwhile never reads
+	// a partially written file.
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, keys, 0o644); err != nil {
+		return fmt.Errorf("failed to write escrowed storage keys: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("failed to replace escrowed storage keys: %w", err)
+	}
+	return nil
+}
+
 // ApplyDeviceConfig uploads the current configuration for a device.
 func (ac *AdamClient) ApplyDeviceConfig(ctx context.Context, devUUID uuid.UUID,
 	config *eveconfig.EdgeDevConfig) error {
