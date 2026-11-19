@@ -615,3 +615,105 @@ func TestLicenses(t *testing.T) {
 		t.Error("licenses.txt has no entries")
 	}
 }
+
+// overlaid mimics two images where the later, d, overwrites files of the
+// earlier, g: libcrypto3 3.5.9 replaces 3.5.4 and installs the same config
+// file, busybox r20 replaces all of r19, d's bar replaces one of g's foo files,
+// and ca-certificates 2 replaces the bundle of 1 but not a certificate only 1
+// installs.
+func overlaid() []byte {
+	pkg := func(id, name, version string) string {
+		return `{"name":"` + name + `","SPDXID":"` + id + `","versionInfo":"` + version + `"}`
+	}
+	file := func(id, name, sum string) string {
+		return `{"fileName":"` + name + `","SPDXID":"` + id + `","checksums":[{"algorithm":"SHA256","checksumValue":"` + sum + `"}]}`
+	}
+	rel := func(from, to, typ string) string {
+		return `{"spdxElementId":"` + from + `","relatedSpdxElement":"` + to + `","relationshipType":"` + typ + `"}`
+	}
+	contains := func(from, to string) string { return rel(from, to, "CONTAINS") }
+	return []byte(`{"spdxVersion":"SPDX-2.3","SPDXID":"SPDXRef-DOCUMENT","name":"sbom","packages":[` +
+		strings.Join([]string{
+			pkg("g", "docker.io/linuxkit/getty", "1"), pkg("d", "docker.io/lfedge/eve-dom0-ztools", "2"),
+			pkg("g-crypto", "libcrypto3", "3.5.4-r0"), pkg("d-crypto", "libcrypto3", "3.5.9-r0"),
+			pkg("g-busybox", "busybox", "1.37.0-r19"), pkg("d-busybox", "busybox", "1.37.0-r20"),
+			pkg("g-foo", "foo", "1"), pkg("d-bar", "bar", "1"),
+			pkg("g-ca", "ca-certificates", "1"), pkg("d-ca", "ca-certificates", "2"),
+		}, ",") + `],"files":[` +
+		strings.Join([]string{
+			file("g-so", "usr/lib/libcrypto.so.3", "a1"), file("d-so", "usr/lib/libcrypto.so.3", "a2"),
+			file("g-cnf", "etc/ssl/openssl.cnf", "c0"), file("d-cnf", "etc/ssl/openssl.cnf", "c0"),
+			file("g-bb", "bin/busybox", "b1"), file("d-bb", "bin/busybox", "b2"),
+			file("g-x", "usr/bin/x", "x1"), file("d-x", "usr/bin/x", "x2"),
+			file("g-y", "usr/bin/y", "y1"), file("g-hosts", "etc/hosts", "11"),
+			file("g-bundle", "etc/ssl/cert.pem", "k1"), file("d-bundle", "etc/ssl/cert.pem", "k2"),
+			file("g-old", "certs/old.crt", "o1"), file("g-kept", "certs/kept.crt", "s1"),
+			file("d-kept", "certs/kept.crt", "s1"),
+		}, ",") + `],"relationships":[` +
+		strings.Join([]string{
+			rel("SPDXRef-DOCUMENT", "g", "DESCRIBES"), rel("SPDXRef-DOCUMENT", "d", "DESCRIBES"),
+			contains("g", "g-crypto"), contains("g", "g-busybox"), contains("g", "g-foo"),
+			contains("d", "d-crypto"), contains("d", "d-busybox"), contains("d", "d-bar"),
+			contains("g-crypto", "g-so"), contains("g-crypto", "g-cnf"),
+			contains("d-crypto", "d-so"), contains("d-crypto", "d-cnf"),
+			contains("g-busybox", "g-bb"), contains("g-busybox", "g-hosts"), contains("d-busybox", "d-bb"),
+			contains("g-foo", "g-x"), contains("g-foo", "g-y"), contains("d-bar", "d-x"),
+			contains("g", "g-ca"), contains("d", "d-ca"),
+			contains("g-ca", "g-bundle"), contains("g-ca", "g-old"), contains("g-ca", "g-kept"),
+			contains("d-ca", "d-bundle"), contains("d-ca", "d-kept"),
+			rel("g-busybox", "g-crypto", "DEPENDS_ON"),
+		}, ",") + `]}`)
+}
+
+func TestShadowed(t *testing.T) {
+	c := Content{
+		SHA1: map[string]string{"a1": "1", "a2": "2", "c0": "3", "b1": "4", "b2": "5", "x1": "6", "x2": "7", "y1": "8",
+			"4f": "9", "k1": "10", "k2": "11", "o1": "12", "s1": "13"},
+		Paths: map[string]string{"usr/lib/libcrypto.so.3": "a2", "etc/ssl/openssl.cnf": "c0", "bin/busybox": "b2",
+			"usr/bin/x": "x2", "usr/bin/y": "y1", "etc/hosts": "4f", "etc/ssl/cert.pem": "k2", "certs/old.crt": "o1",
+			"certs/kept.crt": "s1"},
+	}
+	out, st, err := Stamp(overlaid(), opts, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d doc
+	if err := json.Unmarshal(out, &d); err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, p := range d.Packages {
+		ids[p["SPDXID"].(string)] = true
+	}
+	for _, f := range d.Files {
+		ids[f["SPDXID"].(string)] = true
+	}
+	// g-busybox still ships etc/hosts, rehashed as linuxkit wrote it, but goes
+	// because busybox r20 replaced its bin/busybox. g-foo keeps usr/bin/y, and
+	// g-ca keeps certs/old.crt, which no other package lists. g-cnf goes with
+	// g-crypto, since d-crypto lists the same file.
+	for id, want := range map[string]bool{
+		"g": true, "d": true, "d-crypto": true, "d-busybox": true, "d-bar": true, "g-foo": true,
+		"g-ca": true, "d-ca": true,
+		"g-crypto": false, "g-busybox": false,
+		"d-so": true, "d-cnf": true, "d-bb": true, "d-x": true, "g-y": true, "g-hosts": true,
+		"d-bundle": true, "g-old": true, "g-kept": true, "d-kept": true,
+		"g-so": false, "g-cnf": false, "g-bb": false, "g-x": false, "g-bundle": false,
+	} {
+		if ids[id] != want {
+			t.Errorf("%s present %v, want %v", id, ids[id], want)
+		}
+	}
+	for _, r := range d.Relationships {
+		if !ids[r.SpdxElementID] && r.SpdxElementID != documentID && r.SpdxElementID != rootID ||
+			!ids[r.RelatedSpdxElement] && r.RelatedSpdxElement != rootID {
+			t.Errorf("relationship to a dropped element kept: %+v", r)
+		}
+	}
+	if st.ShadowedFiles != 5 || st.ShadowedPackages != 2 || st.ReplacedFiles != 1 {
+		t.Errorf("stats %+v, want 5 shadowed files, 2 shadowed packages, 1 rehashed", st)
+	}
+	if again, _, _ := Stamp(out, opts, c); !bytes.Equal(out, again) {
+		t.Errorf("restamping changed the document")
+	}
+}

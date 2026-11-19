@@ -161,14 +161,16 @@ type relationship struct {
 
 // Stats reports what Stamp changed, and what it could not fix.
 type Stats struct {
-	Reparented     int
-	ConflictingIDs int
-	FilledPURLs    int
-	AbsentFiles    int
-	ReplacedFiles  int
-	NoSupplier     int
-	NoLicense      int
-	NoSHA1         int
+	Reparented       int
+	ConflictingIDs   int
+	FilledPURLs      int
+	AbsentFiles      int
+	ReplacedFiles    int
+	ShadowedFiles    int
+	ShadowedPackages int
+	NoSupplier       int
+	NoLicense        int
+	NoSHA1           int
 }
 
 // imageRoots returns the IDs of the per-image roots: the packages DOCUMENT
@@ -247,6 +249,10 @@ func Stamp(in []byte, o Options, c Content) ([]byte, Stats, error) {
 		if pkgs[i], err = fillPackage(pkgs[i], roots, c); err != nil {
 			return nil, st, err
 		}
+	}
+	pkgs, files, rels, st.ShadowedFiles, st.ShadowedPackages, err = dropShadowed(pkgs, files, rels, roots, c)
+	if err != nil {
+		return nil, st, err
 	}
 	kept := files[:0]
 	dropped := map[string]bool{}
@@ -594,8 +600,10 @@ func main() {
 	fmt.Fprintf(os.Stderr, "sbom-stamp: %s: %d image roots placed under %s, "+
 		"%d SPDX IDs still not unique, %d purls copied between copies of a package, "+
 		"%d files dropped and %d rehashed as linuxkit wrote them, "+
+		"%d files and %d packages dropped as overwritten by a later image, "+
 		"%d packages without supplier, %d outside image roots without license, "+
 		"%d files without SHA1\n",
 		flag.Arg(0), st.Reparented, rootID, st.ConflictingIDs, st.FilledPURLs,
-		st.AbsentFiles, st.ReplacedFiles, st.NoSupplier, st.NoLicense, st.NoSHA1)
+		st.AbsentFiles, st.ReplacedFiles, st.ShadowedFiles, st.ShadowedPackages,
+		st.NoSupplier, st.NoLicense, st.NoSHA1)
 }
