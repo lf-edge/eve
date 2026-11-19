@@ -321,6 +321,10 @@ type VolumesSnapshotConfig struct {
 	VolumeIDs []uuid.UUID
 	// AppUUID used as a backlink to the app
 	AppUUID uuid.UUID
+	// RollbackCount is incremented with every rollback requested. pubsub does
+	// not deliver an item that is published unchanged, and a second rollback
+	// to the same snapshot is otherwise just that.
+	RollbackCount int
 }
 
 // Key returns unique key for the snapshot
