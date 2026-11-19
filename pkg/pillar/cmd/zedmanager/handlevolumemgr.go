@@ -306,7 +306,10 @@ func reactToSnapshotRollback(ctx *zedmanagerContext, volumesSnapshotStatus types
 	// Mark the app as active locally to ensure it immediately restarts after rollback from a snapshot.
 	// This avoids delays in app activation that can occur due to edge app priority scheduling.
 	activeapp.CreateLocalAppActiveFile(log, appInstanceStatus.UUIDandVersion.UUID.String())
-	doUpdate(ctx, *config, appInstanceStatus)
+	if doUpdate(ctx, *config, appInstanceStatus) {
+		publishAppInstanceStatus(ctx, appInstanceStatus)
+		publishAppInstanceSummary(ctx)
+	}
 }
 
 func reactToSnapshotCreate(ctx *zedmanagerContext, volumesSnapshotStatus types.VolumesSnapshotStatus) {
