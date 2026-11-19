@@ -2480,6 +2480,30 @@ func (d *EdgeDevice) SyncDisks() {
 	}
 }
 
+// GetEscrowedVaultKey returns the vault key the device escrowed with the
+// controller, in the controller's opaque storage format, or nil if the device
+// has not escrowed one. A device escrows its vault key after every unlock, so
+// the controller can hand it back when the local TPM unseal fails.
+func (d *EdgeDevice) GetEscrowedVaultKey() []byte {
+	key, err := d.th.adamClient.GetEscrowedStorageKeys(d.getDevUUID())
+	if err != nil {
+		d.th.t.Fatalf("GetEscrowedVaultKey: device %q: %v", d.devName, err)
+	}
+	return key
+}
+
+// SetEscrowedVaultKey replaces the vault key the controller holds for the
+// device with one previously returned by GetEscrowedVaultKey. Passing nil makes
+// the controller forget the key: the device's next attestation is then answered
+// with no key, as by a controller that lost it. The change applies from the
+// device's next attestation, which in practice means its next boot.
+func (d *EdgeDevice) SetEscrowedVaultKey(key []byte) {
+	err := d.th.adamClient.SetEscrowedStorageKeys(d.getDevUUID(), key)
+	if err != nil {
+		d.th.t.Fatalf("SetEscrowedVaultKey: device %q: %v", d.devName, err)
+	}
+}
+
 // GetDeviceInfo returns the last recorded device information,
 // or nil if no info message has been received yet.
 func (d *EdgeDevice) GetDeviceInfo() *eveinfo.ZInfoDevice {
