@@ -127,6 +127,9 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	log.Functionf("removeAIStatus(%s): PurgeInprogress RecreateVolumes",
 		status.Key())
 	status.PurgeInprogress = types.RecreateVolumes
+	// doInactivate does not follow the state of the domain, and what comes
+	// next can take long or leave the app down.
+	status.State = types.HALTED
 	publishAppInstanceStatus(ctx, status)
 	config := lookupAppInstanceConfig(ctx, uuidStr, true)
 	if config != nil {
