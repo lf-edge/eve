@@ -30,7 +30,7 @@ require (
 	github.com/jackwakefield/gopac v1.0.2
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.5.0
 	github.com/lf-edge/edge-containers v0.0.0-20261115122227-84b20c8a4501
-	github.com/lf-edge/eve-api/go v0.0.0-20261015104443-e46e4c3a39ce
+	github.com/lf-edge/eve-api/go v0.0.0-20261104182329-7570235438d6
 	github.com/lf-edge/eve-libs v0.0.0-20261116174020-38d6aaf3b5d9
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20261015084011-20eade920485
 	github.com/lf-edge/go-qemu v0.0.0-20231121152149-4c467eda0c56
