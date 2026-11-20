@@ -111,9 +111,9 @@ var mToF = []modelToFuncs{
 		model:                "SIEMENS AG.SIMATIC IPC127E",
 		initFunc:             InitLedCmd,
 		displayFunc:          ExecuteLedCmd,
-		arg:                  "ipc127:green:1",
+		arg:                  "green:status-1",
 		appStatusDisplayFunc: executeAppStatusDisplayFunc,
-		appStatusArgs:        []string{"ipc127:green:3", "ipc127:red:3"}, // For this model we use led3 to display app status
+		appStatusArgs:        []string{"green:status-3", "red:status-3"}, // For this model we use led3 to display app status
 	},
 	{
 		model:       "hisilicon,hi6220-hikey.hisilicon,hi6220.",
