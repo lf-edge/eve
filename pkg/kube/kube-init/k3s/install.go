@@ -53,7 +53,7 @@ var loadBearingBinaries = map[string]struct{}{
 // upstream k3s install.sh creates these; kube-init installs only the
 // bare k3s binary, so it must create them itself — otherwise only
 // /usr/bin/k3s exists after symlinkAllBinaries and every standalone
-// `kubectl`/`ctr`/`crictl` invocation (eden tests, `eve exec kube
+// `kubectl`/`ctr`/`crictl` invocation (tests, `eve exec kube
 // kubectl`, interactive debugging) fails with "No such file".
 var k3sSubcommands = []string{"kubectl", "ctr", "crictl"}
 

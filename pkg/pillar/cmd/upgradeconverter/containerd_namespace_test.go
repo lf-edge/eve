@@ -442,7 +442,7 @@ func TestPortContainerdNamespace_PortsImages(t *testing.T) {
 	// Seed both blobs and images under the source namespace.
 	seedSourceBlobs(t, dbPath, []string{"sha256:aaa"})
 	seedSourceImages(t, dbPath, []string{
-		"docker.io/lfedge/eden-eclient:7a72275",
+		"docker.io/lfedge/evetest-ubuntu-ctr:1.0",
 		"docker.io/aaa-content/manifest",
 	})
 
@@ -454,20 +454,20 @@ func TestPortContainerdNamespace_PortsImages(t *testing.T) {
 	assert.True(t, gotBlobs["sha256:aaa"])
 
 	gotImages := destImageRefs(t, dbPath)
-	assert.True(t, gotImages["docker.io/lfedge/eden-eclient:7a72275"])
+	assert.True(t, gotImages["docker.io/lfedge/evetest-ubuntu-ctr:1.0"])
 	assert.True(t, gotImages["docker.io/aaa-content/manifest"])
 
 	// Image target/digest + target/mediatype are preserved (recursive copy
 	// into the target/ sub-bucket).
 	assert.Equal(t, "sha256:adda3d3f",
-		destImageTarget(t, dbPath, "docker.io/lfedge/eden-eclient:7a72275", "digest"))
+		destImageTarget(t, dbPath, "docker.io/lfedge/evetest-ubuntu-ctr:1.0", "digest"))
 	assert.Equal(t, "application/vnd.oci.image.manifest.v1+json",
-		destImageTarget(t, dbPath, "docker.io/lfedge/eden-eclient:7a72275", "mediatype"))
+		destImageTarget(t, dbPath, "docker.io/lfedge/evetest-ubuntu-ctr:1.0", "mediatype"))
 
 	// EVEDownloadedLabel on the image survives — pillar's hvTypeKube
 	// filter in populateInitBlobStatus blob.go:543 relies on this.
 	assert.Equal(t, "true",
-		destImageLabel(t, dbPath, "docker.io/lfedge/eden-eclient:7a72275", "eve-downloaded"))
+		destImageLabel(t, dbPath, "docker.io/lfedge/evetest-ubuntu-ctr:1.0", "eve-downloaded"))
 }
 
 // TestPortContainerdNamespace_BlobsOnlyNoImages exercises the case where the

@@ -1544,8 +1544,7 @@ func (dev *qemuDevice) buildArgs() []string {
 		// /dev/watchdog, but the bridge only latches a status bit on timeout
 		// unless noreboot is cleared. Without these two a guest silently survives
 		// a watchdog it should have died on, which hides watchdog regressions and
-		// quietly disarms any test that injects one. eden configures its QEMU the
-		// same way.
+		// quietly disarms any test that injects one.
 		"-global", "ICH9-LPC.noreboot=false",
 		"-watchdog-action", "reset",
 		// No KVM async page faults: with them a guest task faulting on a page

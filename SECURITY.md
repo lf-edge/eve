@@ -80,7 +80,7 @@ This policy covers the EVE edge operating system as published by the project: th
 EVE image, currently `eve-api`, `eve-libs`, `eve-kernel`, `eve-monitor-rs`, `eve-rust`,
 `eve-tpmea`, `edge-containers` and `runx`.
 
-The build and test repositories `eden`, `adam`, `eve-build-tools`, `eve-tools` and `rol` are
+The build and test repositories `adam`, `eve-build-tools`, `eve-tools` and `rol` are
 in scope for reports, but a finding there normally affects developer and CI systems rather
 than a deployed edge device. Say so in the report if you believe otherwise.
 

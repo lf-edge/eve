@@ -16,9 +16,9 @@ package main
 //
 //  2. Installs a SIGUSR2 handler that calls runtime/coverage.WriteMetaDir
 //     and runtime/coverage.WriteCountersDir to dump a live snapshot of
-//     coverage data *without* terminating the process.  Eden uses this
-//     signal after the end-to-end test suite finishes to collect coverage
-//     from all running zedbox agents.
+//     coverage data *without* terminating the process. evetest uses this
+//     signal to collect coverage from all running zedbox agents before a
+//     device reboot and when a test finishes.
 //
 // NOTE: Go's binary coverage runtime writes covmeta only via WriteMetaDir
 // (or at normal os.Exit); signal termination does NOT flush the meta file.
@@ -45,7 +45,7 @@ func init() {
 		_ = os.Setenv("GOCOVERDIR", dir)
 	}
 
-	// Install a SIGUSR2 handler so Eden can trigger a live coverage snapshot
+	// Install a SIGUSR2 handler so evetest can trigger a live coverage snapshot
 	// at any point during a test run without killing the process.
 	// WriteMetaDir is called first so go tool covdata textfmt can find the
 	// covmeta.* file alongside the covcounters.* files.

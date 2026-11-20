@@ -47,9 +47,6 @@ project:
     - name: runx
       url: https://github.com/lf-edge/runx
       comment: VM-based container runtime.
-    - name: eden
-      url: https://github.com/lf-edge/eden
-      comment: End-to-end test harness for EVE.
     - name: adam
       url: https://github.com/lf-edge/adam
       comment: Reference controller used in EVE testing.
