@@ -17,7 +17,7 @@ import (
 const initialEVEVersionForKubevirt = "0.0.0-master-66475696"
 
 // TestUpgradeSuite runs TestEVEUpgrade across multiple hypervisor combinations,
-// then TestThreeNodesUpgrade.
+// then TestThreeNodesUpgrade and TestDeviceAddressesAcrossUpgrade.
 func TestUpgradeSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -84,6 +84,9 @@ func TestUpgradeSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestThreeNodesUpgrade,
+		},
+		evetest.TestCase{
+			Test: TestDeviceAddressesAcrossUpgrade,
 		},
 	)
 }
