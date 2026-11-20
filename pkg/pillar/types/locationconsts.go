@@ -54,8 +54,6 @@ const (
 	IdentityDirname = "/config"
 	// ServerFileName - server file
 	ServerFileName = IdentityDirname + "/server"
-	// DeviceCertName - device certificate
-	DeviceCertName = IdentityDirname + "/device.cert.pem"
 	// DeviceKeyName - device private key (if not in TPM)
 	DeviceKeyName = IdentityDirname + "/device.key.pem"
 	// OnboardCertName - Onboard certificate
@@ -200,9 +198,12 @@ var (
 	// readable before the vault is unsealed.
 	WitnessZvolMarker = PersistDir + "/witness-zvol-reserved"
 	// TpmMeasurementLogFile is a kernel exposed variable that contains the
-	// TPM measurements and events log. it is not a constant so tests can override it.
+	// TPM measurements and events log. Declared as a variable for test overrides.
 	TpmMeasurementLogFile = "/hostfs/sys/kernel/security/tpm0/binary_bios_measurements"
 	// TpmMeasurefsEventLog is the file containing the event log from the measure-config.
-	// it is not a constant so tests can override it.
+	// Declared as a variable for test overrides.
 	TpmMeasurefsEventLog = PersistStatusDir + "/measurefs_tpm_event_log"
+	// DeviceCertName - device certificate.
+	// Declared as a variable for test overrides.
+	DeviceCertName = IdentityDirname + "/device.cert.pem"
 )
