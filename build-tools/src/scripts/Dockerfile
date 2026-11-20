@@ -1,4 +1,4 @@
-ARG GOVER=1.26.10
+ARG GOVER=1.26.11
 # Pin the Alpine minor version so this builder doesn't float to whatever Alpine
 # is newest with the unpinned golang:*-alpine tag. It uses 3.23 rather than
 # eve-alpine's 3.22 because golang images for newer Go releases are no longer
