@@ -8285,6 +8285,8 @@ spec:
           value: "true"
         - name: VIRT_OPERATOR_IMAGE
           value: quay.io/kubevirt/virt-operator:v1.7.3
+        - name: VIRT_LAUNCHER_IMAGE
+          value: docker.io/lfedge/eve-virt-launcher:v1.7.3-eve1
         - name: WATCH_NAMESPACE
           valueFrom:
             fieldRef:

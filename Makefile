@@ -508,7 +508,7 @@ ifeq ($(HV),k)
         ROOTFS_MAXSIZE_MB=10240
 else
         #kube container will not be in non-k builds
-        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image$$$(PKGS_PLATFORM_EXCLUDE)")
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|external-boot-image|virt-launcher$$$(PKGS_PLATFORM_EXCLUDE)")
         # nvidia platform requires more space
         ifeq (, $(findstring nvidia,$(PLATFORM)))
             ROOTFS_MAXSIZE_MB=290
@@ -1116,7 +1116,16 @@ pkg/kube/external-boot-image.tar: pkg/external-boot-image
 	$(if $(filter $(BOOT_IMAGE_TAG),$(CACHE_CONTENT)),,$(LINUXKIT) cache pull $(BOOT_IMAGE_TAG))
 	$(MAKE) cache-export IMAGE=$(BOOT_IMAGE_TAG) OUTFILE=pkg/kube/external-boot-image.tar
 	rm -f pkg/external-boot-image/Dockerfile
-pkg/kube: pkg/kube/external-boot-image.tar eve-kube
+
+# The name given to the image in the tarball is what kube-init imports and
+# what virt-operator's VIRT_LAUNCHER_IMAGE points at; bump its tag, along with
+# versions.EVEVirtLauncher and kubevirt-operator.yaml, when pkg/virt-launcher
+# changes, since kube-init skips an image whose name:tag is already present.
+EVE_VIRT_LAUNCHER_REF=docker.io/lfedge/eve-virt-launcher:v1.7.3-eve1
+pkg/kube/eve-virt-launcher.tar: eve-virt-launcher
+	$(eval VIRT_LAUNCHER_TAG := $(shell $(LINUXKIT) pkg show-tag --canonical pkg/virt-launcher))
+	$(MAKE) cache-export IMAGE=$(VIRT_LAUNCHER_TAG) IMAGE_NAME=$(EVE_VIRT_LAUNCHER_REF) OUTFILE=pkg/kube/eve-virt-launcher.tar
+pkg/kube: pkg/kube/external-boot-image.tar pkg/kube/eve-virt-launcher.tar eve-kube
 	$(QUIET): $@: Succeeded
 pkg/%: eve-% FORCE
 	$(QUIET): $@: Succeeded

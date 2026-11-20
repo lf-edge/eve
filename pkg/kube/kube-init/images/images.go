@@ -91,6 +91,7 @@ var UpstreamImages = []UpstreamImage{
 	{Tarball: "/images/virt-controller.tar", Name: "quay.io/kubevirt/virt-controller", Tag: versions.KubeVirt},
 	{Tarball: "/images/virt-handler.tar", Name: "quay.io/kubevirt/virt-handler", Tag: versions.KubeVirt},
 	{Tarball: "/images/virt-launcher.tar", Name: "quay.io/kubevirt/virt-launcher", Tag: versions.KubeVirt},
+	{Tarball: "/images/eve-virt-launcher.tar", Name: "docker.io/lfedge/eve-virt-launcher", Tag: versions.EVEVirtLauncher},
 
 	// CDI (7 images — operator + the 6 pods it spawns).
 	{Tarball: "/images/cdi-operator.tar", Name: "quay.io/kubevirt/cdi-operator", Tag: versions.CDI},
