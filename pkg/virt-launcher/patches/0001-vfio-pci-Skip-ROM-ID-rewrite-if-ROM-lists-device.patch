@@ -1,0 +1,92 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: eriknordmark <erik@zededa.com>
+Date: Thu, 19 Nov 2026 15:54:16 -0800
+Subject: [PATCH] vfio/pci: Skip ROM ID rewrite if ROM lists device
+
+Since Linux 6.14, vfio-pci exposes the platform firmware's copy of a
+device's option ROM at the ROM BAR of devices that have no ROM of their
+own. On an Intel I210 that is the Boot Agent GE ROM, a legacy x86 image
+whose PCIR device ID (0x1521) differs from the device's (0x1533), but
+whose PCI Firmware 3.0 device list includes 0x1533.
+
+vfio_pci_load_rom() rewrites the PCIR device ID and stores the
+recomputed checksum in byte 6 of the image. In this ROM byte 6 is the
+`lret` that ends the init entry point, so a SeaBIOS guest jumps into
+corrupted code when it runs the ROM and stops with a KVM internal
+error. OVMF guests never run the legacy image and are unaffected.
+
+Leave the image untouched when its device list already names the
+device, since the ROM then supports it as it is.
+
+Upstream-Status: Pending (backport to qemu-kvm-9.1.0-20.el9)
+Signed-off-by: eriknordmark <erik@zededa.com>
+Co-Authored-By: Claude Code <noreply@anthropic.com>
+---
+
+--- a/hw/vfio/pci.c
++++ b/hw/vfio/pci.c
+@@ -880,6 +880,39 @@
+     }
+ }
+ 
++/*
++ * A PCI Firmware 3.0 ROM image can list the device IDs it supports at the
++ * offset stored at PCIR + 0x08, relative to the PCIR structure and ending
++ * with a zero ID.  Return true if the image lists @device_id.
++ */
++static bool vfio_pci_rom_lists_device(const uint8_t *rom, uint32_t rom_size,
++                                      uint32_t pcir, uint16_t device_id)
++{
++    uint32_t list;
++
++    if (pcir + 0x0d > rom_size || rom[pcir + 0x0c] < 3) {
++        return false;
++    }
++
++    list = pcir + pci_get_word(rom + pcir + 0x08);
++    if (list == pcir) {
++        return false;
++    }
++
++    for (; list + 2 <= rom_size; list += 2) {
++        uint16_t id = pci_get_word(rom + list);
++
++        if (id == device_id) {
++            return true;
++        }
++        if (!id) {
++            break;
++        }
++    }
++
++    return false;
++}
++
+ static void vfio_pci_load_rom(VFIOPCIDevice *vdev)
+ {
+     g_autofree struct vfio_region_info *reg_info = NULL;
+@@ -935,6 +968,12 @@
+      * but the device ID doesn't match, store the correct device ID and
+      * recompute the checksum.  Intel IGD devices need this and are known
+      * to have bogus checksums so we can't simply adjust the checksum.
++     *
++     * The checksum goes into byte 6, which is a checksum pad only in some
++     * images and part of the init entry point in others.  Linux may expose
++     * the platform firmware's copy of the ROM for any device, with the ID
++     * of another device in the same family, so leave images that list the
++     * device as supported untouched.
+      */
+     if (pci_get_word(vdev->rom) == 0xaa55 &&
+         pci_get_word(vdev->rom + 0x18) + 8 < vdev->rom_size &&
+@@ -944,7 +983,10 @@
+         vid = pci_get_word(vdev->rom + pci_get_word(vdev->rom + 0x18) + 4);
+         did = pci_get_word(vdev->rom + pci_get_word(vdev->rom + 0x18) + 6);
+ 
+-        if (vid == vdev->vendor_id && did != vdev->device_id) {
++        if (vid == vdev->vendor_id && did != vdev->device_id &&
++            !vfio_pci_rom_lists_device(vdev->rom, vdev->rom_size,
++                                       pci_get_word(vdev->rom + 0x18),
++                                       vdev->device_id)) {
+             int i;
+             uint8_t csum, *data = vdev->rom;
+ 

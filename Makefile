@@ -507,8 +507,9 @@ ifeq ($(HV),k)
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources$$$(PKGS_PLATFORM_EXCLUDE)")
         ROOTFS_MAXSIZE_MB=10240
 else
-        # kube and witness (built from kube) are not in non-k builds
-        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|witness$$$(PKGS_PLATFORM_EXCLUDE)")
+        # kube, virt-launcher (used only by kube) and witness (built from kube)
+        # are not in non-k builds
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|witness|virt-launcher$$$(PKGS_PLATFORM_EXCLUDE)")
         # nvidia platform requires more space
         ifeq (, $(findstring nvidia,$(PLATFORM)))
             ROOTFS_MAXSIZE_MB=290
@@ -1087,6 +1088,17 @@ pkgs: $(LINUXKIT) $(PKGS) $(LK_POSSIBLE_BUILD_ARG_TARGETS)
 # pkg/witness copies kube-init from KUBE_TAG, substituted into the gitignored
 # generated Dockerfile, so its tag does not change when pkg/kube does. Forced
 # via FORCE_BUILD_PKGS above, applied by the eve-% rule below.
+
+# The name given to the image in the tarball is what kube-init imports and
+# what virt-operator's VIRT_LAUNCHER_IMAGE points at; bump its tag, along with
+# versions.EVEVirtLauncher and kubevirt-operator.yaml, when pkg/virt-launcher
+# changes, since kube-init skips an image whose name:tag is already present.
+EVE_VIRT_LAUNCHER_REF=docker.io/lfedge/eve-virt-launcher:v1.7.3-eve1
+pkg/kube/eve-virt-launcher.tar: eve-virt-launcher
+	$(eval VIRT_LAUNCHER_TAG := $(shell $(LINUXKIT) pkg show-tag --canonical pkg/virt-launcher))
+	$(MAKE) cache-export IMAGE=$(VIRT_LAUNCHER_TAG) IMAGE_NAME=$(EVE_VIRT_LAUNCHER_REF) OUTFILE=pkg/kube/eve-virt-launcher.tar
+pkg/kube: pkg/kube/eve-virt-launcher.tar eve-kube
+	$(QUIET): $@: Succeeded
 
 pkg/%: eve-% FORCE
 	$(QUIET): $@: Succeeded
