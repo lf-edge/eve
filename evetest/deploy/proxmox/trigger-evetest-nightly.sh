@@ -57,6 +57,14 @@ need curl
 [ -n "$REF" ] || die "--branch is required"
 [ -n "$GH_TOKEN" ] || die "GH_TOKEN environment variable is required"
 
+# Send the input only when requested: branches whose workflow defines no
+# inputs (e.g. 14.5-stable, 13.4-stable) reject unexpected ones with HTTP 422.
+if [ "$COVERAGE" = "true" ]; then
+    PAYLOAD="{\"ref\":\"${REF}\",\"inputs\":{\"collect-coverage\":\"true\"}}"
+else
+    PAYLOAD="{\"ref\":\"${REF}\"}"
+fi
+
 RESPONSE_FILE=$(mktemp)
 trap 'rm -f "$RESPONSE_FILE"' EXIT
 
@@ -65,7 +73,7 @@ HTTP_STATUS=$(curl -s -o "$RESPONSE_FILE" -w '%{http_code}' \
     -H "Authorization: Bearer ${GH_TOKEN}" \
     -H "Accept: application/vnd.github+json" \
     "https://api.github.com/repos/${GH_REPO}/actions/workflows/${WORKFLOW}/dispatches" \
-    -d "{\"ref\":\"${REF}\",\"inputs\":{\"collect-coverage\":\"${COVERAGE}\"}}")
+    -d "$PAYLOAD")
 
 if [ "$HTTP_STATUS" = "204" ]; then
     echo "Dispatched ${WORKFLOW} on ${GH_REPO}@${REF} (collect-coverage=${COVERAGE})."
