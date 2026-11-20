@@ -4,3 +4,5 @@
 # Not a rootfs service: pkg/kube bundles this image as /images/eve-virt-launcher.tar.
 org: lfedge
 image: eve-virt-launcher
+# dnf fetches the QEMU build dependencies during the build.
+network: true
