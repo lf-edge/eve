@@ -5,8 +5,10 @@ package main
 
 import (
 	"errors"
+	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestShouldEvict(t *testing.T) {
@@ -109,4 +111,88 @@ func TestEvictWhilePressured(t *testing.T) {
 			t.Errorf("err=%v evictions=%d, want boom and 1", err, n)
 		}
 	})
+}
+
+func TestNewImageCandidate(t *testing.T) {
+	older := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	newer := older.Add(time.Hour)
+	usage := map[string]time.Time{
+		"evebuild/pr:0.0.0-pr1-abc-kvm-amd64": older,
+		"evebuild/pr:1-kvm-amd64":             newer,
+		"sha256:dangling":                     older,
+	}
+	lookup := func(name string) (time.Time, bool) {
+		ts, ok := usage[name]
+		return ts, ok
+	}
+	tests := []struct {
+		name     string
+		id       string
+		tags     []string
+		want     imageCandidate
+		wantOkay bool
+	}{
+		{
+			name: "image with several tags is removed by each, latest use wins",
+			id:   "sha256:multi",
+			tags: []string{"evebuild/pr:0.0.0-pr1-abc-kvm-amd64", "evebuild/pr:1-kvm-amd64"},
+			want: imageCandidate{ID: "sha256:multi",
+				Refs: []string{"evebuild/pr:0.0.0-pr1-abc-kvm-amd64", "evebuild/pr:1-kvm-amd64"},
+				Name: "evebuild/pr:0.0.0-pr1-abc-kvm-amd64", LastUsed: newer},
+			wantOkay: true,
+		},
+		{
+			name: "untracked alias is removed along with the tracked tag",
+			id:   "sha256:alias",
+			tags: []string{"local/alias:latest", "evebuild/pr:0.0.0-pr1-abc-kvm-amd64"},
+			want: imageCandidate{ID: "sha256:alias",
+				Refs: []string{"local/alias:latest", "evebuild/pr:0.0.0-pr1-abc-kvm-amd64"},
+				Name: "local/alias:latest", LastUsed: older},
+			wantOkay: true,
+		},
+		{
+			name:     "untagged image is removed by ID",
+			id:       "sha256:dangling",
+			want:     imageCandidate{ID: "sha256:dangling", Refs: []string{"sha256:dangling"}, Name: "sha256:dangling", LastUsed: older},
+			wantOkay: true,
+		},
+		{
+			name: "image the broker never used is not a candidate",
+			id:   "sha256:foreign",
+			tags: []string{"registry:2"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := newImageCandidate(tc.id, tc.tags, lookup)
+			if ok != tc.wantOkay {
+				t.Fatalf("ok = %v, want %v", ok, tc.wantOkay)
+			}
+			if ok && !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestImageUsagePrune(t *testing.T) {
+	tracker := newImageUsageTracker(t.TempDir())
+	tracker.touch("present:1")
+	tracker.touch("gone:1")
+	listedAt := time.Now()
+	tracker.touch("loaded-after-listing:1")
+
+	tracker.prune(map[string]struct{}{"present:1": {}}, listedAt)
+
+	for name, want := range map[string]bool{
+		"present:1": true, "gone:1": false, "loaded-after-listing:1": true,
+	} {
+		if _, ok := tracker.get(name); ok != want {
+			t.Errorf("record %q kept = %v, want %v", name, ok, want)
+		}
+	}
+	reloaded := newImageUsageTracker(filepath.Dir(tracker.path))
+	if _, ok := reloaded.get("gone:1"); ok {
+		t.Error("pruned record was not persisted")
+	}
 }
