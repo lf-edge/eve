@@ -110,9 +110,9 @@ var LedModels = []LedModel{
 	{
 		Model:         "SIEMENS AG.SIMATIC IPC127E",
 		Strategy:      StrategyLedCmd,
-		Arg:           "ipc127:green:1",
+		Arg:           "green:status-1",
 		HasAppStatus:  true,
-		AppStatusArgs: []string{"ipc127:green:3", "ipc127:red:3"},
+		AppStatusArgs: []string{"green:status-3", "red:status-3"},
 	},
 	{
 		Model:    "hisilicon,hi6220-hikey.hisilicon,hi6220.",
