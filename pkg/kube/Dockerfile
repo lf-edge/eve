@@ -101,7 +101,6 @@ COPY cfg-manifests/04-multinode-watch-cache.yaml /etc/kube/
 COPY multus-daemonset.yaml /etc
 COPY kubevirt-operator.yaml /etc
 COPY kubevirt-features.yaml /etc
-COPY eve-virt-launcher.tar /images/
 
 # Longhorn config
 COPY lh-cfg-v1.9.1.yaml /etc/

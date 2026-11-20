@@ -22,7 +22,6 @@ conf/grub.cfg
 conf/device.cert.pem
 conf/device.key.pem
 conf/soft_serial
-pkg/kube/eve-virt-launcher.tar
 pkg/eve/Dockerfile
 pkg/witness/Dockerfile
 tools/compare-sbom-sources/vendor
