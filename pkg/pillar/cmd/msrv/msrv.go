@@ -17,6 +17,7 @@ import (
 	"encoding/gob"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -32,6 +33,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils/generics"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -117,6 +119,9 @@ type Msrv struct {
 	subNetworkMetrics pubsub.Subscription
 
 	subAppNetworkStatus pubsub.Subscription
+
+	tpmAttestOnce sync.Once
+	tpmAttest     *tpmAttest
 
 	subDeviceNetworkStatus pubsub.Subscription
 
@@ -724,6 +729,16 @@ func (msrv *Msrv) MakeMetadataHandler() http.Handler {
 
 		r.Post("/tpm/activatecredential/", msrv.handleActivateCredentialPost())
 		r.Get("/tpm/activatecredential/", msrv.handleActivateCredentialGet())
+
+		r.Group(func(r chi.Router) {
+			r.Use(rateLimiterPerIP(func() (rate.Limit, int, time.Duration) {
+				return tpmQuotePerIPRate, tpmQuotePerIPBurst, tpmQuoteIdleTimeout
+			}))
+			r.Use(withWriteDeadline(tpmWriteTimeout))
+			r.Post("/tpm/quote", msrv.handleTpmQuote())
+			r.Get("/tpm/identity", msrv.handleTpmIdentity())
+			r.Post("/tpm/activate", msrv.handleTpmActivate())
+		})
 
 		r.Route("/patch", func(r chi.Router) {
 			r.Use(msrv.withPatchEnvelopesByIP())
