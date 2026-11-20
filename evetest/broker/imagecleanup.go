@@ -60,11 +60,7 @@ func (t *imageUsageTracker) touch(imageName string) {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 	t.lastUsed[imageName] = time.Now()
-	data, err := json.Marshal(t.lastUsed)
-	if err != nil {
-		return
-	}
-	_ = os.WriteFile(t.path, data, 0o600)
+	t.saveLocked()
 }
 
 func (t *imageUsageTracker) get(imageName string) (time.Time, bool) {
@@ -82,6 +78,29 @@ func (t *imageUsageTracker) remove(imageName string) {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 	delete(t.lastUsed, imageName)
+	t.saveLocked()
+}
+
+// prune drops the usage records, last updated before listedAt, of images not
+// in present (the local image store as listed at listedAt): images removed
+// outside the broker, or whose removal failed to drop the record. Records
+// updated since then may belong to images loaded after the listing.
+func (t *imageUsageTracker) prune(present map[string]struct{}, listedAt time.Time) {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	changed := false
+	for name, ts := range t.lastUsed {
+		if _, ok := present[name]; !ok && ts.Before(listedAt) {
+			delete(t.lastUsed, name)
+			changed = true
+		}
+	}
+	if changed {
+		t.saveLocked()
+	}
+}
+
+func (t *imageUsageTracker) saveLocked() {
 	data, err := json.Marshal(t.lastUsed)
 	if err != nil {
 		return
@@ -95,11 +114,42 @@ func (t *imageUsageTracker) remove(imageName string) {
 // eligible for cleanup. An image the broker never touched is never a
 // candidate, no matter how old or unused it looks -- see cleanupDockerImages.
 type imageCandidate struct {
-	// ID is the image's content-addressable ID, used to actually remove it.
+	// ID is the image's content-addressable ID.
 	ID string
+	// Refs are the references the image is removed by: all its tags, or just
+	// its ID if it has none. Removing by ID fails while more than one tag
+	// points at the image, whereas removing each tag in turn untags it and
+	// deletes it with the last one.
+	Refs []string
 	// Name is a human-readable reference (first RepoTag, or the ID) for logging.
-	Name     string
+	Name string
+	// LastUsed is the latest usage recorded for any of Refs.
 	LastUsed time.Time
+}
+
+// newImageCandidate returns the cleanup candidate for an unused local image,
+// or false if the broker never recorded a use of any of its references.
+// Every tag of a candidate is removed with it, including tags the broker did
+// not record itself: they are only other names for an image the broker
+// pulled, built or loaded (a loaded image brings along all of its tags).
+func newImageCandidate(id string, repoTags []string,
+	lastUsed func(name string) (time.Time, bool)) (imageCandidate, bool) {
+	c := imageCandidate{ID: id, Refs: repoTags, Name: id}
+	if len(repoTags) == 0 {
+		c.Refs = []string{id}
+	} else {
+		c.Name = repoTags[0]
+	}
+	tracked := false
+	for _, ref := range c.Refs {
+		if ts, ok := lastUsed(ref); ok {
+			tracked = true
+			if ts.After(c.LastUsed) {
+				c.LastUsed = ts
+			}
+		}
+	}
+	return c, tracked
 }
 
 // selectAgeExpiredImages returns the IDs of candidates whose LastUsed is
@@ -174,42 +224,47 @@ func (b *broker) cleanupDockerImages(ctx context.Context) {
 		inUse[c.ImageID] = struct{}{}
 	}
 
+	listedAt := time.Now()
 	images, err := cli.ImageList(ctx, client.ImageListOptions{})
 	if err != nil {
 		log.Warnf("Image cleanup: failed to list images: %v", err)
 		return
 	}
 
-	names := make(map[string]string, len(images.Items)) // image ID -> display name
+	present := make(map[string]struct{})
+	byID := make(map[string]imageCandidate, len(images.Items))
 	var candidates []imageCandidate
 	for _, img := range images.Items {
+		present[img.ID] = struct{}{}
+		for _, tag := range img.RepoTags {
+			present[tag] = struct{}{}
+		}
 		if _, used := inUse[img.ID]; used {
 			continue
-		}
-		name := img.ID
-		if len(img.RepoTags) > 0 {
-			name = img.RepoTags[0]
 		}
 		// Only images this broker itself pulled/built/confirmed via
 		// BuildImage/PushEVEContainerImage/SetupDevices are ever eligible for
 		// cleanup. An image that was never touched by the broker must never be removed,
 		// regardless of age or disk pressure.
-		lastUsed, ok := b.imageUsage.get(name)
+		c, ok := newImageCandidate(img.ID, img.RepoTags, b.imageUsage.get)
 		if !ok {
 			continue
 		}
-		names[img.ID] = name
-		candidates = append(candidates,
-			imageCandidate{ID: img.ID, Name: name, LastUsed: lastUsed})
+		byID[img.ID] = c
+		candidates = append(candidates, c)
 	}
+	b.imageUsage.prune(present, listedAt)
 
 	evict := func(id, reason string) bool {
-		if _, err := cli.ImageRemove(ctx, id, client.ImageRemoveOptions{}); err != nil {
-			log.Warnf("Image cleanup: failed to remove image %q: %v", names[id], err)
-			return false
+		c := byID[id]
+		for _, ref := range c.Refs {
+			if _, err := cli.ImageRemove(ctx, ref, client.ImageRemoveOptions{}); err != nil {
+				log.Warnf("Image cleanup: failed to remove image %q: %v", ref, err)
+				return false
+			}
+			b.imageUsage.remove(ref)
 		}
-		log.Infof("Image cleanup: removed unused image %q (%s)", names[id], reason)
-		b.imageUsage.remove(names[id])
+		log.Infof("Image cleanup: removed unused image %q (%s)", c.Name, reason)
 		return true
 	}
 
