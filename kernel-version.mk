@@ -52,6 +52,11 @@ ifeq ($(ZARCH), amd64)
     else
         KERNEL_CONFIG_FLAVOR=core
     endif
+    # Deliberately vulnerable kernel for the CVE Watch negative test.
+    ifeq ($(PLATFORM), generic)
+        KERNEL_VERSION=v6.1.112
+        KERNEL_CONFIG_FLAVOR=
+    endif
 else ifeq ($(ZARCH), arm64)
     ifeq (, $(findstring nvidia,$(PLATFORM)))
         KERNEL_FLAVOR=generic
