@@ -102,7 +102,6 @@ COPY multus-daemonset.yaml /etc
 COPY kubevirt-operator.yaml /etc
 COPY kubevirt-features.yaml /etc
 COPY external-boot-image.tar /etc/
-COPY eve-virt-launcher.tar /images/
 
 # Longhorn config
 COPY lh-cfg-v1.9.1.yaml /etc/

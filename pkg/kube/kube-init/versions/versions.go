@@ -35,11 +35,6 @@ const (
 
 	// Alpine is the SUC Plan's upgrade-container image.
 	Alpine = "3.21"
-
-	// EVEVirtLauncher tags pkg/virt-launcher (KubeVirt's launcher with
-	// EVE's QEMU patches). It must match EVE_VIRT_LAUNCHER_REF in the
-	// top-level Makefile and VIRT_LAUNCHER_IMAGE in kubevirt-operator.yaml.
-	EVEVirtLauncher = "v1.7.3-eve1"
 )
 
 // Longhorn ships these alongside its own release but they follow the
