@@ -2,6 +2,365 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-20 -- 0.0.0-17.0-stable-dc1e7b55 (run #28)](https://github.com/lf-edge/eve/actions/runs/44657616698)
+
+[Full report](https://lf-edge.github.io/eve/test/17.0-stable/runs/28/)
+
+### TestAppNICsSuite: failure analysis
+
+#### TestNetworkAdapterPassthrough
+
+##### Failure
+
+```
+
+Timed out after 180.001s.
+The function passed to Eventually failed at /evetest/tests/networking/nicchange_test.go:177 with:
+Expected
+    <[]*info.ZInfoNetwork | len:4, cap:4>: [
+        {
+            state: {
+                NoUnkeyedLiterals: {},
+                DoNotCompare: [],
+                DoNotCopy: [],
+                atomicMessageInfo: {
+                    GoReflectType: <*reflect.rtype | 0x15a7e60>{
+                        t: {Size_: 0x8, PtrBytes: 0x8, Hash: 300382088, TFlag: 41, Align_: 8, FieldAlign_: 8, Kind_: 22, Equal: 0x41a620, GCData: 1, Str: 204503, PtrToThis: 0},
+                    },
+                    Desc: <*filedesc.Message | 0x3db69adac830>{
+                        Base: {
+                            L0: {
+                                FullName: "org.lfedge.eve.info.ZInfoNetwork",
+                                ParentFile: {
+                                    fileRaw: {
+                                        builder: {GoPackagePath: ..., RawDescriptor: ..., NumEnums: ..., NumMessages: ..., NumExtensions: ..., NumServices: ..., TypeResolver: ..., FileRegistry: ...},
+                                        allEnums: [..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ...],
+                                        allMessages: [..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ...],
+                                        allExtensions: [],
+                                        allServices: [],
+                                    },
+                                    L1: {
+                                        Syntax: 3,
+                                        Edition: 999,
+                                        Path: "info/info.proto",
+                                        Package: "org.lfedge.eve.info",
+                                        Enums: {List: ..., once: ..., byName: ...},
+                                        Messages: {List: ..., once: ..., byName: ...},
+                                        Extensions: {List: ..., once: ..., byName: ...},
+                                        Services: {List: ..., once: ..., byName: ...},
+                                        EditionFeatures: {
+                                            StripEnumPrefix: ...,
+                                            IsFieldPresence: ...,
+                                            IsLegacyRequired: ...,
+                                            IsOpenEnum: ...,
+                                            IsPacked: ...,
+                                            IsUTF8Validated: ...,
+                                            IsDelimitedEncoded: ...,
+                                            IsJSONCompliant: ...,
+                                            GenerateLegacyUnmarshalJSON: ...,
+                                            APILevel: ...,
+                                        },
+                                    },
+                                    once: 1,
+                                    mu: {
+                                        _: {},
+                                        mu: {state: ..., sema: ...},
+                                    },
+                                    L2: {
+                                        Options: 0x8e0b20,
+                                        Imports: [..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ...],
+                                        OptionImports: nil,
+                                        Locations: {List: ..., File: ..., once: ..., byPath: ...},
+                                    },
+                                },
+                                Parent: <*filedesc.File | 0x3db69ad954a0>{
+                                    fileRaw: {
+                                        builder: {GoPackagePath: ..., RawDescrip...
+
+Gomega truncated this representation as it exceeds 'format.MaxLength'.
+Consider having the object provide a custom 'GomegaStringer' representation
+or adjust the parameters in Gomega's 'format' package.
+
+Learn more here: https://onsi.github.io/gomega/#adjusting-output
+
+to have length 5
+```
+
+##### Claude's conclusion
+
+This confirms the exact same signature: the final `RUNNING` state has `assignedAdapters:{name:"ethernet1"...}` correctly reported but `network:` only ever lists the 4 virtual VIFs (vif0, newvif1, newvif2, newvif3) — `ethernet1` never appears there, matching the len:4 the test is stuck polling at. No PR diff was provided for this run, so no relatedness judgment is needed.
+
+**Root cause:** Live `evetest eve app-info passthrough-app` shows `passthrough-app` reach `state:RUNNING` with `assignedAdapters:{name:"ethernet1", members:"eth1"}` correctly populated, but its `network:` list only ever contains the 4 virtual VIFs (`vif0`, `newvif1`, `newvif2`, `newvif3`) — `ethernet1` is never added — exactly the len:4 the `Eventually` at `nicchange_test.go:177` is stuck waiting to become len:5. In pillar, `zedagent`'s app-info/metrics publisher builds `ZInfoApp.Network` solely from the app's virtual interface list, never merging the passthrough (`IoAdapterList`) adapters. The fix for this is commit `979ea453c` ("zedagent: report passthrough NICs in app info and metrics"), which exists on master but `git merge-base --is-ancestor` confirms is **not** present on `17.0-stable` (current HEAD `dc1e7b55f`). Per the ledger, this exact failure (same test, same root cause) was already recorded on 2026-11-17, 2026-11-18, and again 2026-11-19 — this is the fourth consecutive night reproducing the same known, unfixed backport gap, not a new issue.
+#### TestNetworkAdapterPassthroughChange
+
+##### Failure
+
+```
+
+Timed out after 180.000s.
+The function passed to Eventually failed at /evetest/tests/networking/nicchange_test.go:177 with:
+Expected
+    <[]*info.ZInfoNetwork | len:1, cap:1>: [
+        {
+            state: {
+                NoUnkeyedLiterals: {},
+                DoNotCompare: [],
+                DoNotCopy: [],
+                atomicMessageInfo: {
+                    GoReflectType: <*reflect.rtype | 0x15a7e60>{
+                        t: {Size_: 0x8, PtrBytes: 0x8, Hash: 300382088, TFlag: 41, Align_: 8, FieldAlign_: 8, Kind_: 22, Equal: 0x41a620, GCData: 1, Str: 204503, PtrToThis: 0},
+                    },
+                    Desc: <*filedesc.Message | 0x3db69adac830>{
+                        Base: {
+                            L0: {
+                                FullName: "org.lfedge.eve.info.ZInfoNetwork",
+                                ParentFile: {
+                                    fileRaw: {
+                                        builder: {GoPackagePath: ..., RawDescriptor: ..., NumEnums: ..., NumMessages: ..., NumExtensions: ..., NumServices: ..., TypeResolver: ..., FileRegistry: ...},
+                                        allEnums: [..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ...],
+                                        allMessages: [..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ...],
+                                        allExtensions: [],
+                                        allServices: [],
+                                    },
+                                    L1: {
+                                        Syntax: 3,
+                                        Edition: 999,
+                                        Path: "info/info.proto",
+                                        Package: "org.lfedge.eve.info",
+                                        Enums: {List: ..., once: ..., byName: ...},
+                                        Messages: {List: ..., once: ..., byName: ...},
+                                        Extensions: {List: ..., once: ..., byName: ...},
+                                        Services: {List: ..., once: ..., byName: ...},
+                                        EditionFeatures: {
+                                            StripEnumPrefix: ...,
+                                            IsFieldPresence: ...,
+                                            IsLegacyRequired: ...,
+                                            IsOpenEnum: ...,
+                                            IsPacked: ...,
+                                            IsUTF8Validated: ...,
+                                            IsDelimitedEncoded: ...,
+                                            IsJSONCompliant: ...,
+                                            GenerateLegacyUnmarshalJSON: ...,
+                                            APILevel: ...,
+                                        },
+                                    },
+                                    once: 1,
+                                    mu: {
+                                        _: {},
+                                        mu: {state: ..., sema: ...},
+                                    },
+                                    L2: {
+                                        Options: 0x8e0b20,
+                                        Imports: [..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ..., ...],
+                                        OptionImports: nil,
+                                        Locations: {List: ..., File: ..., once: ..., byPath: ...},
+                                    },
+                                },
+                                Parent: <*filedesc.File | 0x3db69ad954a0>{
+                                    fileRaw: {
+                                        builder: {GoPackagePath: ..., RawDescrip...
+
+Gomega truncated this representation as it exceeds 'format.MaxLength'.
+Consider having the object provide a custom 'GomegaStringer' representation
+or adjust the parameters in Gomega's 'format' package.
+
+Learn more here: https://onsi.github.io/gomega/#adjusting-output
+
+to have length 2
+```
+
+##### Claude's conclusion
+
+Confirmed live: after `ethernet1` is passed through (`assignedAdapters:{name:"ethernet1"...}`) and the app reaches `state:RUNNING`, `network:` only ever lists `vif0` — never `ethernet1` — exactly the `len:1` stuck against the expected `len:2`.
+
+Root cause: this is the identical bug already identified for `TestNetworkAdapterPassthrough` earlier in this run — `zedagent`'s app-info publisher builds `ZInfoApp.Network` only from the app's virtual VIFs and never merges passthrough (`IoAdapterList`) adapters, so any passthrough NIC is permanently missing from `ZInfoApp.Network` regardless of how many virtual NICs are also present. The fix, commit `979ea453c` ("zedagent: report passthrough NICs in app info and metrics"), is on master but not yet backported to `17.0-stable` (current HEAD `dc1e7b55f`). Per the ledger this exact passthrough-reporting gap has already recurred on 2026-11-17, 2026-11-18, and 2026-11-19 (previously manifesting via `TestNetworkAdapterPassthrough`); this is the same known, unfixed backport gap now also tripping its sibling test `TestNetworkAdapterPassthroughChange` on the same nightly run.
+
+### TestDeviceConnectivitySuite: failure analysis
+
+#### TestPNACWithoutProxy
+
+##### Failure
+
+```
+
+Timed out after 300.000s.
+Expected to satisfy: cycle 1: enrolled certificate removed, PNAC disabled and the port moved to the pre-auth VLAN
+machineArch:"x86_64" cpuArch:"x86_64" platform:"x86_64" ncpu:4 memory:7797 storage:42022 powerCycleCounter:-1 minfo:{manufacturer:"QEMU" productName:"Standard PC (Q35 + ICH9, 2009)" version:"pc-q35-11.0" serialNumber:"CLB84UR8" UUID:"Not Settable" biosVendor:"EDK II" biosVersion:"unknown" biosReleaseDate:"02/02/2022"} assignableAdapters:{type:PhyIoNetEth name:"ethernet0" members:"ethernet0" usedByBaseOS:true ioAddressList:{macAddress:"da:39:78:d0:19:f2"} usage:PhyIoUsageMgmtAndApps} dns:{DNSservers:"10.16.16.25:53"} storageList:{device:"nbd7"} storageList:{mountPath:"/persist/patchEnvelopesUsageCache"} storageList:{mountPath:"/persist/clear"} storageList:{mountPath:"/persist/status"} storageList:{device:"vda" total:65536} storageList:{mountPath:"/persist/newlog"} storageList:{device:"nbd5"} storageList:{mountPath:"/persist/vault/containerd"} storageList:{mountPath:"/persist/vault/verifier"} storageList:{device:"nbd15"} storageList:{mountPath:"/persist/clear/volumes"} storageList:{device:"nbd14"} storageList:{device:"nbd3"} storageList:{mountPath:"/persist/checkpoint"} storageList:{mountPath:"/persist/certs"} storageList:{mountPath:"/persist/vault/volumes"} storageList:{device:"nbd6"} storageList:{device:"nbd10"} storageList:{mountPath:"/persist/containerd-system-root"} storageList:{mountPath:"/persist/nettrace"} storageList:{mountPath:"/persist/vault/downloader"} storageList:{mountPath:"/persist/log"} storageList:{mountPath:"/persist" total:42022 storageLocation:true} storageList:{mountPath:"/persist/ingested"} storageList:{mountPath:"/" total:3898} storageList:{mountPath:"/persist/vault"} storageList:{device:"/persist/vector/data/buffer/v2/keep_sent_queue_socket/buffer-data-1.dat"} storageList:{mountPath:"/persist/netdump"} storageList:{device:"nbd1"} storageList:{mountPath:"/persist/memory-monitor/output"} storageList:{device:"vda9" total:43001 partitionLabel:"P3" partitionTypeGuid:"5f24425a-2dfa-11e8-a270-7b663faccc2c" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30059"} storageList:{device:"nbd11"} storageList:{device:"vda3" total:10240 partitionLabel:"IMGB" partitionTypeGuid:"5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30053"} storageList:{mountPath:"/persist/agentdebug"} storageList:{mountPath:"/persist/pubsub-large"} storageList:{device:"vda4" total:5 partitionLabel:"CONFIG" partitionTypeGuid:"13307e62-cd9c-4920-8f9b-91b45828b798" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30054"} storageList:{mountPath:"/persist/tmp"} storageList:{device:"nbd2"} storageList:{device:"nbd13"} storageList:{device:"vda2" total:10240 partitionLabel:"IMGA" partitionTypeGuid:"5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30052"} storageList:{device:"/persist/vector/data/buffer/v2/dev_upload_socket/buffer-data-1.dat"} storageList:{device:"nbd4"} storageList:{device:"nbd9"} storageList:{device:"vda1" total:2048 partitionLabel:"EFI System" partitionTypeGuid:"c12a7328-f81f-11d2-ba4b-00a0c93ec93b" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30051"} storageList:{device:"nbd8"} storageList:{device:"nbd0"} storageList:{device:"nbd12"} storageList:{mountPath:"/config" total:5} storageList:{mountPath:"/hostfs" total:279} storageList:{mountPath:"/persist/patchEnvelopesCache"} bootTime:{seconds:1795141324} swList:{activated:true partitionLabel:"IMGA" partitionDevice:"/dev/vda2" partitionState:"active" status:INSTALLED shortVersion:"0.0.0-17.0-stable-dc1e7b55-kvm-amd64" downloadProgress:100 userStatus:UPDATED} swList:{partitionLabel:"IMGB" partitionDevice:"/dev/vda3" partitionState:"unused" status:INITIAL} HostName:"6cb2405e-9ec0-44ba-83ec-140fa2e6b6f2" lastRebootReason:"NORMAL: controller reboot at EVE version 0.0.0-17.0-stable-dc1e7b55-kvm-amd64 at 2026-11-20T02:21:22.345753909Z\n" lastRebootTime:{seconds:1795141282 nanos:341995318} systemAdapter:{currentIndex:1 status:{version:1 key:"zedagent" timePriority:{seconds:1795141467 nanos:609652795} lastFailed:{seconds:1795141484 nanos:362337214} ports:{ifname:"eth0" name:"ethernet0" isMgmt:true free:true dhcpType:4 proxy:{} dns:{} err:{description:"All attempts to connect to https://adam.evetest:443/api/v2/edgedevice/ping failed: send via eth0 with src IP 172.20.20.123: Get \"https://adam.evetest:443/api/v2/edgedevice/ping\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)" timestamp:{seconds:1795141484 nanos:362240054} severity:SEVERITY_ERROR} usage:PhyIoUsageMgmtAndApps networkUUID:"5ddf5a9d-6e59-4a0d-98ed-2a8c87f7fc0d" config_source:{origin:NETWORK_CONFIG_ORIGIN_CONTROLLER submitted_at:{seconds:1795141467 nanos:609652795}}} lastError:"All attempts to connect to adam.evetest:443/api/v2/edgedevice/ping failed: send via eth0 with src IP 172.20.20.123: Get \"https://adam.evetest:443/api/v2/edgedevice/ping\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"} status:{version:1 key:"zedagent" timePriority:{seconds:1795141252 nanos:222475582} lastFailed:{seconds:1795141499 nanos:456275793} lastSucceeded:{seconds:1795141388 nanos:899831043} ports:{ifname:"eth0" name:"ethernet0" isMgmt:true free:true dhcpType:4 subnet:"172.20.10.0/24" domainname:"test." proxy:{} macAddr:"da:39:78:d0:19:f2" IPAddrs:"172.20.10.123" defaultRouters:"172.20.10.1" dns:{DNSservers:"10.16.16.25" DNSdomain:"test."} up:true err:{description:"No certificate enrollment status found for SCEP profile \"new-scep-profile\"" timestamp:{seconds:1795141501 nanos:803640472} severity:SEVERITY_ERROR} usage:PhyIoUsageMgmtAndApps networkUUID:"5ddf5a9d-6e59-4a0d-98ed-2a8c87f7fc0d" mtu:1500 config_source:{origin:NETWORK_CONFIG_ORIGIN_CONTROLLER submitted_at:{seconds:1795141252 nanos:222475582}} pnac_status:{enabled:true err:{description:"No certificate enrollment status found for SCEP profile \"new-scep-profile\"" timestamp:{seconds:1795141501 nanos:803640169} severity:SEVERITY_ERROR}}} lastError:"All attempts to connect to adam.evetest:443/api/v2/edgedevice/ping failed: send via eth0 with src IP 172.20.20.123: Get \"https://adam.evetest:443/api/v2/edgedevice/ping\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"}} restartCounter:1 HSMStatus:NOTFOUND dataSecAtRestInfo:{status:DATASEC_AT_REST_DISABLED info:"TPM is either absent or not in use" vaultList:{name:"Application Data Store" status:DATASEC_AT_REST_DISABLED vaultErr:{description:"TPM is either absent or not in use" timestamp:{seconds:1795141347 nanos:76179805} severity:SEVERITY_ERROR} pcrStatus:PCR_DISABLED unlock_method:VAULT_UNLOCK_METHOD_NO_TPM}} sec_info:{sha_root_ca:"4Y\x86AP\xa4\x0f\x11\xf5\x12\xf2\xd79\xb06\xa6\x87\xb7\x8eZ\xaf\xbf<\xd7B\x8f\x96^\xf2\x99\x1c\r"} configItemStatus:{configItems:{key:"app.allow.vnc" value:{value:"true"}} configItems:{key:"debug.default.loglevel" value:{value:"debug"}} configItems:{key:"debug.default.remote.loglevel" value:{value:"debug"}} configItems:{key:"debug.enable.console" value:{value:"true"}} configItems:{key:"debug.enable.ssh" value:{value:"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC+H1RQUqHjFBJgGpslC73XsLz8Fg5WpNPble9naKyWz1Um8D2bOtQK/yguCImPeBYcH7/73z8dtC6d+dT0UF26+o7Vh6RN/U2X/5nkaZr7oM5QwwZTsD7Nd2Szww9wrRhXvpV0aFgUBDM9BIF1qBQxLNd+Jp8uttrgF3zj/cm7+SXllG54sv8WFBMfTX7J8cQ1jxLyp/Sc6PXK0zBaVzZwhmCCmI6CIzJK6ahMRgXm2vSP6doYibkB3ETSskaCXSHxDiZoaQK2ZY+GqNZkUusbau43MXVPTiJknXqUcmXhQmwyMSltQ3G54jcgn4TDObSQnW7vGdLI7zIEAHnk5D1BmKzQUBh5aRLdhBtb6T3uvVtAqGgnXWKD+d2GjMiy4G31zfIlArvC3G8LxwsDoxQL0XKaFjnEmXIptVXC68zq+laIM8YGDDOCEc6RfczP7lA4p6rv0gQUfTNqy0P3a4ulvIDb4hET1Gkh+Azkuw1do9NIhXPxDBmPdkTnKwJv6XelpdCPCw1QT5o7WdOkUgorf/e03jGDnnn1QBWpSPB9gLB/oDmT/Gzm8tCYaq7ggwYUq1fSMBvnbFaclH1KVcC2Gwn8UPLt9HHa/mGywuISZYl3gy7ztlKyAjHEZH053U7I8OaMvv/CFo9aR4Teeb5848REZYAes+yJIz3lJV1K5Q=="}} configItems:{key:"newlog.allow.fastupload" value:{value:"true"}} configItems:{key:"scep.retry.interval" value:{value:"300" error:"***ParseItem: Error in parsing Item. Replacing it with existing Value. key: scep.retry.interval, value: 10, Existing Value: {Key:scep.retry.interval ItemType:1 IntValue:300 StrValue: BoolValue:false TriStateValue:0}. Err: value out of bounds. Parsed value: 10, Max: 3600, Min: 60"}} configItems:{key:"timer.config.interval" value:{value:"5"}} configItems:{key:"timer.deviceinfo.interval" value:{value:"30"}} configItems:{key:"timer.download.retry" value:{value:"60"}} configItems:{key:"timer.location.app.interval" value:{value:"20"}} configItems:{key:"timer.location.cloud.interval" value:{value:"300"}} configItems:{key:"timer.metric.interval" value:{value:"20"}} configItems:{key:"timer.port.testbetterinterval" value:{value:"60"}} configItems:{key:"timer.test.baseimage.update" value:{value:"60"}}} rebootConfigCounter:1 last_boot_reason:BOOT_REASON_REBOOT_CMD hardware_watchdog_present:true capabilities:{HWAssistedVirtualization:true IOVirtualization:true} state:ZDEVICE_STATE_ONLINE storage_info:{pool_name:"/persist" storage_type:STORAGE_TYPE_INFO_EXT4 storage_state:STORAGE_STATUS_ONLINE disks:{disk_name:{name:"/dev/vda9" serial:"unknown"} status:STORAGE_STATUS_ONLINE smart_status:"failed"}} attestation_info:{state:ATTESTATION_STATE_COMPLETE} api_capability:API_CAPABILITY_APP_INSTANCE_NET_INTERFACE_CHANGE optional_capabilities:{hw_inventory_support:true} device_name:"edge-dev"
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live inspection of `/persist/status/nim/DevicePortConfigList/global.json` on the paused device shows the identical DPC-fallback oscillation already documented in the ledger: the new DPC entry (`TimePriority 02:24:27`, `PNAC.Enabled:false` — the disable/VLAN-move step for cycle 1) never succeeds (`LastSucceeded: 0001-01-01`), permanently failing with "All attempts to connect to adam.evetest:443 ... src IP 172.20.20.123 ... context deadline exceeded" because it can't reach the controller from the pre-auth VLAN. Meanwhile the stale prior DPC (`TimePriority 02:20:52`, still `PNAC.Enabled:true`, `CertEnrollmentProfileName:"new-scep-profile"`) remains `CurrentIndex:1` (active, last succeeded 02:23:08) because `dpcmanager` falls back to it when the new disable config fails — and that fallback config itself now fails PNAC with "No certificate enrollment status found for SCEP profile \"new-scep-profile\"" (matching the device status report), since the enrolled cert was already removed per the test's cycle 1. The live interface (`eth0`) is still on `172.20.10.123`, the authenticated VLAN, confirming the port never actually moved — exactly the simultaneous "PNAC disabled + pre-auth VLAN" condition the test polls for, hence the 300s timeout.
+
+This is a known, recurring issue per `live-ledger.md`: the same PNAC-disable/DPC-fallback oscillation first appeared 2026-11-17 (`TestPNACWithProxy`, run #22) and repeated 2026-11-18 and 2026-11-19 (run #24, #26) for both `TestPNACWithoutProxy` and `TestPNACWithProxy`, with the identical failure signature each time. Tonight's failure is the same mechanism reproducing again, not a new regression. No PR diff was provided for this run.
+#### TestPNACWithProxy
+
+##### Failure
+
+```
+
+Timed out after 300.000s.
+Expected to satisfy: cycle 1: enrolled certificate removed, PNAC disabled and the port moved to the pre-auth VLAN
+machineArch:"x86_64" cpuArch:"x86_64" platform:"x86_64" ncpu:4 memory:7797 storage:42022 powerCycleCounter:-1 minfo:{manufacturer:"QEMU" productName:"Standard PC (Q35 + ICH9, 2009)" version:"pc-q35-11.0" serialNumber:"QSXBCBGJ" UUID:"Not Settable" biosVendor:"EDK II" biosVersion:"unknown" biosReleaseDate:"02/02/2022"} assignableAdapters:{type:PhyIoNetEth name:"ethernet0" members:"ethernet0" usedByBaseOS:true ioAddressList:{macAddress:"da:39:78:d0:19:f2"} usage:PhyIoUsageMgmtAndApps} dns:{DNSservers:"10.16.16.25:53"} storageList:{device:"nbd6"} storageList:{device:"/persist/vector/data/buffer/v2/dev_upload_socket/buffer-data-1.dat"} storageList:{device:"nbd15"} storageList:{device:"nbd14"} storageList:{mountPath:"/persist/certs"} storageList:{mountPath:"/persist/log"} storageList:{mountPath:"/persist/vault"} storageList:{mountPath:"/persist/clear"} storageList:{mountPath:"/persist" total:42022 storageLocation:true} storageList:{mountPath:"/persist/vault/downloader"} storageList:{mountPath:"/config" total:5} storageList:{device:"vda1" total:2048 partitionLabel:"EFI System" partitionTypeGuid:"c12a7328-f81f-11d2-ba4b-00a0c93ec93b" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30051"} storageList:{device:"/persist/vector/data/buffer/v2/keep_sent_queue_socket/buffer-data-1.dat"} storageList:{device:"nbd13"} storageList:{mountPath:"/hostfs" total:279} storageList:{mountPath:"/persist/containerd-system-root"} storageList:{mountPath:"/persist/clear/volumes"} storageList:{mountPath:"/persist/checkpoint"} storageList:{device:"nbd4"} storageList:{mountPath:"/persist/vault/volumes"} storageList:{mountPath:"/persist/status"} storageList:{mountPath:"/persist/vault/containerd"} storageList:{device:"vda" total:65536} storageList:{device:"nbd10"} storageList:{mountPath:"/persist/patchEnvelopesUsageCache"} storageList:{mountPath:"/persist/netdump"} storageList:{mountPath:"/persist/newlog"} storageList:{device:"vda4" total:5 partitionLabel:"CONFIG" partitionTypeGuid:"13307e62-cd9c-4920-8f9b-91b45828b798" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30054"} storageList:{device:"nbd11"} storageList:{device:"nbd1"} storageList:{mountPath:"/persist/agentdebug"} storageList:{device:"nbd3"} storageList:{mountPath:"/persist/ingested"} storageList:{mountPath:"/persist/patchEnvelopesCache"} storageList:{mountPath:"/" total:3898} storageList:{mountPath:"/persist/nettrace"} storageList:{device:"vda3" total:10240 partitionLabel:"IMGB" partitionTypeGuid:"5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30053"} storageList:{device:"nbd8"} storageList:{device:"nbd12"} storageList:{device:"nbd2"} storageList:{device:"nbd9"} storageList:{mountPath:"/persist/tmp"} storageList:{mountPath:"/persist/memory-monitor/output"} storageList:{device:"vda2" total:10240 partitionLabel:"IMGA" partitionTypeGuid:"5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30052"} storageList:{device:"vda9" total:43001 partitionLabel:"P3" partitionTypeGuid:"5f24425a-2dfa-11e8-a270-7b663faccc2c" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30059"} storageList:{mountPath:"/persist/vault/verifier"} storageList:{device:"nbd7"} storageList:{mountPath:"/persist/pubsub-large"} storageList:{device:"nbd0"} storageList:{device:"nbd5"} bootTime:{seconds:1795143580} swList:{activated:true partitionLabel:"IMGA" partitionDevice:"/dev/vda2" partitionState:"active" status:INSTALLED shortVersion:"0.0.0-17.0-stable-dc1e7b55-kvm-amd64" downloadProgress:100 userStatus:UPDATED} swList:{partitionLabel:"IMGB" partitionDevice:"/dev/vda3" partitionState:"unused" status:INITIAL} HostName:"5e1e3c19-f344-4ab6-80b3-77678c625ab0" lastRebootReason:"NORMAL: controller reboot at EVE version 0.0.0-17.0-stable-dc1e7b55-kvm-amd64 at 2026-11-20T02:58:57.693101442Z\n" lastRebootTime:{seconds:1795143537 nanos:680535846} systemAdapter:{currentIndex:1 status:{version:1 key:"zedagent" timePriority:{seconds:1795144007 nanos:801621656} lastFailed:{seconds:1795144023 nanos:553619274} ports:{ifname:"eth0" name:"ethernet0" isMgmt:true free:true dhcpType:4 proxy:{} dns:{} err:{description:"All attempts to connect to https://adam.evetest:443/api/v2/edgedevice/ping failed: send via eth0 with src IP 172.20.20.123: Get \"https://adam.evetest:443/api/v2/edgedevice/ping\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)" timestamp:{seconds:1795144023 nanos:553493231} severity:SEVERITY_ERROR} usage:PhyIoUsageMgmtAndApps networkUUID:"c507a589-d22f-485e-8359-c2e457d3c7b9" config_source:{origin:NETWORK_CONFIG_ORIGIN_CONTROLLER submitted_at:{seconds:1795144007 nanos:801621656}}} lastError:"All attempts to connect to adam.evetest:443/api/v2/edgedevice/ping failed: send via eth0 with src IP 172.20.20.123: Get \"https://adam.evetest:443/api/v2/edgedevice/ping\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"} status:{version:1 key:"zedagent" timePriority:{seconds:1795143507 nanos:943530356} lastFailed:{seconds:1795144038 nanos:624522001} lastSucceeded:{seconds:1795143951 nanos:37184343} ports:{ifname:"eth0" name:"ethernet0" isMgmt:true free:true dhcpType:4 subnet:"172.20.10.0/24" domainname:"test." proxy:{} macAddr:"da:39:78:d0:19:f2" IPAddrs:"172.20.10.123" defaultRouters:"172.20.10.1" dns:{DNSservers:"10.16.16.25" DNSdomain:"test."} up:true err:{description:"No certificate enrollment status found for SCEP profile \"new-scep-profile\"" timestamp:{seconds:1795144040 nanos:960961952} severity:SEVERITY_ERROR} usage:PhyIoUsageMgmtAndApps networkUUID:"c507a589-d22f-485e-8359-c2e457d3c7b9" mtu:1500 config_source:{origin:NETWORK_CONFIG_ORIGIN_CONTROLLER submitted_at:{seconds:1795143507 nanos:943530356}} pnac_status:{enabled:true err:{description:"No certificate enrollment status found for SCEP profile \"new-scep-profile\"" timestamp:{seconds:1795144040 nanos:960961747} severity:SEVERITY_ERROR}}} lastError:"All attempts to connect to adam.evetest:443/api/v2/edgedevice/ping failed: send via eth0 with src IP 172.20.20.123: Get \"https://adam.evetest:443/api/v2/edgedevice/ping\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"}} restartCounter:1 HSMStatus:NOTFOUND dataSecAtRestInfo:{status:DATASEC_AT_REST_DISABLED info:"TPM is either absent or not in use" vaultList:{name:"Application Data Store" status:DATASEC_AT_REST_DISABLED vaultErr:{description:"TPM is either absent or not in use" timestamp:{seconds:1795143611 nanos:849866203} severity:SEVERITY_ERROR} pcrStatus:PCR_DISABLED unlock_method:VAULT_UNLOCK_METHOD_NO_TPM}} sec_info:{sha_root_ca:"4Y\x86AP\xa4\x0f\x11\xf5\x12\xf2\xd79\xb06\xa6\x87\xb7\x8eZ\xaf\xbf<\xd7B\x8f\x96^\xf2\x99\x1c\r"} configItemStatus:{configItems:{key:"app.allow.vnc" value:{value:"true"}} configItems:{key:"debug.default.loglevel" value:{value:"debug"}} configItems:{key:"debug.default.remote.loglevel" value:{value:"debug"}} configItems:{key:"debug.enable.console" value:{value:"true"}} configItems:{key:"debug.enable.ssh" value:{value:"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC+H1RQUqHjFBJgGpslC73XsLz8Fg5WpNPble9naKyWz1Um8D2bOtQK/yguCImPeBYcH7/73z8dtC6d+dT0UF26+o7Vh6RN/U2X/5nkaZr7oM5QwwZTsD7Nd2Szww9wrRhXvpV0aFgUBDM9BIF1qBQxLNd+Jp8uttrgF3zj/cm7+SXllG54sv8WFBMfTX7J8cQ1jxLyp/Sc6PXK0zBaVzZwhmCCmI6CIzJK6ahMRgXm2vSP6doYibkB3ETSskaCXSHxDiZoaQK2ZY+GqNZkUusbau43MXVPTiJknXqUcmXhQmwyMSltQ3G54jcgn4TDObSQnW7vGdLI7zIEAHnk5D1BmKzQUBh5aRLdhBtb6T3uvVtAqGgnXWKD+d2GjMiy4G31zfIlArvC3G8LxwsDoxQL0XKaFjnEmXIptVXC68zq+laIM8YGDDOCEc6RfczP7lA4p6rv0gQUfTNqy0P3a4ulvIDb4hET1Gkh+Azkuw1do9NIhXPxDBmPdkTnKwJv6XelpdCPCw1QT5o7WdOkUgorf/e03jGDnnn1QBWpSPB9gLB/oDmT/Gzm8tCYaq7ggwYUq1fSMBvnbFaclH1KVcC2Gwn8UPLt9HHa/mGywuISZYl3gy7ztlKyAjHEZH053U7I8OaMvv/CFo9aR4Teeb5848REZYAes+yJIz3lJV1K5Q=="}} configItems:{key:"newlog.allow.fastupload" value:{value:"true"}} configItems:{key:"scep.retry.interval" value:{value:"300" error:"***ParseItem: Error in parsing Item. Replacing it with existing Value. key: scep.retry.interval, value: 10, Existing Value: {Key:scep.retry.interval ItemType:1 IntValue:300 StrValue: BoolValue:false TriStateValue:0}. Err: value out of bounds. Parsed value: 10, Max: 3600, Min: 60"}} configItems:{key:"timer.config.interval" value:{value:"5"}} configItems:{key:"timer.deviceinfo.interval" value:{value:"30"}} configItems:{key:"timer.download.retry" value:{value:"60"}} configItems:{key:"timer.location.app.interval" value:{value:"20"}} configItems:{key:"timer.location.cloud.interval" value:{value:"300"}} configItems:{key:"timer.metric.interval" value:{value:"20"}} configItems:{key:"timer.port.testbetterinterval" value:{value:"60"}} configItems:{key:"timer.test.baseimage.update" value:{value:"60"}}} rebootConfigCounter:1 last_boot_reason:BOOT_REASON_REBOOT_CMD hardware_watchdog_present:true capabilities:{HWAssistedVirtualization:true IOVirtualization:true} state:ZDEVICE_STATE_ONLINE storage_info:{pool_name:"/persist" storage_type:STORAGE_TYPE_INFO_EXT4 storage_state:STORAGE_STATUS_ONLINE disks:{disk_name:{name:"/dev/vda9" serial:"unknown"} status:STORAGE_STATUS_ONLINE smart_status:"failed"}} attestation_info:{state:ATTESTATION_STATE_COMPLETE} api_capability:API_CAPABILITY_APP_INSTANCE_NET_INTERFACE_CHANGE optional_capabilities:{hw_inventory_support:true} device_name:"edge-dev"
+```
+
+##### Claude's conclusion
+
+This confirms the exact same DPC-fallback oscillation mechanism identified earlier in this run.
+
+**Root cause:** Live inspection of `/persist/status/nim/DevicePortConfigList/global.json` on the paused device shows the new DPC entry (`TimePriority 03:06:47`, `PNAC.Enabled:false` — cycle 1's disable/VLAN-move step) has `LastSucceeded: 0001-01-01` (never succeeded), failing with "All attempts to connect to adam.evetest:443 ... src IP 172.20.20.123 ... context deadline exceeded" because it can't reach the controller from the pre-auth VLAN. `dpcmanager` therefore falls back to the stale prior DPC (`TimePriority 02:58:27`, `CurrentIndex:1`, still `PNAC.Enabled:true`, `CertEnrollmentProfileName:"new-scep-profile"`), which itself fails PNAC with "No certificate enrollment status found for SCEP profile \"new-scep-profile\"" since the enrolled cert was already removed earlier in the test cycle. The device's live `eth0` IP (`172.20.10.123`) confirms the port never actually moved to the pre-auth VLAN.
+
+This is identical to the `TestPNACWithoutProxy` failure already diagnosed earlier in this same run (recorded in `live-investigation.md`) — same device image, same mechanism, same signature. Per `live-ledger.md`, this is a known, recurring issue in the PNAC-disable/DPC-fallback interaction, first observed 2026-11-17 (`TestPNACWithProxy`, run #22) and repeating 2026-11-18 and 2026-11-19 (run #24, #26) for both test variants. Tonight's failure (now the second instance in this run, third+ occurrence overall) is the same bug reproducing again, not a new regression.
+#### TestDeviceIPv6Connectivity
+
+##### Failure
+
+```
+
+Timed out after 300.001s.
+Expected to satisfy: DPC LastSucceeded has advanced
+machineArch:"x86_64" cpuArch:"x86_64" platform:"x86_64" ncpu:4 memory:7797 storage:42022 powerCycleCounter:-1 minfo:{manufacturer:"QEMU" productName:"Standard PC (Q35 + ICH9, 2009)" version:"pc-q35-11.0" serialNumber:"0C6LAZ4R" UUID:"Not Settable" biosVendor:"EDK II" biosVersion:"unknown" biosReleaseDate:"02/02/2022"} assignableAdapters:{type:PhyIoNetEth name:"ethernet0" members:"ethernet0" usedByBaseOS:true ioAddressList:{macAddress:"da:39:78:d0:19:f2"} usage:PhyIoUsageMgmtAndApps} dns:{DNSservers:"[fd23:131b:6500::1]:53"} storageList:{mountPath:"/persist/clear"} storageList:{mountPath:"/persist/checkpoint"} storageList:{mountPath:"/persist/agentdebug"} storageList:{device:"nbd6"} storageList:{device:"nbd0"} storageList:{mountPath:"/persist/clear/volumes"} storageList:{device:"nbd4"} storageList:{mountPath:"/persist/vault/containerd"} storageList:{mountPath:"/persist/containerd-system-root"} storageList:{mountPath:"/persist/certs"} storageList:{mountPath:"/hostfs" total:279} storageList:{device:"nbd13"} storageList:{mountPath:"/persist/patchEnvelopesCache"} storageList:{device:"vda4" total:5 partitionLabel:"CONFIG" partitionTypeGuid:"13307e62-cd9c-4920-8f9b-91b45828b798" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30054"} storageList:{mountPath:"/config" total:5} storageList:{device:"nbd9"} storageList:{mountPath:"/persist/log"} storageList:{device:"/persist/vector/data/buffer/v2/keep_sent_queue_socket/buffer-data-0.dat"} storageList:{device:"nbd8"} storageList:{mountPath:"/persist/vault/verifier"} storageList:{mountPath:"/persist/nettrace"} storageList:{device:"nbd1"} storageList:{mountPath:"/persist" total:42022 storageLocation:true} storageList:{device:"/persist/vector/data/buffer/v2/dev_upload_socket/buffer-data-0.dat"} storageList:{device:"nbd11"} storageList:{mountPath:"/persist/vault"} storageList:{mountPath:"/persist/newlog"} storageList:{device:"nbd2"} storageList:{device:"nbd10"} storageList:{mountPath:"/persist/patchEnvelopesUsageCache"} storageList:{mountPath:"/persist/vault/downloader"} storageList:{mountPath:"/persist/ingested"} storageList:{mountPath:"/persist/tmp"} storageList:{device:"nbd12"} storageList:{mountPath:"/persist/vault/volumes"} storageList:{device:"vda2" total:10240 partitionLabel:"IMGA" partitionTypeGuid:"5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30052"} storageList:{device:"vda" total:65536} storageList:{mountPath:"/persist/memory-monitor/output"} storageList:{device:"nbd7"} storageList:{device:"nbd5"} storageList:{mountPath:"/persist/pubsub-large"} storageList:{mountPath:"/persist/status"} storageList:{device:"vda3" total:10240 partitionLabel:"IMGB" partitionTypeGuid:"5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30053"} storageList:{device:"nbd3"} storageList:{mountPath:"/" total:3898} storageList:{mountPath:"/persist/netdump"} storageList:{device:"vda1" total:2048 partitionLabel:"EFI System" partitionTypeGuid:"c12a7328-f81f-11d2-ba4b-00a0c93ec93b" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30051"} storageList:{device:"nbd15"} storageList:{device:"nbd14"} storageList:{device:"vda9" total:43001 partitionLabel:"P3" partitionTypeGuid:"5f24425a-2dfa-11e8-a270-7b663faccc2c" partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30059"} bootTime:{seconds:1795148169} swList:{activated:true partitionLabel:"IMGA" partitionDevice:"/dev/vda2" partitionState:"active" status:INSTALLED shortVersion:"0.0.0-17.0-stable-dc1e7b55-kvm-amd64" downloadProgress:100 userStatus:UPDATED} swList:{partitionLabel:"IMGB" partitionDevice:"/dev/vda3" partitionState:"unused" status:INITIAL} HostName:"a9250306-2079-4e85-81ab-82ca1209359d" lastRebootReason:"NORMAL: First boot of device - at 2026-11-20T04:16:46.703261645Z" lastRebootTime:{seconds:1795148206 nanos:703261645} systemAdapter:{status:{version:1 key:"zedagent" timePriority:{seconds:1795148285 nanos:494835081} lastSucceeded:{seconds:1795148289 nanos:277035309} ports:{ifname:"eth0" name:"ethernet0" isMgmt:true free:true dhcpType:4 subnet:"fd3f:89fd:78c5::/64" proxy:{} macAddr:"da:39:78:d0:19:f2" IPAddrs:"fd3f:89fd:78c5:0:e73d:f953:f42f:7432" IPAddrs:"fe80::e29:d021:ffd1:13d7" defaultRouters:"fe80::445c:d8ff:feed:a6f2" dns:{DNSservers:"fd23:131b:6500::1"} up:true err:{timestamp:{seconds:1795148289 nanos:276550925}} usage:PhyIoUsageMgmtAndApps networkUUID:"9f4c0822-5f7e-4ef4-9e61-12d75ebbfe93" mtu:1500 config_source:{origin:NETWORK_CONFIG_ORIGIN_CONTROLLER submitted_at:{seconds:1795148285 nanos:494835081}} pnac_status:{}}}} HSMStatus:NOTFOUND dataSecAtRestInfo:{status:DATASEC_AT_REST_DISABLED info:"TPM is either absent or not in use" vaultList:{name:"Application Data Store" status:DATASEC_AT_REST_DISABLED vaultErr:{description:"TPM is either absent or not in use" timestamp:{seconds:1795148272 nanos:223325142} severity:SEVERITY_ERROR} pcrStatus:PCR_DISABLED unlock_method:VAULT_UNLOCK_METHOD_NO_TPM}} sec_info:{sha_root_ca:"4Y\x86AP\xa4\x0f\x11\xf5\x12\xf2\xd79\xb06\xa6\x87\xb7\x8eZ\xaf\xbf<\xd7B\x8f\x96^\xf2\x99\x1c\r"} configItemStatus:{configItems:{key:"app.allow.vnc" value:{value:"true"}} configItems:{key:"debug.default.loglevel" value:{value:"debug"}} configItems:{key:"debug.default.remote.loglevel" value:{value:"debug"}} configItems:{key:"debug.enable.console" value:{value:"true"}} configItems:{key:"debug.enable.ssh" value:{value:"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC+H1RQUqHjFBJgGpslC73XsLz8Fg5WpNPble9naKyWz1Um8D2bOtQK/yguCImPeBYcH7/73z8dtC6d+dT0UF26+o7Vh6RN/U2X/5nkaZr7oM5QwwZTsD7Nd2Szww9wrRhXvpV0aFgUBDM9BIF1qBQxLNd+Jp8uttrgF3zj/cm7+SXllG54sv8WFBMfTX7J8cQ1jxLyp/Sc6PXK0zBaVzZwhmCCmI6CIzJK6ahMRgXm2vSP6doYibkB3ETSskaCXSHxDiZoaQK2ZY+GqNZkUusbau43MXVPTiJknXqUcmXhQmwyMSltQ3G54jcgn4TDObSQnW7vGdLI7zIEAHnk5D1BmKzQUBh5aRLdhBtb6T3uvVtAqGgnXWKD+d2GjMiy4G31zfIlArvC3G8LxwsDoxQL0XKaFjnEmXIptVXC68zq+laIM8YGDDOCEc6RfczP7lA4p6rv0gQUfTNqy0P3a4ulvIDb4hET1Gkh+Azkuw1do9NIhXPxDBmPdkTnKwJv6XelpdCPCw1QT5o7WdOkUgorf/e03jGDnnn1QBWpSPB9gLB/oDmT/Gzm8tCYaq7ggwYUq1fSMBvnbFaclH1KVcC2Gwn8UPLt9HHa/mGywuISZYl3gy7ztlKyAjHEZH053U7I8OaMvv/CFo9aR4Teeb5848REZYAes+yJIz3lJV1K5Q=="}} configItems:{key:"newlog.allow.fastupload" value:{value:"true"}} configItems:{key:"timer.config.interval" value:{value:"5"}} configItems:{key:"timer.deviceinfo.interval" value:{value:"30"}} configItems:{key:"timer.download.retry" value:{value:"60"}} configItems:{key:"timer.location.app.interval" value:{value:"20"}} configItems:{key:"timer.location.cloud.interval" value:{value:"300"}} configItems:{key:"timer.metric.interval" value:{value:"20"}} configItems:{key:"timer.test.baseimage.update" value:{value:"60"}}} last_boot_reason:BOOT_REASON_FIRST hardware_watchdog_present:true capabilities:{HWAssistedVirtualization:true IOVirtualization:true} state:ZDEVICE_STATE_ONLINE storage_info:{pool_name:"/persist" storage_type:STORAGE_TYPE_INFO_EXT4 storage_state:STORAGE_STATUS_ONLINE disks:{disk_name:{name:"/dev/vda9" serial:"unknown"} status:STORAGE_STATUS_ONLINE smart_status:"failed"}} attestation_info:{state:ATTESTATION_STATE_COMPLETE error:{description:"[ATTEST] No escrow data" timestamp:{seconds:1795148282 nanos:50305536} severity:SEVERITY_ERROR}} api_capability:API_CAPABILITY_APP_INSTANCE_NET_INTERFACE_CHANGE optional_capabilities:{hw_inventory_support:true} device_name:"edge-dev"
+```
+
+##### Claude's conclusion
+
+No prior mention in the ledger — this is a new failure signature, not previously recorded.
+
+**Root cause:** `TestDeviceIPv6Connectivity` captures `firstSucceeded` from the DPC's `LastSucceeded` timestamp (04:18:09, confirmed in the embedded device-info and in `nim` logs — `DPC verify: DPC passed network test` for the `zedagent` DPC) and then waits up to exactly 5 minutes for it to advance. Live inspection after the pause shows `/persist/status/nim/DevicePortConfigList/global.json` now reports `LastSucceeded: 2026-11-20T04:23:09Z` — i.e. the next periodic connectivity probe did fire and succeed, but exactly 300s later, which is NIM's default `NetworkTestInterval` (`pkg/pillar/types/global.go:1226`, 5 minutes). The test's own `Eventually` budget (`timeout := 5 * time.Minute` in `evetest/tests/networking/ipv6_test.go:166`) is identical to that production retest cadence, so any normal scheduling/propagation jitter is enough for the real advance to land a moment after the test gives up — exactly what happened here (timed out at 300.001s while the device's actual next success landed at the ~300s mark). This looks like an inherent test-timing race rather than a device/networking regression, since the device itself is healthy (IPv6 connectivity, DNS, and controller reachability all working, confirmed live).
+
+This is unrelated to the `TestPNACWithoutProxy`/`TestPNACWithProxy` failures already diagnosed earlier in this run (those are a DPC-fallback/SCEP oscillation bug, not a timeout-vs-retest-interval race) and does not appear in `live-ledger.md`, so this is a new failure signature, not a previously known recurring issue — though the underlying race (test timeout == production retest interval) is likely to recur intermittently going forward unless the test's timeout is lengthened or decoupled from `NetworkTestInterval`.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestDNIDandBackupDNID
+
+##### Failure
+
+```
+
+vm2 did not fail back to its own designated node edge-dev3
+Expected
+    <string>: edge-dev1
+to equal
+    <string>: edge-dev3
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence shows the cluster is actually healthy right now: `kubectl get vmi,vmirs,pods -n eve-kube-app` confirms `vm2` is genuinely `Running`/`Ready` on **edge-dev3** (its correct designated node, VMI only ~69s old at investigation time). The failure is driven by a stale/erroneous status cached on **edge-dev1**: `app-info` for vm2 there shows its last published state is `RUNNING` (bootTime ~03:08:18) carrying an `appErr` of `"New volumeRefConfig ... not allowed unless purged"`. Live `zedmanager`/`domainmgr` logs on edge-dev1 explain this directly — at 03:07:49 edge-dev1 raced to locally reactivate vm2 (creating `VirtualMachineInstanceReplicaSet vm2-d56ef-1` with `nodeName:edge-dev1`) concurrently with edge-dev3 reclaiming the app, hit a volume-ownership conflict, and never corrected that cached status because once `zedkube` on edge-dev1 settled on `IsDNidNode=false ScheduledOnThisNode=false` (confirmed happening live at 03:13:26), `publishAppInstanceStatus` is permanently "suppressed" there, freezing the stale erroneous `RUNNING` snapshot.
+
+This exact assertion (`"vm2 did not fail back to its own designated node ... edge-dev1 vs edge-dev3"`) appeared once before in the ledger, on **2026-11-15 (run #19)** — four days before any other recurrence — and was diagnosed there as a test-harness gap: the final placement check reads per-device cached `AppInstanceStatus` and can pick a stale snapshot from the wrong device (`FindDeviceHostingApp` without `excludeDevNames`) instead of waiting for the currently-hosting node's fresh status. Today's failure shares that same harness-visible symptom, so it is a recurring/known issue, though the live device-side evidence here also shows a genuine backup-DNID race (a conflicting local reactivation attempt with a volume ownership error) that wasn't documented in the 2026-11-15 write-up, so it may be a deeper variant rather than an identical repeat. This run's other suite member, `TestVMIRSStrandedReplicasRecovery`, passed (empty artifact dir) and is unrelated. No PR diff was supplied for this investigation.
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.000s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+This is the same recurring `zedkube`/`zedmanager` failover-detection deadlock already tracked in the ledger for `TestNodeClusterResilienceSuite/TestVMAppPurgeDuringFailover`, now confirmed live for a 4th time. Per the harness log, `edge-dev1` (the original DNID node, app `failover-purge-app` / `cce76ad7-ddf1-4879-b55e-480fd3509c6c`) was powered off at 03:32:09 to force failover, the app failed over to `edge-dev3` at 03:39:45, and a purge was issued immediately after — then the test waited 900s for exactly one VMIRS and found none. Live inspection on `edge-dev3` confirms `kubectl get vmirs,vmi,pods -n eve-kube-app` shows **zero** objects (the namespace has nothing), and `zedbox` logs there show the same permanent-suppression loop seen before: `zedkube.checkAppsStatus` repeating `IsDNidNode=false ScheduledOnThisNode=false AppKubeStatus=NotInCluster`, `zedmanager.getKubeAppActivateStatus` logging `onTheDevice false` continuously from shortly after the purge through the present (still looping at 03:56, well past the 03:54:45 pause), and `publishAppInstanceStatus` permanently "suppressed" — so no new-generation domain config is ever handed to `domainmgr` and no VMIRS of any generation is created.
+
+This shares the exact same root cause as the earlier `TestVMAppPurgeDuringFailover` failure already analyzed in this run's `live-investigation.md` (the "zero VMIRS" variant, not the "stale generation-0 survives" variant) — same deadlock mechanism, different device names only (`edge-dev2`→`edge-dev3` this time). It is **not** related to this run's `TestDNIDandBackupDNID` failure (that was a test-harness stale-cache read on a healthy backend).
+
+Per `live-ledger.md`, this is a known/recurring issue: first seen 2026-11-15 (run #19), then 2026-11-17 (run #22), 2026-11-18 (run #23), and now 2026-11-20 — four separate nightly occurrences of this same `checkAppsFailover`/suppressed-`publishAppInstanceStatus` deadlock, always in this same test. No PR diff was supplied for this investigation.
+
+### TestSecuritySuite: failure analysis
+
+#### TestAppVTPMIdentitySurvivesReboots
+
+##### Failure
+
+```
+
+Timed out after 306.789s.
+The function passed to Eventually failed at /evetest/tests/security/vtpm_helpers_test.go:127 with:
+read guest TPM NV marker: 
+Unexpected error:
+    <*fmt.wrapError | 0x27313c1a21e0>: 
+    unable to reach app "c132e97d-25fa-4b90-b713-502bda2ac8fc" SSH on device "edge-dev": no reachable endpoint among [172.20.20.123:2222]
+    {
+        msg: "unable to reach app \"c132e97d-25fa-4b90-b713-502bda2ac8fc\" SSH on device \"edge-dev\": no reachable endpoint among [172.20.20.123:2222]",
+        err: <*errors.errorString | 0x27313b80f240>{
+            s: "no reachable endpoint among [172.20.20.123:2222]",
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+Confirmed, same code path as before.
+
+**Root cause:** After the device reboot completed and came back online at 02:49:16, `zedmanager`'s `checkLowPriorityApps` ran before `/persist/vault/active-app-instance-config/` existed (02:49:12.268: `"failed to load active app instance UUIDs: ... no such file or directory"`), so it marked the single app `vtpm-identity` as a "low priority app" even though it's the only/active app. Since `activeMap` contains only itself, `runningCount >= len(activeMap)` can never be satisfied self-referentially, so the only way out is the hardcoded `waitForAppsToStartTimeout = 5 * time.Minute` fallback (`pkg/pillar/cmd/zedmanager/zedmanager.go:41,702`). The app's domain is consequently not started until 02:54:17 — exactly 5:01 after the device reported online — which lands 2 seconds past the test's 306.789s `Eventually` budget, so the SSH port-forward to `172.20.20.123:2222` genuinely had no reachable endpoint during the whole wait.
+
+This is the identical mechanism (same code, same gating logic, same ~5-minute gap) documented in this ledger for **2026-11-18, run #24**, on the same `TestAppVTPMIdentitySurvivesReboots` test — so this is a known, recurring issue, now confirmed on its second occurrence (2026-11-18 → 2026-11-20), not a new bug. No other failure in tonight's run shares this root cause (it's the sole failure in `TestSecuritySuite`). No PR diff was provided for this investigation, so no relatedness verdict is given.
+
+### TestUpgradeSuite: failure analysis
+
+#### TestEVEUpgradeKVMtoKVM
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to setup device "edge-dev" for installation: failed to upload disk image "/root/.evetest/images/eve-64f61083-edge-dev/disk.qcow2" to storage "local": Post "https://10.208.13.184:8006/api2/json/nodes/farfalle/storage/local/upload": write tcp 10.208.13.250:44942->10.208.13.184:8006: write: broken pipe
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence confirms the EVE device was never created: `evetest eve info` returns "no EVE devices are currently onboarded" and `evetest sdn status` returns "SDN client is not initialized" — teardown had already run after the failure, consistent with the `gotest.json` trace showing the Proxmox VM (`qmcreate`) for device `edge-dev` was never even issued because the disk-image upload step failed first.
+
+From `gotest.json`: the broker made 3 attempts to upload `disk.qcow2` to Proxmox node `farfalle`'s `local` storage via `https://10.208.13.184:8006/api2/json/nodes/farfalle/storage/local/upload` — attempt 1 failed with `unexpected end of JSON input`, attempts 2 and 3 both failed with `write: broken pipe` from the test runner (`10.208.13.250`) to the Proxmox API host (`10.208.13.184:8006`). This is a connection being dropped mid-upload by (or on the path to) the Proxmox API endpoint, not an EVE/pillar code path — no EVE image ever booted, so there's no zedbox/pillar state to inspect.
+
+This isn't the same failure as any earlier entry in this run (only one suite failure this run). Per the ledger, the `farfalle` Proxmox host has a recurring history of host-side provisioning instability — a `qmcreate` storage-lock timeout (`can't lock file '.../pve-storage-farfalle-pve-zfs-pool'`) and a `"no worker upid"` task-spawn failure, both logged as Proxmox-host resource-contention issues rather than EVE defects. Today's failure is a new specific symptom (broken pipe/truncated JSON during disk upload) of that same broader class — infrastructure instability on the `farfalle` Proxmox host/network path — but this exact error text doesn't appear verbatim in the ledger, so it's a first occurrence of this particular symptom rather than a tracked recurring one.
+
+No PR diff was supplied for this investigation, so no relatedness judgment is given.
+#### TestEVEUpgradeKubevirtToKubevirt
+
+##### Failure
+
+```
+timed out after 10m0.020383144s (excluding download) waiting for app "0533c808-24c0-44d5-b1ff-5eb06031613f" (upgrade-test-app) on device "edge-dev" to reach RUNNING state (last state: HALTING)
+```
+
+##### Claude's conclusion
+
+Still stuck in HALTING ~9 minutes later, same as at test-timeout time. This confirms the app is genuinely stalled, not just slow to retry within the window.
+
+I now have enough evidence to write the conclusion.
+
+**Root cause:** The upgrade-test-app got stuck because, during the post-baseos-upgrade reboot, kubevirt's `virt-api` pod was mid-restart (it shows `RESTARTS: 1/2/3 (11m ago)` on all kubevirt control-plane pods, matching the reboot timing) when domainmgr tried to recreate the VMIRS for the app's new boot — the webhook call `POST https://virt-api.kubevirt.svc:443/virtualmachinereplicaset-validate` hit `connect: connection refused` because the `virt-api` ClusterIP (`10.43.246.147`) had no healthy backend at that instant, driving the app into `HALTING` at 03:06:53 UTC. Unlike last night's occurrence of this exact failure, the app never recovered: `virt-api` is now `1/1 Running` and its service has a healthy endpoint again, yet `upgrade-test-app` is still stuck in `HALTING` (confirmed ~9 minutes after the error, same as at test-timeout) with `kubectl get vmi,vm,vmirs` returning "No resources found" — so whatever retry path handles this webhook failure isn't re-driving the VMIRS/VMI creation even though the webhook is reachable again.
+
+This is the same test (`TestEVEUpgradeKubevirtToKubevirt`), the same failure signature (`HALTING` after the 10-minute `RUNNING`-wait timeout), and the same underlying mechanism (kubevirt `virt-api` webhook unreachable right after the post-upgrade reboot) documented in last night's ledger entry (2026-11-19, run #26) — this is a recurring, known issue, first seen 2026-11-19, and it reproduced again tonight. The one difference from last night is that in that prior run the app eventually recovered to `RUNNING` ~2 minutes after the timeout, whereas tonight it remains stuck even longer after — consistent with the same root cause but a slightly worse/stalled recovery this time.
+#### TestThreeNodesUpgrade
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev1 edge-dev2 edge-dev3]: rpc error: code = Unknown desc = failed to setup device "edge-dev3" for installation: failed waiting for VM 108 creation: task failed on Proxmox: unable to create VM 108 - cannot import from 'local:import/ev-eve-64f61083-edge-dev3-1.qcow2' - can't lock file '/var/lock/pve-manager/pve-storage-farfalle-pve-zfs-pool' - got timeout (task UPID:farfalle:003E5DC1:83151573:6AFFBBDA:qmcreate:108:root@pam:)
+```
+
+##### Claude's conclusion
+
+This confirms the pattern: three VM creations (edge-dev1/2/3) were kicked off nearly simultaneously at 03:17:34, and the one for `edge-dev3` (VM 108, `qmcreate`) failed because it couldn't acquire the `pve-storage-farfalle-pve-zfs-pool` lock within Proxmox's internal timeout — concurrent disk imports contending for the same ZFS pool lock on the `farfalle` host, before EVE ever booted (`evetest eve info`/`sdn status` confirm no device/SDN state exists, consistent with teardown having already run post-failure).
+
+**Root cause:** This is a Proxmox host-side resource-contention failure, not an EVE/pillar defect — `edge-dev3`'s `qmcreate:108` disk import timed out waiting for the `/var/lock/pve-manager/pve-storage-farfalle-pve-zfs-pool` lock while `edge-dev1`/`edge-dev2`'s installers were concurrently running on the same host, exactly the kind of multi-VM provisioning race the ledger has seen before. This does not share a root cause with the earlier `TestEVEUpgradeKVMtoKVM`/`TestEVEUpgradeKubevirtToKubevirt` failures already investigated in this run (those were an upload broken-pipe and a kubevirt webhook stall, respectively) — this is a distinct, third failure in the same run. Per the ledger, this is a known/recurring issue class on the `farfalle` host: the identical lock file and error text (`can't lock file '.../pve-storage-farfalle-pve-zfs-pool' - got timeout`) was seen on 2026-11-17 for `TestPcibackErrorSuite/TestReportWarningsOnly`, and a related `"no worker upid - start worker failed"` Proxmox task-spawn failure under similarly concurrent multi-VM creation was seen in an earlier `TestNodeClusterSuite` entry — both pointing to `farfalle` struggling with concurrent `qmcreate`/storage-import operations, a recurring theme rather than a new bug. No PR diff was supplied, so no relatedness judgment is given.
+
 ## [2026-11-19 -- 0.0.0-17.0-stable-53602206 (run #26)](https://github.com/lf-edge/eve/actions/runs/44441046705)
 
 [Full report](https://lf-edge.github.io/eve/test/17.0-stable/runs/26/)
