@@ -301,7 +301,7 @@ QEMU_OPTS_NO_DISPLAY=-display none
 QEMU_OPTS_VGA_DISPLAY_amd64=-vga std
 QEMU_OPTS_VGA_DISPLAY_arm64=-device virtio-gpu-pci -usb -device usb-ehci,id=ehci -device usb-kbd,bus=ehci.0
 QEMU_OPTS_VGA_DISPLAY_riscv64=-vga std
-QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 4  $(QEMU_OPTS_BIOS) \
+QEMU_OPTS_COMMON= -m $(QEMU_MEMORY) -smp 8  $(QEMU_OPTS_BIOS) \
         -pidfile $(QEMU_PID_FILE) \
         -serial mon:stdio      \
         -global ICH9-LPC.noreboot=false -watchdog-action reset \
@@ -544,9 +544,9 @@ test: $(LINUXKIT) pkg/pillar | $(DIST)
 	make -C pkg/alpine/dnstest test
 	make -C pkg/debug test
 	make -C pkg/vtpm test
-	make -C pkg/kube test
 	go test -C pkg/newlog/cmd/ -v -race
 	go test -C pkg/edgeview/src/ -v -race
+	go test -C pkg/kube/kube-init/ -v -race ./...
 	$(QUIET): $@: Succeeded
 
 # The bpftrace-compiler tests boot QEMU for both amd64 and arm64, so they need
