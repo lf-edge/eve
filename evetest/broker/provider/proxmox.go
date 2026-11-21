@@ -645,7 +645,7 @@ func (p *ProxmoxProvider) removeLeftoverDevice(
 func (p *ProxmoxProvider) removeFailedVM(ctx context.Context, log *logrus.Entry,
 	node *proxmox.Node, vmID int) {
 	removed, err := retryProxmoxCall(ctx, log, fmt.Sprintf("remove VM %d of failed setup", vmID),
-		func() (bool, error) { return p.removeVM(ctx, log, node, vmID) })
+		func(ctx context.Context) (bool, error) { return p.removeVM(ctx, log, node, vmID) })
 	switch {
 	case err != nil:
 		log.Warnf("Failed to remove VM %d of failed setup, leaking it: %v", vmID, err)
@@ -732,7 +732,9 @@ func (p *ProxmoxProvider) resolveDeviceNetworks(
 func (p *ProxmoxProvider) destroyDeviceWithRetry(
 	ctx context.Context, log *logrus.Entry, dev *proxmoxDevice) error {
 	_, err := retryProxmoxCall(ctx, log, fmt.Sprintf("failed to destroy device %q", dev.name),
-		func() (struct{}, error) { return struct{}{}, p.destroyDevice(ctx, log, dev) })
+		func(ctx context.Context) (struct{}, error) {
+			return struct{}{}, p.destroyDevice(ctx, log, dev)
+		})
 	return err
 }
 
@@ -813,7 +815,7 @@ func (p *ProxmoxProvider) PowerOnDevice(ctx context.Context, name string) error 
 	}
 
 	err = p.setVMPowerState(ctx, dev, "start", vmRunning,
-		func(vm *proxmox.VirtualMachine) error {
+		func(ctx context.Context, vm *proxmox.VirtualMachine) error {
 			p.sdnApplyMutex.RLock()
 			defer p.sdnApplyMutex.RUnlock()
 			task, err := vm.Start(ctx)
@@ -847,7 +849,7 @@ func (p *ProxmoxProvider) PowerOffDevice(ctx context.Context, name string) error
 		return err
 	}
 	err = p.setVMPowerState(ctx, dev, "stop", vmStopped,
-		func(vm *proxmox.VirtualMachine) error {
+		func(ctx context.Context, vm *proxmox.VirtualMachine) error {
 			task, err := vm.Stop(ctx)
 			if err != nil {
 				return err
@@ -874,7 +876,7 @@ func (p *ProxmoxProvider) ShutdownDevice(ctx context.Context, name string) error
 		return err
 	}
 	err = p.setVMPowerState(ctx, dev, "shut down", vmStopped,
-		func(vm *proxmox.VirtualMachine) error {
+		func(ctx context.Context, vm *proxmox.VirtualMachine) error {
 			task, err := vm.Shutdown(ctx)
 			if err != nil {
 				return err
@@ -908,7 +910,7 @@ func (p *ProxmoxProvider) RebootDevice(ctx context.Context, name string) error {
 		return err
 	}
 	err = p.setVMPowerState(ctx, dev, "reset", nil,
-		func(vm *proxmox.VirtualMachine) error {
+		func(ctx context.Context, vm *proxmox.VirtualMachine) error {
 			task, err := vm.Reset(ctx)
 			if err != nil {
 				return err
@@ -933,10 +935,10 @@ func vmStopped(vm *proxmox.VirtualMachine) bool { return vm.Status == "stopped" 
 // that a retry cannot fix.
 func (p *ProxmoxProvider) setVMPowerState(ctx context.Context, dev *proxmoxDevice,
 	desc string, inTarget func(*proxmox.VirtualMachine) bool,
-	op func(*proxmox.VirtualMachine) error) error {
+	op func(context.Context, *proxmox.VirtualMachine) error) error {
 	log := logger.FromContext(ctx)
 	_, err := retryProxmoxCall(ctx, log, fmt.Sprintf("%s VM %d of device %q", desc, dev.vmID, dev.name),
-		func() (struct{}, error) {
+		func(ctx context.Context) (struct{}, error) {
 			vm, err := p.getVM(ctx, dev.vmID)
 			if err != nil {
 				return struct{}{}, err
@@ -944,7 +946,7 @@ func (p *ProxmoxProvider) setVMPowerState(ctx context.Context, dev *proxmoxDevic
 			if inTarget != nil && inTarget(vm) {
 				return struct{}{}, nil
 			}
-			return struct{}{}, op(vm)
+			return struct{}{}, op(ctx, vm)
 		})
 	return err
 }
@@ -1304,7 +1306,7 @@ func (p *ProxmoxProvider) removeOrphanedVMs(
 			continue
 		}
 		_, err := retryProxmoxCall(ctx, log, fmt.Sprintf("remove orphaned VM %d", vmID),
-			func() (bool, error) { return p.removeVM(ctx, log, node, vmID) })
+			func(ctx context.Context) (bool, error) { return p.removeVM(ctx, log, node, vmID) })
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to remove orphaned VM %d (%q): %w",
 				vmID, vm.Name, err))
@@ -1507,7 +1509,9 @@ func (p *ProxmoxProvider) lookupVM(
 	}
 	vm, err := retryProxmoxCall(ctx, logger.FromContext(ctx),
 		fmt.Sprintf("get VM %d for device %q", dev.vmID, name),
-		func() (*proxmox.VirtualMachine, error) { return p.getVM(ctx, dev.vmID) })
+		func(ctx context.Context) (*proxmox.VirtualMachine, error) {
+			return p.getVM(ctx, dev.vmID)
+		})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get VM %d for device %q: %w",
 			dev.vmID, name, err)
@@ -1877,7 +1881,7 @@ func diskOptions(storage string, diskRefs []string) []proxmox.VirtualMachineOpti
 func (p *ProxmoxProvider) uploadWithRetry(ctx context.Context, log *logrus.Entry,
 	storage *proxmox.Storage, path, uploadName string) (*proxmox.Task, error) {
 	desc := fmt.Sprintf("failed to upload %q to storage %q", path, p.conf.ImportStorage)
-	return retryProxmoxCall(ctx, log, desc, func() (*proxmox.Task, error) {
+	return retryProxmoxCall(ctx, log, desc, func(context.Context) (*proxmox.Task, error) {
 		return storage.UploadWithName("import", path, uploadName)
 	})
 }
@@ -1887,7 +1891,9 @@ func (p *ProxmoxProvider) uploadWithRetry(ctx context.Context, log *logrus.Entry
 func (p *ProxmoxProvider) getStorageWithRetry(ctx context.Context, log *logrus.Entry,
 	node *proxmox.Node, name string) (*proxmox.Storage, error) {
 	return retryProxmoxCall(ctx, log, fmt.Sprintf("failed to get storage %q", name),
-		func() (*proxmox.Storage, error) { return node.Storage(ctx, name) })
+		func(ctx context.Context) (*proxmox.Storage, error) {
+			return node.Storage(ctx, name)
+		})
 }
 
 // uploadDiskImages uploads each disk image to the import storage and returns the
@@ -2477,32 +2483,64 @@ func permanent(err error) error {
 	return permanentError{err: err}
 }
 
+// proxmoxMinAttemptTime is the least time attemptContext plans for an attempt
+// of a call with a deadline. It is a variable only so that tests can shorten
+// it.
+var proxmoxMinAttemptTime = 30 * time.Second
+
+// attemptContext returns the context for the first of at most attemptsLeft
+// attempts, and whether it is the last one. Without a deadline on ctx, that is
+// ctx itself. With one, the time left until it, minus the pauses before the
+// remaining attempts, is split equally among the attempts, and an attempt that
+// fails early leaves its unused time to the next ones. When the time left does
+// not give each attempt proxmoxMinAttemptTime, fewer attempts are planned: an
+// attempt cut short by a tiny share only wastes the time, and may still leave
+// behind what the call started. The last attempt gets all the time left.
+func attemptContext(ctx context.Context, attemptsLeft int) (
+	context.Context, context.CancelFunc, bool) {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		attemptCtx, cancel := context.WithCancel(ctx)
+		return attemptCtx, cancel, attemptsLeft <= 1
+	}
+	left := time.Until(deadline)
+	for ; attemptsLeft > 1; attemptsLeft-- {
+		pauses := time.Duration(attemptsLeft-1) * proxmoxRetryDelay
+		share := (left - pauses) / time.Duration(attemptsLeft)
+		if share >= proxmoxMinAttemptTime {
+			attemptCtx, cancel := context.WithTimeout(ctx, share)
+			return attemptCtx, cancel, false
+		}
+	}
+	attemptCtx, cancel := context.WithCancel(ctx)
+	return attemptCtx, cancel, true
+}
+
 // retryProxmoxCall calls fn up to proxmoxRetryMaxAttempts times, retrying on
 // failure with a proxmoxRetryDelay pause in between, unless fn marks the
 // failure permanent. desc names the operation, for the warning logged between
 // attempts.
-func retryProxmoxCall[T any](
-	ctx context.Context, log *logrus.Entry, desc string, fn func() (T, error)) (T, error) {
-	var result T
-	var err error
-	for attempt := 1; attempt <= proxmoxRetryMaxAttempts; attempt++ {
-		result, err = fn()
-		if err == nil {
-			return result, nil
-		}
-		if errors.As(err, new(permanentError)) {
+//
+// If ctx has a deadline, each attempt gets an equal share of the time left
+// for it and the attempts after it, so that an attempt that hangs until the
+// deadline does not leave no time for the retries, and fewer attempts are made
+// when the time left is short (see attemptContext).
+func retryProxmoxCall[T any](ctx context.Context, log *logrus.Entry, desc string,
+	fn func(ctx context.Context) (T, error)) (T, error) {
+	for attempt := 1; ; attempt++ {
+		attemptCtx, cancel, last := attemptContext(ctx, proxmoxRetryMaxAttempts-attempt+1)
+		result, err := fn(attemptCtx)
+		cancel()
+		if err == nil || last || errors.As(err, new(permanentError)) {
 			return result, err
 		}
-		if attempt < proxmoxRetryMaxAttempts {
-			log.Warnf("Attempt %d/%d: %s (will retry): %v",
-				attempt, proxmoxRetryMaxAttempts, desc, err)
-			select {
-			case <-ctx.Done():
-				var zero T
-				return zero, ctx.Err()
-			case <-time.After(proxmoxRetryDelay):
-			}
+		log.Warnf("Attempt %d/%d: %s (will retry): %v",
+			attempt, proxmoxRetryMaxAttempts, desc, err)
+		select {
+		case <-ctx.Done():
+			var zero T
+			return zero, ctx.Err()
+		case <-time.After(proxmoxRetryDelay):
 		}
 	}
-	return result, err
 }
