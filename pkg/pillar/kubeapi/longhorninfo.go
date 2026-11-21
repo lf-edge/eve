@@ -7,6 +7,7 @@ package kubeapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"strconv"
@@ -21,6 +22,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ktypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -690,6 +692,30 @@ func longhornReplicaDelete(lhRepName string) error {
 	return err
 }
 
+// lhSpecMergePatch returns a JSON merge patch that sets only the given
+// spec fields. pillar's Longhorn types can be older than the Longhorn
+// it runs against; a full-object Update would send every field those
+// types lack as absent and so clear it. A patch names only the fields
+// pillar means to change.
+func lhSpecMergePatch(spec map[string]interface{}) ([]byte, error) {
+	return json.Marshal(map[string]interface{}{"spec": spec})
+}
+
+// lhVolumeNodePatch is the patch longhornVolumeSetNode applies to a
+// volume. Longhorn's webhook rejects any update that leaves a volume
+// without a backup target, which volumes migrated from Longhorn
+// before v1.7 have, so the default target is set along with the node.
+func lhVolumeNodePatch(vol *lhv1beta2.Volume, kubeNodeName string) ([]byte, error) {
+	spec := map[string]interface{}{"nodeID": kubeNodeName}
+	if vol.Spec.BackupTargetName == "" {
+		spec["backupTargetName"] = "default"
+	}
+	return lhSpecMergePatch(spec)
+}
+
+// longhornVolumeSetNode points a volume and its engines at kubeNodeName.
+// Volume and engine status belong to longhorn-manager, which updates
+// them through the status subresource once the spec moves.
 func longhornVolumeSetNode(lhVolName string, kubeNodeName string) error {
 	apiExists, err := longhornAPIExists()
 	if err != nil {
@@ -709,42 +735,39 @@ func longhornVolumeSetNode(lhVolName string, kubeNodeName string) error {
 		return err
 	}
 
-	// First fix the logical volume object nodeID
-	vol, err := lhClient.LonghornV1beta2().Volumes(longhornNamespace).Get(context.Background(), lhVolName, metav1.GetOptions{})
+	volumes := lhClient.LonghornV1beta2().Volumes(longhornNamespace)
+	vol, err := volumes.Get(context.Background(), lhVolName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
-	vol.Spec.NodeID = kubeNodeName
-	vol.Status.OwnerID = kubeNodeName
-	vol.Status.CurrentNodeID = kubeNodeName
-	// Volumes migrated from longhorn < v1.7 may have an empty BackupTargetName.
-	// The v1.9.x webhook validator rejects any Update() with an empty BackupTargetName,
-	// so set it to the well-known default if unset.
-	if vol.Spec.BackupTargetName == "" {
-		vol.Spec.BackupTargetName = "default"
-	}
-	_, err = lhClient.LonghornV1beta2().Volumes(longhornNamespace).Update(context.Background(), vol, metav1.UpdateOptions{})
+	volPatch, err := lhVolumeNodePatch(vol, kubeNodeName)
 	if err != nil {
 		return err
+	}
+	if _, err := volumes.Patch(context.Background(), lhVolName,
+		ktypes.MergePatchType, volPatch, metav1.PatchOptions{}); err != nil {
+		return fmt.Errorf("patch volume %s: %w", lhVolName, err)
 	}
 
-	// Next fix the volume's engine nodeID
-	engines, err := lhClient.LonghornV1beta2().Engines(longhornNamespace).List(context.Background(), metav1.ListOptions{})
+	engines := lhClient.LonghornV1beta2().Engines(longhornNamespace)
+	engineList, err := engines.List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		return nil
+		return fmt.Errorf("list engines: %w", err)
 	}
-	for _, eng := range engines.Items {
+	engPatch, err := lhSpecMergePatch(map[string]interface{}{"nodeID": kubeNodeName})
+	if err != nil {
+		return err
+	}
+	for _, eng := range engineList.Items {
 		if eng.Spec.VolumeName != lhVolName {
 			continue
 		}
-		eng.Spec.NodeID = kubeNodeName
-		_, err := lhClient.LonghornV1beta2().Engines(longhornNamespace).Update(context.Background(), &eng, metav1.UpdateOptions{})
-		if err != nil {
-			return err
+		if _, err := engines.Patch(context.Background(), eng.Name,
+			ktypes.MergePatchType, engPatch, metav1.PatchOptions{}); err != nil {
+			return fmt.Errorf("patch engine %s: %w", eng.Name, err)
 		}
 	}
-
-	return err
+	return nil
 }
 
 // SetLonghornNodeDiskReserved sets StorageReserved on every disk of the named Longhorn node.

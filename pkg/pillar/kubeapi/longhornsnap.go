@@ -13,6 +13,7 @@ import (
 	"github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ktypes "k8s.io/apimachinery/pkg/types"
 )
 
 // eveRecurringJobName is the cluster-scoped name of the Longhorn RecurringJob EVE manages.
@@ -84,13 +85,17 @@ func SetLonghornRecurringSnapshot(cron string) (bool, error) {
 	if existing.Spec.Cron == cron {
 		return true, nil
 	}
-	// Only Cron is patched; Retain, Concurrency, Groups, and Task are left as-is.
-	// EVE does not re-assert those fields on update: the cron schedule is the only
-	// operator-controlled variable, and preserving other fields avoids overwriting
-	// any manual tuning an operator may have applied directly to the job.
-	existing.Spec.Cron = cron
-	if _, err := jobs.Update(lhCtx, existing, metav1.UpdateOptions{}); err != nil {
-		return false, fmt.Errorf("SetLonghornRecurringSnapshot: update: %v", err)
+	// Only Cron is patched; every other field is left as-is. The cron schedule
+	// is the only operator-controlled variable, and a patch keeps any manual
+	// tuning applied directly to the job, including fields newer than pillar's
+	// Longhorn types.
+	patch, err := lhSpecMergePatch(map[string]interface{}{"cron": cron})
+	if err != nil {
+		return false, fmt.Errorf("SetLonghornRecurringSnapshot: build patch: %v", err)
+	}
+	if _, err := jobs.Patch(lhCtx, eveRecurringJobName, ktypes.MergePatchType,
+		patch, metav1.PatchOptions{}); err != nil {
+		return false, fmt.Errorf("SetLonghornRecurringSnapshot: patch: %v", err)
 	}
 	return true, nil
 }
