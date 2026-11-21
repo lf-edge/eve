@@ -202,6 +202,8 @@ func TestBootstrapSuite(test *testing.T) {
 //   - TestMgmtTrafficRoutedViaApp -- EVE's own device-management traffic
 //     routed through an app-based NAT gateway, surviving a full reboot.
 //   - TestDeviceIPv6Connectivity -- IPv6-only device side (stub scenario).
+//   - TestDeviceIPv6StableAddresses -- IPv6 addresses and DHCPv6 DUID
+//     unchanged across a reboot.
 //   - TestDeviceNTPConfig -- per-port NTP server aggregation (DHCP + static,
 //     exclusive-override) and chronyd synchronization against real public
 //     NTP servers.
@@ -260,6 +262,9 @@ func TestDeviceConnectivitySuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestDeviceIPv6Connectivity,
+		},
+		evetest.TestCase{
+			Test: TestDeviceIPv6StableAddresses,
 		},
 		evetest.TestCase{
 			Test: TestDeviceNTPConfig,
