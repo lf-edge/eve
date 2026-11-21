@@ -130,6 +130,35 @@ In practice, to date, these have been the directories:
 - Temporary cache for images undergoing verification: `/persist/downloads/{appImg.obj,baseOs.obj}/verifier`
 - Verified: `/persist/downloads/{appImg.obj,baseOs.obj}/verified`
 
+### Content delivered as an OCI archive
+
+Content that does not come from a container registry is downloaded as a single
+file. Normally that file is the artifact itself, for example a disk image or a
+base OS root filesystem, and volumemgr wraps it in a manifest of its own so
+that it can be stored in the CAS as an image.
+
+If the verified file is an [OCI image-layout](https://github.com/opencontainers/image-spec/blob/main/image-layout.md)
+tar archive, volumemgr instead loads the image the archive holds, and the
+content tree ends up the same as if that image had been pulled from a registry.
+This lets a datastore that can only serve single files, such as plain HTTPS or
+S3, deliver an image that carries more than one artifact.
+
+- The archive is recognised by its content after verification. No field in
+  the content tree config selects this, and it applies to any content tree.
+- The archive must hold exactly one image for the architecture of the device.
+  Manifests for other platforms make the load fail, with the error reported on
+  the `ContentTreeStatus`.
+- The blobs are streamed from the archive into the CAS by the ingest worker.
+  The content tree then references the blobs of the image, and the archive
+  file is deleted.
+- The image in the CAS is labelled `eve-oci-archive-sha256` with the sha256 of
+  the archive. After a reboot the content tree config still names that sha256,
+  so volumemgr uses the label to find the image and does not download the
+  archive again.
+
+Such an archive can be produced with
+`docker buildx build --output type=oci,dest=image.tar`.
+
 ### Constructing volumes
 
 For a OriginTypeDownload which is not a container, this consist of creating a read/write image in /persist/img through a simple copy.

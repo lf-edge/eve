@@ -22,6 +22,18 @@ type BlobInfo struct {
 	Labels map[string]string
 }
 
+// ImageLayer describes one layer of an image as recorded in its manifest.
+type ImageLayer struct {
+	// Digest of the layer blob, format <algo>:<hash>.
+	Digest string
+	// MediaType of the layer.
+	MediaType string
+	// Size of the layer blob in bytes.
+	Size int64
+	// Annotations on the layer descriptor in the manifest.
+	Annotations map[string]string
+}
+
 // CAS provides methods to interact with CAS clients
 // Context handling should be taken care by the underlying implementor.
 //
@@ -75,6 +87,11 @@ type CAS interface {
 	// GetImageHash: returns a blob hash of format <algo>:<hash> (currently supporting only sha256:<hash>) which the given 'reference' is pointing to.
 	// Returns error if the given 'reference' is not found.
 	GetImageHash(reference string) (string, error)
+	// GetImageLayers returns the layers of the manifest that 'reference' points
+	// to, in manifest order. If the reference points at a multi-manifest index,
+	// the platform-matching manifest is used (falling back to the first).
+	// Returns error if the reference is not found or its manifest cannot be read.
+	GetImageLayers(reference string) ([]ImageLayer, error)
 	// GetImageLabels  returns the labels set on the image.
 	// Returns error if the given reference is not found
 	GetImageLabels(reference string) (map[string]string, error)
@@ -137,6 +154,15 @@ type CAS interface {
 	// NOTE: This either loads all the blobs or loads nothing. In other words, in case of error,
 	// this API will GC all blobs that were loaded until that point.
 	IngestBlobsAndCreateImage(reference string, root types.BlobStatus, blobs ...types.BlobStatus) ([]types.BlobStatus, error)
+
+	// IngestOCILayoutAndCreateImage loads the single image held by the OCI
+	// image-layout tar archive at archivePath and points reference at it. The
+	// image is labelled with types.EVEOCIArchiveLabel set to archiveSha256, so
+	// that it can later be matched to the archive it came from.
+	// Returns the loaded blobs, the image manifest first.
+	// As with IngestBlobsAndCreateImage, blobs loaded before an error are
+	// left for the CAS to garbage collect.
+	IngestOCILayoutAndCreateImage(reference, archivePath, archiveSha256 string) ([]types.BlobStatus, error)
 
 	// Resolver get an interface that satisfies resolver.ResolverCloser to communicate directly with a generic CAS
 	Resolver(ctx context.Context) (resolver.ResolverCloser, error)
