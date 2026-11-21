@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/luthermonson/go-proxmox"
+	"github.com/sirupsen/logrus"
 
 	api "github.com/lf-edge/eve/evetest/grpcapi/go"
 )
@@ -315,5 +316,60 @@ func TestBuildVMOptionsThreadsPerCore(t *testing.T) {
 				t.Errorf("args lack %q: %s", tc.want, args)
 			}
 		})
+	}
+}
+
+// A delete that PVE completes after the teardown gave up leaves only the
+// device entry behind, which the next setup of the same name must clear.
+func TestRemoveLeftoverDeviceWithVMGone(t *testing.T) {
+	p, dev := newFakeVMProvider(t, &fakeVMAPI{missing: true})
+	p.devices = map[string]*proxmoxDevice{dev.name: dev}
+	if err := p.removeLeftoverDevice(
+		context.Background(), logrus.NewEntry(logrus.New()), dev); err != nil {
+		t.Fatalf("removeLeftoverDevice: %v", err)
+	}
+	if _, ok := p.devices[dev.name]; ok {
+		t.Error("leftover device entry was not removed")
+	}
+}
+
+func TestRemoveLeftoverDeviceKeepsEntryOnFailure(t *testing.T) {
+	// The fake API does not serve the VM delete, so the teardown fails.
+	p, dev := newFakeVMProvider(t, &fakeVMAPI{status: "stopped"})
+	p.devices = map[string]*proxmoxDevice{dev.name: dev}
+	if err := p.removeLeftoverDevice(
+		context.Background(), logrus.NewEntry(logrus.New()), dev); err == nil {
+		t.Fatal("expected an error when the VM cannot be deleted")
+	}
+	if _, ok := p.devices[dev.name]; !ok {
+		t.Error("device entry was dropped although its VM was not removed")
+	}
+}
+
+// A failed teardown marks the device as a leftover for the next setup to
+// remove, while a setup of a device that was never torn down still fails
+// without touching its VM.
+func TestSetupDeviceRemovesOnlyLeftovers(t *testing.T) {
+	p, dev := newFakeVMProvider(t, &fakeVMAPI{status: "stopped"})
+	p.devices = map[string]*proxmoxDevice{dev.name: dev}
+	p.pending = map[string]*proxmoxDevice{}
+	ctx := context.Background()
+
+	err := p.SetupDevice(ctx, dev.name, DeviceSpec{})
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("setup of a live device: got %v, want an already-exists error", err)
+	}
+	if p.devices[dev.name] != dev {
+		t.Error("setup of a live device replaced its entry")
+	}
+	if _, ok := p.pending[dev.name]; ok {
+		t.Error("rejected setup left its name reserved")
+	}
+
+	if err := p.TeardownDevice(ctx, dev.name); err == nil {
+		t.Fatal("expected the teardown to fail when the VM cannot be deleted")
+	}
+	if !p.devices[dev.name].teardownFailed {
+		t.Error("failed teardown did not mark the device as a leftover")
 	}
 }

@@ -156,6 +156,11 @@ type proxmoxDevice struct {
 	// call onward. Both stay false for a device that was never NetworkBootFallback.
 	netbootCompleted bool
 
+	// teardownFailed: a TeardownDevice of this device failed, leaving it in
+	// p.devices for SetupDevice to remove (see removeLeftoverDevice).
+	// Guarded by devMutex.
+	teardownFailed bool
+
 	// firmwareVolIDs holds the import-storage volume IDs of the uploaded custom
 	// OVMF CODE/VARS files (empty unless custom UEFI firmware is used). Unlike
 	// disk import sources, these are read live by QEMU for the VM's lifetime and
@@ -465,9 +470,9 @@ func (p *ProxmoxProvider) SetupDevice(
 	}
 
 	p.devMutex.Lock()
-	_, exists := p.devices[name]
+	leftover, exists := p.devices[name]
 	_, isPending := p.pending[name]
-	if exists || isPending {
+	if isPending || (exists && !leftover.teardownFailed) {
 		p.devMutex.Unlock()
 		err := fmt.Errorf("device %q already exists", name)
 		log.Error(err)
@@ -475,6 +480,14 @@ func (p *ProxmoxProvider) SetupDevice(
 	}
 	p.pending[name] = nil
 	p.devMutex.Unlock()
+
+	if exists {
+		if err := p.removeLeftoverDevice(ctx, log, leftover); err != nil {
+			p.unreserve(name)
+			log.Error(err)
+			return err
+		}
+	}
 
 	node, err := p.client.Node(ctx, p.conf.Node)
 	if err != nil {
@@ -605,6 +618,27 @@ func (p *ProxmoxProvider) SetupDevice(
 	return nil
 }
 
+// removeLeftoverDevice finishes the teardown of a device that a failed
+// TeardownDevice left in p.devices. Only such a device is removed: SetupDevice
+// still rejects the name of a device that was never torn down, so a broker bug
+// that sets up a live device again fails instead of destroying its VM. The VM
+// of a leftover is often gone already: PVE may complete a delete after the
+// client-side wait for it timed out.
+func (p *ProxmoxProvider) removeLeftoverDevice(
+	ctx context.Context, log *logrus.Entry, dev *proxmoxDevice) error {
+	log.Warnf("Device %q is left over from a failed teardown, removing it first",
+		dev.name)
+	if err := p.destroyDeviceWithRetry(ctx, log, dev); err != nil {
+		return fmt.Errorf(
+			"failed to remove device %q left over from a failed teardown: %w",
+			dev.name, err)
+	}
+	p.devMutex.Lock()
+	delete(p.devices, dev.name)
+	p.devMutex.Unlock()
+	return nil
+}
+
 // removeFailedVM removes the VM of a device whose setup failed, retrying
 // transient failures. It is best-effort: a VM it fails to remove is logged
 // and left for removeOrphans of the next broker run.
@@ -691,10 +725,10 @@ func (p *ProxmoxProvider) resolveDeviceNetworks(
 // and sleeps.
 //
 // Without this retry, a device left behind by a transient failure keeps its
-// entry in p.devices, and the next SetupDevice for the same name (the same
-// client session reuses one SDN device name for its whole lifetime) then
-// fails outright with "device already exists", since the underlying VM was
-// never actually confirmed stopped/deleted on Proxmox.
+// entry in p.devices until the next SetupDevice for the same name (the same
+// client session reuses one SDN device name for its whole lifetime) removes
+// it, and if no such SetupDevice comes, its VM stays until removeOrphans of
+// the next broker run.
 func (p *ProxmoxProvider) destroyDeviceWithRetry(
 	ctx context.Context, log *logrus.Entry, dev *proxmoxDevice) error {
 	_, err := retryProxmoxCall(ctx, log, fmt.Sprintf("failed to destroy device %q", dev.name),
@@ -709,8 +743,9 @@ func (p *ProxmoxProvider) destroyDeviceWithRetry(
 // p.devMutex; destroyDeviceWithRetry's Proxmox calls, retries and inter-attempt
 // sleeps run unlocked so a slow or hung destroy for one device never blocks
 // other sessions' device operations on this provider. On failure dev is left
-// in p.devices (matching the pre-existing behavior), so a later TeardownDevice
-// call for the same name can retry rather than orphaning the VM.
+// in p.devices, so that a later TeardownDevice, or SetupDevice (see
+// removeLeftoverDevice), for the same name can retry rather than orphaning the
+// VM.
 func (p *ProxmoxProvider) TeardownDevice(ctx context.Context, name string) error {
 	log := logger.FromContext(ctx)
 
@@ -724,6 +759,9 @@ func (p *ProxmoxProvider) TeardownDevice(ctx context.Context, name string) error
 	}
 
 	if err := p.destroyDeviceWithRetry(ctx, log, dev); err != nil {
+		p.devMutex.Lock()
+		dev.teardownFailed = true
+		p.devMutex.Unlock()
 		return err
 	}
 
