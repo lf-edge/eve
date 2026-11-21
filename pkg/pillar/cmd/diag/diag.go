@@ -875,20 +875,18 @@ func printOutput(ctx *diagContext, caller string) {
 		}
 	}
 
-	// Determine what we print for app summary
+	// Print all application counts in a fixed order, so that the line reads
+	// the same whatever its level.
 	summary := ctx.appInstanceSummary
-	if ctx.appInstanceSummary.TotalError > 0 {
-		ctx.ph.Print("ERROR: applications: %d with error, %d starting, %d running, %d stopping\n",
-			summary.TotalError, summary.TotalStarting,
-			summary.TotalRunning, summary.TotalStopping)
+	appLevel := "INFO"
+	if summary.TotalError > 0 {
+		appLevel = "ERROR"
 	} else if summary.TotalStopping > 0 {
-		ctx.ph.Print("WARNING: applications: %d stopping, %d starting, %d running\n",
-			summary.TotalStopping, summary.TotalStarting,
-			summary.TotalRunning)
-	} else {
-		ctx.ph.Print("INFO: applications: %d starting, %d running\n",
-			summary.TotalStarting, summary.TotalRunning)
+		appLevel = "WARNING"
 	}
+	ctx.ph.Print("%s: applications: %d starting, %d running, %d stopping, %d with error\n",
+		appLevel, summary.TotalStarting, summary.TotalRunning,
+		summary.TotalStopping, summary.TotalError)
 
 	// Defer until we have an initial BlinkCounter and DeviceNetworkStatus
 	if !ctx.gotDNS || !ctx.gotBC || !ctx.gotDPCList {
