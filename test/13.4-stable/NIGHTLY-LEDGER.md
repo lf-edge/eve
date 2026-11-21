@@ -2,6 +2,251 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-21 -- 0.0.0-13.4-stable-9ab05f5f (run #35)](https://github.com/lf-edge/eve/actions/runs/44868748877)
+
+[Full report](https://lf-edge.github.io/eve/test/13.4-stable/runs/35/)
+
+### TestAppRoutingSuite: failure analysis
+
+#### TestLocalNIWithMultiplePorts
+
+##### Failure
+
+```
+
+Told to stop trying after 2.074s.
+Stop waiting for: NI ONLINE with both static routes via ethernet0 and all connected routes present
+Network instance is in error state
+networkID:"eba401a0-bcc0-4404-8d85-b7e93fb8a88c"  networkVersion:"1"  instType:2  displayname:"multi-port-ni"  activated:true  CurrentUplinkIntf:"ethernet0"  ports:"ethernet0"  ports:"ethernet1"  ports:"ethernet2"  ports:"ethernet3"  bridgeNum:1  bridgeName:"bn1"  bridgeIPAddr:"10.50.0.1"  ipAssignments:{macAddress:"00:16:3e:06:00:01"  ipAddress:"10.50.0.1"}  assignedAdapters:{type:PhyIoNetEth  name:"ethernet0"  members:"ethernet0"  usedByAppUUID:"b8937b3e-ae89-4af8-9dc0-d03a09fdb2a6"  ioAddressList:{macAddress:"da:39:78:d0:19:f2"}}  assignedAdapters:{type:PhyIoNetEth  name:"ethernet1"  members:"ethernet1"  usedByAppUUID:"b8937b3e-ae89-4af8-9dc0-d03a09fdb2a6"  ioAddressList:{macAddress:"1e:68:56:62:e1:30"}}  assignedAdapters:{type:PhyIoNetEth  name:"ethernet2"  members:"ethernet2"  usedByAppUUID:"b8937b3e-ae89-4af8-9dc0-d03a09fdb2a6"  ioAddressList:{macAddress:"ce:30:0f:9c:43:d9"}}  assignedAdapters:{type:PhyIoNetEth  name:"ethernet3"  members:"ethernet3"  usedByAppUUID:"b8937b3e-ae89-4af8-9dc0-d03a09fdb2a6"  ioAddressList:{macAddress:"d6:42:ef:26:d8:c8"}}  networkErr:{description:"IP Route: {dst=0.0.0.0/0, gw=<nil>, port=internet, probe={enabledGwPing=true, gwPingMaxCost=5, userProbe=<none>}, preferLowerCost=true, preferStrongerWwanSignal=false} is not matching any port\nIP Route: {dst=10.88.88.0/24, gw=<nil>, port=httpserver, probe={enabledGwPing=true, gwPingMaxCost=0, userProbe=tcp://10.88.88.70:80}, preferLowerCost=true, preferStrongerWwanSignal=false} is not matching any port"  timestamp:{seconds:1795241406  nanos:111142233}  severity:SEVERITY_ERROR}  state:ZNETINST_STATE_ERROR  mtu:1500  ip_routes:{destination_network:"0.0.0.0/0"  gateway:"10.40.40.1"  port:"ethernet3"}  ip_routes:{destination_network:"0.0.0.0/0"  gateway:"192.168.30.1"  port:"ethernet2"}  ip_routes:{destination_network:"0.0.0.0/0"  gateway:"172.28.20.1"  port:"ethernet1"}  ip_routes:{destination_network:"0.0.0.0/0"  gateway:"172.22.10.1"  port:"ethernet0"}  ip_routes:{destination_network:"10.40.40.0/24"  port:"ethernet3"}  ip_routes:{destination_network:"172.22.10.0/24"  port:"ethernet0"}  ip_routes:{destination_network:"172.28.20.0/24"  port:"ethernet1"}  ip_routes:{destination_network:"192.168.30.0/24"  port:"ethernet2"}
+```
+
+##### Claude's conclusion
+
+This fully confirms the root cause: the NI went ERROR → ONLINE moments later and has stayed ONLINE ever since (both static routes correctly resolved to ethernet0, and the app's VIF got an IP) — exactly the kind of transient settle-down race the test harness itself documents.
+
+###### Root cause
+
+`TestLocalNIWithMultiplePorts` (`evetest/tests/networking/routing_test.go:666`) waits for the NI's static routes (keyed by the `ethernet0` shared labels `"internet"`/`"httpserver"`, visible in `evetest eve config`'s `systemAdapterList`) to resolve, but it uses `.StopIf(niHasError)` (`helpers_test.go:33`), which aborts the wait the instant the NI reports `ZNETINST_STATE_ERROR` — it bailed after only 2.074s. Live data confirms this was a transient, self-healing race: `gotest.json` shows the NI going `INIT → ERROR` at 06:10:06.545 with exactly the two static routes (`port=internet`, `port=httpserver`) not yet resolved to a port, then `ERROR → ONLINE` ~1.2s later at 06:10:07.784, and `evetest eve ni-info` right now shows the NI has been `ZNETINST_STATE_ONLINE` with both static routes correctly pinned to `ethernet0` and the app VIF already has an IP — i.e. it fully recovered on its own well within the NI's actual 3-minute budget.
+
+Notably, `netinst_test.go` (lines 48, 164, 564) explicitly documents this exact race ("zedrouter/NIM races can briefly flag NI as errored before settling — the eventual ONLINE is what matters") and deliberately omits `StopIf(niHasError)` for its analogous initial-NI-online check, while `routing_test.go`'s `TestLocalNIWithMultiplePorts` does use it here. This looks like a test-harness bug (overly strict fail-fast in this one wait) rather than a product bug, and not something this run's own recent commits (yetus/buf/linuxkit CI changes) plausibly caused. This failure/test doesn't appear in the ledger's one prior recorded night (2026-11-20, run #30), so it isn't a previously-known recurring issue — this is the first recorded occurrence.
+#### TestApplicationGateway
+
+##### Failure
+
+```
+
+Told to stop trying after 17.160s.
+Stop waiting for: ni-eth0 is ONLINE
+Network instance is in error state
+networkID:"79435cba-a43f-439c-b016-29ee9f34ab5e"  networkVersion:"1"  instType:2  displayname:"ni-eth0"  bridgeNum:1  bridgeIPAddr:"10.50.0.1"  ipAssignments:{macAddress:"00:16:3e:06:00:01"  ipAddress:"10.50.0.1"}  networkErr:{description:"failed to select ports for network instance 79435cba-a43f-439c-b016-29ee9f34ab5e: no port is matching label 'ethernet0'"  timestamp:{seconds:1795241959  nanos:505336064}  severity:SEVERITY_ERROR}  state:ZNETINST_STATE_ERROR  mtu:1500
+```
+
+##### Claude's conclusion
+
+Not a known/recurring issue in the ledger either.
+
+###### Root cause
+
+`TestApplicationGateway` (`evetest/tests/networking/routing_test.go:928`) creates `ni-eth0` with `Port: "ethernet0"` right after `ApplyConfig`, but `.StopIf(niHasError)`-style fail-fast waits (per `evetest status`'s "Told to stop trying after 17.160s") abort as soon as zedrouter reports the NI errored. Live EVE logs show this is exactly a boot-time DPC race: at device boot NIM starts on the fallback `lastresort` DPC (bare ifnames `eth0`/`eth1`), and only inserts/activates the real `zedagent` DPC (which carries the logical labels `ethernet0`→`eth0`, `ethernet1`→`eth1`) once DHCP/ping verification succeeds. The `zedagent` DPC was inserted at 06:19:16.993 but was still `CurrentIndex:1` (not yet promoted) when zedrouter tried to resolve the NI's port label at 06:19:19.505 and 06:19:21.116, logging `failed to select ports for network instance ...: no port is matching label 'ethernet0'`/`'ethernet1'` for both `ni-eth0` and the app-gw switch NI. The device fully recovered on its own: `ni-eth0` is now `ZNETINST_STATE_ONLINE` with its route correctly pinned to `ethernet0`, confirming this was transient and self-healing, not a persistent misconfiguration.
+
+This is the same class of race documented and already investigated in this run's `TestLocalNIWithMultiplePorts` failure (`live-investigation.md`) — a NIM/zedrouter port-selection race that briefly errors an NI before it settles — though the specific trigger here (boot-time DPC promotion from `lastresort` to `zedagent`) is a different facet of that same general "transient NI-error-before-settling" class rather than the identical code path (that one was a static-route port-matching race post-config-change, this one is first-boot DPC-switch timing). Neither this test/failure nor this `no port is matching label` error appears anywhere in `live-ledger.md`, so it is not a previously recorded/recurring issue — this is the first occurrence.
+
+### TestAppsSuite: failure analysis
+
+#### TestVGAPassthroughNoHostAccess
+
+##### Failure
+
+```
+
+Unexpected error:
+    <*fmt.wrapError | 0x1b5e6f4d4a00>: 
+    bpftrace-compiler failed: exit status 2; its last output:
+    2026/11/21 06:36:31 found compiled script in cache ...
+    2026/11/21 06:36:31 Running bpftrace ...
+    2026/11/21 06:36:31 Running bpftrace program
+    panic: runtime error: invalid memory address or nil pointer dereference
+    [signal SIGSEGV: segmentation violation code=0x1 addr=0x18 pc=0xe169db]
+    
+    goroutine 1 [running]:
+    main.(*eveSSHClient).close(0x126897637590)
+    	/eve-tools/bpftrace-compiler/ssh-client.go:152 +0x1b
+    main.(*sshRun).end(0x1268975e87f0?)
+    	/eve-tools/bpftrace-compiler/sshRun.go:77 +0x16
+    main.newRunSSHCmd.func1(0x126897598e00?, {0x12689762c240, 0x2, 0x111f88e?})
+    	/eve-tools/bpftrace-compiler/main.go:375 +0x1f8
+    github.com/spf13/cobra.(*Command).execute(0x12689765c608, {0x12689762c1e0, 0x6, 0x6})
+    	/go/pkg/mod/github.com/spf13/cobra@v1.8.0/command.go:987 +0xb1b
+    github.com/spf13/cobra.(*Command).ExecuteC(0x12689765c008)
+    	/go/pkg/mod/github.com/spf13/cobra@v1.8.0/command.go:1115 +0x44f
+    github.com/spf13/cobra.(*Command).Execute(...)
+    	/go/pkg/mod/github.com/spf13/cobra@v1.8.0/command.go:1039
+    main.main()
+    	/eve-tools/bpftrace-compiler/main.go:138 +0x633
+    {
+        msg: "bpftrace-compiler failed: exit status 2; its last output:\n2026/11/21 06:36:31 found compiled script in cache ...\n2026/11/21 06:36:31 Running bpftrace ...\n2026/11/21 06:36:31 Running bpftrace program\npanic: runtime error: invalid memory address or nil pointer dereference\n[signal SIGSEGV: segmentation violation code=0x1 addr=0x18 pc=0xe169db]\n\ngoroutine 1 [running]:\nmain.(*eveSSHClient).close(0x126897637590)\n\t/eve-tools/bpftrace-compiler/ssh-client.go:152 +0x1b\nmain.(*sshRun).end(0x1268975e87f0?)\n\t/eve-tools/bpftrace-compiler/sshRun.go:77 +0x16\nmain.newRunSSHCmd.func1(0x126897598e00?, {0x12689762c240, 0x2, 0x111f88e?})\n\t/eve-tools/bpftrace-compiler/main.go:375 +0x1f8\ngithub.com/spf13/cobra.(*Command).execute(0x12689765c608, {0x12689762c1e0, 0x6, 0x6})\n\t/go/pkg/mod/github.com/spf13/cobra@v1.8.0/command.go:987 +0xb1b\ngithub.com/spf13/cobra.(*Command).ExecuteC(0x12689765c008)\n\t/go/pkg/mod/github.com/spf13/cobra@v1.8.0/command.go:1115 +0x44f\ngithub.com/spf13/cobra.(*Command).Execute(...)\n\t/go/pkg/mod/github.com/spf13/cobra@v1.8.0/command.go:1039\nmain.main()\n\t/eve-tools/bpftrace-compiler/main.go:138 +0x633",
+        err: <*exec.ExitError | 0x1b5e6f4d4940>{
+            ProcessState: {
+                pid: 146,
+                status: 512,
+                rusage: {
+                    Utime: {Sec: 0, Usec: 29883},
+                    Stime: {Sec: 0, Usec: 3448},
+                    Maxrss: 96420,
+                    Ixrss: 0,
+                    Idrss: 0,
+                    Isrss: 0,
+                    Minflt: 1953,
+                    Majflt: 0,
+                    Nswap: 0,
+                    Inblock: 216,
+                    Oublock: 56,
+                    Msgsnd: 0,
+                    Msgrcv: 0,
+                    Nsignals: 0,
+                    Nvcsw: 711,
+                    Nivcsw: 95,
+                },
+            },
+            Stderr: nil,
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+This confirms the exact bug: `close()` unconditionally calls `s.rStdout.Close()`, but `rStdout` is only ever set in `startSftpClientWithCustomPath` — when `startSftpClient()` (using `sftp.NewClient(s.client)`) succeeds, which is the normal/common path, `rStdout` stays nil, so `close()` segfaults on every such run.
+
+**Root cause:** This is a pure host-side bug in `eve-tools/bpftrace-compiler/ssh-client.go:152`, not a live EVE device/SDN issue — `eveSSHClient.close()` unconditionally calls `s.rStdout.Close()`, but `rStdout` is only populated by the `/usr/libexec/sftp-server` fallback path (`startSftpClientWithCustomPath`); on the normal success path (`sftp.NewClient(s.client)`, used here per the log's "Running bpftrace program" with no error before the crash), `rStdout` is left nil, causing the panic/SIGSEGV seen in today's stack trace.
+
+This is a known, recurring issue: the identical failure (same test, same stack trace at `ssh-client.go:152`) was already investigated and fully root-caused in last night's run (2026-11-20, run #30), where it was determined to be structural and unconditional on the success path — meaning it should reproduce on essentially every invocation of `bpftrace-compiler` that doesn't hit the sftp-server fallback, and indeed it has recurred again tonight. It shares no root cause with other failures in tonight's run (those are device-side `CREATING_VOLUME`/unpack-hang issues); this one never touches the live EVE device at all, since the crash happens entirely in the host-side `bpftrace-compiler` helper after the bpftrace program already ran to completion.
+
+### TestDeviceConnectivitySuite: failure analysis
+
+#### TestDNSFunctionality
+
+##### Failure
+
+```
+
+Timed out after 420.000s.
+When passed a matcher, ReceiveMatcher's channel *must* receive something.
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence shows this is a subscription race in the test itself, not flaky infrastructure. `device.ApplyConfig(devConfig, true, true)` (`evetest/tests/networking/dns_test.go:218`) blocks until the device has fetched *and confirmed* the new DNS config, and only after that returns does the test call `device.WatchDeviceInfo()` (line 233) to start watching for `ZInfoDevice` updates. `WatchDeviceInfo` uses `AdamClient.SubscribeToDeviceInfoMsgs` (`evetest/controller/adam.go:1634`), whose doc explicitly says "only messages Adam receives *after* this method returns are delivered" — unlike the `...WithLatest` variant. The live `evetest eve info` history (38 snapshots) shows the device applied the new per-port DNS config and reported the fully correct end state (eth0/eth1/eth2 errors cleared, eth3 retaining the expected `no DNS server available` error) at `lastSucceeded:1795238362` (05:19:22 UTC) — essentially the same instant as the `config-applied` checkpoint logged at 05:19:24 — and then **never sent another `ZInfoDevice` update** for the rest of the run (current time is ~05:27+, long past the 420s/7-minute `phase1Timeout`). That one qualifying message was almost certainly consumed by `ApplyConfig`'s own "wait until confirmed" check and was already gone from Adam's live stream by the time `WatchDeviceInfo()` subscribed a few lines later, so `Eventually(devUpdates, …)` never received anything on the channel at all — exactly matching the Gomega error "`ReceiveMatcher's channel must receive something`".
+
+This does not share a root cause with any other failure in this run (`TestDHCPIPv4Only` and `TestStaticIPv4Only` both passed earlier in the suite). It's also not a recurring issue per `live-ledger.md` — that file's only existing section (nightly run #30, 2026-11-20) contains no mention of `TestDeviceConnectivitySuite` or `TestDNSFunctionality` at all, so this is the first recorded occurrence of this specific failure.
+#### TestMgmtTrafficRoutedViaApp
+
+##### Failure
+
+```
+
+Timed out after 180.001s.
+EVE should get device metrics through to the controller via the app-routed management path (firewall restricted, check 1/2)
+Expected
+    <<-chan *metrics.DeviceMetric | len:0, cap:100>: 0x3f4562194150
+to receive something.
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence shows the controller actually received traffic from **two different source IPs** around this failure: `10.60.10.104` (EVE's own eth0, which still picked up a direct DHCP lease on the wan-network despite being reconfigured to `PhyIoUsageShared`) through 05:54:41, then a gap, then `10.60.10.150` (the gateway app's NATed WAN VIF — the *intended* path) only starting at 05:58:51 (`adam-stdout:1392-1422`). This means the earlier "mgmt-via-app-active" checkpoint (`routing_test.go:1739` calls the same `waitForFreshInfo` helper used at `routing_test.go:1717-1739`) was actually satisfied by EVE's stale pre-migration fallback DPC talking to the controller *directly* over eth0 — not via the app/NAT as the test believes — exactly the "doomed fallback attempt" race the test's own comments (`routing_test.go:1453-1454`, `1497-1519`) acknowledge but under-budget for. When phase 5's firewall rules were applied at 05:54:41 (only allowing source `10.60.10.150`), that masking fallback path on `10.60.10.104` got dropped, and NIM/zedagent took until 05:58:51 (~4m10s) to actually fail that DPC and switch to the genuine app-routed one — well past the 180s `infoTimeout` budgeted for the "firewall restricted, check 1/2" wait, producing the observed timeout.
+
+This is a distinct mechanism from the `TestDNSFunctionality` failure already investigated earlier in this run (that was a `WatchDeviceInfo` subscribe-after-send race on `ZInfoDevice`; this one is a DPC-fallback timing race affecting `WatchDeviceMetrics`), so they do **not** share a root cause. Per `live-ledger.md`, there is no prior mention of `TestDeviceConnectivitySuite` or `TestMgmtTrafficRoutedViaApp`, so this is the first recorded occurrence of this specific failure — not a known recurring issue.
+
+### TestLPSSuite: failure analysis
+
+#### TestProfile
+
+##### Failure
+
+```
+timed out after 5m0.000182017s (excluding download) waiting for app "9584d470-f9d5-49fc-b300-e5fa9fbe6747" (lps-app) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+The ledger only covers one prior night (2026-11-20, run #30), so this pattern is "known" since at least then, but I can't confirm earlier history beyond that.
+
+No PR diff was provided for this investigation, so I'll give the root-cause summary without a RELATED line.
+
+###### Root cause
+
+Live inspection confirms `lps-app`'s volume (`11d000d6-...`) entered `CREATING_VOLUME` at 06:13:08, with `volumemgr.CreateVolume` firing at 06:13:09.962 and not completing (`createContainerVolume ... DONE`) until 06:15:42.119 — a ~2m32s unpack that pushed the app past the 5-minute (excluding-download) deadline, which fired at 06:15:27, by only ~15 seconds. Device logs show this unpack running concurrently with at least three other volumes (`app-profile-1`, `app-profile-2`, and an `ubuntu-ctr` volume) that were also mid-`CreateVolume` in the same window and didn't finish until 06:16:39–06:16:41, i.e. multiple container-image unpacks were competing for CPU simultaneously. The device is configured with 4 vCPUs while the underlying physical host has only 2 cores (`nproc`), and the device itself showed load average 6.23 right after boot — matching the CPU-oversubscription signature. Despite the test failure, `lps-app` actually did progress and reach `RUNNING` shortly after (bootTime ~06:15:47, confirmed via live `app-info`), confirming this was a slow-but-completing unpack, not a true hang. This is the same recurring root cause documented five times in last night's ledger (2026-11-20, run #30 — `TestLocalNI`, `TestMoveAppBetweenNIs`, `TestLimitedIPSpace`, `TestFlowLog`, and a fifth `app1` case): host-resource oversubscription causing concurrent container-image unpacks to occasionally exceed the test's fixed 5-minute `CREATING_VOLUME`/RUNNING timeout. This is the first time it's been seen specifically in `TestLPSSuite/TestProfile`, but it's the same known, recurring infrastructure-level issue, not a new bug.
+#### TestAppLocalInfo
+
+##### Failure
+
+```
+timed out after 5m0.000181993s (excluding download) waiting for app "fd48c0ce-c6d3-41d1-97e3-b9386ce5a2bb" (lps-app) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live inspection confirms this is the same slow-unpack-under-CPU-oversubscription pattern already seen earlier in this very run. Device logs show `lps-app`'s volume (`2a9acfa4-19f4-4cba-bf74-93f99a4a6d65`) started `CreateVolume` (containerhandler.go:49) at 06:33:29.065 and didn't log `createContainerVolume(...) DONE` until 06:38:34.764 — a ~5m05s container-image unpack that ran past the 5-minute (download-excluded) deadline, which fired at 06:37:48, by less than a minute. `evetest eve app-info` confirms the app actually completed shortly after: it progressed INSTALLED → BOOTING → RUNNING with `bootTime` at 06:38:37, i.e. it wasn't a true hang, just a near-miss. The device is configured for 4 vCPUs but `evetest eve ssh "nproc"` shows the underlying host has only 1-2 physical cores (`nproc`=1 in the guest, host `nproc`=2), with load average 3.69/3.22/1.67 observed live — the same CPU-oversubscription signature as before.
+
+This shares the exact same root cause as this run's earlier `TestProfile` failure recorded in `live-investigation.md` (same signature: fully-downloaded content stuck in `CREATING_VOLUME`, unpack finishing seconds-to-a-minute after the timeout). It's also the same known, recurring issue documented repeatedly in `live-ledger.md` for the 2026-11-20 (run #30) nightly, where it hit `TestLocalNI`, `TestMoveAppBetweenNIs`, `TestLimitedIPSpace`, `TestFlowLog`, and an `app1` case five times — host-resource oversubscription causing concurrent/slow container-image unpacks to occasionally exceed the fixed 5-minute `CREATING_VOLUME` timeout. This is the first time it's hit `TestLPSSuite` specifically (now twice in this run alone), but it's the same long-standing infrastructure issue, not a new bug.
+#### TestDevLocalInfo
+
+##### Failure
+
+```
+timed out after 5m0.001029023s (excluding download) waiting for app "b91db489-8cb1-4379-b6f1-ca913955dd91" (lps-app) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live inspection shows `lps-app`'s volume (`fd242cf5-faa8-49d9-a3e4-64a6f0549c26`) entered `CreateVolume`/`UnpackClientImage` at 06:49:19.891, and device logs have logged **nothing further** about it since — no completion, no error — for 4+ minutes and counting (current device time ~06:53:55). Live `ctr -n eve-user-apps snapshots ls` confirms the corresponding snapshot (`extract-963953409-SVtD`, parent `sha256:369ede38...`) is still stuck in `Active` (uncommitted) state, while the device itself is essentially idle (`top` shows ~0% CPU, 1 running task, load average decaying to 1.2) with no tar/extract process running — i.e. the unpack goroutine is hung, not merely slow, since a real in-progress unpack would show CPU activity and log progress.
+
+This is the same failure signature already identified twice in last night's ledger (2026-11-20, run #30): `TestPurgeNeverActivatedApp` and `TestAppRestart` both showed content fully downloaded/verified but the volume wedged in `CREATING_VOLUME` with an `UnpackClientImage`/`CreateVolume` call that fires once and never returns, leaving a dangling `Active` containerd snapshot — a containerd unpack/snapshot-commit hang, distinct from the CPU-oversubscription "slow but completing" pattern seen elsewhere in *this* run (`TestProfile`, `TestAppLocalInfo`, recorded in this run's `live-investigation.md`). So this is a known, recurring issue dating back to at least 2026-11-20, and it's the hang variant rather than the oversubscription-slowness variant — not a new bug, but also not the same root cause as the other two failures already logged in this run.
+
+### TestLocalNetworkInstanceSuite: failure analysis
+
+#### TestLimitedIPSpace
+
+##### Failure
+
+```
+timed out after 5m0.001071589s (excluding download) waiting for app "5f3920fb-1210-4799-950d-b0ccbad1ef03" (app1) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+`TestLimitedIPSpace`'s app1 (`5f3920fb-...`) got stuck in `CREATING_VOLUME` because its container-image unpack is progressing far slower than the test's 5-minute budget. Live logs show `volumemgr.CreateVolume`/`containerd.UnpackClientImage` started at 06:17:07 for the `evetest-ubuntu-ctr` image; by the time of the timeout (06:21:31) and after, the containerd-user snapshot `extract-193683816-293G` was still `Active` (uncommitted), but its on-disk layer directories show progress (layer `19` created at 06:17, layer `20` appearing at 06:21) — i.e. this is a genuinely slow-but-still-working unpack, not a dead hang. The EVE device VM itself only has 1 vCPU available at the hypervisor (`nproc` → 1) while reporting `ncpu:4` in its config, and `uptime` shows a load average of ~3.0–3.6 on that single core — severe CPU oversubscription that is starving the unpack of CPU time.
+
+This is the same signature already recorded in this run's ledger from 2026-11-20 (run #30): `TestLimitedIPSpace`, `TestLocalNI`, `TestMoveAppBetweenNIs`, and `TestFlowLog` all failed with apps stuck in `CREATING_VOLUME` due to host CPU oversubscription slowing concurrent container-image unpacks past the fixed test timeout (and `TestLotsOfApps` in the same ledger entry diagnosed the identical single-vCPU/oversubscribed-host condition directly). So this is a known, recurring issue dating back to at least 2026-11-20, not a new failure — today's occurrence matches that pattern exactly rather than being an independent bug.
+#### TestFlowLog
+
+##### Failure
+
+```
+timed out after 5m0.001027364s (excluding download) waiting for app "ac581827-bd7f-43d5-a74b-fea8742ee3f0" (flowlog-test-app) on device "edge-dev" to reach RUNNING state (last state: RESOLVING_TAG)
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+`flowlog-test-app`'s content tree (`d9a16180-…`) never advanced past `RESOLVING_TAG`. Live inspection shows `downloader` received the `ResolveConfig` for `lfedge/evetest-ubuntu-ctr:1.0` at 06:29:01.612, logged `oci syncOp for dpath:<>, ... downloadURL: <192.168.170.2:5000>, ifname: eth0, ipSrc: 172.20.20.123` — and then logged nothing further for that request for the rest of the 5-minute window (only unrelated metric/watchdog ticks continued). The device itself was healthy (`load average 0.18–0.76` on a single reported vCPU, zedbox alive, pubsub responsive), and by the time I checked post-failure the registry at `192.168.170.2:5000` was fully reachable and serving the `1.0` tag fine — so this is a transient hang/stall in the OCI-registry metadata-resolve call itself, not a dead device or missing image.
+
+Critically, the downloader's own stall-detector (`awaitResponse`/`postWithRetry` in `pkg/pillar/cmd/downloader/download.go`) only fires after `maxStalledTime`, which defaults to **600s (10 min)** — twice the test's fixed 5-minute timeout. So even a legitimate, self-recovering stall in that OCI fetch can never be caught and retried before the test gives up, guaranteeing a failure whenever this resolve call stalls at all.
+
+This is a different hang point (`RESOLVING_TAG`/tag-resolve) than the three earlier failures already investigated in this run (`TestLocalNI`, `TestMoveAppBetweenNIs`, `TestLimitedIPSpace`), which all got stuck in `CREATING_VOLUME` due to host CPU oversubscription slowing containerd image unpacks. It's plausible this shares the same underlying host-resource-contention environment (same shared/oversubscribed host), but the specific stuck step and code path (network-bound OCI tag resolution vs. CPU-bound unpack) is distinct, so I can't confirm it's the identical root cause — only that it belongs to the same broader class of "async image-pull step silently outlasts the test's 5-minute timeout" issues already recurring in this run. I found no prior ledger entry for a `RESOLVING_TAG`-stuck timeout specifically, so this exact failure mode does not appear to be previously recorded/known.
+
 ## [2026-11-20 -- 0.0.0-13.4-stable-4fdd8676 (run #30)](https://github.com/lf-edge/eve/actions/runs/44772354735)
 
 [Full report](https://lf-edge.github.io/eve/test/13.4-stable/runs/30/)
@@ -314,5 +559,3 @@ timed out after 5m0.000195226s (excluding download) waiting for app "59f87355-b7
 ##### Claude's conclusion
 
 **Likely root cause:** Live inspection of app1's volume shows the exact same recurring pattern already logged four times in this run's ledger. Device logs show app1 (`59f87355...`) entered `CREATING_VOLUME` at 18:10:04, and three `UnpackClientImage` calls fired concurrently within the same ~1.4s window (18:10:06–18:10:08) for three different app images — confirming parallel image-layer unpacks competing for CPU, exactly as seen in `TestMoveAppBetweenNIs`, `TestLimitedIPSpace`, and `TestFlowLog`. App1 didn't reach `RUNNING` until 18:14:47, i.e. the unpack/boot sequence took ~4m43s, landing right at/past the 5-minute deadline — not a hang, just a slow-but-completing unpack. Live `uptime` on the device shows load average 5.29/4.09/2.06 on a device configured for 4 vCPUs, matching the previously-identified CPU-oversubscription condition on the underlying 2-core host. This is the fifth occurrence of the identical signature in this suite run and shares the same root cause already recorded in the ledger (host resource oversubscription slowing concurrent container-image unpacks past the test's fixed timeout) — not an independent bug.
-
-
