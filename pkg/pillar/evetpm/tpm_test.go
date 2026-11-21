@@ -147,7 +147,7 @@ func TestSealUnseal(t *testing.T) {
 		t.Fatalf("Seal operation failed with err: %v", err)
 	}
 
-	unsealedData, err := UnsealDiskKey(DefaultDiskKeySealingPCRs)
+	unsealedData, err := UnsealDiskKey(logger, DefaultDiskKeySealingPCRs)
 	if err != nil {
 		t.Fatalf("Unseal operation failed with err: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestSealUnsealMismatchReport(t *testing.T) {
 		}
 	}
 
-	_, err = UnsealDiskKey(DefaultDiskKeySealingPCRs)
+	_, err = UnsealDiskKey(logger, DefaultDiskKeySealingPCRs)
 	if err == nil {
 		t.Fatalf("Expected error from UnsealDiskKey, got nil")
 	}
@@ -218,7 +218,7 @@ func TestSealUnsealTpmEventLogCollect(t *testing.T) {
 	}
 
 	// this should fail and result in saving creating measurementLogUnsealFail
-	_, err = UnsealDiskKey(DefaultDiskKeySealingPCRs)
+	_, err = UnsealDiskKey(logger, DefaultDiskKeySealingPCRs)
 	if err == nil {
 		t.Fatalf("Expected error from UnsealDiskKey, got nil")
 	}

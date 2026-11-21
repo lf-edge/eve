@@ -35,6 +35,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -921,10 +922,18 @@ func GetSpecVersion() (string, error) {
 
 // FetchVaultKey retrieves TPM part of the vault key
 func FetchVaultKey(log *base.LogObject) ([]byte, error) {
-	//First try to read from TPM, if it was stored earlier
-	key, err := readDiskKey()
+	present, err := diskKeyPresent(log, TpmDiskKeyHdl, "legacy")
 	if err != nil {
-		log.Noticef("can't read the legacy disk key, generating a new one")
+		return nil, err
+	}
+	var key []byte
+	if present {
+		if key, err = readDiskKey(); err != nil {
+			return nil, fmt.Errorf("reading the legacy disk key: %w", err)
+		}
+		log.Noticef("successfully read the legacy disk key from TPM")
+	} else {
+		log.Noticef("no legacy disk key in the TPM, generating a new one")
 		//
 		//Note on why we are using GetRandom here:
 		//We are using raw_key option to protect the encryption/decryption protector:
@@ -949,8 +958,6 @@ func FetchVaultKey(log *base.LogObject) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("writing legacy Key to TPM failed: %w", err)
 		}
-	} else {
-		log.Noticef("successfully read the legacy disk key from TPM")
 	}
 	return key, nil
 }
@@ -987,6 +994,21 @@ func writeDiskKey(key []byte) error {
 	return nil
 }
 
+// FetchLegacyVaultKey returns the legacy, unsealed vault key for a TPM without
+// a SHA-256 PCR bank, as FetchVaultKey does. It returns an error when the TPM
+// holds a sealed disk key: such a TPM has the bank, so the answer that led here
+// is wrong, and the legacy key does not open a vault sealed with that key.
+func FetchLegacyVaultKey(log *base.LogObject) ([]byte, error) {
+	sealed, err := diskKeyPresent(log, TpmSealedDiskPrivHdl, "sealed")
+	if err != nil {
+		return nil, err
+	}
+	if sealed {
+		return nil, errors.New("refusing the legacy disk key: the TPM reports no SHA-256 PCR bank but holds a sealed disk key")
+	}
+	return FetchVaultKey(log)
+}
+
 func readDiskKey() ([]byte, error) {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
@@ -1007,16 +1029,20 @@ func readDiskKey() ([]byte, error) {
 // and unseals it. If the key is not present, it generates
 // a new key and seals it into TPM2.0.
 func FetchSealedVaultKey(log *base.LogObject) ([]byte, error) {
-	if !PCRBankSHA256Enabled() {
+	sha256Bank, err := PCRBankSHA256Supported(log)
+	if err != nil {
+		return nil, err
+	}
+	if !sha256Bank {
 		//On platforms without PCR Bank SHA256, we can't
 		//generate a sealed key. On those platforms,
-		//FetchSealedVaultKey becomes FetchVaultKey.
+		//FetchSealedVaultKey becomes FetchLegacyVaultKey.
 		//Ideally we should not reach here if we are
 		//creating vault for the first time, this is to
 		//handle upgrade scenario, where vault is already
 		//present with legacy key, and we are trying to
 		//move it to a sealed one.
-		return FetchVaultKey(log)
+		return FetchLegacyVaultKey(log)
 	}
 
 	sealedKeyPresent, err := diskKeyPresent(log, TpmSealedDiskPrivHdl, "sealed")
@@ -1184,31 +1210,43 @@ func sealDiskKeyLegacy(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection
 	return nil
 }
 
-// diskKeyPresenceAttempts and diskKeyPresenceRetryDelay bound the retries of a
-// TPM error while deciding whether a disk key exists. The TPM can answer a
-// command with a transient warning such as RC_RETRY.
+// tpmProbeAttempts and tpmProbeRetryDelay bound the retries of a TPM read
+// whose answer EVE must not guess: whether a disk key exists, or what the TPM
+// supports. The TPM can answer a command with a transient warning such as
+// NV_UNAVAILABLE, and opening the device or talking to it can fail.
 const (
-	diskKeyPresenceAttempts   = 3
-	diskKeyPresenceRetryDelay = 500 * time.Millisecond
+	tpmProbeAttempts   = 3
+	tpmProbeRetryDelay = time.Second
 )
+
+// retryTPMProbe runs probe until it returns no error, at most tpmProbeAttempts
+// times, logging each failure as an error. what names the question for the
+// log. A nil log logs through the standard logger.
+func retryTPMProbe(log *base.LogObject, what string, probe func() (bool, error)) (bool, error) {
+	for attempt := 1; ; attempt++ {
+		answer, err := probe()
+		if err == nil {
+			return answer, nil
+		}
+		if log != nil {
+			log.Errorf("%s (attempt %d/%d): %v", what, attempt, tpmProbeAttempts, err)
+		} else {
+			logrus.Errorf("%s (attempt %d/%d): %v", what, attempt, tpmProbeAttempts, err)
+		}
+		if attempt == tpmProbeAttempts {
+			return false, fmt.Errorf("%s: %w", what, err)
+		}
+		time.Sleep(tpmProbeRetryDelay)
+	}
+}
 
 // diskKeyPresent reports whether the disk key NV index at handle holds a key,
 // retrying a TPM error. It returns an error when the TPM keeps failing, which
-// the caller must not read as an absent key: that would seal a fresh key over
-// the one the vault is encrypted with.
+// the caller must not read as an absent key: that would replace the key the
+// vault is encrypted with.
 func diskKeyPresent(log *base.LogObject, handle tpmutil.Handle, kind string) (bool, error) {
-	for attempt := 1; ; attempt++ {
-		present, err := checkDiskKeyPresence(handle)
-		if err == nil {
-			return present, nil
-		}
-		log.Warnf("checking for the %s disk key (attempt %d/%d): %v",
-			kind, attempt, diskKeyPresenceAttempts, err)
-		if attempt == diskKeyPresenceAttempts {
-			return false, fmt.Errorf("cannot tell whether a %s disk key exists: %w", kind, err)
-		}
-		time.Sleep(diskKeyPresenceRetryDelay)
-	}
+	return retryTPMProbe(log, fmt.Sprintf("checking for the %s disk key", kind),
+		func() (bool, error) { return checkDiskKeyPresence(handle) })
 }
 
 // nvIndexWritten reports whether the NV index at handle is defined and has
@@ -1290,7 +1328,11 @@ func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) erro
 		return fmt.Errorf("refusing to seal disk key: firmware anchor PCR(s) %v are all-zero in the SHA-256 bank, measured-boot chain is not anchored (TPM Carte Blanche attack)", zeroed)
 	}
 
-	if tpmSupportsAES128CFB() {
+	aesCFB, err := tpmSupportsAES128CFB(log)
+	if err != nil {
+		return err
+	}
+	if aesCFB {
 		log.Noticef("TPM supports AES-128-CFB, sealing with parameter encryption")
 		if err := sealDiskKeyEncrypted(log, key, pcrSel); err != nil {
 			return err
@@ -1339,10 +1381,13 @@ func SealDiskKey(log *base.LogObject, key []byte, pcrSel tpm2.PCRSelection) erro
 // it uses salted HMAC sessions with parameter encryption to protect the
 // key on the CPU-TPM bus. Otherwise, it falls back to the legacy
 // unencrypted unseal path.
-func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
+func UnsealDiskKey(log *base.LogObject, pcrSel tpm2.PCRSelection) ([]byte, error) {
+	aesCFB, err := tpmSupportsAES128CFB(log)
+	if err != nil {
+		return nil, err
+	}
 	var key []byte
-	var err error
-	if tpmSupportsAES128CFB() {
+	if aesCFB {
 		key, err = unsealDiskKeyEncrypted(pcrSel)
 	} else {
 		key, err = unsealDiskKeyLegacy(pcrSel)
@@ -1382,7 +1427,7 @@ func UnsealDiskKey(pcrSel tpm2.PCRSelection) ([]byte, error) {
 func UnsealDiskKeyWithRecovery(log *base.LogObject, pcrSel tpm2.PCRSelection) ([]byte, error) {
 	log.Noticef("Trying to unseal disk key with PCRs %v", pcrSel.PCRs)
 
-	key, unsealErr := UnsealDiskKey(pcrSel)
+	key, unsealErr := UnsealDiskKey(log, pcrSel)
 	if unsealErr == nil {
 		return key, nil
 	}
@@ -1397,7 +1442,7 @@ func UnsealDiskKeyWithRecovery(log *base.LogObject, pcrSel tpm2.PCRSelection) ([
 
 	log.Noticef("Trying to unseal disk key with recovered PCRs %v", pcrSelection.PCRs)
 
-	return UnsealDiskKey(pcrSelection)
+	return UnsealDiskKey(log, pcrSelection)
 }
 
 // PolicyPCRSession prepares TPM2 Auth Policy session, with PCR as the policy
@@ -1480,35 +1525,75 @@ func WipeOutStaleSealedKeyIfAny() error {
 	return nil
 }
 
-// PCRBankSHA256Enabled checks if SHA256 PCR Bank is
-// enabled
+// PCRBankSHA256Enabled reports whether the TPM has a SHA-256 PCR bank. It
+// returns false when the TPM cannot be read; a caller that must not take that
+// for an absent bank uses PCRBankSHA256Supported.
 func PCRBankSHA256Enabled() bool {
-	//Check if we have cached it already, if not fetch, store and return
-	if pcrBank256Status == PCRBank256StatusUnknown {
-		if pcrBankSHA256EnabledHelper() {
-			pcrBank256Status = PCRBank256StatusSupported
-		} else {
-			pcrBank256Status = PCRBank256StatusNotSupported
-		}
-	}
-	return pcrBank256Status == PCRBank256StatusSupported
+	supported, _ := PCRBankSHA256Supported(nil)
+	return supported
 }
 
-func pcrBankSHA256EnabledHelper() bool {
-	//Fetch, cache and return
-	if !IsTpmEnabled() {
-		return false
+// PCRBankSHA256Supported reports whether the TPM has a SHA-256 PCR bank,
+// retrying a failed read. It returns an error when the TPM cannot be read. A
+// definite answer is cached for the life of the process; an error is not.
+func PCRBankSHA256Supported(log *base.LogObject) (bool, error) {
+	switch pcrBank256Status {
+	case PCRBank256StatusSupported:
+		return true, nil
+	case PCRBank256StatusNotSupported:
+		return false, nil
 	}
+	supported := false
+	if IsTpmEnabled() {
+		var err error
+		supported, err = retryTPMProbe(log, "checking for the SHA-256 PCR bank",
+			probePCRBankSHA256)
+		if err != nil {
+			return false, err
+		}
+	}
+	if supported {
+		pcrBank256Status = PCRBank256StatusSupported
+	} else {
+		pcrBank256Status = PCRBank256StatusNotSupported
+	}
+	return supported, nil
+}
 
+// probePCRBankSHA256 reads PCR 0 from the SHA-256 bank. The TPM leaves an
+// unallocated bank out of a successful response, and a TPM error other than a
+// warning is the same answer to every retry; both mean the bank is absent. A
+// warning or a failure to reach the TPM is returned as an error.
+func probePCRBankSHA256() (bool, error) {
 	rw, err := tpm2.OpenTPM(TpmDevicePath)
 	if err != nil {
-		return false
+		return false, err
 	}
 	defer rw.Close()
 
-	//test is by reading PCR index 0 from SHA256 bank
-	_, err = tpm2.ReadPCR(rw, 0, tpm2.AlgSHA256)
-	return err == nil
+	pcrs, err := tpm2.ReadPCRs(rw, tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: []int{0}})
+	if err != nil {
+		if isDefiniteLegacyTPMError(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("PCR_Read: %w", err)
+	}
+	_, ok := pcrs[0]
+	return ok, nil
+}
+
+// isDefiniteLegacyTPMError reports whether err, from the legacy go-tpm API, is
+// a TPM response code that a retry would repeat: any TPM 2.0 error that is not
+// a warning.
+func isDefiniteLegacyTPMError(err error) bool {
+	var (
+		fmt0    tpm2.Error
+		param   tpm2.ParameterError
+		handle  tpm2.HandleError
+		session tpm2.SessionError
+	)
+	return errors.As(err, &fmt0) || errors.As(err, &param) ||
+		errors.As(err, &handle) || errors.As(err, &session)
 }
 
 // unextendedCriticalPCRs reads the critical firmware PCRs (criticalFirmwarePCRs)

@@ -8,6 +8,7 @@
 package evetpm
 
 import (
+	"errors"
 	"fmt"
 
 	legacytpm2 "github.com/google/go-tpm/legacy/tpm2"
@@ -61,13 +62,21 @@ func toTPMLPCRSelection(pcrSel legacytpm2.PCRSelection) tpm2.TPMLPCRSelection {
 	}
 }
 
-// tpmSupportsAES128CFB checks whether the TPM supports AES-128-CFB as a
-// symmetric cipher. This is used to determine whether we can use encrypted
-// sessions for sealing operations.
-func tpmSupportsAES128CFB() bool {
+// tpmSupportsAES128CFB reports whether the TPM supports AES-128-CFB as a
+// symmetric cipher, which decides whether sealing operations use encrypted
+// sessions. It retries a failed probe and returns an error when the TPM cannot
+// be asked. A nil log logs through the standard logger.
+func tpmSupportsAES128CFB(log *base.LogObject) (bool, error) {
+	return retryTPMProbe(log, "checking for TPM AES-128-CFB support", probeAES128CFB)
+}
+
+// probeAES128CFB asks the TPM with TestParms. A TPM error other than a warning
+// means the cipher is unsupported; a warning or a failure to reach the TPM is
+// returned as an error.
+func probeAES128CFB() (bool, error) {
 	t, err := openTPM2()
 	if err != nil {
-		return false
+		return false, err
 	}
 	defer t.Close()
 
@@ -93,8 +102,14 @@ func tpmSupportsAES128CFB() bool {
 			),
 		},
 	}).Execute(t)
-
-	return err == nil
+	if err == nil {
+		return true, nil
+	}
+	var rc tpm2.TPMRC
+	if errors.As(err, &rc) && !rc.IsWarning() {
+		return false, nil
+	}
+	return false, fmt.Errorf("TestParms: %w", err)
 }
 
 func getExpectedPCRDigest(t transport.TPM, selection tpm2.TPMLPCRSelection, hashAlg tpm2.TPMAlgID) ([]byte, error) {

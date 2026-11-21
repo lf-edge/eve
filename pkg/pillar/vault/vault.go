@@ -12,6 +12,7 @@ import (
 
 	"github.com/lf-edge/eve-api/go/info"
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	etpm "github.com/lf-edge/eve/pkg/pillar/evetpm"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	utils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 )
@@ -22,6 +23,23 @@ const (
 	// so path must be aligned
 	allowVaultCleanFile = types.PersistStatusDir + "/allow-vault-clean"
 )
+
+// pcrBankSupported is the SHA-256 PCR bank probe; tests replace it.
+var pcrBankSupported = etpm.PCRBankSHA256Supported
+
+// pcrStatus reports the SHA-256 PCR bank for VaultStatus. A TPM that cannot be
+// read gives PCR_UNKNOWN and the error, not PCR_DISABLED.
+func pcrStatus(log *base.LogObject) (info.PCRStatus, error) {
+	supported, err := pcrBankSupported(log)
+	switch {
+	case err != nil:
+		return info.PCRStatus_PCR_UNKNOWN, err
+	case supported:
+		return info.PCRStatus_PCR_ENABLED, nil
+	default:
+		return info.PCRStatus_PCR_DISABLED, nil
+	}
+}
 
 // GetOperationalInfo gets the current operational state of encryption tool
 func GetOperationalInfo(log *base.LogObject) (info.DataSecAtRestStatus, string) {
