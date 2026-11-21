@@ -95,6 +95,12 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 		}
 	}
 
+	if !uninstall && snapshotOpInProgress(ctx, status.UUIDandVersion.UUID) {
+		log.Noticef("removeAIStatus(%s): PurgeInprogress waiting for snapshot",
+			uuidStr)
+		return
+	}
+
 	changed, done := doRemove(ctx, status, uninstall)
 	if changed {
 		log.Functionf("removeAIStatus status change for %s",
@@ -121,6 +127,9 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 	log.Functionf("removeAIStatus(%s): PurgeInprogress RecreateVolumes",
 		status.Key())
 	status.PurgeInprogress = types.RecreateVolumes
+	// doInactivate does not follow the state of the domain, and what comes
+	// next can take long or leave the app down.
+	status.State = types.HALTED
 	publishAppInstanceStatus(ctx, status)
 	config := lookupAppInstanceConfig(ctx, uuidStr, true)
 	if config != nil {
@@ -155,8 +164,13 @@ func doUpdate(ctx *zedmanagerContext,
 	// This is different from instances where the VM is deactivated due to a purge&update
 	// command from the controller, which is taken care of in the removeAIStatus function.
 	domainStatus := lookupDomainStatus(ctx, uuidStr)
-	// Is the VM already shutdown?
-	if domainStatus != nil && !domainStatus.Activated {
+	// Is the VM already shutdown? An app that was not started since boot
+	// has no DomainStatus at all.
+	domainDown := !status.Activated && !status.ActivateInprogress
+	if domainStatus != nil {
+		domainDown = !domainStatus.Activated
+	}
+	if domainDown {
 		// Trigger snapshot removal
 		// Note, that we do not restart the VM explicitly for the snapshot removal, we just wait for the next restart,
 		// which ends in this line of code.
@@ -184,6 +198,12 @@ func doUpdate(ctx *zedmanagerContext,
 			publishAppInstanceStatus(ctx, status)
 			return true
 		}
+	}
+
+	// handleVolumesSnapshotStatusImpl comes back here once volumemgr is done.
+	if snapshotOpInProgress(ctx, status.UUIDandVersion.UUID) {
+		log.Noticef("doUpdate(%s): waiting for snapshot", uuidStr)
+		return changed
 	}
 
 	// An app that was not active before the reboot is low-priority, but it is
@@ -337,16 +357,18 @@ func triggerRollback(ctx *zedmanagerContext, status *types.AppInstanceStatus) er
 		// We have found the VolumesSnapshotConfig in the channel
 		// Switch the action to rollback
 		volumesSnapshotConfig.Action = types.VolumesSnapshotRollback
+		volumesSnapshotConfig.RollbackCount++
 		publishVolumesSnapshotConfig(ctx, volumesSnapshotConfig)
 		return nil
 	}
 	// We have not found the VolumesSnapshotConfig in the channel, maybe the system was rebooted
 	// Create a new one and publish it
 	volumesSnapshotConfig = &types.VolumesSnapshotConfig{
-		SnapshotID: status.SnapStatus.ActiveSnapshot,
-		VolumeIDs:  make([]uuid.UUID, 0),
-		Action:     types.VolumesSnapshotRollback,
-		AppUUID:    status.UUIDandVersion.UUID,
+		SnapshotID:    status.SnapStatus.ActiveSnapshot,
+		VolumeIDs:     make([]uuid.UUID, 0),
+		Action:        types.VolumesSnapshotRollback,
+		AppUUID:       status.UUIDandVersion.UUID,
+		RollbackCount: 1,
 	}
 	for _, volumeRefConfig := range status.VolumeRefStatusList {
 		volumesSnapshotConfig.VolumeIDs = append(volumesSnapshotConfig.VolumeIDs, volumeRefConfig.VolumeID)

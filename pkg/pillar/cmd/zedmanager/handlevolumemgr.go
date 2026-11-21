@@ -235,12 +235,41 @@ func handleVolumesSnapshotStatusImpl(ctx *zedmanagerContext, volumesSnapshotStat
 	switch volumesSnapshotStatus.ResultOfAction {
 	case types.VolumesSnapshotCreate:
 		reactToSnapshotCreate(ctx, volumesSnapshotStatus)
+		updateAIStatusUUID(ctx, volumesSnapshotStatus.AppUUID.String())
 	case types.VolumesSnapshotRollback:
 		reactToSnapshotRollback(ctx, volumesSnapshotStatus)
 	case types.VolumesSnapshotDelete:
 		reactToSnapshotDelete(ctx, volumesSnapshotStatus)
+		updateAIStatusUUID(ctx, volumesSnapshotStatus.AppUUID.String())
 	}
 	log.Noticef("handleVolumesSnapshotStatusImpl done")
+}
+
+// snapshotOpInProgress reports whether volumemgr still has to create or delete
+// a snapshot of the app. QEMU and qemu-img cannot open the same disk image at
+// once, so the app must stay down meanwhile.
+// A creation is a published VolumesSnapshotConfig not yet answered with a
+// VolumesSnapshotStatus; a deletion is a status whose config is gone.
+func snapshotOpInProgress(ctx *zedmanagerContext, appUUID uuid.UUID) bool {
+	for key, c := range ctx.pubVolumesSnapConfig.GetAll() {
+		config := c.(types.VolumesSnapshotConfig)
+		if config.AppUUID != appUUID {
+			continue
+		}
+		if st, _ := ctx.subVolumesSnapStatus.Get(key); st == nil {
+			return true
+		}
+	}
+	for key, st := range ctx.subVolumesSnapStatus.GetAll() {
+		snapStatus := st.(types.VolumesSnapshotStatus)
+		if snapStatus.AppUUID != appUUID {
+			continue
+		}
+		if c, _ := ctx.pubVolumesSnapConfig.Get(key); c == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func reactToSnapshotDelete(ctx *zedmanagerContext, volumesSnapshotStatus types.VolumesSnapshotStatus) {
@@ -289,24 +318,32 @@ func reactToSnapshotRollback(ctx *zedmanagerContext, volumesSnapshotStatus types
 		return
 	}
 	if volumesSnapshotStatus.HasError() {
+		// Nothing else ends the rollback, so the app goes on with the
+		// volumes as they are. The error stays with the snapshot.
 		log.Errorf("Snapshot handling %s failed: %s", volumesSnapshotStatus.SnapshotID, volumesSnapshotStatus.Error)
-		appInstanceStatus.SetErrorWithSourceAndDescription(volumesSnapshotStatus.ErrorDescription, volumesSnapshotStatus.ErrorSourceType)
 		setSnapshotStatusError(appInstanceStatus, volumesSnapshotStatus.SnapshotID, volumesSnapshotStatus.ErrorDescription)
-		publishAppInstanceStatus(ctx, appInstanceStatus)
-		return
+	} else if snap := lookupAvailableSnapshot(appInstanceStatus, volumesSnapshotStatus.SnapshotID); snap != nil {
+		snap.Error = types.ErrorDescription{}
 	}
 	appInstanceStatus.SnapStatus.RollbackInProgress = false
 	// unpublish local app instance config, as the rollback is complete, we do not need to replace the config
 	config := lookupAppInstanceConfig(ctx, appInstanceStatus.Key(), false)
-	if config == nil {
-		log.Fatalf("reactToSnapshotRollback: AppInstanceConfig not found for %s", appInstanceStatus.Key())
-	}
 	unpublishLocalAppInstanceConfig(ctx, appInstanceStatus.Key())
 	publishAppInstanceStatus(ctx, appInstanceStatus)
+	if config == nil {
+		// The app was deleted meanwhile. Its removal ended as the purge of
+		// this rollback, so take it up again.
+		log.Warnf("reactToSnapshotRollback: no AppInstanceConfig for %s", appInstanceStatus.Key())
+		removeAIStatus(ctx, appInstanceStatus)
+		return
+	}
 	// Mark the app as active locally to ensure it immediately restarts after rollback from a snapshot.
 	// This avoids delays in app activation that can occur due to edge app priority scheduling.
 	activeapp.CreateLocalAppActiveFile(log, appInstanceStatus.UUIDandVersion.UUID.String())
-	doUpdate(ctx, *config, appInstanceStatus)
+	if doUpdate(ctx, *config, appInstanceStatus) {
+		publishAppInstanceStatus(ctx, appInstanceStatus)
+		publishAppInstanceSummary(ctx)
+	}
 }
 
 func reactToSnapshotCreate(ctx *zedmanagerContext, volumesSnapshotStatus types.VolumesSnapshotStatus) {
@@ -525,6 +562,7 @@ func fixupAppInstanceConfig(ctx *zedmanagerContext, appInstanceStatus *types.App
 	// Sync the information about available snapshots
 	snappedAppInstanceConfig.Snapshot.Snapshots = make([]types.SnapshotDesc, len(currentAppInstanceConfig.Snapshot.Snapshots))
 	copy(snappedAppInstanceConfig.Snapshot.Snapshots, currentAppInstanceConfig.Snapshot.Snapshots)
+	snappedAppInstanceConfig.Snapshot.MaxSnapshots = currentAppInstanceConfig.Snapshot.MaxSnapshots
 	// Restore the restart and purge commands counters
 	snappedAppInstanceConfig.PurgeCmd = currentAppInstanceConfig.PurgeCmd
 	snappedAppInstanceConfig.LocalPurgeCmd = currentAppInstanceConfig.LocalPurgeCmd
