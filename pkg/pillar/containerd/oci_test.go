@@ -536,8 +536,8 @@ func TestCreateMountPointExecEnvFiles(t *testing.T) {
 
 	envFile := path.Join(rootDir, "environment")
 	envActual, err := os.ReadFile(envFile)
-	// start with WORKDIR
-	envExpect := "export WORKDIR=\"/data\"\nexport PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"\n"
+	// start with WORKDIR; PATH is a variable of the image
+	envExpect := "export WORKDIR=\"/data\"\nexport PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'\n"
 	if err != nil {
 		t.Errorf("createMountPointExecEnvFiles failed to create environment file %s %v", envFile, err)
 	}
@@ -688,7 +688,7 @@ func TestPrepareMount(t *testing.T) {
 			if err := spec.UpdateFromVolume(oldTempRootPath); err != nil {
 				t.Errorf("failed to load OCI image spec")
 			}
-			spec.UpdateEnvVar(tt.args.envVars)
+			spec.UpdateEnvVar(tt.args.envVars, false)
 			spec.UpdateMounts([]types.DiskStatus{
 				{FileLocation: "/foo/baz.qcow2", Format: zconfig.Format_QCOW2},
 				{FileLocation: "/foo/bar", Format: zconfig.Format_CONTAINER}})
@@ -721,9 +721,11 @@ func TestPrepareMount(t *testing.T) {
 				}
 
 				envFile := path.Join(tt.args.containerPath, "environment")
+				// PATH is a variable of the image, ENV1 one of a plain
+				// line of the user-data
 				expectedEnv := "export WORKDIR=\"/\"\n" +
-					"export PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"\n" +
-					"export ENV1=\"VAL1\"\n"
+					"export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'\n" +
+					"export ENV1='VAL1'\n"
 				env, err := os.ReadFile(envFile)
 				if err != nil {
 					t.Errorf("TestPrepareMount: exception while reading environment file %s %v", envFile, err)
@@ -785,11 +787,11 @@ func TestEnvs(t *testing.T) {
 	envVars := make(map[string]string)
 
 	envVars[eveECOCMDOverride] = "echo me"
-	spec.UpdateEnvVar(envVars)
+	spec.UpdateEnvVar(envVars, false)
 	g.Expect(spec.Process.Args).To(Equal([]string{"echo", "me"}))
 
 	envVars[eveECOCMDOverride] = "echo hello"
-	spec.UpdateEnvVar(envVars)
+	spec.UpdateEnvVar(envVars, false)
 	g.Expect(spec.Process.Args).To(Equal([]string{"echo", "hello"}))
 }
 
