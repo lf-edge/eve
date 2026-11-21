@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -374,6 +375,74 @@ func TestSetupDeviceRemovesOnlyLeftovers(t *testing.T) {
 	}
 }
 
+// A create that PVE fails transiently, e.g. when it cannot fork the create
+// worker, is retried with a fresh VMID once the failed one has been cleaned
+// up.
+func TestCreateVMRetriesWithNewVMID(t *testing.T) {
+	saved := proxmoxRetryDelay
+	proxmoxRetryDelay = time.Millisecond
+	t.Cleanup(func() { proxmoxRetryDelay = saved })
+
+	var mu sync.Mutex
+	nextID, creates := 111, 0
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.URL.Path {
+		case "/api2/json/cluster/nextid":
+			_, _ = fmt.Fprintf(w, `{"data":"%d"}`, nextID)
+			nextID++
+		case "/api2/json/nodes/pve/qemu":
+			creates++
+			if creates == 1 {
+				http.Error(w, "got no worker upid - start worker failed",
+					http.StatusInternalServerError)
+				return
+			}
+			_, _ = io.WriteString(w,
+				`{"data":"UPID:pve:00000001:00000002:00000003:qmcreate:112:root@pam:"}`)
+		case "/api2/json/nodes/pve/qemu/111/status/current":
+			// The failed create left nothing behind.
+			conn, buf, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				return
+			}
+			defer func() { _ = conn.Close() }()
+			_, _ = buf.WriteString("HTTP/1.1 500 Configuration file " +
+				"'nodes/pve/qemu-server/111.conf' does not exist\r\n" +
+				"Content-Length: 0\r\nConnection: close\r\n\r\n")
+			_ = buf.Flush()
+		default:
+			http.NotFound(w, r)
+		}
+	}
+	srv := httptest.NewServer(http.HandlerFunc(handler))
+	t.Cleanup(srv.Close)
+	client := proxmox.NewClient(srv.URL+"/api2/json", proxmox.WithHTTPClient(srv.Client()))
+	p := &ProxmoxProvider{
+		conf:   ProxmoxProviderConf{Node: "pve", Storage: "local-lvm"},
+		client: client,
+	}
+	node := (&proxmox.Node{}).New(client, "pve")
+	cluster := (&proxmox.Cluster{}).New(client)
+	dev := &proxmoxDevice{name: "dev", spec: DeviceSpec{
+		CPUs: 2, MemoryBytes: 1 << 30, Arch: api.ArchType_ARCH_AMD64,
+	}}
+	log := logrus.NewEntry(logrus.New())
+
+	_, err := retryProxmoxCall(context.Background(), log, "create",
+		func(ctx context.Context) (*proxmox.Task, error) {
+			return p.createVM(ctx, ctx, log, node, cluster, dev, nil, "")
+		})
+	if err != nil {
+		t.Fatalf("expected the second create to succeed, got: %v", err)
+	}
+	if creates != 2 || dev.vmID != 112 {
+		t.Errorf("got %d creates and VMID %d, want 2 creates and VMID 112",
+			creates, dev.vmID)
+	}
+}
+
 func TestAttemptContext(t *testing.T) {
 	savedDelay, savedMin := proxmoxRetryDelay, proxmoxMinAttemptTime
 	proxmoxRetryDelay, proxmoxMinAttemptTime = 10*time.Second, 30*time.Second
@@ -462,5 +531,202 @@ func TestRetryProxmoxCallRetriesAfterAttemptTimeout(t *testing.T) {
 	if err != nil || attempts != 2 {
 		t.Fatalf("expected success on the second attempt, got err=%v attempts=%d",
 			err, attempts)
+	}
+}
+
+// fakeCreateAPI serves VMID allocation, VM creation and the status of the
+// create tasks, whose exit status taskExit gives per VMID; the status of a task
+// missing there cannot be read. A VM that is looked up, which removeVM does
+// first, is recorded in lookups and reported missing.
+type fakeCreateAPI struct {
+	mu       sync.Mutex
+	nextID   int
+	creates  []int
+	lookups  []string
+	taskExit map[int]string
+	// onFailedTask, if set, is called when the failure of the create task of
+	// a VM is reported.
+	onFailedTask func(vmID int)
+}
+
+func (f *fakeCreateAPI) upid(vmID int) string {
+	return fmt.Sprintf("UPID:pve:00000001:00000002:00000003:qmcreate:%d:root@pam:", vmID)
+}
+
+func (f *fakeCreateAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	switch {
+	case r.URL.Path == "/api2/json/cluster/nextid":
+		_, _ = fmt.Fprintf(w, `{"data":"%d"}`, f.nextID)
+		f.nextID++
+	case r.URL.Path == "/api2/json/nodes/pve/qemu":
+		vmID := f.nextID - 1
+		f.creates = append(f.creates, vmID)
+		_, _ = fmt.Fprintf(w, `{"data":%q}`, f.upid(vmID))
+	case strings.HasPrefix(r.URL.Path, "/api2/json/nodes/pve/tasks/"):
+		for vmID, exit := range f.taskExit {
+			if strings.Contains(r.URL.Path, f.upid(vmID)) {
+				if exit != "OK" && f.onFailedTask != nil {
+					f.onFailedTask(vmID)
+				}
+				_, _ = fmt.Fprintf(w,
+					`{"data":{"status":"stopped","exitstatus":%q}}`, exit)
+				return
+			}
+		}
+		http.NotFound(w, r)
+	case strings.HasSuffix(r.URL.Path, "/status/current"):
+		f.lookups = append(f.lookups, strings.TrimSuffix(
+			strings.TrimPrefix(r.URL.Path, "/api2/json/nodes/pve/qemu/"),
+			"/status/current"))
+		conn, buf, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		_, _ = buf.WriteString("HTTP/1.1 500 Configuration file " +
+			"'nodes/pve/qemu-server/1.conf' does not exist\r\n" +
+			"Content-Length: 0\r\nConnection: close\r\n\r\n")
+		_ = buf.Flush()
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func createWithRetry(t *testing.T, fake *fakeCreateAPI,
+	prepare ...func(*ProxmoxProvider)) error {
+	t.Helper()
+	savedDelay, savedPoll := proxmoxRetryDelay, proxmoxTaskPollInterval
+	proxmoxRetryDelay, proxmoxTaskPollInterval = time.Millisecond, time.Millisecond
+	t.Cleanup(func() {
+		proxmoxRetryDelay, proxmoxTaskPollInterval = savedDelay, savedPoll
+	})
+	srv := httptest.NewServer(fake)
+	t.Cleanup(srv.Close)
+	client := proxmox.NewClient(srv.URL+"/api2/json", proxmox.WithHTTPClient(srv.Client()))
+	p := &ProxmoxProvider{
+		conf:    ProxmoxProviderConf{Node: "pve", Storage: "local-lvm"},
+		client:  client,
+		devices: map[string]*proxmoxDevice{},
+		pending: map[string]*proxmoxDevice{},
+	}
+	for _, prep := range prepare {
+		prep(p)
+	}
+	node := (&proxmox.Node{}).New(client, "pve")
+	cluster := (&proxmox.Cluster{}).New(client)
+	dev := &proxmoxDevice{name: "dev", spec: DeviceSpec{
+		CPUs: 2, MemoryBytes: 1 << 30, Arch: api.ArchType_ARCH_AMD64,
+	}}
+	log := logrus.NewEntry(logrus.New())
+	ctx := context.Background()
+	_, err := retryProxmoxCall(ctx, log, "create",
+		func(callCtx context.Context) (struct{}, error) {
+			return struct{}{}, p.createAndWaitVM(
+				callCtx, ctx, log, node, cluster, dev, nil, "")
+		})
+	return err
+}
+
+// A create task that PVE completed as failed, e.g. because creates that import
+// disks at the same time timed out on PVE's storage lock, is retried with a
+// new VMID once the failed VM is removed.
+func TestCreateAndWaitVMRetriesFailedTask(t *testing.T) {
+	for _, exit := range []string{
+		"unable to create VM 111 - cannot import from 'local:import/disk.qcow2' - " +
+			"can't lock file '/var/lock/pve-manager/pve-storage-pool' - got timeout",
+		"unable to create VM 111 - unable to allocate disk",
+	} {
+		t.Run(exit, func(t *testing.T) {
+			api := &fakeCreateAPI{nextID: 111,
+				taskExit: map[int]string{111: exit, 112: "OK"}}
+			if err := createWithRetry(t, api); err != nil {
+				t.Fatalf("expected the second create to succeed, got %v", err)
+			}
+			if !reflect.DeepEqual(api.creates, []int{111, 112}) {
+				t.Errorf("got creates of VMs %v, want [111 112]", api.creates)
+			}
+			if !reflect.DeepEqual(api.lookups, []string{"111"}) {
+				t.Errorf("got lookups of VMs %v, want the failed VM 111 removed",
+					api.lookups)
+			}
+		})
+	}
+}
+
+// A wait for the create task that fails on the client side is not retried, as
+// PVE may still be creating the VM; the VM is still removed.
+func TestCreateAndWaitVMDoesNotRetryFailedWait(t *testing.T) {
+	api := &fakeCreateAPI{nextID: 111, taskExit: map[int]string{}}
+	err := createWithRetry(t, api)
+	if err == nil || errors.Is(err, errTaskFailed) {
+		t.Fatalf("expected the wait for the task to fail, got %v", err)
+	}
+	if !reflect.DeepEqual(api.creates, []int{111}) {
+		t.Errorf("got creates of VMs %v, want [111]", api.creates)
+	}
+	if !reflect.DeepEqual(api.lookups, []string{"111"}) {
+		t.Errorf("got lookups of VMs %v, want VM 111 removed", api.lookups)
+	}
+}
+
+// When PVE removes the VM of a failed create task itself, its VMID can be
+// allocated to another device before the cleanup runs, which must then leave
+// that device's VM alone.
+func TestCreateAndWaitVMSkipsRecycledVMID(t *testing.T) {
+	api := &fakeCreateAPI{nextID: 111, taskExit: map[int]string{
+		111: "can't lock file '/var/lock/pve-manager/pve-storage-local' - got timeout",
+		112: "OK",
+	}}
+	err := createWithRetry(t, api, func(p *ProxmoxProvider) {
+		api.onFailedTask = func(vmID int) {
+			p.devMutex.Lock()
+			p.pending["other"] = &proxmoxDevice{name: "other", vmID: vmID}
+			p.devMutex.Unlock()
+		}
+	})
+	if err != nil {
+		t.Fatalf("expected the retry to succeed, got: %v", err)
+	}
+	if len(api.lookups) != 0 {
+		t.Errorf("cleanup looked up VMs %v, although another device holds VMID 111",
+			api.lookups)
+	}
+}
+
+// A VM is removed only on behalf of the device that holds its VMID: the
+// sweep (nil owner) and a device whose VMID was allocated again leave it
+// alone.
+func TestRemoveVMSparesVMIDOfAnotherDevice(t *testing.T) {
+	api := &fakeCreateAPI{}
+	srv := httptest.NewServer(api)
+	t.Cleanup(srv.Close)
+	client := proxmox.NewClient(srv.URL+"/api2/json", proxmox.WithHTTPClient(srv.Client()))
+	holder := &proxmoxDevice{name: "holder", vmID: 120}
+	p := &ProxmoxProvider{
+		conf:    ProxmoxProviderConf{Node: "pve"},
+		client:  client,
+		devices: map[string]*proxmoxDevice{holder.name: holder},
+	}
+	node := (&proxmox.Node{}).New(client, "pve")
+	log := logrus.NewEntry(logrus.New())
+	ctx := context.Background()
+
+	for _, owner := range []*proxmoxDevice{nil, {name: "previous", vmID: 120}} {
+		removed, err := p.removeVM(ctx, log, node, owner, 120)
+		if removed || err != nil {
+			t.Errorf("removeVM for owner %v: got removed=%t err=%v, want neither",
+				owner, removed, err)
+		}
+	}
+	if len(api.lookups) != 0 {
+		t.Fatalf("looked up VMs %v of another device", api.lookups)
+	}
+	if _, err := p.removeVM(ctx, log, node, holder, 120); err != nil {
+		t.Fatalf("removeVM for the holder: %v", err)
+	}
+	if !reflect.DeepEqual(api.lookups, []string{"120"}) {
+		t.Errorf("holder's removal looked up %v, want [120]", api.lookups)
 	}
 }
