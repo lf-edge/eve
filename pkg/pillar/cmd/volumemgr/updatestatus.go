@@ -49,6 +49,19 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 	}
 
 	if status.State < types.VERIFIED {
+		// EVE-k: "no volume references this tree" is only meaningful once
+		// zedagent has delivered its full VolumeConfig set. ContentTreeConfig,
+		// DatastoreConfig and VolumeConfig arrive on independent
+		// subscriptions, so after a reboot the datastore can resolve first;
+		// a tree whose blob is still verified on disk would then go straight
+		// to LOADING before the PVC check below ever sees its volume.
+		// handleVolumeRestart re-drives whatever this holds back.
+		if ctx.hvTypeKube && !ctx.subVolumeConfig.Restarted() {
+			log.Functionf("doUpdateContentTree(%s): waiting for the full VolumeConfig set, deferring",
+				status.Key())
+			return false, false
+		}
+
 		// EVE-k: before doing anything that costs a download, ask whether the
 		// artifact this content tree exists to produce is already present.
 		// If every volume this node owns that references this tree already has
