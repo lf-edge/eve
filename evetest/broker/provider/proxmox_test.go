@@ -218,7 +218,7 @@ func TestSetVMPowerStateSkipsVMInTargetState(t *testing.T) {
 	p, dev := newFakeVMProvider(t, &fakeVMAPI{status: "running"})
 	calls := 0
 	err := p.setVMPowerState(context.Background(), dev, "start", vmRunning,
-		func(*proxmox.VirtualMachine) error { calls++; return nil })
+		func(context.Context, *proxmox.VirtualMachine) error { calls++; return nil })
 	if err != nil || calls != 0 {
 		t.Fatalf("expected success without calling op, got err=%v calls=%d", err, calls)
 	}
@@ -228,7 +228,7 @@ func TestSetVMPowerStateRetriesFailure(t *testing.T) {
 	p, dev := newFakeVMProvider(t, &fakeVMAPI{status: "stopped"})
 	calls := 0
 	err := p.setVMPowerState(context.Background(), dev, "start", vmRunning,
-		func(*proxmox.VirtualMachine) error {
+		func(context.Context, *proxmox.VirtualMachine) error {
 			calls++
 			if calls == 1 {
 				return fmt.Errorf("%w: start failed: QEMU exited with code 1", errTaskFailed)
@@ -247,7 +247,7 @@ func TestSetVMPowerStateAcceptsTargetReachedDespiteError(t *testing.T) {
 	p, dev := newFakeVMProvider(t, api)
 	calls := 0
 	err := p.setVMPowerState(context.Background(), dev, "stop", vmStopped,
-		func(*proxmox.VirtualMachine) error {
+		func(context.Context, *proxmox.VirtualMachine) error {
 			calls++
 			api.setStatus("stopped")
 			return errors.New("unexpected end of JSON input")
@@ -261,7 +261,7 @@ func TestSetVMPowerStateDoesNotRetryPermanentFailure(t *testing.T) {
 	p, dev := newFakeVMProvider(t, &fakeVMAPI{status: "running"})
 	calls := 0
 	err := p.setVMPowerState(context.Background(), dev, "shut down", vmStopped,
-		func(*proxmox.VirtualMachine) error {
+		func(context.Context, *proxmox.VirtualMachine) error {
 			calls++
 			return permanent(fmt.Errorf("%w: VM quit/powerdown failed - got timeout", errTaskFailed))
 		})
@@ -274,7 +274,7 @@ func TestSetVMPowerStateMissingVM(t *testing.T) {
 	p, dev := newFakeVMProvider(t, &fakeVMAPI{missing: true})
 	calls := 0
 	err := p.setVMPowerState(context.Background(), dev, "start", vmRunning,
-		func(*proxmox.VirtualMachine) error { calls++; return nil })
+		func(context.Context, *proxmox.VirtualMachine) error { calls++; return nil })
 	if !isVMNotFoundErr(err) || calls != 0 {
 		t.Fatalf("expected a not-found error without calling op, got err=%v calls=%d", err, calls)
 	}
@@ -371,5 +371,96 @@ func TestSetupDeviceRemovesOnlyLeftovers(t *testing.T) {
 	}
 	if !p.devices[dev.name].teardownFailed {
 		t.Error("failed teardown did not mark the device as a leftover")
+	}
+}
+
+func TestAttemptContext(t *testing.T) {
+	savedDelay, savedMin := proxmoxRetryDelay, proxmoxMinAttemptTime
+	proxmoxRetryDelay, proxmoxMinAttemptTime = 10*time.Second, 30*time.Second
+	t.Cleanup(func() { proxmoxRetryDelay, proxmoxMinAttemptTime = savedDelay, savedMin })
+
+	for _, tc := range []struct {
+		name         string
+		timeLeft     time.Duration
+		attemptsLeft int
+		want         time.Duration
+		wantLast     bool
+	}{
+		// (320s - 2 pauses) / 3
+		{"split among 3", 320 * time.Second, 3, 100 * time.Second, false},
+		// (320s - 1 pause) / 2
+		{"split among 2", 320 * time.Second, 2, 155 * time.Second, false},
+		{"last gets all", 320 * time.Second, 1, 320 * time.Second, true},
+		// (75s - 2 pauses) / 3 < 30s, so only 2 attempts: (75s - 1 pause) / 2.
+		{"too short for 3", 75 * time.Second, 3, 32500 * time.Millisecond, false},
+		// Too short even for 2 attempts: one gets all the time left.
+		{"too short for 2", 50 * time.Second, 3, 50 * time.Second, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), tc.timeLeft)
+			defer cancel()
+			attemptCtx, attemptCancel, last := attemptContext(ctx, tc.attemptsLeft)
+			defer attemptCancel()
+			deadline, _ := attemptCtx.Deadline()
+			if got := time.Until(deadline); got > tc.want || got < tc.want-time.Second {
+				t.Errorf("attempt deadline in %v, want %v", got, tc.want)
+			}
+			if last != tc.wantLast {
+				t.Errorf("last = %v, want %v", last, tc.wantLast)
+			}
+		})
+	}
+
+	attemptCtx, attemptCancel, last := attemptContext(context.Background(), 3)
+	defer attemptCancel()
+	if _, ok := attemptCtx.Deadline(); ok || last {
+		t.Errorf("attempt of a call without a deadline: deadline set %v, last %v, "+
+			"want neither", ok, last)
+	}
+}
+
+// A call with too little time left for several attempts is made once, with
+// all of it, instead of being cut into attempts too short to succeed.
+func TestRetryProxmoxCallMakesOneAttemptWhenShortOfTime(t *testing.T) {
+	savedDelay, savedMin := proxmoxRetryDelay, proxmoxMinAttemptTime
+	proxmoxRetryDelay, proxmoxMinAttemptTime = time.Millisecond, time.Hour
+	t.Cleanup(func() { proxmoxRetryDelay, proxmoxMinAttemptTime = savedDelay, savedMin })
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	attempts := 0
+	_, err := retryProxmoxCall(ctx, logrus.NewEntry(logrus.New()), "delete",
+		func(context.Context) (struct{}, error) {
+			attempts++
+			return struct{}{}, errors.New("transient failure")
+		})
+	if err == nil || attempts != 1 {
+		t.Fatalf("expected one failed attempt, got err=%v attempts=%d", err, attempts)
+	}
+}
+
+// An attempt that hangs until its share of the deadline runs out must leave
+// time for the retries, e.g. for a VM delete that PVE completes just after
+// the first attempt gave up waiting for it.
+func TestRetryProxmoxCallRetriesAfterAttemptTimeout(t *testing.T) {
+	savedDelay, savedMin := proxmoxRetryDelay, proxmoxMinAttemptTime
+	proxmoxRetryDelay, proxmoxMinAttemptTime = time.Millisecond, 100*time.Millisecond
+	t.Cleanup(func() { proxmoxRetryDelay, proxmoxMinAttemptTime = savedDelay, savedMin })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	attempts := 0
+	_, err := retryProxmoxCall(ctx, logrus.NewEntry(logrus.New()), "delete",
+		func(ctx context.Context) (struct{}, error) {
+			attempts++
+			if attempts == 1 {
+				<-ctx.Done()
+				return struct{}{}, ctx.Err()
+			}
+			return struct{}{}, nil
+		})
+	if err != nil || attempts != 2 {
+		t.Fatalf("expected success on the second attempt, got err=%v attempts=%d",
+			err, attempts)
 	}
 }

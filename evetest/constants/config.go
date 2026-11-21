@@ -481,7 +481,9 @@ const (
 // (deviceCount+1) * BrokerTeardownDevicesTimeout (TestHarness.teardownDevices),
 // and the broker gives each device that same budget individually
 // (broker.teardownDevices) -- so one stuck device can't starve the others.
-const BrokerTeardownDevicesTimeout = time.Minute
+// The Proxmox provider splits it among its attempts to delete the VM, and a
+// delete on a loaded host has been seen to take just over a minute.
+const BrokerTeardownDevicesTimeout = 3 * time.Minute
 
 // InitViperConfig initializes the Viper configuration with default values.
 func InitViperConfig() {
