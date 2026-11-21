@@ -132,6 +132,17 @@ DHCP/DNS config, etc.
   * contains information about every application traffic flow, such as source
     and destination IP addresses and ports, protocol, number of packets and bytes
     sent/received, ID of the ACL entry applied, etc.
+* application runtime status
+  * an instance of the `AppRuntimeStatus` structure, keyed by the app instance UUID
+  * for an app that runs nested apps, zedrouter polls the runtime's
+    `GET /api/v1/runtime/status` endpoint alongside the nested-app metrics, and
+    publishes the errors it reports (for example, a failure applying cloud-init
+    config); zedmanager copies them into `AppInstanceStatus.RuntimeErr`
+  * the errors come from the guest, so at most 4 entries of 160 bytes each are
+    kept, highest severity first, with a note of how many were omitted
+  * a runtime without this endpoint answers 404, which is not treated as an error
+  * unpublished when the runtime reports no errors, and when the app is no longer
+    polled (halted, re-addressed or deleted)
 
 In the EVE-k build, zedrouter also accepts **RPC calls** from the eve-bridge CNI plugin.
 Refer to the [plugin documentation](../../kube/eve-bridge/README.md) for more information.
