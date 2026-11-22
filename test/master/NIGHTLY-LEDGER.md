@@ -2,6 +2,138 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-22 -- 0.0.0-master-f867db5b (run #36)](https://github.com/lf-edge/eve/actions/runs/44954398342)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/36/)
+
+### TestControllerFaultsSuite: failure analysis
+
+#### TestDeferredQueueDropsReported
+
+##### Failure
+
+```
+
+Timed out after 480.001s.
+When passed a matcher, ReceiveMatcher's channel *must* receive something.
+```
+
+##### Claude's conclusion
+
+This confirms exactly the same mechanism as the known prior occurrence.
+
+Root cause: the device correctly transitioned `reported-app` RUNNING→HALTING (22:35:26.537)→HALTED (22:35:59.049), and zedagent generated/attempted the HALTED `ZInfoApp` report at 22:35:59.080, but the test harness's fault proxy was still answering `POST .../info` with 404 at that exact moment (22:35:59.090: `dropping message, controller responded 404 Not Found`). The harness only cleared the fault one tick later ("Cleared controller faults" at 22:36:00, ~0.9s after the drop), by which point the HALTED report was already permanently discarded (404 is treated as non-retriable, unlike the sibling 503 test which passed). Adam's log confirms no further `/info` POST for this app ever arrived (last recorded state is RUNNING), and there is no periodic full resync to re-trigger delivery, so `settleApp`'s 8-minute wait for a HALTED event timed out exactly as observed.
+
+This is the identical race documented in `live-ledger.md` for this same test (`TestControllerFaultsSuite/TestDeferredQueueDropsReported`) on 2026-11-06 (run #9) — same signature, same mechanism (deactivate-while-404-faulted, fault cleared a moment too late, terminal report dropped non-retriably). It's a known, recurring issue dating back to at least 2026-11-06, caused by a race in the test harness's own fault-clear timing relative to the device's HALTED-report attempt, not a pillar/EVE regression. It does not share a root cause with other `ReceiveMatcher`-signature failures in the ledger (those were an unrelated `WatchLogs` subscription bug).
+
+### TestDeviceConnectivitySuite: failure analysis
+
+#### TestDeviceIPv6StableAddresses
+
+##### Failure
+
+```
+
+link-local IPv6 changed across reboot
+Expected
+    <[]string | len:1, cap:1>: [
+        "fe80::1354:e539:a0c3:5e31",
+    ]
+to equal
+    <[]string | len:1, cap:1>: [
+        "fe80::14b9:f40e:65a5:b016",
+    ]
+```
+
+##### Claude's conclusion
+
+No prior occurrences in the ledger — this is a new test, failing for the first time it ran.
+
+###### Root cause
+
+`TestDeviceIPv6StableAddresses` is a brand-new test added in commit `cdb33c3d0` ("dhcpcd: keep IPv6 addresses stable across reboots"), which also changed `pkg/pillar/rootfs/etc/dhcpcd.conf` to use `slaac hwaddr` / `duid ll` so link-local, SLAAC, and DUID values stay MAC-derived across a reboot. However, the device under test is running image `0.0.0-master-f867db5b-kvm-amd64`, and `git merge-base --is-ancestor` shows `f867db5b` is 9 commits *older* than `cdb33c3d0` on master — i.e. this nightly build predates the fix. I confirmed this live: `evetest eve ssh "cat /etc/dhcpcd.conf"` shows the device still has the old config (`slaac private`, plain `duid`, no `duid ll`/`slaac hwaddr`), and the before/after DUIDs in the test log (`00:01:00:01:32:94:e7:f3:...` → `00:01:00:01:32:94:e8:d7:...`) are DUID-LLT (time-embedded), not the link-layer DUID the fix introduces — exactly the behavior the fix was meant to eliminate. So the test is working as designed; it's simply running against a build that hasn't picked up the fix it was written to validate yet. This is not a recurring/known issue (no prior ledger entries for this test or signature), and it's unrelated to the other `TestAppRoutingSuite`/`TestAppsSuite` failures in this run, which are distinct Proxmox broker VM-lifecycle flakiness.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestDNIDandBackupDNID
+
+##### Failure
+
+```
+timed out after 30m0.007677072s (excluding download) waiting for app "1c735a92-e07c-4a81-b7a4-b5e02e2f6225" (vm1) on device "edge-dev1" to reach RUNNING state (last state: BOOTING)
+```
+
+##### Claude's conclusion
+
+Live logs confirm the exact known pattern and code path (`kubevirt.go:1271`/`1805`), still ongoing at `22:51:41` (near the failure).
+
+**Root cause:** `TestDNIDandBackupDNID`'s VMIRS for app `vm1` only sets a *preferred* (not required) node affinity toward the DNID `edge-dev1`, so KubeVirt's scheduler placed the VMI on `edge-dev3` instead. Live evidence confirms this exactly: `kubectl get vmi` shows `vm1-1c735-0zmcks` `Running`/`Ready` on `edge-dev3`; `edge-dev1`'s `ENClusterAppStatus` shows `IsDNidNode:true, ScheduledOnThisNode:false, AppKubeStatus:4(RunningState)`; and pillar logs on `edge-dev1` repeat `vmiScheduledOnMeFromVmirs(...): scheduled on "edge-dev3" onMe:false elsewhereReady:true` → `Info(): "vm1-1c735-0 scheduled on a different node"` every poll, still firing at 22:51:41, seconds before the 30-minute timeout. By design, `kubevirt.go:1805`'s `Info()` returns `UNKNOWN` rather than `RUNNING` in this case, so `zedmanager`'s `AppInstanceStatus` for the DNID node stays permanently wedged at `BOOTING` even though the guest is healthy on the peer node — exactly matching the reported timeout.
+
+This is a well-documented, long-recurring issue per `live-ledger.md`: first seen 2026-10-29 (run #1, introduced by commit `98acf1411`/test added in `6574dccd3`), and it has reproduced in the overwhelming majority of nightly runs since, including multiple prior occurrences within this exact run's own ledger. No PR diff was supplied for this investigation, so no relatedness verdict is given.
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.001s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+This confirms the identical signature live, right now at 23:53:25Z — the exact same `getKubeAppActivateStatus(...): not designated` / `publishAppInstanceStatus(...) suppressed` loop recorded in every prior ledger occurrence, with app `failover-purge-app`/`236425b0-...` still deadlocked and no VMIRS/VMI/VM anywhere in the cluster. I have enough to write the conclusion.
+
+**Root cause:** Live evidence (23:53:25Z, current) confirms the well-known `TestVMAppPurgeDuringFailover` designated-node/backup-DNID activation-gate deadlock. `edge-dev1` (the app's designated node) is `EVE_DEVICE_STATE_SUSPECT` (deliberately powered off by the test), `kubectl get vmirs,vmi,vm -A` on edge-dev2 returns **zero resources** cluster-wide ("No resources found") — exactly matching the test's `found []` — and `edge-dev2`'s live zedmanager/zedkube logs show an unbroken loop still firing right now: `getKubeAppActivateStatus(236425b0-...): not designated, node efab9ddf-..., onTheDevice false, statusRunning false` → `publishAppInstanceStatus(...) suppressed: IsDNidNode=false ScheduledOnThisNode=false AppKubeStatus=NotInCluster`, repeating every ~15-20s with no new VMIRS ever re-requested after the purge deleted the old one.
+
+This is the identical mechanism already documented multiple times in both `live-investigation.md` (for this exact run) and `live-ledger.md`: a long-recurring issue first seen 2026-10-29 (run #1, introduced by commit `98acf1411`), reproducing in nearly every nightly run since (explicitly logged again as recently as run #31 earlier tonight, and many runs before that). Tonight's failure is a continuation of that unbroken, still-unfixed streak, not a new bug — it does **not** share a root cause with this run's `TestDNIDandBackupDNID` failure already recorded in `live-investigation.md` (that one is a scheduler-placement/status-reporting gap for ordinary scheduling, whereas this is specifically the purge-after-failover deadlock where no eligible node ever re-requests a VMIRS). No PR diff was provided for this investigation, so no relatedness verdict is given.
+
+### TestUpgradeSuite: failure analysis
+
+#### TestThreeNodesUpgrade
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev1 edge-dev2 edge-dev3]: rpc error: code = Unknown desc = failed to setup device "edge-dev3" for installation: failed to create VM 115 for device "eve-5b633ed2-edge-dev3": 500 got no worker upid - start worker failed
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live `gotest.json` shows a VM-ID collision caused by Proxmox host overload. At 22:52:38 `edge-dev1` was created as Proxmox VM 115; `edge-dev2` got VM 119 at 22:52:42. When the broker then tried to create `edge-dev3`'s VM, it was assigned **VM 115 again — the same ID still actively in use by the still-running `edge-dev1`** — and the Proxmox API call failed with `500 got no worker upid - start worker failed` at 22:54:17 (confirmed again live: `evetest status` still shows this exact error and no EVE devices now exist). The `"no worker upid"` message is pvedaemon failing to even spawn a task worker, which — combined with handing out a VMID that collided with a live VM — points to the Proxmox host's own VM-ID bookkeeping/`nextid` logic returning stale data under load rather than a true free slot. `evetest broker status` currently shows the shared host (`r660xs`) running 19/19 VMs at 78% of host memory with 6 concurrent client sessions and load 6.62/32 CPUs, consistent with (though not definitive proof of, since this is a snapshot taken after the fact) host contention.
+
+No other test in this run failed, so this doesn't share a root cause with an earlier failure tonight. It is, however, a well-known recurring issue: the identical `"500 got no worker upid - start worker failed"` signature appears repeatedly throughout `live-ledger.md` going back to at least 2026-11-01, including multiple prior `TestThreeNodesUpgrade` occurrences and — most relevantly — a near-identical `edge-dev3` VM-creation/SDN-setup failure with this exact error string in this same run's own ledger entry (run #27, 2026-11-21, logged earlier tonight at line 3187-3196). So this is a continuation of the long-standing, broker-side Proxmox overload/ID-allocation flake class, not a new EVE/pillar defect.
+#### TestDeviceAddressesAcrossUpgrade
+
+##### Failure
+
+```
+
+DUID is not a DUID-LL of the eth0 MAC
+Expected
+    <string>: 00:01:00:01:32:94:df:a7:da:39:78:d0:19:f2
+to equal
+    <string>: 00:03:00:01:da:39:78:d0:19:f2
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence is unambiguous: `evetest eve ssh -- cat /etc/dhcpcd.conf` on the paused `edge-dev` device shows the **default/old** dhcpcd.conf (`duid` + `slaac private`), not the new config added in commit `cdb33c3d0` ("dhcpcd: keep IPv6 addresses stable across reboots", 2026-11-19), which replaces those with `duid ll` + `slaac hwaddr` specifically so the DHCPv6 DUID becomes a stable, MAC-derived DUID-LL (type `00:03`). The failing assertion confirms this: the DUID captured after reboot (`00:01:00:01:32:94:df:a7:da:39:78:d0:19:f2`, a type-`0001` DUID-LLT with an embedded timestamp) differs from the previous one because dhcpcd is still generating time-based DUIDs, not the stable `00:03:00:01:<MAC>` form the test expects.
+
+The reason the fix isn't present: the device was upgraded to `lfedge/eve:0.0.0-master-f867db5b-kvm-amd64` (log: "Reusing cached rootfs rootfs-0.0.0-master-f867db5b..."), and `f867db5b` predates `cdb33c3d0` in history (`git merge-base --is-ancestor cdb33c3d0 f867db5b` → false). So this is a stale/cached "master" upgrade-target image that was built before the dhcpcd fix landed, not a regression in the fix itself or in current HEAD.
+
+This does not share a root cause with the other failure already investigated in this run (`TestThreeNodesUpgrade`, a Proxmox VM-ID/broker overload issue — unrelated). It also does not appear anywhere in `live-ledger.md` (no prior `DUID` failures logged), so this is not a known/recurring issue — it's new, and specifically tied to the just-landed `cdb33c3d0` / `75478d2ef` pair (the fix and its new test) outrunning the stale cached master build used as the upgrade target.
+
+No PR diff was provided, so no RELATED line.
+
 ## [2026-11-21 -- 0.0.0-master-bdc65bc5 (run #31)](https://github.com/lf-edge/eve/actions/runs/44825178101)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/31/)
