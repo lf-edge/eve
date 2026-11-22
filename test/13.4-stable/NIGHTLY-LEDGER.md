@@ -2,6 +2,174 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-22 -- 0.0.0-13.4-stable-f31777e9 (run #40)](https://github.com/lf-edge/eve/actions/runs/44987448140)
+
+[Full report](https://lf-edge.github.io/eve/test/13.4-stable/runs/40/)
+
+### TestAppNICsSuite: failure analysis
+
+#### TestNetworkAdapterPassthrough
+
+##### Failure
+
+```
+
+Timed out after 300.001s.
+Expected to satisfy: eth1 is reported as an unused assignable adapter with a MAC address
+machineArch:"x86_64"  cpuArch:"x86_64"  platform:"x86_64"  ncpu:4  memory:7816  storage:63153  powerCycleCounter:-1  minfo:{manufacturer:"QEMU"  productName:"Standard PC (Q35 + ICH9, 2009)"  version:"pc-q35-11.0"  serialNumber:"MBINJGEY"  UUID:"Not Settable"  biosVendor:"EFI Development Kit II / OVMF"  biosVersion:"0.0.0"  biosReleaseDate:"02/06/2015"}  network:{macAddr:"da:39:78:d0:19:f2"  devName:"ethernet0"  IPAddrs:"172.20.20.123"  defaultRouters:"172.20.20.1"  dns:{DNSservers:"10.16.16.25"  DNSdomain:"test."}  ipv4_up:true  uplink:true  networkErr:{timestamp:{seconds:1795326980  nanos:695321106}}  localName:"eth0"  proxy:{}}  assignableAdapters:{type:PhyIoNetEth  name:"ethernet0"  members:"ethernet0"  usedByBaseOS:true  ioAddressList:{macAddress:"da:39:78:d0:19:f2"}  usage:PhyIoUsageMgmtAndApps}  assignableAdapters:{type:PhyIoNetEth  name:"ethernet1"  members:"ethernet1"  usage:PhyIoUsageDedicated}  dns:{DNSservers:"10.16.16.25:53"}  storageList:{mountPath:"/persist/vault/downloader"}  storageList:{mountPath:"/persist/memory-monitor/output"}  storageList:{mountPath:"/persist/ingested"}  storageList:{device:"nbd0"}  storageList:{device:"nbd10"}  storageList:{mountPath:"/persist/agentdebug"}  storageList:{device:"nbd12"}  storageList:{mountPath:"/"  total:3908}  storageList:{device:"nbd15"}  storageList:{mountPath:"/persist/log"}  storageList:{mountPath:"/persist/clear/volumes"}  storageList:{mountPath:"/persist/checkpoint"}  storageList:{device:"nbd6"}  storageList:{mountPath:"/persist/tmp"}  storageList:{device:"vda2"  total:512  partitionLabel:"IMGA"  partitionTypeGuid:"5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30052"}  storageList:{device:"nbd9"}  storageList:{mountPath:"/persist/netdump"}  storageList:{mountPath:"/persist"  total:63153  storageLocation:true}  storageList:{device:"nbd7"}  storageList:{mountPath:"/persist/vault/containerd"}  storageList:{device:"nbd13"}  storageList:{device:"nbd14"}  storageList:{device:"nbd8"}  storageList:{mountPath:"/hostfs"  total:266}  storageList:{device:"vda1"  total:36  partitionLabel:"EFI System"  partitionTypeGuid:"c12a7328-f81f-11d2-ba4b-00a0c93ec93b"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30051"}  storageList:{mountPath:"/persist/vault/verifier"}  storageList:{device:"nbd3"}  storageList:{mountPath:"/persist/certs"}  storageList:{mountPath:"/persist/containerd-system-root"}  storageList:{device:"vda"  total:65536}  storageList:{device:"nbd5"}  storageList:{mountPath:"/persist/status"}  storageList:{mountPath:"/persist/pubsub-large"}  storageList:{mountPath:"/persist/patchEnvelopesCache"}  storageList:{mountPath:"/persist/clear"}  storageList:{mountPath:"/config"  total:1}  storageList:{device:"nbd11"}  storageList:{device:"vda4"  total:1  partitionLabel:"CONFIG"  partitionTypeGuid:"13307e62-cd9c-4920-8f9b-91b45828b798"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30054"}  storageList:{mountPath:"/persist/patchEnvelopesUsageCache"}  storageList:{device:"nbd4"}  storageList:{device:"vda9"  total:64473  partitionLabel:"P3"  partitionTypeGuid:"5f24425a-2dfa-11e8-a270-7b663faccc2c"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30059"}  storageList:{mountPath:"/persist/vault/volumes"}  storageList:{device:"nbd2"}  storageList:{mountPath:"/persist/vault"}  storageList:{mountPath:"/persist/newlog"}  storageList:{device:"nbd1"}  storageList:{device:"vda3"  total:512  partitionLabel:"IMGB"  partitionTypeGuid:"5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30053"}  bootTime:{seconds:1795326827}  swList:{activated:true  partitionLabel:"IMGA"  partitionDevice:"/dev/vda2"  partitionState:"active"  status:INSTALLED  shortVersion:"0.0.0-13.4-stable-f31777e9-kvm-amd64"  downloadProgress:100  userStatus:UPDATED}  swList:{partitionLabel:"IMGB"  partitionDevice:"/dev/vda3"  partitionState:"unused"  status:INITIAL}  HostName:"911821d3-7028-4bde-bffa-d82395ef62da"  lastRebootReason:"NORMAL: First boot of device - at 2026-11-22T05:54:11.536894085Z"  lastRebootTime:{seconds:1795326851  nanos:536894085}  systemAdapter:{status:{version:1  key:"zedagent"  timePriority:{seconds:1795326940  nanos:255703202}  lastSucceeded:{seconds:1795326980  nanos:695378058}  ports:{ifname:"eth0"  name:"ethernet0"  isMgmt:true  free:true  dhcpType:4  subnet:"172.20.20.0/24"  domainname:"test."  proxy:{}  macAddr:"da:39:78:d0:19:f2"  IPAddrs:"172.20.20.123"  defaultRouters:"172.20.20.1"  dns:{DNSservers:"10.16.16.25"  DNSdomain:"test."}  up:true  err:{timestamp:{seconds:1795326980  nanos:695321106}}  usage:PhyIoUsageMgmtAndApps  networkUUID:"4f9d035d-0363-418d-b9e7-263273811265"  mtu:1500}}}  HSMStatus:NOTFOUND  HSMInfo:"Not Available"  dataSecAtRestInfo:{status:DATASEC_AT_REST_DISABLED  info:"TPM is either absent or not in use"  vaultList:{name:"Application Data Store"  status:DATASEC_AT_REST_DISABLED  vaultErr:{description:"TPM is either absent or not in use"  timestamp:{seconds:1795326927  nanos:18291490}  severity:SEVERITY_ERROR}  pcrStatus:PCR_DISABLED  unlock_method:VAULT_UNLOCK_METHOD_NO_TPM}}  sec_info:{sha_root_ca:"\xd0\x10\x98\xbeX\xb9\x0b\xf6\x90\x0bſ\xc3A\x119O\xc7+X.\xd6WkMxp\x9ew\x0f\xaa\xba"  sha_tls_root_ca:"\xd0\x10\x98\xbeX\xb9\x0b\xf6\x90\x0bſ\xc3A\x119O\xc7+X.\xd6WkMxp\x9ew\x0f\xaa\xba"}  configItemStatus:{configItems:{key:"app.allow.vnc"  value:{value:"true"}}  configItems:{key:"debug.default.loglevel"  value:{value:"debug"}}  configItems:{key:"debug.default.remote.loglevel"  value:{value:"debug"}}  configItems:{key:"debug.enable.console"  value:{value:"true"}}  configItems:{key:"debug.enable.ssh"  value:{value:"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC+H1RQUqHjFBJgGpslC73XsLz8Fg5WpNPble9naKyWz1Um8D2bOtQK/yguCImPeBYcH7/73z8dtC6d+dT0UF26+o7Vh6RN/U2X/5nkaZr7oM5QwwZTsD7Nd2Szww9wrRhXvpV0aFgUBDM9BIF1qBQxLNd+Jp8uttrgF3zj/cm7+SXllG54sv8WFBMfTX7J8cQ1jxLyp/Sc6PXK0zBaVzZwhmCCmI6CIzJK6ahMRgXm2vSP6doYibkB3ETSskaCXSHxDiZoaQK2ZY+GqNZkUusbau43MXVPTiJknXqUcmXhQmwyMSltQ3G54jcgn4TDObSQnW7vGdLI7zIEAHnk5D1BmKzQUBh5aRLdhBtb6T3uvVtAqGgnXWKD+d2GjMiy4G31zfIlArvC3G8LxwsDoxQL0XKaFjnEmXIptVXC68zq+laIM8YGDDOCEc6RfczP7lA4p6rv0gQUfTNqy0P3a4ulvIDb4hET1Gkh+Azkuw1do9NIhXPxDBmPdkTnKwJv6XelpdCPCw1QT5o7WdOkUgorf/e03jGDnnn1QBWpSPB9gLB/oDmT/Gzm8tCYaq7ggwYUq1fSMBvnbFaclH1KVcC2Gwn8UPLt9HHa/mGywuISZYl3gy7ztlKyAjHEZH053U7I8OaMvv/CFo9aR4Teeb5848REZYAes+yJIz3lJV1K5Q=="}}  configItems:{key:"newlog.allow.fastupload"  value:{value:"true"}}  configItems:{key:"timer.config.interval"  value:{value:"5"}}  configItems:{key:"timer.download.retry"  value:{value:"60"}}  configItems:{key:"timer.location.app.interval"  value:{value:"20"}}  configItems:{key:"timer.location.cloud.interval"  value:{value:"300"}}  configItems:{key:"timer.metric.interval"  value:{value:"20"}}  configItems:{key:"timer.test.baseimage.update"  value:{value:"60"}}}  last_boot_reason:BOOT_REASON_FIRST  hardware_watchdog_present:true  capabilities:{HWAssistedVirtualization:true  IOVirtualization:true}  state:ZDEVICE_STATE_ONLINE  maintenance_mode_reasons:MAINTENANCE_MODE_REASON_NONE  storage_info:{pool_name:"/persist"  storage_type:STORAGE_TYPE_INFO_EXT4  storage_state:STORAGE_STATUS_ONLINE  disks:{disk_name:{name:"/dev/vda9"  serial:"unknown"}  status:STORAGE_STATUS_ONLINE  smart_status:"failed"}}  attestation_info:{state:ATTESTATION_STATE_COMPLETE}  api_capability:API_CAPABILITY_ADAPTER_USER_LABELS  optional_capabilities:{}
+```
+
+##### Claude's conclusion
+
+I have enough live evidence to confirm this matches the known pattern. Writing the conclusion now.
+
+**Root cause:** This is the identical failure already recorded in the ledger for 2026-11-20 (run #30) — same test, same symptom (`ethernet1`/eth1 shows up as an assignable adapter but with no MAC), and the same underlying log signature. Live `logread` shows `domainmgr.checkAndFillIoBundle(1 eth1 ethernet1)` ran once at 05:55:41.104 and hit `getMacAddr: Can't find ifname eth1`, leaving the IO bundle's `MacAddr` permanently blank since that one-time lookup is never retried. Live `dmesg` confirms why: the kernel renamed the interface `eth1 → keth1` at boot+26.67s (NIM reconfiguring it from uplink to dedicated/passthrough) and didn't rename it back to `eth1` until boot+114.27s, so the single `checkAndFillIoBundle` call at boot+~90s landed squarely inside that ~88-second window where the interface was named `keth1`, not `eth1` — a timing race in `pkg/pillar/cmd/domainmgr` between NIM's interface-rename and domainmgr's IO-bundle MAC lookup. This is a known, recurring issue dating back to at least 2026-11-20 (run #30), not a new bug, and no other failure in this run shares this root cause (the `TestAppNICsSuite` run otherwise has no other reported failures yet).
+
+### TestAppsSuite: failure analysis
+
+#### TestVGAPassthroughNoHostAccess
+
+##### Failure
+
+```
+
+Unexpected error:
+    <*fmt.wrapError | 0x25607e78c020>: 
+    bpftrace-compiler failed: exit status 2; its last output:
+    #32 0.197 time="2026-11-22T07:47:41Z" level=info msg="starting syft scanner for buildkit v1.12.1"
+    #32 DONE 1.2s
+    
+    #33 exporting to oci image format
+    #33 exporting layers
+    #33 exporting layers 5.7s done
+    #33 exporting manifest sha256:e3b12b3cb4e37969f817048a500fa2993a1eef4eedb4626f2829d755a18b3c3e done
+    #33 exporting config sha256:974175beb364997728eb4fe7e4bed8c8aaf492e78134a6d18703c262671ea5ed done
+    #33 exporting attestation manifest sha256:b311f0b5aca2cb2063c651d377afd4c55c4a45b50400e6519853137989273554 done
+    #33 exporting manifest list sha256:6d0e3edda478282fb7ab478c561fa0d7e2d696d7a537b0a971d7a6ace1743931 done
+    #33 sending tarball
+    #33 sending tarball 0.5s done
+    #33 DONE 6.2s
+    time="2026-11-22T07:47:50Z" level=info msg="Extract kernel image: docker.io/lfedge/eve-kernel:eve-kernel-amd64-v6.1.177-generic-be6047d8fd37-gcc"
+    time="2026-11-22T07:47:50Z" level=info msg="Image docker.io/lfedge/eve-kernel:eve-kernel-amd64-v6.1.177-generic-be6047d8fd37-gcc arch amd64 incomplete or invalid in local cache, error no such reference: docker.io/lfedge/eve-kernel:eve-kernel-amd64-v6.1.177-generic-be6047d8fd37-gcc, pulling"
+    time="2026-11-22T07:47:59Z" level=info msg="Add init containers:"
+    time="2026-11-22T07:47:59Z" level=info msg="Process init image: docker.io/linuxkit/root:96bd89e70f2b7f17124313b4ecc9022d"
+    time="2026-11-22T07:48:01Z" level=info msg="Create outputs:"
+    time="2026-11-22T07:48:01Z" level=info msg="  /var/tmp/bpftrace-image541678727/linuxkit-squashfs.img"
+    2026/11/22 07:48:14 running ["/usr/bin/qemu-system-x86_64" "-smp" "1" "-nographic" "-m" "256" "-device" "virtio-net-pci,netdev=t0,mac=5a:7e:cb:9c:12:67" "-netdev" "user,id=t0" "-kernel" "/var/tmp/bpftrace-image541678727/linuxkit-kernel" "-hda" "/var/tmp/bpftrace-image541678727/linuxkit-squashfs.img" "-fsdev" "local,id=dev,path=/var/tmp/bpftrace-9pshare2519399626,security_model=mapped,multidevs=remap" "-device" "virtio-9p-pci,fsdev=dev,mount_tag=9pmount" "-append" "root=/dev/sda units=compile console=null quiet"]
+    2026/11/22 07:48:33 Running bpftrace ...
+    2026/11/22 07:48:33 Running bpftrace program
+    panic: runtime error: invalid memory address or nil pointer dereference
+    [signal SIGSEGV: segmentation violation code=0x1 addr=0x18 pc=0xe169db]
+    
+    goroutine 1 [running]:
+    main.(*eveSSHClient).close(0x8611d765d10)
+    	/eve-tools/bpftrace-compiler/ssh-client.go:152 +0x1b
+    main.(*sshRun).end(0x8611d8261d0?)
+    	/eve-tools/bpftrace-compiler/sshRun.go:77 +0x16
+    main.newRunSSHCmd.func1(0x8611d7be800?, {0x8611d7c20c0, 0x2, 0x111f88e?})
+    	/eve-tools/bpftrace-compiler/main.go:375 +0x1f8
+    github.com/spf13/cobra.(*Command).execute(0x8611d7aa308, {0x8611d7c2060, 0x6, 0x6})
+    	/go/pkg/mod/github.com/spf13/cobra@v1.8.0/command.go:987 +0xb1b
+    github.com/spf13/cobra.(*Command).ExecuteC(0x8611d58bb08)
+    	/go/pkg/mod/github.com/spf13/cobra@v1.8.0/command.go:1115 +0x44f
+    github.com/spf13/cobra.(*Command).Execute(...)
+    	/go/pkg/mod/github.com/spf13/cobra@v1.8.0/command.go:1039
+    main.main()
+    	/eve-tools/bpftrace-compiler/main.go:138 +0x633
+    {
+        msg: "bpftrace-compiler failed: exit status 2; its last output:\n#32 0.197 time=\"2026-11-22T07:47:41Z\" level=info msg=\"starting syft scanner for buildkit v1.12.1\"\n#32 DONE 1.2s\n\n#33 exporting to oci image format\n#33 exporting layers\n#33 exporting layers 5.7s done\n#33 exporting manifest sha256:e3b12b3cb4e37969f817048a500fa2993a1eef4eedb4626f2829d755a18b3c3e done\n#33 exporting config sha256:974175beb364997728eb4fe7e4bed8c8aaf492e78134a6d18703c262671ea5ed done\n#33 exporting attestation manifest sha256:b311f0b5aca2cb2063c651d377afd4c55c4a45b50400e6519853137989273554 done\n#33 exporting manifest list sha256:6d0e3edda478282fb7ab478c561fa0d7e2d696d7a537b0a971d7a6ace1743931 done\n#33 sending tarball\n#33 sending tarball 0.5s done\n#33 DONE 6.2s\ntime=\"2026-11-22T07:47:50Z\" level=info msg=\"Extract kernel image: docker.io/lfedge/eve-kernel:eve-kernel-amd64-v6.1.177-generic-be6047d8fd37-gcc\"\ntime=\"2026-11-22T07:47:50Z\" level=info msg=\"Image docker.io/lfedge/eve-kernel:eve-kernel-amd64-v6.1.177-generic-be6047d8fd37-gcc arch amd64 incomplete or invalid in local cache, error no such reference: docker.io/lfedge/eve-kernel:eve-kernel-amd64-v6.1.177-generic-be6047d8fd37-gcc, pulling\"\ntime=\"2026-11-22T07:47:59Z\" level=info msg=\"Add init containers:\"\ntime=\"2026-11-22T07:47:59Z\" level=info msg=\"Process init image: docker.io/linuxkit/root:96bd89e70f2b7f17124313b4ecc9022d\"\ntime=\"2026-11-22T07:48:01Z\" level=info msg=\"Create outputs:\"\ntime=\"2026-11-22T07:48:01Z\" level=info msg=\"  /var/tmp/bpftrace-image541678727/linuxkit-squashfs.img\"\n2026/11/22 07:48:14 running [\"/usr/bin/qemu-system-x86_64\" \"-smp\" \"1\" \"-nographic\" \"-m\" \"256\" \"-device\" \"virtio-net-pci,netdev=t0,mac=5a:7e:cb:9c:12:67\" \"-netdev\" \"user,id=t0\" \"-kernel\" \"/var/tmp/bpftrace-image541678727/linuxkit-kernel\" \"-hda\" \"/var/tmp/bpftrace-image541678727/linuxkit-squashfs.img\" \"-fsdev\" \"local,id=dev,path=/var/tmp/bpftrace-9pshare2519399626,security_model=mapped,multidevs=remap\" \"-device\" \"virtio-9p-pci,fsdev=dev,mount_tag=9pmount\" \"-append\" \"root=/dev/sda units=compile console=null quiet\"]\n2026/11/22 07:48:33 Running bpftrace ...\n2026/11/22 07:48:33 Running bpftrace program\npanic: runtime error: invalid memory address or nil pointer dereference\n[signal SIGSEGV: segmentation violation code=0x1 addr=0x18 pc=0xe169db]\n\ngoroutine 1 [running]:\nmain.(*eveSSHClient).close(0x8611d765d10)\n\t/eve-tools/bpftrace-compiler/ssh-client.go:152 +0x1b\nmain.(*sshRun).end(0x8611d8261d0?)\n\t/eve-tools/bpftrace-compiler/sshRun.go:77 +0x16\nmain.newRunSSHCmd.func1(0x8611d7be800?, {0x8611d7c20c0, 0x2, 0x111f88e?})\n\t/eve-tools/bpftrace-compiler/main.go:375 +0x1f8\ngithub.com/spf13/cobra.(*Command).execute(0x8611d7aa308, {0x8611d7c2060, 0x6, 0x6})\n\t/go/pkg/mod/github.com/spf13/cobra@v1.8.0/command.go:987 +0xb1b\ngithub.com/spf13/cobra.(*Command).ExecuteC(0x8611d58bb08)\n\t/go/pkg/mod/github.com/spf13/cobra@v1.8.0/command.go:1115 +0x44f\ngithub.com/spf13/cobra.(*Command).Execute(...)\n\t/go/pkg/mod/github.com/spf13/cobra@v1.8.0/command.go:1039\nmain.main()\n\t/eve-tools/bpftrace-compiler/main.go:138 +0x633",
+        err: <*exec.ExitError | 0x25607e2538e0>{
+            ProcessState: {
+                pid: 1683,
+                status: 512,
+                rusage: {
+                    Utime: {Sec: 24, Usec: 599271},
+                    Stime: {Sec: 2, Usec: 447122},
+                    Maxrss: 534000,
+                    Ixrss: 0,
+                    Idrss: 0,
+                    Isrss: 0,
+                    Minflt: 285064,
+                    Majflt: 428,
+                    Nswap: 0,
+                    Inblock: 125168,
+                    Oublock: 1338928,
+                    Msgsnd: 0,
+                    Msgrcv: 0,
+                    Nsignals: 0,
+                    Nvcsw: 118895,
+                    Nivcsw: 28278,
+                },
+            },
+            Stderr: nil,
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+**Root cause:** `eveSSHClient.close()` at `eve-tools/bpftrace-compiler/ssh-client.go:152` unconditionally calls `s.rStdout.Close()`, but `rStdout` is only populated by the `/usr/libexec/sftp-server`-fallback path (`startSftpClientWithCustomPath`); on the normal success path (`sftp.NewClient(s.client)`), `rStdout` stays `nil`, so `close()` dereferences a nil pointer and panics with SIGSEGV. Today's stack trace (`main.(*eveSSHClient).close` → `ssh-client.go:152` → `sshRun.end` → `main.go:375`) is byte-for-byte identical to last night's. This file hasn't been touched since 2024-09-25, confirming it's a pure host-side, structural bug unrelated to any device/SDN state and unrelated to this run's recent commits (yetus/buf/linuxkit CI changes). Per `live-ledger.md`, this exact same test/failure/stack trace already occurred in run #35 (2026-11-21) and was root-caused there identically — so this is a known, recurring issue dating back to at least last night's run, not a new one.
+
+### TestControllerFaultsSuite: failure analysis
+
+#### TestInfoRetriedAfterLostController
+
+##### Failure
+
+```
+timed out after 5m0.000877908s (excluding download) waiting for app "a2ead24d-36c2-41ba-a934-60df620b7032" (reported-app) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence shows this is the same host-CPU-oversubscription pattern that has repeatedly caused `CREATING_VOLUME` timeouts in this environment. Two compounding delays ate the 5‑minute budget for `reported-app`: (1) a boot-time networking race — `volumemgr` logged `Found error in content tree reported-app-image attached to volume reported-app-root: No IP management port addresses with cost <= 0` from 06:45:52 until it self-cleared at 06:47:33, pushing the image resolve/download to only finish at 06:48:06; and (2) `UnpackClientImage` for the ~56MB `evetest-ubuntu-ctr` image then started at 06:48:07.309 and was *still running* as of my live check at 06:52:04 (~4m57s and counting) — consistent with severe CPU starvation: the guest reports `nproc=1` with load average 2.5–3.1, while the underlying host itself has only 2 physical CPUs (load average 0.03–0.8, so the overload is specifically inside the guest/device VM, not the host).
+
+This exact failure signature (`reported-app` stuck in `CREATING_VOLUME` for >5m in `TestControllerFaultsSuite`) is already in the ledger for run #30 (2026-11-20), under a different subtest (`TestInfoDroppedOnRejectionKeepsDeviceReporting`) but the identical app name, identical error message, and identical root cause (CPU-oversubscribed unpack stall). The broader class — container-image unpacks stalling past the fixed 5‑minute `CREATING_VOLUME` timeout under host/device CPU oversubscription — is a long-standing, heavily recurring issue, documented across both prior nightly runs in the ledger (31 separate `CREATING_VOLUME` mentions) hitting many different suites/tests. So this is a known, recurring infrastructure issue (since at least 2026-11-20), now manifesting in a new subtest of `TestControllerFaultsSuite`, not a new product bug.
+
+No PR diff was provided for this investigation.
+
+### TestSwitchNetworkInstanceSuite: failure analysis
+
+#### TestSwitchNetInstanceACLsWithFlowLog
+
+##### Failure
+
+```
+timed out after 5m0.000152305s (excluding download) waiting for app "7bc8b5e1-359e-4eeb-81b0-a6f436911c3d" (acl-app-1) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live inspection confirms this is a genuine, still-in-progress slow volume unpack, not a hang: `evetest eve logs` shows `volumemgr` started `CreateVolume(14809a8f-...)`/`UnpackClientImage` for `acl-app-1`'s root volume at 05:50:40.367, and as of now (05:56+, over 5.5 minutes later) there is still no `createContainerVolume ... DONE` and `FileLocation` is still empty — i.e. the unpack is still running, just very slowly. `vmstat` on the device shows a process perpetually blocked on I/O (`b=1`, `wa`≈23-31%) while `nproc` reports only 1 vCPU visible to the guest against a device configured for 4 vCPUs, and `/proc/diskstats` shows heavy accumulated write time on `vda9` (persist) — the same CPU/disk-oversubscription signature documented repeatedly in the ledger.
+
+This is a known, recurring issue: `live-ledger.md` records the identical `CREATING_VOLUME`→timeout pattern five times in the 2026-11-20 (run #30) nightly, and it already hit `TestLPSSuite` twice in the very next night's run (2026-11-21, run #35, `TestProfile` and `TestAppLocalInfo`) via `live-investigation.md`'s own analysis. This is simply the same host-resource-oversubscription issue recurring again tonight, now in `TestSwitchNetworkInstanceSuite`. It does not share a root cause with any other failure in tonight's run — the three earlier tests in this suite (`TestSwitchNI`, `TestAirGapSwitchNI`, `TestSwitchNetInstanceACLs`) all passed, and this is the first failure recorded in `gotest.json` so far tonight.
+
+No PR diff was given for this investigation, so no RELATED line.
+#### TestAccessVLANs
+
+##### Failure
+
+```
+
+Told to stop trying after 20.295s.
+Stop waiting for: NI is ONLINE
+Network instance is in error state
+networkID:"25633e44-c968-482b-a026-47eda215b684"  networkVersion:"1"  instType:1  displayname:"vlan-switch"  bridgeNum:1  networkErr:{description:"failed to select ports for network instance 25633e44-c968-482b-a026-47eda215b684: no port is matching label 'switch-ports'"  timestamp:{seconds:1795327883  nanos:230096654}  severity:SEVERITY_ERROR}  state:ZNETINST_STATE_ERROR  mtu:1500
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live inspection confirms this is a transient, self-healing NIM/zedrouter port-selection race on a freshly-booted device, not a real configuration problem. `evetest eve logs` shows the device rebooted for this test (`Ignore any saved config due to boot reason BootReasonFirst` at 06:11:09), came up on the fallback `lastresort` DPC (bare `eth0/eth1`, no shared labels), and only inserted/promoted the real `zedagent` DPC (which carries `SharedLabels:[switch-ports]` on eth1-eth3) at 06:11:21.778 — triggering a DHCP release/renew + reconciliation cycle on all 4 ports. zedrouter tried to resolve the `vlan-switch` NI's `Port: "switch-ports"` label at 06:11:23.230 and again at 06:11:50.944, both times logging `no port is matching label 'switch-ports'` before the reconciliation finished reporting the new `DeviceNetworkStatus`. The test's fail-fast wait only allowed 20.295s and gave up at 06:11:41, but `evetest eve ni-info vlan-switch` right now shows the NI fully recovered on its own shortly after — `state:ZNETINST_STATE_ONLINE` with `ports: ethernet1, ethernet2, ethernet3` correctly assigned — confirming this was transient, not persistent misconfiguration.
+
+This is the same general race class investigated earlier (per `live-investigation.md`, for a different test in this run, `TestSwitchNetInstanceACLsWithFlowLog`'s volume-creation timeout — unrelated root cause there) is **not** the same bug; however, this failure *does* share its root cause with the `no port is matching label` boot-time DPC-promotion race documented in last night's (2026-11-21, run #35) `TestAppRoutingSuite` investigation for `TestApplicationGateway`/`ni-eth0` — same mechanism (lastresort→zedagent DPC promotion racing a fail-fast NI-error wait), just triggered here by a `SharedLabel` (`switch-ports`) rather than a `LogicalLabel` (`ethernet0`). Per `live-ledger.md`, neither this exact test (`TestAccessVLANs`) nor this specific `no port is matching label` signature for `TestSwitchNetworkInstanceSuite` has been recorded before — this is the first occurrence for this suite, though it's a recurrence of the broader known race class.
+
 ## [2026-11-21 -- 0.0.0-13.4-stable-9ab05f5f (run #35)](https://github.com/lf-edge/eve/actions/runs/44868748877)
 
 [Full report](https://lf-edge.github.io/eve/test/13.4-stable/runs/35/)
