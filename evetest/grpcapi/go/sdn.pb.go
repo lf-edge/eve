@@ -1349,8 +1349,17 @@ type Port struct {
 	AdminUp bool `protobuf:"varint,5,opt,name=admin_up,json=adminUp,proto3" json:"admin_up,omitempty"`
 	// Traffic control parameters applied to this port to emulate degraded network conditions.
 	TrafficControl *TrafficControl `protobuf:"bytes,6,opt,name=traffic_control,json=trafficControl,proto3" json:"traffic_control,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// EveSriov, if set, makes the interface on the EVE side an SR-IOV capable
+	// NIC, i.e. a physical function on which EVE can create virtual functions.
+	// A test using such a port is skipped unless the device provider advertises
+	// CAPABILITY_SRIOV_NIC.
+	// EVE loads the driver of such a NIC as a kernel module, i.e. later than
+	// the built-in driver of the other NICs, so among the ports of one EVE
+	// device the SR-IOV capable ones must be listed last for the interface
+	// names to follow the order of ports.
+	EveSriov      *SRIOVNic `protobuf:"bytes,7,opt,name=eve_sriov,json=eveSriov,proto3" json:"eve_sriov,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Port) Reset() {
@@ -1421,6 +1430,13 @@ func (x *Port) GetAdminUp() bool {
 func (x *Port) GetTrafficControl() *TrafficControl {
 	if x != nil {
 		return x.TrafficControl
+	}
+	return nil
+}
+
+func (x *Port) GetEveSriov() *SRIOVNic {
+	if x != nil {
+		return x.EveSriov
 	}
 	return nil
 }
@@ -4190,14 +4206,15 @@ const file_sdn_proto_rawDesc = "" +
 	"\bnetworks\x18\x04 \x03(\v2\x1b.org.lfedge.evetest.NetworkR\bnetworks\x12;\n" +
 	"\tendpoints\x18\x05 \x01(\v2\x1d.org.lfedge.evetest.EndpointsR\tendpoints\x128\n" +
 	"\bfirewall\x18\x06 \x01(\v2\x1c.org.lfedge.evetest.FirewallR\bfirewall\x12Q\n" +
-	"\x11controller_config\x18\a \x01(\v2$.org.lfedge.evetest.ControllerConfigR\x10controllerConfig\"\x8b\x02\n" +
+	"\x11controller_config\x18\a \x01(\v2$.org.lfedge.evetest.ControllerConfigR\x10controllerConfig\"\xc6\x02\n" +
 	"\x04Port\x12#\n" +
 	"\rlogical_label\x18\x01 \x01(\tR\flogicalLabel\x12&\n" +
 	"\x0feve_device_name\x18\x02 \x01(\tR\reveDeviceName\x12&\n" +
 	"\x0feve_mac_address\x18\x03 \x01(\tR\reveMacAddress\x12&\n" +
 	"\x0fsdn_mac_address\x18\x04 \x01(\tR\rsdnMacAddress\x12\x19\n" +
 	"\badmin_up\x18\x05 \x01(\bR\aadminUp\x12K\n" +
-	"\x0ftraffic_control\x18\x06 \x01(\v2\".org.lfedge.evetest.TrafficControlR\x0etrafficControl\"\xec\x02\n" +
+	"\x0ftraffic_control\x18\x06 \x01(\v2\".org.lfedge.evetest.TrafficControlR\x0etrafficControl\x129\n" +
+	"\teve_sriov\x18\a \x01(\v2\x1c.org.lfedge.evetest.SRIOVNicR\beveSriov\"\xec\x02\n" +
 	"\x0eTrafficControl\x12\x14\n" +
 	"\x05delay\x18\x01 \x01(\rR\x05delay\x12!\n" +
 	"\fdelay_jitter\x18\x02 \x01(\rR\vdelayJitter\x12)\n" +
@@ -4533,7 +4550,8 @@ var file_sdn_proto_goTypes = []any{
 	(*ControllerConfig)(nil),           // 57: org.lfedge.evetest.ControllerConfig
 	nil,                                // 58: org.lfedge.evetest.HTTPServer.PathsEntry
 	(*IPRoute)(nil),                    // 59: org.lfedge.evetest.IPRoute
-	(*LogMessage)(nil),                 // 60: org.lfedge.evetest.LogMessage
+	(*SRIOVNic)(nil),                   // 60: org.lfedge.evetest.SRIOVNic
+	(*LogMessage)(nil),                 // 61: org.lfedge.evetest.LogMessage
 }
 var file_sdn_proto_depIdxs = []int32{
 	11, // 0: org.lfedge.evetest.SDNStatusResponse.config_errors:type_name -> org.lfedge.evetest.SDNConfigError
@@ -4550,73 +4568,74 @@ var file_sdn_proto_depIdxs = []int32{
 	55, // 11: org.lfedge.evetest.NetworkModel.firewall:type_name -> org.lfedge.evetest.Firewall
 	57, // 12: org.lfedge.evetest.NetworkModel.controller_config:type_name -> org.lfedge.evetest.ControllerConfig
 	24, // 13: org.lfedge.evetest.Port.traffic_control:type_name -> org.lfedge.evetest.TrafficControl
-	0,  // 14: org.lfedge.evetest.Bond.mode:type_name -> org.lfedge.evetest.BondMode
-	1,  // 15: org.lfedge.evetest.Bond.lacp_rate:type_name -> org.lfedge.evetest.LacpRate
-	26, // 16: org.lfedge.evetest.Bond.mii_monitor:type_name -> org.lfedge.evetest.BondMIIMonitor
-	27, // 17: org.lfedge.evetest.Bond.arp_monitor:type_name -> org.lfedge.evetest.BondARPMonitor
-	29, // 18: org.lfedge.evetest.Bridge.pnac:type_name -> org.lfedge.evetest.PNAC
-	30, // 19: org.lfedge.evetest.PNAC.users:type_name -> org.lfedge.evetest.EAPUser
-	2,  // 20: org.lfedge.evetest.EAPUser.methods:type_name -> org.lfedge.evetest.EAPMethod
-	32, // 21: org.lfedge.evetest.Network.ipv4:type_name -> org.lfedge.evetest.NetworkIPConfig
-	32, // 22: org.lfedge.evetest.Network.ipv6:type_name -> org.lfedge.evetest.NetworkIPConfig
-	37, // 23: org.lfedge.evetest.Network.router:type_name -> org.lfedge.evetest.Router
-	33, // 24: org.lfedge.evetest.NetworkIPConfig.dhcp:type_name -> org.lfedge.evetest.DHCP
-	34, // 25: org.lfedge.evetest.DHCP.ip_range:type_name -> org.lfedge.evetest.IPRange
-	35, // 26: org.lfedge.evetest.DHCP.static_entries:type_name -> org.lfedge.evetest.MACToIP
-	36, // 27: org.lfedge.evetest.DHCP.dns:type_name -> org.lfedge.evetest.DNSClientConfig
-	59, // 28: org.lfedge.evetest.Router.routes_towards_eve:type_name -> org.lfedge.evetest.IPRoute
-	42, // 29: org.lfedge.evetest.Endpoints.dns_servers:type_name -> org.lfedge.evetest.DNSServer
-	47, // 30: org.lfedge.evetest.Endpoints.ntp_servers:type_name -> org.lfedge.evetest.NTPServer
-	45, // 31: org.lfedge.evetest.Endpoints.http_servers:type_name -> org.lfedge.evetest.HTTPServer
-	48, // 32: org.lfedge.evetest.Endpoints.explicit_proxies:type_name -> org.lfedge.evetest.ExplicitProxy
-	53, // 33: org.lfedge.evetest.Endpoints.transparent_proxies:type_name -> org.lfedge.evetest.TransparentProxy
-	54, // 34: org.lfedge.evetest.Endpoints.scep_servers:type_name -> org.lfedge.evetest.SCEPServer
-	40, // 35: org.lfedge.evetest.Endpoint.ipv4:type_name -> org.lfedge.evetest.EndpointIPConfig
-	40, // 36: org.lfedge.evetest.Endpoint.ipv6:type_name -> org.lfedge.evetest.EndpointIPConfig
-	41, // 37: org.lfedge.evetest.Endpoint.direct_l2_connect:type_name -> org.lfedge.evetest.DirectL2EpConnect
-	39, // 38: org.lfedge.evetest.DNSServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
-	43, // 39: org.lfedge.evetest.DNSServer.static_entries:type_name -> org.lfedge.evetest.DNSEntry
-	44, // 40: org.lfedge.evetest.DNSEntry.endpoint_ip_ref:type_name -> org.lfedge.evetest.EndpointIPRef
-	3,  // 41: org.lfedge.evetest.EndpointIPRef.ip_version:type_name -> org.lfedge.evetest.IPVersion
-	39, // 42: org.lfedge.evetest.HTTPServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
-	36, // 43: org.lfedge.evetest.HTTPServer.dns_client_config:type_name -> org.lfedge.evetest.DNSClientConfig
-	58, // 44: org.lfedge.evetest.HTTPServer.paths:type_name -> org.lfedge.evetest.HTTPServer.PathsEntry
-	39, // 45: org.lfedge.evetest.NTPServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
-	39, // 46: org.lfedge.evetest.ExplicitProxy.endpoint:type_name -> org.lfedge.evetest.Endpoint
-	49, // 47: org.lfedge.evetest.ExplicitProxy.proxy:type_name -> org.lfedge.evetest.Proxy
-	52, // 48: org.lfedge.evetest.ExplicitProxy.http_proxy:type_name -> org.lfedge.evetest.ProxyPort
-	52, // 49: org.lfedge.evetest.ExplicitProxy.https_proxy:type_name -> org.lfedge.evetest.ProxyPort
-	51, // 50: org.lfedge.evetest.ExplicitProxy.users:type_name -> org.lfedge.evetest.UserCredentials
-	36, // 51: org.lfedge.evetest.Proxy.dns_client_config:type_name -> org.lfedge.evetest.DNSClientConfig
-	50, // 52: org.lfedge.evetest.Proxy.proxy_rules:type_name -> org.lfedge.evetest.ProxyRule
-	4,  // 53: org.lfedge.evetest.ProxyRule.action:type_name -> org.lfedge.evetest.ProxyAction
-	5,  // 54: org.lfedge.evetest.ProxyPort.listen_proto:type_name -> org.lfedge.evetest.ProxyListenProto
-	39, // 55: org.lfedge.evetest.TransparentProxy.endpoint:type_name -> org.lfedge.evetest.Endpoint
-	49, // 56: org.lfedge.evetest.TransparentProxy.proxy:type_name -> org.lfedge.evetest.Proxy
-	39, // 57: org.lfedge.evetest.SCEPServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
-	56, // 58: org.lfedge.evetest.Firewall.rules:type_name -> org.lfedge.evetest.FwRule
-	6,  // 59: org.lfedge.evetest.FwRule.protocol:type_name -> org.lfedge.evetest.FwProto
-	7,  // 60: org.lfedge.evetest.FwRule.action:type_name -> org.lfedge.evetest.FwAction
-	46, // 61: org.lfedge.evetest.HTTPServer.PathsEntry.value:type_name -> org.lfedge.evetest.HTTPContent
-	9,  // 62: org.lfedge.evetest.SDN.GetStatus:input_type -> org.lfedge.evetest.SDNRequest
-	9,  // 63: org.lfedge.evetest.SDN.GetNetworkModel:input_type -> org.lfedge.evetest.SDNRequest
-	13, // 64: org.lfedge.evetest.SDN.SetNetworkModel:input_type -> org.lfedge.evetest.SDNSetNetworkModelRequest
-	9,  // 65: org.lfedge.evetest.SDN.GetConfigGraph:input_type -> org.lfedge.evetest.SDNRequest
-	9,  // 66: org.lfedge.evetest.SDN.StreamLogs:input_type -> org.lfedge.evetest.SDNRequest
-	16, // 67: org.lfedge.evetest.SDN.CheckConnectivity:input_type -> org.lfedge.evetest.SDNConnectivityRequest
-	19, // 68: org.lfedge.evetest.SDN.ConnectTunnel:input_type -> org.lfedge.evetest.ConnectTunnelToSDNRequest
-	10, // 69: org.lfedge.evetest.SDN.GetStatus:output_type -> org.lfedge.evetest.SDNStatusResponse
-	12, // 70: org.lfedge.evetest.SDN.GetNetworkModel:output_type -> org.lfedge.evetest.SDNGetNetworkModelResponse
-	14, // 71: org.lfedge.evetest.SDN.SetNetworkModel:output_type -> org.lfedge.evetest.SDNSetNetworkModelResponse
-	15, // 72: org.lfedge.evetest.SDN.GetConfigGraph:output_type -> org.lfedge.evetest.SDNConfigGraphResponse
-	60, // 73: org.lfedge.evetest.SDN.StreamLogs:output_type -> org.lfedge.evetest.LogMessage
-	17, // 74: org.lfedge.evetest.SDN.CheckConnectivity:output_type -> org.lfedge.evetest.SDNConnectivityResponse
-	20, // 75: org.lfedge.evetest.SDN.ConnectTunnel:output_type -> org.lfedge.evetest.ConnectTunnelToSDNResponse
-	69, // [69:76] is the sub-list for method output_type
-	62, // [62:69] is the sub-list for method input_type
-	62, // [62:62] is the sub-list for extension type_name
-	62, // [62:62] is the sub-list for extension extendee
-	0,  // [0:62] is the sub-list for field type_name
+	60, // 14: org.lfedge.evetest.Port.eve_sriov:type_name -> org.lfedge.evetest.SRIOVNic
+	0,  // 15: org.lfedge.evetest.Bond.mode:type_name -> org.lfedge.evetest.BondMode
+	1,  // 16: org.lfedge.evetest.Bond.lacp_rate:type_name -> org.lfedge.evetest.LacpRate
+	26, // 17: org.lfedge.evetest.Bond.mii_monitor:type_name -> org.lfedge.evetest.BondMIIMonitor
+	27, // 18: org.lfedge.evetest.Bond.arp_monitor:type_name -> org.lfedge.evetest.BondARPMonitor
+	29, // 19: org.lfedge.evetest.Bridge.pnac:type_name -> org.lfedge.evetest.PNAC
+	30, // 20: org.lfedge.evetest.PNAC.users:type_name -> org.lfedge.evetest.EAPUser
+	2,  // 21: org.lfedge.evetest.EAPUser.methods:type_name -> org.lfedge.evetest.EAPMethod
+	32, // 22: org.lfedge.evetest.Network.ipv4:type_name -> org.lfedge.evetest.NetworkIPConfig
+	32, // 23: org.lfedge.evetest.Network.ipv6:type_name -> org.lfedge.evetest.NetworkIPConfig
+	37, // 24: org.lfedge.evetest.Network.router:type_name -> org.lfedge.evetest.Router
+	33, // 25: org.lfedge.evetest.NetworkIPConfig.dhcp:type_name -> org.lfedge.evetest.DHCP
+	34, // 26: org.lfedge.evetest.DHCP.ip_range:type_name -> org.lfedge.evetest.IPRange
+	35, // 27: org.lfedge.evetest.DHCP.static_entries:type_name -> org.lfedge.evetest.MACToIP
+	36, // 28: org.lfedge.evetest.DHCP.dns:type_name -> org.lfedge.evetest.DNSClientConfig
+	59, // 29: org.lfedge.evetest.Router.routes_towards_eve:type_name -> org.lfedge.evetest.IPRoute
+	42, // 30: org.lfedge.evetest.Endpoints.dns_servers:type_name -> org.lfedge.evetest.DNSServer
+	47, // 31: org.lfedge.evetest.Endpoints.ntp_servers:type_name -> org.lfedge.evetest.NTPServer
+	45, // 32: org.lfedge.evetest.Endpoints.http_servers:type_name -> org.lfedge.evetest.HTTPServer
+	48, // 33: org.lfedge.evetest.Endpoints.explicit_proxies:type_name -> org.lfedge.evetest.ExplicitProxy
+	53, // 34: org.lfedge.evetest.Endpoints.transparent_proxies:type_name -> org.lfedge.evetest.TransparentProxy
+	54, // 35: org.lfedge.evetest.Endpoints.scep_servers:type_name -> org.lfedge.evetest.SCEPServer
+	40, // 36: org.lfedge.evetest.Endpoint.ipv4:type_name -> org.lfedge.evetest.EndpointIPConfig
+	40, // 37: org.lfedge.evetest.Endpoint.ipv6:type_name -> org.lfedge.evetest.EndpointIPConfig
+	41, // 38: org.lfedge.evetest.Endpoint.direct_l2_connect:type_name -> org.lfedge.evetest.DirectL2EpConnect
+	39, // 39: org.lfedge.evetest.DNSServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
+	43, // 40: org.lfedge.evetest.DNSServer.static_entries:type_name -> org.lfedge.evetest.DNSEntry
+	44, // 41: org.lfedge.evetest.DNSEntry.endpoint_ip_ref:type_name -> org.lfedge.evetest.EndpointIPRef
+	3,  // 42: org.lfedge.evetest.EndpointIPRef.ip_version:type_name -> org.lfedge.evetest.IPVersion
+	39, // 43: org.lfedge.evetest.HTTPServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
+	36, // 44: org.lfedge.evetest.HTTPServer.dns_client_config:type_name -> org.lfedge.evetest.DNSClientConfig
+	58, // 45: org.lfedge.evetest.HTTPServer.paths:type_name -> org.lfedge.evetest.HTTPServer.PathsEntry
+	39, // 46: org.lfedge.evetest.NTPServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
+	39, // 47: org.lfedge.evetest.ExplicitProxy.endpoint:type_name -> org.lfedge.evetest.Endpoint
+	49, // 48: org.lfedge.evetest.ExplicitProxy.proxy:type_name -> org.lfedge.evetest.Proxy
+	52, // 49: org.lfedge.evetest.ExplicitProxy.http_proxy:type_name -> org.lfedge.evetest.ProxyPort
+	52, // 50: org.lfedge.evetest.ExplicitProxy.https_proxy:type_name -> org.lfedge.evetest.ProxyPort
+	51, // 51: org.lfedge.evetest.ExplicitProxy.users:type_name -> org.lfedge.evetest.UserCredentials
+	36, // 52: org.lfedge.evetest.Proxy.dns_client_config:type_name -> org.lfedge.evetest.DNSClientConfig
+	50, // 53: org.lfedge.evetest.Proxy.proxy_rules:type_name -> org.lfedge.evetest.ProxyRule
+	4,  // 54: org.lfedge.evetest.ProxyRule.action:type_name -> org.lfedge.evetest.ProxyAction
+	5,  // 55: org.lfedge.evetest.ProxyPort.listen_proto:type_name -> org.lfedge.evetest.ProxyListenProto
+	39, // 56: org.lfedge.evetest.TransparentProxy.endpoint:type_name -> org.lfedge.evetest.Endpoint
+	49, // 57: org.lfedge.evetest.TransparentProxy.proxy:type_name -> org.lfedge.evetest.Proxy
+	39, // 58: org.lfedge.evetest.SCEPServer.endpoint:type_name -> org.lfedge.evetest.Endpoint
+	56, // 59: org.lfedge.evetest.Firewall.rules:type_name -> org.lfedge.evetest.FwRule
+	6,  // 60: org.lfedge.evetest.FwRule.protocol:type_name -> org.lfedge.evetest.FwProto
+	7,  // 61: org.lfedge.evetest.FwRule.action:type_name -> org.lfedge.evetest.FwAction
+	46, // 62: org.lfedge.evetest.HTTPServer.PathsEntry.value:type_name -> org.lfedge.evetest.HTTPContent
+	9,  // 63: org.lfedge.evetest.SDN.GetStatus:input_type -> org.lfedge.evetest.SDNRequest
+	9,  // 64: org.lfedge.evetest.SDN.GetNetworkModel:input_type -> org.lfedge.evetest.SDNRequest
+	13, // 65: org.lfedge.evetest.SDN.SetNetworkModel:input_type -> org.lfedge.evetest.SDNSetNetworkModelRequest
+	9,  // 66: org.lfedge.evetest.SDN.GetConfigGraph:input_type -> org.lfedge.evetest.SDNRequest
+	9,  // 67: org.lfedge.evetest.SDN.StreamLogs:input_type -> org.lfedge.evetest.SDNRequest
+	16, // 68: org.lfedge.evetest.SDN.CheckConnectivity:input_type -> org.lfedge.evetest.SDNConnectivityRequest
+	19, // 69: org.lfedge.evetest.SDN.ConnectTunnel:input_type -> org.lfedge.evetest.ConnectTunnelToSDNRequest
+	10, // 70: org.lfedge.evetest.SDN.GetStatus:output_type -> org.lfedge.evetest.SDNStatusResponse
+	12, // 71: org.lfedge.evetest.SDN.GetNetworkModel:output_type -> org.lfedge.evetest.SDNGetNetworkModelResponse
+	14, // 72: org.lfedge.evetest.SDN.SetNetworkModel:output_type -> org.lfedge.evetest.SDNSetNetworkModelResponse
+	15, // 73: org.lfedge.evetest.SDN.GetConfigGraph:output_type -> org.lfedge.evetest.SDNConfigGraphResponse
+	61, // 74: org.lfedge.evetest.SDN.StreamLogs:output_type -> org.lfedge.evetest.LogMessage
+	17, // 75: org.lfedge.evetest.SDN.CheckConnectivity:output_type -> org.lfedge.evetest.SDNConnectivityResponse
+	20, // 76: org.lfedge.evetest.SDN.ConnectTunnel:output_type -> org.lfedge.evetest.ConnectTunnelToSDNResponse
+	70, // [70:77] is the sub-list for method output_type
+	63, // [63:70] is the sub-list for method input_type
+	63, // [63:63] is the sub-list for extension type_name
+	63, // [63:63] is the sub-list for extension extendee
+	0,  // [0:63] is the sub-list for field type_name
 }
 
 func init() { file_sdn_proto_init() }

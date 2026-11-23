@@ -68,6 +68,10 @@ enum Capability {
   CAPABILITY_QMP = 8;
   // Selecting the active PCR banks of an emulated host TPM.
   CAPABILITY_TPM_PCR_BANKS = 9;
+  // Giving the device an SR-IOV capable NIC (see Port.eve_sriov in sdn.proto).
+  // Requires a provider that can emulate such a NIC and that places it so that
+  // EVE can assign each of its virtual functions to an application on its own.
+  CAPABILITY_SRIOV_NIC = 10;
 }
 
 // Active PCR banks supported by an emulated TPM.
@@ -188,7 +192,15 @@ message EVEInterface {
   string name = 1;
   string mac_address = 2;
   string sdn_mac_address = 3; // MAC address of the cross-connected peer on the SDN side
+  // If set, the interface is an SR-IOV capable NIC. Requires CAPABILITY_SRIOV_NIC.
+  SRIOVNic sriov = 4;
 }
+
+// SRIOVNic asks for an SR-IOV capable NIC, i.e. a physical function on which
+// EVE can create virtual functions. Setting the message is the request: it has
+// no options yet, but is a message so that options (e.g. the NIC model or the
+// number of virtual functions the NIC offers) can be added later.
+message SRIOVNic {}
 
 // Response containing captured console output from a device.
 message ConsoleOutputResponse {

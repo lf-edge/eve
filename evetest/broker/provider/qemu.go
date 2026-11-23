@@ -93,6 +93,7 @@ type qemuTap struct {
 	name     string
 	guestMAC net.HardwareAddr
 	network  string
+	sriov    bool
 }
 
 type swtpm struct {
@@ -376,9 +377,11 @@ func (p *QemuProvider) GetSupportedDeviceArchs() ([]api.ArchType, error) {
 // L2 protocols, and supports emulated TPM. It also supports network boot.
 func (p *QemuProvider) Capabilities() []api.Capability {
 	// Plus QMP access: this provider has a QMP monitor of every device VM that
-	// the broker can reach (see ExecuteQMP).
+	// the broker can reach (see ExecuteQMP). And QEMU emulates a NIC with
+	// SR-IOV (see buildArgs).
 	return append(commonCapabilities(), api.Capability_CAPABILITY_QMP,
-		api.Capability_CAPABILITY_TPM_PCR_BANKS)
+		api.Capability_CAPABILITY_TPM_PCR_BANKS,
+		api.Capability_CAPABILITY_SRIOV_NIC)
 }
 
 // DiskImageStrategy returns DiskImageOverlay: qemu attaches local files
@@ -500,6 +503,7 @@ func (p *QemuProvider) SetupDevice(
 			network:  network.name,
 			name:     tap,
 			guestMAC: mac,
+			sriov:    iface.SRIOV,
 		})
 	}
 
@@ -1664,7 +1668,25 @@ func (dev *qemuDevice) buildArgs() []string {
 	for i, tap := range dev.taps {
 		args = append(args,
 			"-netdev", fmt.Sprintf(
-				"tap,id=net%d,ifname=%s,script=no,downscript=no", i, tap.name),
+				"tap,id=net%d,ifname=%s,script=no,downscript=no", i, tap.name))
+		if tap.sriov {
+			// An emulated Intel 82576, on which the guest creates virtual
+			// functions with the igb driver. It gets a PCIe root port of its
+			// own: the virtual functions are reached through the port's ARI
+			// forwarding, and behind it Linux puts each of them into an IOMMU
+			// group of its own, so that EVE can pass every one of them through
+			// to an app VM separately. A root port needs a chassis number of
+			// its own.
+			args = append(args,
+				"-device", fmt.Sprintf(
+					"pcie-root-port,id=sriov-rp%d,bus=pcie.0,chassis=%d", i, i+1),
+				"-device", fmt.Sprintf(
+					"igb,netdev=net%d,mac=%s,bus=sriov-rp%d",
+					i, tap.guestMAC.String(), i),
+			)
+			continue
+		}
+		args = append(args,
 			// Modern-only virtio honoring the vIOMMU (iommu_platform), so
 			// that the NIC itself can be passed through to an app VM.
 			"-device", fmt.Sprintf(

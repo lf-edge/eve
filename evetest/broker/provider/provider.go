@@ -246,6 +246,11 @@ type NetworkInterfaceSpec struct {
 	// Format: "00:11:22:33:44:55"
 	MACAddress net.HardwareAddr
 
+	// SRIOV asks for an SR-IOV capable NIC, i.e. a physical function on which
+	// the guest can create virtual functions, in place of the provider's
+	// default NIC. Only a provider advertising CAPABILITY_SRIOV_NIC honors it.
+	SRIOV bool
+
 	// Connection defines how this interface connects to the network.
 	Connection ConnectionSpec
 }

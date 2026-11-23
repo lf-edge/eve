@@ -1203,6 +1203,12 @@ func Setup(requirements ...Requirement) {
 			}
 		case RequireNetworkModel:
 			netModel = proto.CloneOf(req.NetworkModel)
+			// An SR-IOV capable port needs a provider able to emulate such a NIC.
+			for _, port := range netModel.GetPorts() {
+				if port.GetEveSriov() != nil {
+					requiredCaps = append(requiredCaps, api.Capability_CAPABILITY_SRIOV_NIC)
+				}
+			}
 		case RequireInternetConnectivity:
 			internetReq = &req
 		case RequireCapabilities:
@@ -1238,6 +1244,7 @@ func Setup(requirements ...Requirement) {
 		netModel = th.genDefaultNetworkModel(devNames)
 	} else {
 		// Make sure that device names and MAC addresses are defined.
+		hasSRIOVPort := make(map[string]bool) // key: device name
 		for _, port := range netModel.Ports {
 			if port.GetEveDeviceName() == "" {
 				if len(edgeDevReqs) > 1 {
@@ -1266,6 +1273,16 @@ func Setup(requirements ...Requirement) {
 			if port.GetEveMacAddress() == "" {
 				mac := utils.GenerateMAC(port.EveDeviceName, port.LogicalLabel)
 				port.EveMacAddress = mac.String()
+			}
+			// EVE names its SR-IOV capable NICs after all the others (see
+			// Port.eve_sriov), whatever the order of ports.
+			if port.GetEveSriov() != nil {
+				hasSRIOVPort[port.EveDeviceName] = true
+			} else if hasSRIOVPort[port.EveDeviceName] {
+				th.t.Fatalf(
+					"Network model port %q follows an SR-IOV capable port of "+
+						"device %q; list the SR-IOV capable ports of a device last",
+					port.LogicalLabel, port.EveDeviceName)
 			}
 		}
 	}
@@ -1488,14 +1505,16 @@ func (th *TestHarness) updateNetworkModel(netModel *api.NetworkModel) error {
 		netModel.ControllerConfig = th.netModel.GetControllerConfig()
 	}
 
-	// Only the set of ports (by logical label and device assignment) must stay
-	// the same -- properties like AdminUp or TrafficControl may change.
+	// Only the set of ports (by logical label and device assignment) and the
+	// kind of NIC behind each of them must stay the same -- properties like
+	// AdminUp or TrafficControl may change.
 	samePortSet := generics.EqualSetsFn(th.netModel.GetPorts(), netModel.GetPorts(),
 		func(a, b *api.Port) bool {
 			return a.GetLogicalLabel() == b.GetLogicalLabel() &&
 				a.GetEveDeviceName() == b.GetEveDeviceName() &&
 				a.GetEveMacAddress() == b.GetEveMacAddress() &&
-				a.GetSdnMacAddress() == b.GetSdnMacAddress()
+				a.GetSdnMacAddress() == b.GetSdnMacAddress() &&
+				proto.Equal(a.GetEveSriov(), b.GetEveSriov())
 		})
 	if !samePortSet {
 		return errors.New(
