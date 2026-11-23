@@ -2,6 +2,29 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-23 -- 0.0.0-14.5-stable-e70cea0b (run #44)](https://github.com/lf-edge/eve/actions/runs/45109187699)
+
+[Full report](https://lf-edge.github.io/eve/test/14.5-stable/runs/44/)
+
+### TestAppRoutingSuite: failure analysis
+
+#### TestLocalNIWithMultiplePorts
+
+##### Failure
+
+```
+
+Timed out after 600.001s.
+Expected to satisfy: Default route fails over to ethernet3 and HTTP server route to ethernet2
+networkID:"f4df7be2-a989-4ad9-885e-83fac6611ebb"  networkVersion:"1"  instType:2  displayname:"multi-port-ni"  activated:true  CurrentUplinkIntf:"ethernet0"  ports:"ethernet0"  ports:"ethernet1"  ports:"ethernet2"  ports:"ethernet3"  bridgeNum:1  bridgeName:"bn1"  bridgeIPAddr:"10.50.0.1"  ipAssignments:{macAddress:"00:16:3e:06:00:01"  ipAddress:"10.50.0.1"}  ipAssignments:{macAddress:"02:16:3e:00:02:00"  ipAddress:"10.50.0.2"}  vifs:{vifName:"nbu1x1"  macAddress:"02:16:3e:00:02:00"  appID:"774660ed-ebbd-4342-976b-39ec94f461e4"}  assignedAdapters:{type:PhyIoNetEth  name:"ethernet0"  members:"ethernet0"  usedByAppUUID:"867e977b-e7b4-4b57-82db-632cba016545"  ioAddressList:{macAddress:"da:39:78:d0:19:f2"}}  assignedAdapters:{type:PhyIoNetEth  name:"ethernet1"  members:"ethernet1"  usedByAppUUID:"867e977b-e7b4-4b57-82db-632cba016545"  ioAddressList:{macAddress:"1e:68:56:62:e1:30"}}  assignedAdapters:{type:PhyIoNetEth  name:"ethernet2"  members:"ethernet2"  usedByAppUUID:"867e977b-e7b4-4b57-82db-632cba016545"  ioAddressList:{macAddress:"ce:30:0f:9c:43:d9"}}  assignedAdapters:{type:PhyIoNetEth  name:"ethernet3"  members:"ethernet3"  usedByAppUUID:"867e977b-e7b4-4b57-82db-632cba016545"  ioAddressList:{macAddress:"d6:42:ef:26:d8:c8"}}  state:ZNETINST_STATE_ONLINE  mtu:1500  ip_routes:{destination_network:"0.0.0.0/0"  gateway:"10.40.40.1"  port:"ethernet3"}  ip_routes:{destination_network:"10.88.88.0/24"  gateway:"172.22.10.1"  port:"ethernet0"}  ip_routes:{destination_network:"10.40.40.0/24"  port:"ethernet3"}  ip_routes:{destination_network:"172.22.10.0/24"  port:"ethernet0"}  ip_routes:{destination_network:"172.28.20.0/24"  port:"ethernet1"}  ip_routes:{destination_network:"192.168.30.0/24"  port:"ethernet2"}
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live inspection of the paused device confirms the NI's two label-routed static routes diverged after `eth0` was set `AdminUp=false`: the "internet" route (gateway-ping probe) failed over to `ethernet3` almost instantly, but `/run/zedrouter/NetworkInstanceStatus/*.json` and `ip route show table 801` both show the "httpserver" route (TCP probe to `10.88.88.70:80`) still pinned to the dead `ethernet0` at the moment of timeout. The zedrouter log pinpoints why: `PortProber` didn't flip the httpserver route to `ethernet2` until `05:08:56` (`"Changing port from ethernet0 to ethernet2 ... (UP count = 1)"`), which is **11m33s** after Phase 2 began at `04:57:23` — 1m33s past the test's 10-minute `failoverTimeout`. This isn't a race; it's arithmetic baked into `PortProber`'s `DefaultConfig()` (`pkg/pillar/portprober/portprober.go`): user-defined (TCP) probes run at `NHProbeInterval * NHToUserProbeRatio` = 15s × 10 = 150s, and require `MaxContFailCnt`+1 = 5 consecutive failures before declaring DOWN, i.e. a deterministic ~12.5-minute detection floor that the test's 10-minute budget can't accommodate — unlike the gateway-ping route, which gets fast "sudden change" detection. This is a different failure mode than the other failure in tonight's run (`TestDNSFunctionality`'s DNS-not-available race) and than 2026-11-21's root cause (NI startup convergence/`niHasError` false-positive), so no shared cause there. However, 2026-11-22's ledger entry for this same test explicitly cites "PortProber logs" as giving "a conclusive timeline for the root cause," strongly suggesting the identical slow-TCP-probe-convergence issue was already found the prior night — so this looks like a recurring, deterministically-reproducible issue since at least 2026-11-22, likely needing either a longer `failoverTimeout` in the test or a faster detection path for user-probe-based NI routes.
+
 ## [2026-11-22 -- 0.0.0-14.5-stable-e70cea0b (run #39)](https://github.com/lf-edge/eve/actions/runs/44983074033)
 
 [Full report](https://lf-edge.github.io/eve/test/14.5-stable/runs/39/)
