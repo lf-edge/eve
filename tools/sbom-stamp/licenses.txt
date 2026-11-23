@@ -243,6 +243,7 @@ pkg:golang/github.com/openshift/client-go	Apache-2.0
 pkg:golang/github.com/openshift/custom-resource-status	Apache-2.0
 pkg:golang/github.com/oxtoacart/bpool	Apache-2.0
 pkg:golang/github.com/packetcap/go-pcap	Apache-2.0
+pkg:golang/github.com/pandatix/go-abnf	MIT
 pkg:golang/github.com/pelletier/go-toml	MIT AND Apache-2.0
 pkg:golang/github.com/pelletier/go-toml/v2	MIT
 pkg:golang/github.com/peterbourgon/diskv	MIT

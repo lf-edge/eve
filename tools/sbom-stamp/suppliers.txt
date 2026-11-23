@@ -1111,6 +1111,7 @@ pkg:golang/github.com/opencontainers	Organization: Open Container Initiative
 pkg:golang/github.com/openshift	Organization: OpenShift
 pkg:golang/github.com/oxtoacart	Person: Percy Wegmann
 pkg:golang/github.com/packetcap	Organization: packetcap
+pkg:golang/github.com/pandatix	Person: Lucas Tesson
 pkg:golang/github.com/pelletier	Person: Thomas Pelletier
 pkg:golang/github.com/peterbourgon	Person: Peter Bourgon
 pkg:golang/github.com/pierrec	Person: Pierre Curto
