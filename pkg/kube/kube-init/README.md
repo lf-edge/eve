@@ -60,6 +60,7 @@ that side's test.
 | `edgenodeinfo` | Subscription to `EdgeNodeInfo` (device identity). |
 | `kubeconfig` | Subscription to `KubeConfig` (k3s version override). |
 | `kcus` | Subscription to `KubeClusterUpdateStatus` (upgrade retry gating). |
+| `nodeagentstatus` | Subscription to `NodeAgentStatus` (update pass waits for the controller on an image under test). |
 | `encconfig` | Subscription to `EdgeNodeClusterConfig` (cluster shape, tie-breaker UUID). |
 | `encstatus` | Subscription to `EdgeNodeClusterStatus` (bootstrap server, cluster UUID). |
 | `kubeinitstatus` | Self-published topic: kube-init's own lifecycle phase (currently `AllComponentsInitialized`). Used by the cluster-config monitor to wake event-driven instead of polling state markers. |

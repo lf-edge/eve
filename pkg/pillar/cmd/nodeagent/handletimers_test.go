@@ -59,6 +59,41 @@ func TestFallbackOnCloudDisconnect_Exceeded(t *testing.T) {
 	}
 }
 
+// Once kube-init has started upgrading the kube components on this
+// image, losing the controller does not fall back to the other partition.
+func TestFallbackOnCloudDisconnect_SkippedOnceKubePassStarted(t *testing.T) {
+	tc := newTestCtx()
+	tc.ctx.updateInprogress = true
+	tc.ctx.configGetSuccess = true
+	tc.ctx.kubePassStarted = func() bool { return true }
+	limit := tc.ctx.globalConfig.GlobalValueInt(types.FallbackIfCloudGoneTime)
+	tc.ctx.timeTickCount = limit + 100
+	tc.ctx.lastControllerReachableTime = 0
+
+	handleFallbackOnCloudDisconnect(tc.ctx)
+
+	if len(tc.scheduledOps) != 0 {
+		t.Fatalf("kube pass started: should not schedule a fallback reboot")
+	}
+}
+
+// An image that has not reached the controller still falls back, whatever
+// kube-init reports.
+func TestFallbackOnCloudDisconnect_ControllerNeverReached(t *testing.T) {
+	tc := newTestCtx()
+	tc.ctx.updateInprogress = true
+	tc.ctx.kubePassStarted = func() bool { return true }
+	limit := tc.ctx.globalConfig.GlobalValueInt(types.FallbackIfCloudGoneTime)
+	tc.ctx.timeTickCount = limit + 100
+	tc.ctx.lastControllerReachableTime = 0
+
+	handleFallbackOnCloudDisconnect(tc.ctx)
+
+	if len(tc.scheduledOps) != 1 {
+		t.Fatalf("expected 1 fallback reboot scheduled, got %d", len(tc.scheduledOps))
+	}
+}
+
 // --- handleResetOnCloudDisconnect ------------------------------------
 
 func TestResetOnCloudDisconnect_WithinLimit(t *testing.T) {

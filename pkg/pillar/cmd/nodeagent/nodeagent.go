@@ -123,6 +123,9 @@ type nodeagentContext struct {
 	// component update pass of this boot. Nil, meaning ready, unless the
 	// image is of kubernetes cluster type.
 	kubeComponentsReady func() bool
+	// kubePassStarted reports whether kube-init has started that pass.
+	// Nil unless the image is of kubernetes cluster type.
+	kubePassStarted     func() bool
 	kubeHolding         bool   // test complete is held for kube-init's pass
 	kubeHoldStart       uint32 // timeTickCount when that hold began
 	waitDrainInProgress bool
@@ -301,6 +304,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			log.Fatal(err)
 		}
 		ctxPtr.kubeComponentsReady = componentsGate.Ready
+		ctxPtr.kubePassStarted = componentsGate.PassStarted
 	}
 
 	// Look for VolumeMgrStatus
@@ -855,6 +859,7 @@ func publishNodeAgentStatus(ctxPtr *nodeagentContext) {
 		CurPart:                     ctxPtr.curPart,
 		RemainingTestTime:           ctxPtr.remainingTestTime,
 		UpdateInprogress:            ctxPtr.updateInprogress,
+		ControllerReached:           ctxPtr.configGetSuccess,
 		DeviceReboot:                ctxPtr.deviceReboot,
 		DeviceShutdown:              ctxPtr.deviceShutdown,
 		DevicePoweroff:              ctxPtr.devicePoweroff,

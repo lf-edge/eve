@@ -78,6 +78,13 @@ func (gate *KubeComponentsGate) Ready() bool {
 	return ok && status.ComponentPassOver()
 }
 
+// PassStarted reports whether kube-init has started a kube component
+// update pass this boot. False for a nil gate.
+func (gate *KubeComponentsGate) PassStarted() bool {
+	status, ok := gate.Status()
+	return ok && status.ComponentPassStarted()
+}
+
 // Wait blocks until Ready or until ctx is done.
 func (gate *KubeComponentsGate) Wait(ctx context.Context) error {
 	if gate.Ready() {

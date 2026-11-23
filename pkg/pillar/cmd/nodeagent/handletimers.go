@@ -58,7 +58,7 @@ func updateTickerTime(ctxPtr *nodeagentContext) {
 // when baseos upgrade is inprogress
 // on cloud disconnect for a specified amount of time, reset the node
 func handleFallbackOnCloudDisconnect(ctxPtr *nodeagentContext) {
-	if !ctxPtr.updateInprogress {
+	if !ctxPtr.updateInprogress || kubeComponentsUpgrading(ctxPtr) {
 		return
 	}
 	// apply the fallback time function,wait for fallback timeout
@@ -74,6 +74,15 @@ func handleFallbackOnCloudDisconnect(ctxPtr *nodeagentContext) {
 		log.Functionf("handleFallbackOnCloudDisconnect %d seconds remaining",
 			fallbackLimit-timePassed)
 	}
+}
+
+// kubeComponentsUpgrading reports whether kube-init has started
+// upgrading the kube components on this image. It only starts once the
+// controller has been reached on it, and from then on the image stays:
+// the other partition cannot downgrade the components.
+func kubeComponentsUpgrading(ctxPtr *nodeagentContext) bool {
+	return ctxPtr.configGetSuccess && ctxPtr.kubePassStarted != nil &&
+		ctxPtr.kubePassStarted()
 }
 
 // on cloud disconnect for a specified amount time, reset the node

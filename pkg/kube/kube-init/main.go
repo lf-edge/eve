@@ -64,6 +64,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeinitstatus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/mgmtproxy"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/monitor"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/nodeagentstatus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/prereqs"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/pubsubclient"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
@@ -654,6 +655,9 @@ func main() {
 		if err := kcus.Register(psMgr); err != nil {
 			log.Fatalf("register KubeClusterUpdateStatus subscription: %v", err)
 		}
+		if err := nodeagentstatus.Register(psMgr); err != nil {
+			log.Fatalf("register NodeAgentStatus subscription: %v", err)
+		}
 	}
 	if err := encconfig.Register(psMgr); err != nil {
 		log.Fatalf("register EdgeNodeClusterConfig subscription: %v", err)
@@ -1186,6 +1190,9 @@ func (d *daemon) componentPassPending() bool {
 // update pass. They share a state because a k3s update has to finish,
 // k3s restart included, before the components are touched.
 func (d *daemon) workUpgrade(workCtx context.Context) error {
+	if err := waitUpdateAllowed(workCtx); err != nil {
+		return err
+	}
 	updated, err := update.CheckNodeComponents(workCtx, d.supervisor)
 	if err != nil {
 		return fmt.Errorf("k3s version check: %w", err)
@@ -1198,6 +1205,34 @@ func (d *daemon) workUpgrade(workCtx context.Context) error {
 		return workCtx.Err()
 	}
 	return update.CheckClusterComponents(workCtx)
+}
+
+// updateAllowedPoll is the cadence of waitUpdateAllowed.
+const updateAllowedPoll = 5 * time.Second
+
+// waitUpdateAllowed holds the update on an EVE image under test until
+// the image has reached the controller: nodeagent may still fall back
+// to the other partition before that, and the components cannot be
+// downgraded. No timer of its own: an image that never reaches the
+// controller is fallen back by nodeagent.
+func waitUpdateAllowed(ctx context.Context) error {
+	if nodeagentstatus.UpdateAllowed() {
+		return nil
+	}
+	log.Printf("waiting for this EVE image to reach the controller before updating the kube components")
+	ticker := time.NewTicker(updateAllowedPoll)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if nodeagentstatus.UpdateAllowed() {
+				log.Printf("controller reached, updating the kube components")
+				return nil
+			}
+		}
+	}
 }
 
 func (d *daemon) handleWaitUpgrade(ctx context.Context, ev Event) {
@@ -3127,6 +3162,9 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 		// A pending pass normally runs in WAIT_UPGRADE before RUNNING.
 		// This covers a node that only became replicated since, and
 		// advances a status an earlier step left unfinished.
+		if !nodeagentstatus.UpdateAllowed() {
+			return
+		}
 		if err := update.CheckClusterComponents(ctx); err != nil {
 			if !errors.Is(err, update.ErrUpdateFailed) {
 				log.Printf("WARNING: cluster component update: %v", err)

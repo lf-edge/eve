@@ -141,6 +141,12 @@ never applied, and booting an older image never downgrades anything. The pass
 only runs on devices with replicated cluster storage, or with no cluster
 configuration at all.
 
+On a new EVE image that is still under test, the pass starts only once the
+device has reached the controller on that image. Until then nodeagent can
+still fall back to the other partition if the controller stays out of reach.
+Once the pass has started it does not: the other partition cannot downgrade
+the components.
+
 In a cluster the controller upgrades one node at a time. The first node to boot
 the new image upgrades the components for the whole cluster while the others
 still run the old image. Each later node runs the same pass, finds every
@@ -151,13 +157,19 @@ While the pass is pending kube-init is in the state `WAIT_UPGRADE`, before
 `eve.lfedge.org/kube-init-state` annotation on the Node object. Until the pass
 ends:
 
-- the new EVE partition is not marked active, however long the pass takes, so
-  the controller does not start upgrading the next node;
+- the new EVE partition is not marked active, so the controller does not start
+  upgrading the next node. This lasts at most 8 hours after the test time is
+  up; after that the partition is committed even if the pass is still
+  running;
 - volumes are not created or prepared and app VMs are not started on this
   node, and the on-boot descheduler does not bring apps back to it.
 
-Every step of the pass is bounded, so it always ends, in success or in
-failure. A failed pass is not retried by the same image. The node carries on
+Every step of the pass is bounded, so it always ends, in success, failure or
+deferral. A pass is deferred when a component is not ready at its current
+version within 10 minutes, or the node stays cordoned for 10 minutes, before
+anything is changed. A deferred pass lets the node carry on and is run again
+later, by the same boot or the next one. A failed pass is not retried by the
+same image. The node carries on
 with the components as they are, the partition is committed, and the failure
 is reported in the device's cluster update status. A later image with a higher
 kube version number runs the pass again.
@@ -182,7 +194,8 @@ faulted, that no Longhorn CRD still stores objects of an API version the
 target no longer serves, that the node is not cordoned (the tie-breaker node
 excepted), and, for a large step, that every engine image in use is at the
 version being upgraded from. An upgrade that is refused for any of these
-reasons fails the pass with the reason in its error.
+reasons fails the pass with the reason in its error, except a cordoned node,
+which defers it.
 
 The upgrade is complete when Longhorn reports the new version as installed and
 every volume has been moved to the new engine image. Attached volumes are

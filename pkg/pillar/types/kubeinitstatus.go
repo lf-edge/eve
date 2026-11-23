@@ -13,6 +13,10 @@ const KubeInitAgentName = "kube-init"
 // component update pass that failed and is not retried.
 const KubeInitUpdateStateFailed = "failed"
 
+// KubeInitUpdateStateNone is the KubeInitStatus.UpdateState when no
+// component update pass has been started this boot.
+const KubeInitUpdateStateNone = "none"
+
 // KubeInitStatus is pillar's view of the status kube-init publishes about
 // itself on its KubeInitStatus topic.
 //
@@ -53,4 +57,11 @@ func (KubeInitStatus) Key() string {
 func (status KubeInitStatus) ComponentPassOver() bool {
 	return status.ComponentsReady ||
 		status.UpdateState == KubeInitUpdateStateFailed
+}
+
+// ComponentPassStarted reports whether kube-init has started a kube
+// component update pass this boot, whatever has come of it since.
+func (status KubeInitStatus) ComponentPassStarted() bool {
+	return status.UpdateState != "" &&
+		status.UpdateState != KubeInitUpdateStateNone
 }

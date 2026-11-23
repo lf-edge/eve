@@ -30,6 +30,27 @@ func TestKubeInitStatusComponentPassOver(t *testing.T) {
 	}
 }
 
+func TestKubeInitStatusComponentPassStarted(t *testing.T) {
+	cases := []struct {
+		name   string
+		status KubeInitStatus
+		want   bool
+	}{
+		{"nothing published yet", KubeInitStatus{}, false},
+		{"before the pass", KubeInitStatus{State: "WAIT_K3S_READY", UpdateState: KubeInitUpdateStateNone}, false},
+		{"pass running", KubeInitStatus{State: "WAIT_UPGRADE", UpdateState: "in_progress"}, true},
+		{"pass deferred", KubeInitStatus{State: "RUNNING", ComponentsReady: true, UpdateState: "deferred"}, true},
+		{"pass failed", KubeInitStatus{State: "RUNNING", UpdateState: KubeInitUpdateStateFailed}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.status.ComponentPassStarted(); got != c.want {
+				t.Errorf("got %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
 // TestKubeInitStatusDecodesPublisherPayload pins the field names shared
 // with kube-init's own struct, and that the fields pillar does not mirror
 // are ignored.
