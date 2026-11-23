@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/objtonum"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
@@ -17,6 +18,7 @@ import (
 const (
 	rollbackTestSnapshot            = "s1"
 	rollbackTestMaxSnapshots uint32 = 3
+	rollbackTestCounter      uint32 = 7
 )
 
 // newRollbackTestContext publishes an app that waits for volumemgr to roll it
@@ -56,6 +58,8 @@ func newRollbackTestContext(t *testing.T) (*zedmanagerContext, types.AppInstance
 		},
 	}
 	config.Snapshot.MaxSnapshots = rollbackTestMaxSnapshots
+	config.Snapshot.Snapshots = []types.SnapshotDesc{{SnapshotID: rollbackTestSnapshot}}
+	config.Snapshot.RollbackCmd.Counter = rollbackTestCounter
 	volumeID := uuid.Must(uuid.FromString("22222222-2222-2222-2222-222222222222"))
 	config.VolumeRefConfigList = []types.VolumeRefConfig{
 		{VolumeID: volumeID, AppUUID: config.UUIDandVersion.UUID},
@@ -66,8 +70,16 @@ func newRollbackTestContext(t *testing.T) (*zedmanagerContext, types.AppInstance
 	snapped.UUIDandVersion.Version = "1"
 	assert.NoError(t, pubLocalConfig.Publish(snapped.Key(), snapped))
 
+	existing := existingSnapshot(rollbackTestSnapshot, config.UUIDandVersion.UUID)
+	assert.NoError(t, newPub("volumemgr", types.VolumesSnapshotStatus{}).Publish(existing.Key(), existing))
+	pubSnapConfig := newPub(agentName, types.VolumesSnapshotConfig{})
+	for _, keep := range kept(existing) {
+		assert.NoError(t, pubSnapConfig.Publish(keep.Key(), keep))
+	}
+
 	ctx := &zedmanagerContext{
-		pubVolumesSnapConfig:      newPub(agentName, types.VolumesSnapshotConfig{}),
+		snapshotsRestored:         true,
+		pubVolumesSnapConfig:      pubSnapConfig,
 		subVolumesSnapStatus:      newSub("volumemgr", types.VolumesSnapshotStatus{}),
 		pubAppInstanceStatus:      newPub(agentName, types.AppInstanceStatus{}),
 		pubLocalAppInstanceConfig: pubLocalConfig,
@@ -80,7 +92,11 @@ func newRollbackTestContext(t *testing.T) (*zedmanagerContext, types.AppInstance
 		pubAppNetworkConfig:       newPub(agentName, types.AppNetworkConfig{}),
 		pubVolumeRefConfig:        newPub(agentName, types.VolumeRefConfig{}),
 		subAppNetworkStatus:       newSub("zedrouter", types.AppNetworkStatus{}),
+		subAppRuntimeStatus:       newSub("zedrouter", types.AppRuntimeStatus{}),
 	}
+	mapPublisher, err := objtonum.NewObjNumPublisher(log, ps, agentName, false, &types.UuidToNum{})
+	assert.NoError(t, err)
+	ctx.appToPurgeCounterMap = objtonum.NewPublishedMap(log, mapPublisher, "purgeCmdCounter", objtonum.AllKeys)
 	status := types.AppInstanceStatus{
 		UUIDandVersion:  snapped.UUIDandVersion,
 		State:           types.HALTED,
@@ -94,12 +110,54 @@ func newRollbackTestContext(t *testing.T) (*zedmanagerContext, types.AppInstance
 	}
 	status.SnapStatus.RollbackInProgress = true
 	status.SnapStatus.ActiveSnapshot = rollbackTestSnapshot
-	status.SnapStatus.AvailableSnapshots = []types.SnapshotInstanceStatus{{
-		Snapshot:      types.SnapshotDesc{SnapshotID: rollbackTestSnapshot},
-		AppInstanceID: config.UUIDandVersion.UUID,
-	}}
+	refreshSnapshots(ctx, &status)
 	publishAppInstanceStatus(ctx, &status)
 	return ctx, config
+}
+
+// existingSnapshot is what volumemgr reports for a snapshot that was created.
+func existingSnapshot(snapshotID string, app uuid.UUID) types.VolumesSnapshotStatus {
+	return types.VolumesSnapshotStatus{
+		SnapshotID:         snapshotID,
+		AppUUID:            app,
+		State:              types.VolumesSnapshotStateCreated,
+		RollbackCountKnown: true,
+	}
+}
+
+// useAppConfig makes zedagent publish the given config, and nothing else.
+func useAppConfig(t *testing.T, ctx *zedmanagerContext, config types.AppInstanceConfig) {
+	t.Helper()
+	ps := pubsub.New(pubsub.NewMemoryDriver(), logrus.StandardLogger(), log)
+	pub, err := ps.NewPublication(pubsub.PublicationOptions{
+		AgentName: "zedagent",
+		TopicType: types.AppInstanceConfig{},
+	})
+	assert.NoError(t, err)
+	assert.NoError(t, pub.Publish(config.Key(), config))
+	ctx.subAppInstanceConfig, err = ps.NewSubscription(pubsub.SubscriptionOptions{
+		AgentName:   "zedagent",
+		MyAgentName: agentName,
+		TopicImpl:   types.AppInstanceConfig{},
+		Persistent:  true,
+	})
+	assert.NoError(t, err)
+	assert.NoError(t, ctx.subAppInstanceConfig.Activate())
+}
+
+// rollbackAnswer is what volumemgr reports when it is through with a rollback
+// to rollbackTestSnapshot, and the config that asked for it.
+func rollbackAnswer(t *testing.T, ctx *zedmanagerContext, app uuid.UUID, failed bool) types.VolumesSnapshotStatus {
+	t.Helper()
+	answer := existingSnapshot(rollbackTestSnapshot, app)
+	answer.RollbackCount = 1
+	if failed {
+		answer.State = types.VolumesSnapshotStateRollingBack
+		answer.SetErrorWithSourceAndDescription(
+			types.ErrorDescription{Error: "qemu-img failed"}, types.VolumesSnapshotStatus{})
+	}
+	useSnapshotState(t, ctx, kept(answer), []types.VolumesSnapshotStatus{answer})
+	return answer
 }
 
 // useDomainStatus makes domainmgr report the given status to ctx.
@@ -127,20 +185,13 @@ func useDomainStatus(t *testing.T, ctx *zedmanagerContext, domain types.DomainSt
 func TestFailedRollbackDoesNotKeepTheAppDown(t *testing.T) {
 	ctx, config := newRollbackTestContext(t)
 
-	result := types.VolumesSnapshotStatus{
-		SnapshotID:     rollbackTestSnapshot,
-		AppUUID:        config.UUIDandVersion.UUID,
-		ResultOfAction: types.VolumesSnapshotRollback,
-	}
-	result.SetErrorWithSourceAndDescription(
-		types.ErrorDescription{Error: "qemu-img failed"}, types.VolumesSnapshotStatus{})
-	reactToSnapshotRollback(ctx, result)
+	reactToSnapshotRollback(ctx, rollbackAnswer(t, ctx, config.UUIDandVersion.UUID, true))
 
 	published := lookupAppInstanceStatus(ctx, config.Key())
 	if assert.NotNil(t, published) {
 		assert.False(t, published.SnapStatus.RollbackInProgress)
 		assert.Equal(t, "qemu-img failed",
-			published.SnapStatus.AvailableSnapshots[0].Error.Error)
+			lookupSnapshot(published, rollbackTestSnapshot).Error.Error)
 		assert.Equal(t, types.BringUp, published.PurgeInprogress, "the app must be started again")
 	}
 	_, err := ctx.pubLocalAppInstanceConfig.Get(config.Key())
@@ -151,18 +202,59 @@ func TestFailedRollbackDoesNotKeepTheAppDown(t *testing.T) {
 func TestSuccessfulRollbackClearsTheSnapshotError(t *testing.T) {
 	ctx, config := newRollbackTestContext(t)
 	status := lookupAppInstanceStatus(ctx, config.Key())
-	status.SnapStatus.AvailableSnapshots[0].Error = types.ErrorDescription{Error: "qemu-img failed"}
+	status.SnapStatus.Snapshots[0].Error = types.ErrorDescription{Error: "qemu-img failed"}
 	publishAppInstanceStatus(ctx, status)
 
-	reactToSnapshotRollback(ctx, types.VolumesSnapshotStatus{
-		SnapshotID:     rollbackTestSnapshot,
-		AppUUID:        config.UUIDandVersion.UUID,
-		ResultOfAction: types.VolumesSnapshotRollback,
-	})
+	reactToSnapshotRollback(ctx, rollbackAnswer(t, ctx, config.UUIDandVersion.UUID, false))
 
 	published := lookupAppInstanceStatus(ctx, config.Key())
 	if assert.NotNil(t, published) {
-		assert.Empty(t, published.SnapStatus.AvailableSnapshots[0].Error.Error)
+		assert.Empty(t, lookupSnapshot(published, rollbackTestSnapshot).Error.Error)
+	}
+}
+
+// zedmanager asks for a rollback with a RollbackCount in the config of the
+// snapshot. The rollback is over when volumemgr has taken that count into the
+// status and is not busy with the snapshot any more.
+func TestRollbackEndsWithTheAnswerToItsRequest(t *testing.T) {
+	for name, failed := range map[string]bool{"rollback that worked": false, "rollback that failed": true} {
+		t.Run(name, func(t *testing.T) {
+			ctx, config := newRollbackTestContext(t)
+			app := config.UUIDandVersion.UUID
+			inProgress := func() bool {
+				return lookupAppInstanceStatus(ctx, config.Key()).SnapStatus.RollbackInProgress
+			}
+			request := kept(existingSnapshot(rollbackTestSnapshot, app))
+			request[0].RollbackCount = 1
+			report := func(st types.VolumesSnapshotStatus) {
+				useSnapshotState(t, ctx, request, []types.VolumesSnapshotStatus{st})
+				handleVolumesSnapshotStatusImpl(ctx, st, st.HasError())
+			}
+
+			// volumemgr says something of the snapshot before it took up
+			// the request.
+			report(existingSnapshot(rollbackTestSnapshot, app))
+			assert.True(t, inProgress())
+
+			busy := existingSnapshot(rollbackTestSnapshot, app)
+			busy.State = types.VolumesSnapshotStateRollingBack
+			busy.RollbackCount = 1
+			report(busy)
+			assert.True(t, inProgress())
+
+			answer := rollbackAnswer(t, ctx, app, failed)
+			// The app is still running, so zedmanager has not asked yet.
+			status := lookupAppInstanceStatus(ctx, config.Key())
+			status.SnapStatus.HasRollbackRequest = true
+			publishAppInstanceStatus(ctx, status)
+			report(answer)
+			assert.True(t, inProgress(), "this is the outcome of an earlier rollback")
+
+			status.SnapStatus.HasRollbackRequest = false
+			publishAppInstanceStatus(ctx, status)
+			report(answer)
+			assert.False(t, inProgress())
+		})
 	}
 }
 
@@ -183,11 +275,7 @@ func TestRollbackResultForDeletedApp(t *testing.T) {
 	assert.NoError(t, sub.Activate())
 	ctx.subAppInstanceConfig = sub
 
-	reactToSnapshotRollback(ctx, types.VolumesSnapshotStatus{
-		SnapshotID:     rollbackTestSnapshot,
-		AppUUID:        config.UUIDandVersion.UUID,
-		ResultOfAction: types.VolumesSnapshotRollback,
-	})
+	reactToSnapshotRollback(ctx, rollbackAnswer(t, ctx, config.UUIDandVersion.UUID, false))
 
 	assert.Nil(t, lookupAppInstanceStatus(ctx, config.Key()), "the app must be removed")
 	_, err = ctx.pubLocalAppInstanceConfig.Get(config.Key())
@@ -227,11 +315,7 @@ func TestAppDeletedDuringPurgeIsRemoved(t *testing.T) {
 func TestRollbackResultIsPublished(t *testing.T) {
 	ctx, config := newRollbackTestContext(t)
 
-	reactToSnapshotRollback(ctx, types.VolumesSnapshotStatus{
-		SnapshotID:     rollbackTestSnapshot,
-		AppUUID:        config.UUIDandVersion.UUID,
-		ResultOfAction: types.VolumesSnapshotRollback,
-	})
+	reactToSnapshotRollback(ctx, rollbackAnswer(t, ctx, config.UUIDandVersion.UUID, false))
 
 	published := lookupAppInstanceStatus(ctx, config.Key())
 	if assert.NotNil(t, published) {
@@ -249,10 +333,7 @@ func TestRollbackIsTriggeredWithoutDomain(t *testing.T) {
 
 	assert.True(t, doUpdate(ctx, config, status))
 
-	published := lookupVolumesSnapshotConfig(ctx, rollbackTestSnapshot)
-	if assert.NotNil(t, published) {
-		assert.Equal(t, types.VolumesSnapshotRollback, published.Action)
-	}
+	assert.Equal(t, 1, snapshotConfig(ctx, rollbackTestSnapshot).RollbackCount)
 	assert.False(t, status.SnapStatus.HasRollbackRequest)
 }
 
@@ -266,7 +347,7 @@ func TestRollbackWaitsForTheDomainToBeDown(t *testing.T) {
 
 		doUpdate(ctx, config, status)
 
-		assert.Nil(t, lookupVolumesSnapshotConfig(ctx, rollbackTestSnapshot))
+		assert.Zero(t, snapshotConfig(ctx, rollbackTestSnapshot).RollbackCount)
 		assert.True(t, status.SnapStatus.HasRollbackRequest)
 	})
 	t.Run("the domain runs", func(t *testing.T) {
@@ -277,7 +358,7 @@ func TestRollbackWaitsForTheDomainToBeDown(t *testing.T) {
 
 		doUpdate(ctx, config, status)
 
-		assert.Nil(t, lookupVolumesSnapshotConfig(ctx, rollbackTestSnapshot))
+		assert.Zero(t, snapshotConfig(ctx, rollbackTestSnapshot).RollbackCount)
 		assert.True(t, status.SnapStatus.HasRollbackRequest)
 	})
 }
@@ -296,19 +377,157 @@ func TestRollbackConfigKeepsCurrentSnapshotLimit(t *testing.T) {
 	assert.Equal(t, rollbackTestMaxSnapshots, fixed.Snapshot.MaxSnapshots)
 }
 
-// pubsub does not deliver an item that is published unchanged, so the second
-// rollback to a snapshot must not publish the request of the first one again.
-func TestEveryRollbackRequestDiffers(t *testing.T) {
-	ctx, config := newRollbackTestContext(t)
-	status := lookupAppInstanceStatus(ctx, config.Key())
-
-	assert.NoError(t, triggerRollback(ctx, status))
-	first := lookupVolumesSnapshotConfig(ctx, rollbackTestSnapshot)
-	assert.NoError(t, triggerRollback(ctx, status))
-	second := lookupVolumesSnapshotConfig(ctx, rollbackTestSnapshot)
-
-	if assert.NotNil(t, first) && assert.NotNil(t, second) {
-		assert.Equal(t, types.VolumesSnapshotRollback, second.Action)
-		assert.NotEqual(t, *first, *second)
+// volumemgr rolls back when the config of the snapshot has a higher count
+// than its status, and keeps the count with the snapshot. So the count is the
+// counter of the controller, which tells after a reboot whether the rollback
+// was done. A controller that uses a counter again still gets its rollback.
+func TestRollbackRequestIsAboveTheCountOfTheSnapshot(t *testing.T) {
+	requested := func(t *testing.T, counter uint32, done int) int {
+		ctx, config := newRollbackTestContext(t)
+		st := existingSnapshot(rollbackTestSnapshot, config.UUIDandVersion.UUID)
+		st.RollbackCount = done
+		useSnapshotState(t, ctx, kept(st), []types.VolumesSnapshotStatus{st})
+		status := lookupAppInstanceStatus(ctx, config.Key())
+		status.SnapStatus.RollbackCmdCounter = counter
+		assert.NoError(t, triggerRollback(ctx, status))
+		return snapshotConfig(ctx, rollbackTestSnapshot).RollbackCount
 	}
+	assert.Equal(t, 7, requested(t, 7, 0))
+	assert.Equal(t, 7, requested(t, 7, 6))
+	assert.Equal(t, 2, requested(t, 1, 1), "the same counter again")
+	assert.Equal(t, 8, requested(t, 3, 7))
+}
+
+// A rollback is only possible to a snapshot that all volumes have. If there
+// is none when the app is down, the rollback ends there, and the app goes on
+// with the config of the controller.
+func TestRollbackToASnapshotThatCannotBeRolledBackTo(t *testing.T) {
+	for name, change := range map[string]func(ctx *zedmanagerContext, st types.VolumesSnapshotStatus){
+		"it is gone": func(ctx *zedmanagerContext, _ types.VolumesSnapshotStatus) {
+			useSnapshotState(t, ctx, nil, nil)
+		},
+		"its creation failed": func(ctx *zedmanagerContext, st types.VolumesSnapshotStatus) {
+			st.State = types.VolumesSnapshotStateCreating
+			st.SetErrorWithSourceAndDescription(
+				types.ErrorDescription{Error: "no space"}, types.VolumesSnapshotStatus{})
+			useSnapshotState(t, ctx, kept(st), []types.VolumesSnapshotStatus{st})
+		},
+		"it is being deleted": func(ctx *zedmanagerContext, st types.VolumesSnapshotStatus) {
+			st.State = types.VolumesSnapshotStateDeleting
+			st.SetErrorWithSourceAndDescription(
+				types.ErrorDescription{Error: "qemu-img failed"}, types.VolumesSnapshotStatus{})
+			useSnapshotState(t, ctx, nil, []types.VolumesSnapshotStatus{st})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx, config := newRollbackTestContext(t)
+			change(ctx, existingSnapshot(rollbackTestSnapshot, config.UUIDandVersion.UUID))
+			status := lookupAppInstanceStatus(ctx, config.Key())
+			status.SnapStatus.HasRollbackRequest = true
+
+			doUpdate(ctx, config, status)
+
+			assert.False(t, status.SnapStatus.HasRollbackRequest)
+			assert.False(t, status.SnapStatus.RollbackInProgress, "nothing would end the rollback")
+			if request := snapshotConfig(ctx, rollbackTestSnapshot); request != nil {
+				assert.Zero(t, request.RollbackCount, "volumemgr would not answer")
+			}
+			_, err := ctx.pubLocalAppInstanceConfig.Get(config.Key())
+			assert.Error(t, err, "the config saved with the snapshot is not what the app goes on with")
+			assert.Equal(t, types.BringUp, status.PurgeInprogress)
+		})
+	}
+}
+
+// The controller can ask for a rollback to a snapshot that is none: the
+// creation failed, or the deletion has started. zedmanager does not bring the
+// app down for that.
+func TestRollbackIsNotStartedToASnapshotThatCannotBeRolledBackTo(t *testing.T) {
+	ctx, config := newRollbackTestContext(t)
+	config.Snapshot.ActiveSnapshot = rollbackTestSnapshot
+	status := lookupAppInstanceStatus(ctx, config.Key())
+	status.SnapStatus.RollbackInProgress = false
+	failed := existingSnapshot(rollbackTestSnapshot, config.UUIDandVersion.UUID)
+	failed.State = types.VolumesSnapshotStateCreating
+	failed.SetErrorWithSourceAndDescription(
+		types.ErrorDescription{Error: "no space"}, types.VolumesSnapshotStatus{})
+	useSnapshotState(t, ctx, kept(failed), []types.VolumesSnapshotStatus{failed})
+
+	startRollback(ctx, config, status)
+
+	assert.Contains(t, status.Error, "Cannot roll back to snapshot")
+	// The controller learns of it from the published status only.
+	if published := lookupAppInstanceStatus(ctx, status.Key()); assert.NotNil(t, published) {
+		assert.Contains(t, published.Error, "Cannot roll back to snapshot")
+	}
+	assert.False(t, status.SnapStatus.HasRollbackRequest)
+	assert.False(t, status.SnapStatus.RollbackInProgress)
+}
+
+// A rollback that was asked for and not done before a reboot has to run after
+// it. The status of the snapshot, which volumemgr restores from its record,
+// has the count of the last rollback to it that volumemgr took up.
+func TestRollbackLeftOverFromBeforeAReboot(t *testing.T) {
+	leftOver := func(t *testing.T, change func(config *types.AppInstanceConfig, st *types.VolumesSnapshotStatus)) bool {
+		ctx, config := newRollbackTestContext(t)
+		config.Snapshot.ActiveSnapshot = rollbackTestSnapshot
+		config.Snapshot.RollbackCmd.Counter = 7
+		st := existingSnapshot(rollbackTestSnapshot, config.UUIDandVersion.UUID)
+		st.RollbackCount = 6
+		change(&config, &st)
+		useSnapshotState(t, ctx, kept(st), []types.VolumesSnapshotStatus{st})
+
+		askForRollbackLeftOver(ctx, config)
+
+		// volumemgr rolls back when the config has the higher count.
+		asked := snapshotConfig(ctx, rollbackTestSnapshot).RollbackCount > st.RollbackCount
+		assert.Equal(t, asked, rollbackLeftOver(ctx, config))
+		if asked {
+			assert.Equal(t, 7, snapshotConfig(ctx, rollbackTestSnapshot).RollbackCount)
+		}
+		return asked
+	}
+	assert.True(t, leftOver(t, func(*types.AppInstanceConfig, *types.VolumesSnapshotStatus) {}))
+	assert.True(t, leftOver(t, func(_ *types.AppInstanceConfig, st *types.VolumesSnapshotStatus) {
+		st.State = types.VolumesSnapshotStateRollingBack
+		st.SetErrorWithSourceAndDescription(
+			types.ErrorDescription{Error: "qemu-img failed"}, types.VolumesSnapshotStatus{})
+	}), "the rollback that failed was an earlier one")
+	assert.False(t, leftOver(t, func(_ *types.AppInstanceConfig, st *types.VolumesSnapshotStatus) {
+		st.RollbackCount = 7
+	}), "volumemgr took it up: it is done, has failed, or goes on by itself")
+	assert.False(t, leftOver(t, func(_ *types.AppInstanceConfig, st *types.VolumesSnapshotStatus) {
+		st.RollbackCountKnown = false
+	}), "the app may have been rolled back to it long ago")
+	assert.False(t, leftOver(t, func(_ *types.AppInstanceConfig, st *types.VolumesSnapshotStatus) {
+		st.State = types.VolumesSnapshotStateCreating
+	}), "not a snapshot that all volumes have")
+	assert.False(t, leftOver(t, func(config *types.AppInstanceConfig, _ *types.VolumesSnapshotStatus) {
+		config.Snapshot.ActiveSnapshot = ""
+	}))
+	assert.False(t, leftOver(t, func(config *types.AppInstanceConfig, _ *types.VolumesSnapshotStatus) {
+		config.Snapshot.Snapshots = nil
+	}), "a snapshot that is to be deleted")
+	assert.False(t, leftOver(t, func(config *types.AppInstanceConfig, _ *types.VolumesSnapshotStatus) {
+		config.Snapshot.ActiveSnapshot = "unknown"
+		config.Snapshot.Snapshots = []types.SnapshotDesc{{SnapshotID: "unknown"}}
+	}))
+}
+
+// What volumemgr did before the reboot is only known once it has published
+// its snapshots. Until then the app must not start: a rollback may have been
+// cut off, or a snapshot may be due for deletion.
+func TestAppWaitsUntilVolumemgrHasToldWhichSnapshotsExist(t *testing.T) {
+	ctx, config := newRollbackTestContext(t)
+	config.Activate = true
+	ctx.snapshotsRestored = false
+	status := lookupAppInstanceStatus(ctx, config.Key())
+	status.SnapStatus.RollbackInProgress = false
+	status.SnapStatus.HasRollbackRequest = true
+	status.PurgeInprogress = types.NotInprogress
+
+	assert.False(t, doUpdate(ctx, config, status))
+	assert.True(t, status.SnapStatus.HasRollbackRequest, "there is nothing to ask of volumemgr yet")
+	assert.Zero(t, snapshotConfig(ctx, rollbackTestSnapshot).RollbackCount)
+	assert.Empty(t, ctx.pubAppNetworkConfig.GetAll())
 }

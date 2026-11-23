@@ -65,34 +65,31 @@ reports the updated status back to the controller.
 3. **Zedmanager: App Lifecycle And Actions Triggering** \
    The zedmanager processes the requests and updates the `AppInstanceStatus`,
    which includes the `SnapshottingStatus`. The `SnapshottingStatus` contains
-   information about requested snapshots, available snapshots, snapshots to be
-   deleted, and other snapshot-related information. The zedmanager handles the
+   the list of the snapshots of the application and other snapshot-related
+   information. The zedmanager handles the
    requests by initiating the appropriate processes, such as the purge process
    for snapshot creation or the rollback process for snapshot rollback.
     * [cmd/zedmanager/zedmanager.go](../cmd/zedmanager/zedmanager.go)
     * [cmd/zedmanager/updatestatus.go](../cmd/zedmanager/updatestatus.go)
-4. **Zedmanager to Volumemgr**: For snapshot-related requests, the zedmanager
-   sends a VolumesSnapshotConfig to the volumemgr. This config includes
-   information about the snapshot request, such as the snapshot ID, action,
-   volume IDs, and app UUID. The volumemgr is responsible for managing volumes
-   and handling volume-related requests, including those related to snapshots.
+4. **Zedmanager to Volumemgr**: For every snapshot that is to exist, the
+   zedmanager publishes a VolumesSnapshotConfig to the volumemgr. This config
+   includes the snapshot ID, the volume IDs, the app UUID and a rollback
+   count. The volumemgr is responsible for managing volumes and handling
+   volume-related requests, including those related to snapshots.
     * [cmd/zedmanager/updatestatus.go](../cmd/zedmanager/updatestatus.go)
     * [cmd/zedmanager/handlevolumemgr.go](../cmd/zedmanager/handlevolumemgr.go)
     * [cmd/volumemgr/volumemgr.go](../cmd/volumemgr/volumemgr.go)
-5. **Volumemgr**: The volumemgr processes the `VolumesSnapshotConfig` and
-   handles the creation, rollback, or deletion of the snapshot based on the
-   action in the config. It interacts with the file system (FS)-specific
-   handlers to perform the requested action and stores the relevant information
-   in the VolumesSnapshotStatus.
+5. **Volumemgr**: The volumemgr compares the `VolumesSnapshotConfig` with what
+   it has, and creates, rolls back to or deletes the snapshot accordingly. It
+   interacts with the file system (FS)-specific handlers to do that and stores
+   the relevant information in the VolumesSnapshotStatus.
     * [cmd/volumemgr/handlesnapshot.go](../cmd/volumemgr/handlesnapshot.go)
     * [volumehandlers](../volumehandlers)
     * [diskmetrics/diskmetrics.go](../diskmetrics/diskmetrics.go)
-6. **Volumemgr to Zedmanager**: Once the snapshot action is performed, the
-   volumemgr sends a VolumesSnapshotStatus back to the zedmanager. This status
-   includes information about the snapshot, such as the snapshot ID, metadata,
-   time created, app UUID, reference count, the result of the action, and error
-   information. Sometimes to report an error on this step, a dedicated status
-   can be created. It’s done when there is no existing one.
+6. **Volumemgr to Zedmanager**: The volumemgr publishes a VolumesSnapshotStatus
+   for every snapshot it knows. This status includes information about the
+   snapshot, such as the snapshot ID, metadata, time created, app UUID, the
+   state, and error information.
     * [cmd/volumemgr/handlesnapshot.go](../cmd/volumemgr/handlesnapshot.go)
 7. **Zedmanager: Reaction** \
    The zedmanager receives the VolumesSnapshotStatus from the volumemgr and
@@ -123,15 +120,14 @@ to handle snapshot requests, creation, deletion, and rollback.
 
 This is the main data structure that manages and tracks all snapshot-related
 activities for an app instance. It is included in the AppInstanceStatus
-structure. It contains fields that track the state of snapshots for the app
-instance, such as RequestedSnapshots, AvailableSnapshots, and
-SnapshotsToBeDeleted. It also includes fields that track the state of
-snapshot-related actions, such as SnapshotOnUpgrade, HasRollbackRequest,
-ActiveSnapshot, and RollbackInProgress.
+structure. Its `Snapshots` field lists the snapshots of the app instance, which
+is what zedagent reports to the controller. It also includes fields that track
+the state of snapshot-related actions, such as PreparedVolumesSnapshotConfigs,
+SnapshotTakenType, HasRollbackRequest, ActiveSnapshot, and RollbackInProgress.
 
-It is updated by the zedmanager based on snapshot requests from the controller,
-snapshot status from the volumemgr, and snapshot-related actions performed by
-the zedmanager.
+zedmanager does not decide anything by the `Snapshots` list. It rebuilds the
+list from what volumemgr publishes, see
+[How Zedmanager Knows the Snapshots](#how-zedmanager-knows-the-snapshots).
 
 Defined
 in [types/zedmanagertypes.go](../types/zedmanagertypes.go).
@@ -166,37 +162,104 @@ in [types/zedmanagertypes.go](../types/zedmanagertypes.go).
 
 ### VolumesSnapshotConfig
 
-This structure is used to send snapshot requests from the zedmanager to the
-volumemgr. It contains fields that specify the snapshot request, such as
-SnapshotID, Action, VolumeIDs, and AppUUID. It is created by the zedmanager when
-it detects a snapshot request from the controller. The zedmanager uses the
-AppInstanceConfig and AppInstanceStatus structures to create a
-VolumesSnapshotConfig structure with the appropriate VolumeIDs and Action. This
-structure is then sent to the volumemgr to handle the actual snapshot creation,
-rollback, or deletion.
+With this structure zedmanager tells volumemgr that a snapshot is to exist. It
+does not ask for an action. Volumemgr compares it with the
+`VolumesSnapshotStatus` of the snapshot and does what is missing:
+
+* a config without a status: the snapshot is created;
+* a status without a config: the snapshot is deleted;
+* a config with a higher `RollbackCount` than the status: the volumes are
+  rolled back to the snapshot.
+
+Its fields are SnapshotID, VolumeIDs, AppUUID, RollbackCount, SnapshotType and
+ConfigVersion. `VolumeIDs` are the volumes to take the snapshot of.
+`SnapshotType` and `ConfigVersion` describe the snapshot; zedmanager saves them
+in its own record once the snapshot exists.
 
 Defined
 in [types/volumetypes.go](../types/volumetypes.go).
 
 ### VolumesSnapshotStatus
 
-This structure is used to send snapshot status from the volumemgr to the
-zedmanager. It contains fields that report the status of the snapshot, such as
-SnapshotID, VolumeSnapshotMeta, TimeCreated, AppUUID, RefCount, ResultOfAction,
-and ErrorAndTimeWithSource. It is used by the volumemgr to report the status of
-a snapshot to the zedmanager. The zedmanager uses this information to update the
-SnapshottingStatus structure in the AppInstanceStatus structure.
+This structure is what volumemgr reports of a snapshot to zedmanager. Its
+fields are SnapshotID, VolumeSnapshotMeta, TimeCreated, AppUUID, State,
+RollbackCount, RollbackCountKnown and ErrorAndTimeWithSource. The states and
+the error are described in
+[Volumemgr Worker and Snapshot State](#volumemgr-worker-and-snapshot-state).
+The zedmanager uses this information to update the SnapshottingStatus structure
+in the AppInstanceStatus structure.
 
-This struct is serialized and stored to ensure its persistence across device
-restarts. As a result, special care should be taken when updating the struct
-definition in future EVE releases. Fields marked with the `mandatory:"true"` tag
-are essential and must be present in all versions of the struct to ensure
-backward compatibility.
+Volumemgr saves every status that it publishes as the record of the snapshot,
+to have it after a device restart. As a result, special care should be taken
+when updating the struct definition in future EVE releases. Fields marked with
+the `mandatory:"true"` tag are essential and must be present in all versions of
+the struct to ensure backward compatibility.
 
 Defined
 in [types/volumetypes.go](../types/volumetypes.go).
 
 ## EVE internals of Snapshot Management
+
+### How Zedmanager Knows the Snapshots
+
+zedmanager keeps no lists of snapshots to take, to keep or to delete. What it
+does with a snapshot follows from three things that are published anyway:
+
+* the app instance config, which lists the snapshots that the controller wants;
+* the `VolumesSnapshotStatus` of volumemgr, one per snapshot that volumemgr
+  knows. It carries the state and the error, see
+  [Volumemgr Worker and Snapshot State](#volumemgr-worker-and-snapshot-state);
+* the `VolumesSnapshotConfig`, which zedmanager publishes for a snapshot that
+  is to exist.
+
+| Config lists it | Status | What zedmanager does |
+|-----------------|--------|----------------------|
+| yes | none | publishes the `VolumesSnapshotConfig` when the application is down (`pendingSnapshots`, `triggerSnapshots`) |
+| yes | any | keeps the `VolumesSnapshotConfig`; a creation that failed is not tried again |
+| no | any but `Deleting` | takes the `VolumesSnapshotConfig` away when the application is down (`snapshotsToDelete`, `triggerSnapshotDeletion`) |
+| either | `Deleting` | nothing: volumemgr is deleting the snapshot |
+
+The functions are in [snapshots.go](../cmd/zedmanager/snapshots.go).
+
+Neither the statuses nor the configs are kept across a reboot, but volumemgr
+saves a record of every snapshot. At boot `restoreVolumesSnapshotStatuses`
+publishes a status for each record and then signals that the publication is
+complete. At that point volumemgr has the snapshots and zedmanager has
+published no config yet, so a missing config cannot mean that a snapshot is to
+be deleted. When zedmanager gets the signal, `restoreSnapshotConfigs` publishes
+a config for every snapshot that is not being deleted, also for one that the
+app config does not list and for one whose application has no config yet, and
+zedmanager signals in turn that these are all. Only from then on does volumemgr
+delete a snapshot that has no config. This is the restart signal of pubsub,
+which zedagent uses in the same way for the app instance configs and the volume
+configs.
+
+Until zedmanager got the signal of volumemgr (`snapshotsRestored`), it takes no
+snapshot for missing, asks for no deletion and does not start an application:
+a rollback may have been cut off, or a deletion may be due.
+
+A config that was saved before a snapshot was created does not list that
+snapshot. So zedmanager deletes a snapshot for not being listed only after
+zedagent got a config from the controller (`configFromController`).
+
+`refreshSnapshots` builds the `Snapshots` list of the `SnapshottingStatus`
+from the statuses. A snapshot that is still being created is not on it, as the
+controller would take it for created. A snapshot whose creation, rollback or
+deletion failed is on it with the error, as the controller waits for that
+outcome. The type and the config version of a snapshot come from the
+`SnapshotInstanceStatus` record that zedmanager saves when the snapshot is
+created, or from the `VolumesSnapshotConfig` while there is no record.
+
+A snapshot that is to be deleted stays on the list until volumemgr has
+deleted it, which can be as late as the next time the application stops.
+
+The controller takes a snapshot that is missing from the report for deleted.
+At boot an app is reported before volumemgr has published its snapshots, so
+until then `refreshSnapshots` takes the list from the records on disk
+(`snapshotsFromRecords`): the `SnapshotInstanceStatus` of zedmanager for a
+snapshot that was created, and the record of volumemgr for the error of an
+action that failed, which includes a creation that zedmanager has no record
+of.
 
 ### Snapshot Creation Process
 
@@ -233,100 +296,158 @@ internally.
 5. **Triggering Snapshot Creation**: Within the removeAIStatus function,
    zedmanager understands that it is now reacting to domain deactivation. In the
    case where there is a pending snapshot request, zedmanager triggers a message
-   to volumemgr. This is done in the triggerSnapshots function, where the time
-   triggered for snapshots that are not triggered by time is set, and the
-   snapshots are triggered using the list of prepared VolumeSnapshotConfigs. The
-   time of snapshot triggering is important later when handling the max snapshot
-   limit. If the snapshot is not triggered, the request can be removed, and the
-   list of triggered snapshots is sorted based on time.
-6. **Publishing the Snapshot Config**: Finally, the volumesSnapshotConfig is
-   published, and the prepared volumesSnapshotConfig is removed. The app
-   instance status is then published.
+   to volumemgr. This is done in the triggerSnapshots function, which publishes
+   the prepared VolumeSnapshotConfigs and empties the list. The app instance
+   status is then published.
 
-#### Voluemmgr Reaction, creation
+#### Volumemgr Reaction, creation
 
-When volumemgr receives the `volumesSnapshotConfig` from zedmanager, it triggers
-a series of actions to handle the snapshot request.
-The `handleVolumesSnapshotConfigImpl` function is the entry point for handling
-these actions. This function takes the `volumesSnapshotConfig` as input and
-performs the appropriate action based on the `Action` field of the config.
+Volumemgr is not told which action to perform. The handlers of the
+`VolumesSnapshotConfig` call `reconcileSnapshot` for the snapshot, which
+compares the config with the status in `snapshotActionNeeded` and starts what
+is missing. For a config without a status that is the creation.
 
-1. **Determining the Action**: The `handleVolumesSnapshotConfigImpl` function
-   reads the `Action` field of the `volumesSnapshotConfig` to determine what
-   action to take. In this case, we are focusing on the `VolumesSnapshotCreate`
-   action, which indicates that a snapshot of the specified volumes should be
-   created.
-2. **Creating the Snapshot**: The `createSnapshot` function is called to handle
-   the snapshot creation. It first checks if a snapshot with the specified ID
-   already exists. If it does, it logs a warning and returns the existing
-   snapshot status. It is possible that a snapshot with the specified ID already
-   exists, especially if the system has been restarted and a
-   restored `volumesSnapshotConfig` is being handled. If not, it creates a
-   new `VolumesSnapshotStatus` with the given snapshot ID and initializes
-   the `VolumeSnapshotMeta` map.
-3. **Looking Up Volume Status and Getting the Volume Handler**: For each volume
-   ID in the VolumeIDs of the `VolumesSnapshotConfig`, the function looks up the
-   corresponding volume status. If the volume status is not found, it logs an
-   error and returns the snapshot status with the error. The volume handler for
-   the volume status is obtained using the `GetVolumeHandler` function. The
+1. **Publishing the Status**: `reconcileSnapshot` publishes a new
+   `VolumesSnapshotStatus` in the state `Creating`, with an empty
+   `VolumeSnapshotMeta` map. From it zedmanager sees that the config was taken
+   up.
+2. **Looking Up Volume Status and Getting the Volume Handler**: For each volume
+   ID in the VolumeIDs of the `VolumesSnapshotConfig`, `snapshotVolumes` looks
+   up the corresponding volume status. If the volume status is not found, the
+   creation fails. The volume handler for
+   the volume status is obtained in the worker (see below) using the
+   `GetVolumeHandler` function. The
    volume handler is an abstraction that helps to call handlers for any
    filesystem-related action specific to a given filesystem. Currently, only the
    handlers (snapshot ones) for ext4 are implemented.
-4. **Creating the Volume Snapshot**: The `CreateSnapshot` method of the volume
-   handler is called to create a snapshot of the volume. This method returns the
+3. **Creating the Volume Snapshot**: In a worker (see below), the
+   `CreateSnapshot` method of the volume handler is called to create a snapshot
+   of the volume. This method returns the
    snapshot metadata, the time the snapshot was created, and any error that
    occurred during the snapshot creation.
-5. **Storing Snapshot Metadata**: The snapshot metadata is saved in
+4. **Storing Snapshot Metadata**: The snapshot metadata is saved in
    the `VolumeSnapshotMeta` map of the `VolumesSnapshotStatus` with the volume
    ID as the key. The time the snapshot was created is also saved in
    the `VolumesSnapshotStatus`. In the case of the ext4 implementation, the
    snapshot metadata is the snapshot name.
-6. **Serializing the Snapshot Status**: The `serializeVolumesSnapshotStatus`
-   function is called to serialize the snapshot status to a file. It marshals
-   the snapshot status to JSON and writes the JSON data to the snapshot status
-   file. This step is crucial for persisting the snapshot information across
-   system reboots. Without serialization, the snapshot information would be lost
-   from memory upon a system restart, making it impossible to perform operations
-   like rollback or deletion of the snapshot after a reboot.
-7. **Publishing the Snapshot Status**: After the snapshot has been successfully
-   created and the snapshot status has been serialized,
-   the `publishVolumesSnapshotStatus` function is called to publish
-   the `VolumesSnapshotStatus` object. By publishing the snapshot status,
-   volumemgr notifies zedmanager about the result of the snapshot creation
-   request. zedmanager can then use this information to update the application's
-   status and take any necessary actions based on the snapshot status.
+5. **Publishing and Saving the Snapshot Status**: `finishSnapshotAction` sets
+   the state `Created` and publishes the status, which tells zedmanager that
+   the snapshot exists. `publishVolumesSnapshotStatus` saves every status that
+   it publishes with `serializeVolumesSnapshotStatus`. That record is what is
+   known of the snapshot after a reboot. If the record of a snapshot that was
+   just created cannot be saved, the creation counts as failed.
+6. **Failure**: A creation that failed leaves the status in the state
+   `Creating` with the error. It is not tried again, and is deleted when
+   zedmanager takes the config away.
+
+#### Volumemgr Worker and Snapshot State
+
+Creating, rolling back to and deleting a snapshot can take long, so volumemgr
+does not run them in its main loop. It keeps a `State` in the
+`VolumesSnapshotStatus`:
+
+| State | Meaning |
+|-------|---------|
+| `Creating` | the snapshot is being created, which includes waiting for a worker |
+| `Created` | all volumes have the snapshot, and nothing is being done to it |
+| `RollingBack` | the volumes are being rolled back to the snapshot |
+| `Deleting` | the snapshot is being deleted. It does not leave this state any more |
+
+A state other than `Created` says what volumemgr does with the snapshot. When
+that has worked, the snapshot is `Created` again, or gone after a deletion.
+When it fails, the snapshot stays in the state and the error of the status is
+set: `Creating` with an error is a creation that failed. The `Busy` method of
+the status tells the two apart.
+
+`snapshotActionNeeded` decides what is to be done to a snapshot:
+
+| Config | Status | Action |
+|--------|--------|--------|
+| present | none | create |
+| none | any | delete; a creation that waits for a worker is just dropped |
+| `RollbackCount` higher than in the status | `Created`, or `RollingBack` with an error | roll back |
+| present | `Creating` or `RollingBack` without an error | start it: it waited, or a reboot cut it off |
+| any | `Deleting` without an error | go on deleting |
+| any | any with an error | nothing |
+
+An action that failed is not repeated by itself. A creation is never tried
+again. A rollback is tried again when zedmanager asks for it with a higher
+`RollbackCount`. A deletion is tried again by `retrySnapshotDeletions` when
+volumemgr starts another action on a snapshot of the same application, and
+after a boot. Volumemgr cannot tell whether an application is down, which a
+deletion needs, but it is down at these two points. The deletions that are
+tried again run before the action that sets them off: zedmanager starts the
+application when that action is over. A volume whose deletion failed is
+treated alike: it stays published with its error and is tried again.
+
+The status takes the `RollbackCount` of the config when volumemgr takes up the
+rollback. The rollback is over when the state is `Created` again, and has
+failed when the error is set.
+
+`reconcileSnapshot` publishes the status in its new state and
+`startSnapshotAction` hands the work to the common worker pool. The worker
+function `snapshotWorker` calls the volume handlers, and `processSnapshotResult`
+publishes the outcome back in the main loop with `finishSnapshotAction`. It
+then calls `reconcileSnapshot` again, as the config can have changed while the
+worker was busy.
+
+* A state without an error covers the wait as well. Only one snapshot action
+  runs per application at a time, as they need the same disk images, the pool
+  can be full, and after a boot the volumes are not there before zedagent has
+  published them. `driveSnapshots` starts what waits when a job of the pool
+  finishes, and periodically from the main loop.
+* A snapshot knows its volumes by their UUID. A purge has two generations of
+  a volume for a while, and `lookupSnapshotVolume` takes the one that has an
+  image.
+* A volume that is gone or has no image cannot be rolled back and makes a
+  creation fail. For a deletion it counts as done: the snapshot went with the
+  image. Such a volume is not waited for, as zedmanager does not ask for it
+  while a snapshot of the application is busy. A volume that volumemgr could
+  not take up because of an error may still have its image, so any action on
+  it fails and a deletion keeps what it knows of the snapshot.
+* A creation that fails on one volume deletes what the other volumes got.
+  A rollback that fails half way cannot be undone; its error says how many
+  volumes are rolled back.
+
+`publishVolumesSnapshotStatus` saves every status as the record of the
+snapshot, and `unpublishVolumesSnapshotStatus` removes the record with the
+status. So the record says what volumemgr was doing when the device went down.
+At boot `restoreSnapshotState` turns each record into the status to start with:
+
+* `Created`, or a state with an error, is published as it was saved. A
+  creation, rollback or deletion that failed is still known as failed.
+* `RollingBack` without an error is a rollback that the reboot cut off. It goes
+  on once zedmanager has published the config of the snapshot again.
+* `Deleting` is a deletion that was cut off or that failed. It is tried again,
+  and is published without the error so that zedmanager keeps the application
+  down for it.
+* `Creating` without an error is a creation that was cut off. What the volumes
+  got of it is not known, so it is published as failed.
+* A record without a state was saved by an older version, for a snapshot that
+  was created. It is published as `Created`, with `RollbackCountKnown` not
+  set.
 
 #### Zedmanager Reaction, creation
 
-1. **Receiving the Snapshot Status and Handling Snapshot Creation**: When
-   zedmanager receives a `volumesSnapshotStatus` message, it calls
-   the `handleVolumesSnapshotStatusImpl` function. The function examines
-   the `ResultOfAction` field of the `volumesSnapshotStatus` object to determine
-   the type of action that was performed (e.g., snapshot creation, rollback, or
-   deletion). If the `ResultOfAction` field indicates that a snapshot was
-   created, the `reactToSnapshotCreate` function is called to handle the
-   creation of the snapshot.
-2. **Looking Up AppInstanceStatus**: The `reactToSnapshotCreate` function begins
-   by looking up the `AppInstanceStatus` object associated with the `AppUUID`
-   field of the `volumesSnapshotStatus` object. If the `AppInstanceStatus`
-   object is not found, an error is logged, and the function returns.
-   The `AppInstanceStatus` object is necessary for updating the status of the
-   snapshot, which is done in the next step.
-3. **Moving Snapshot to Available**: If there is no error, the function logs
-   that the snapshot has been created and calls the `moveSnapshotToAvailable`
-   function. This function removes the snapshot from the `RequestedSnapshots`
-   slice of the `SnapStatus` field of the `AppInstanceStatus` object and adds it
-   to the `AvailableSnapshots` slice. The function also updates
-   the `TimeCreated` field of the snapshot to the value from
-   the `volumesSnapshotStatus` object, marks the snapshot as reported, and
-   serializes the `SnapshotInstanceStatus` object to a file.
-4. **Publishing AppInstanceStatus**: The `AppInstanceStatus` object is then
-   published to reflect the changes made during the snapshot creation process.
-5. **Zedagent Handling**: After the publication of the `AppInstanceStatus`, the
-   updated status is sent to zedagent. Zedagent then parses the list of
-   available snapshots in the `AppInstanceStatus` and forms a reply to the
-   controller with the updated snapshot information. This allows the controller
-   to be aware of the current state of the snapshots on the device.
+1. **Receiving the Snapshot Status**: When zedmanager receives a
+   `volumesSnapshotStatus` message, it calls the
+   `handleVolumesSnapshotStatusImpl` function, which looks up the
+   `AppInstanceStatus` of the `AppUUID`. A status that ends a rollback is
+   handled by `reactToSnapshotRollback`.
+2. **Keeping the Record**: For a snapshot in the state `Created` that has no
+   record yet, `keepSnapshotRecord` saves a `SnapshotInstanceStatus` with the
+   type and the config version from the `VolumesSnapshotConfig` and the
+   creation time from the status. The config is gone after a reboot, the
+   record is not.
+3. **Updating the List**: `refreshSnapshots` rebuilds the `Snapshots` list. A
+   snapshot whose creation failed is on it with its error. Its status stays for
+   as long as the config lists the snapshot, and the creation is not tried
+   again.
+4. **Publishing AppInstanceStatus and Going On**: The `AppInstanceStatus` is
+   published, and `updateAIStatusUUID` takes the application up again.
+5. **Zedagent Handling**: Zedagent reports the `Snapshots` list to the
+   controller. A failed snapshot is reported with its error, so that the
+   controller learns that the creation failed.
 
 ### Snapshot Rollback Process
 
@@ -363,7 +484,7 @@ data integrity and operational consistency.
    snapshot.
 2. **Restoring App Instance Config**: EVE restores the app instance config from
    the snapshot by calling the `restoreAppInstanceConfigFromSnapshot` function.
-   This function retrieves the snapshot status from the available snapshots and
+   This function checks that the snapshot is on the `Snapshots` list and
    restores the app instance config from the snapshot.
    The `deserializeAppInstanceConfigFromSnapshot` function is used to read the
    app instance config from the snapshot file.
@@ -412,64 +533,55 @@ data integrity and operational consistency.
    An application that has no `DomainStatus`, because it was not started since
    boot, counts as deactivated unless zedmanager has activated it or is
    activating it.
-9. **Triggering Rollback**: The `triggerRollback` function is called to trigger
-   the rollback process. It first checks if there is an
-   existing `VolumesSnapshotConfig` in the channel for the active snapshot. If
-   found, it updates the action to rollback, increments `RollbackCount` so that
-   a repeated rollback to the same snapshot is still a change that pubsub
-   delivers, and publishes the updated config. If
-   not found (which can occur if the system has been rebooted), it creates a
-   new `VolumesSnapshotConfig` with the necessary information, including the
-   snapshot ID, volume IDs, action set to rollback, and app UUID. It then
-   publishes the new config to the channel.
+9. **Triggering Rollback**: The `triggerRollback` function asks volumemgr for
+   the rollback by raising the `RollbackCount` in the `VolumesSnapshotConfig`
+   of the active snapshot above the count of its status. The count is the
+   `RollbackCmd.Counter` of the request, or one more than the count of the
+   status if that is not higher: a controller can use a counter again. If the
+   snapshot is not one that can be rolled back to, because it is gone, its
+   creation failed or it is being deleted, the rollback ends here and the
+   application goes on with the config from the controller. `startRollback`
+   refuses such a snapshot already when the request comes in.
 
 #### Volumemgr Reaction, rollback
 
-When volumemgr receives the `volumesSnapshotConfig` from zedmanager, it triggers
-a series of actions to handle the snapshot rollback request.
-The `handleVolumesSnapshotConfigImpl` function is the entry point for handling
-these actions. This function takes the `volumesSnapshotConfig` as input and
-performs the appropriate action based on the Action field of the config.
-
-1. **Determining the Action**: The `handleVolumesSnapshotConfigImpl` function
-   reads the `Action` field of the `volumesSnapshotConfig` to determine what
-   action to take. In this case, we are focusing on
-   the `VolumesSnapshotRollback` action, which indicates that a rollback to the
-   specified snapshot should be performed.
-2. **Validating Volumes Snapshot Status**: The `rollbackSnapshot` function is
-   called to handle the snapshot rollback. It first checks if
-   a `volumesSnapshotStatus` exists for the given SnapshotID. If not, a new
-   volumesSnapshotStatus is created to report an error. The status contains the
-   necessary metadata for the following steps.
-3. **Getting the Volume Handler**: For each volume in the `VolumeSnapshotMeta`
+1. **Taking Up the Rollback**: `reconcileSnapshot` finds a config with a higher
+   `RollbackCount` than the status of a snapshot that is `Created`, or
+   `RollingBack` with the error of an earlier attempt. It sets the state
+   `RollingBack`, takes over the count, clears the error and publishes the
+   status. From it zedmanager sees that the rollback was taken up. The status
+   is saved as the record, so a reboot from here on finds a rollback that was
+   cut off.
+2. **Getting the Volume Handler**: For each volume in the `VolumeSnapshotMeta`
    of the `volumesSnapshotStatus`, the function retrieves the
    corresponding `volumeStatus` using the `lookupVolumeStatusByUUID` function.
-   If the `volumeStatus` is not found, an error is reported in
-   the `volumesSnapshotStatus`. The volume status is used to get the proper
-   volume handler that keeps the low-level FS-specific handlers for the volume
-   operations.
-4. **Rolling Back the Volume Snapshot**: The `RollbackToSnapshot` method of the
-   volume handler is called with the snapshot metadata (`snapMeta`) to perform
-   the rollback. The outcome of the rollback (success or error) is recorded in
-   the `volumesSnapshotStatus`.
-5. **Publishing the Snapshot Status**: After the rollback has been successfully
-   performed or an error has occurred, the `publishVolumesSnapshotStatus`
-   function is called to publish the `VolumesSnapshotStatus` object. By
-   publishing the snapshot status, volumemgr notifies zedmanager about the
-   result of the snapshot rollback request. zedmanager can then use this
-   information to update the application's status and take any necessary actions
-   based on the snapshot status.
+   If the `volumeStatus` is not found, the rollback fails. The volume status
+   is used in the worker to get
+   the proper volume handler that keeps the low-level FS-specific handlers for
+   the volume operations.
+3. **Rolling Back the Volume Snapshot**: In a worker, the `RollbackToSnapshot`
+   method of the volume handler is called with the snapshot metadata
+   (`snapMeta`) to perform the rollback. The worker stops at the first volume
+   that fails.
+4. **Publishing the Snapshot Status**: If the rollback worked,
+   `finishSnapshotAction` publishes the status in the state `Created`. If it
+   failed, the status stays `RollingBack` with the error. Either way it keeps
+   the count, which tells zedmanager that this is the answer to its request.
+
+A config with a higher count for a snapshot in the state `Creating` or
+`Deleting` is left alone: not all volumes have such a snapshot.
 
 #### Zedmanager Reaction, rollback
 
 1. **Receiving the Snapshot Status and Handling Snapshot Rollback**: When
    zedmanager receives a `volumesSnapshotStatus` message, it calls
-   the `handleVolumesSnapshotStatusImpl` function. The function examines
-   the `ResultOfAction` field of the `volumesSnapshotStatus` object to determine
-   the type of action that was performed (e.g., snapshot creation, rollback, or
-   deletion). If the `ResultOfAction` field indicates that a snapshot rollback
-   was performed, the `reactToSnapshotRollback` function is called to handle the
-   rollback of the snapshot.
+   the `handleVolumesSnapshotStatusImpl` function. If the application is in a
+   rollback that zedmanager has asked volumemgr for (`RollbackInProgress` is
+   set and `HasRollbackRequest` is not), the status is of the active snapshot,
+   and `rollbackAnswered` says that volumemgr is through with it, the
+   `reactToSnapshotRollback` function is called. Volumemgr is through when the
+   `RollbackCount` of the status has reached that of the config and the status
+   is not busy.
 2. **Looking Up AppInstanceStatus**: The `reactToSnapshotRollback` function
    begins by looking up the `AppInstanceStatus` object associated with
    the `AppUUID` field of the `volumesSnapshotStatus` object. If
@@ -477,10 +589,10 @@ performs the appropriate action based on the Action field of the config.
    function returns. The `AppInstanceStatus` object is necessary for updating
    the status of the snapshot, which is done in the next step.
 3. **Handling Errors**: If the `volumesSnapshotStatus` object has an error (as
-   indicated by the `HasError` function), the function logs the error and calls
-   the `setSnapshotStatusError` function to record it with the snapshot. The
-   application itself gets no error. A successful rollback clears the error of
-   the snapshot.
+   indicated by the `HasError` function), the function logs the error.
+   `refreshSnapshots` puts it on the snapshot in the `Snapshots` list. The
+   application itself gets no error. A successful rollback leaves a status
+   without an error, so the error of the snapshot is gone as well.
 4. **Rollback Completion**: Whether the rollback worked or failed, the function
    sets the `RollbackInProgress` field of the `SnapStatus` field of
    the `AppInstanceStatus` object to false and unpublishes the local app
@@ -493,7 +605,7 @@ performs the appropriate action based on the Action field of the config.
    changed.
 5. **Zedagent Handling**: After the publication of the AppInstanceStatus, the
    updated status is sent to zedagent. Zedagent then parses the list of
-   available snapshots in the AppInstanceStatus and forms a reply to the
+   snapshots in the AppInstanceStatus and forms a reply to the
    controller with the updated snapshot information. This allows the controller
    to be aware of the current state of the snapshots on the device.
 
@@ -515,129 +627,117 @@ snapshotted config version serves as an indication of a successful rollback. The
 controller receives this report and becomes aware of the successful rollback and
 the current state of the app instance on the device.
 
+#### Rollback and Reboot
+
+`handleModify` sees a rollback request as a `RollbackCmd.Counter` that is
+higher than in the config before. After a reboot there is no config before.
+What tells then is the status of the snapshot, which volumemgr restores from
+its record with the `RollbackCount` of the last rollback that it took up.
+
+* **Volumemgr had taken up the rollback.** Its record is in the state
+  `RollingBack` without an error, and volumemgr goes on with the rollback once
+  zedmanager has published the config of the snapshot again and the volumes
+  are there. zedmanager only keeps the application down meanwhile.
+* **Volumemgr never got the rollback**, as the device went down between the
+  request of the controller and the application being down. `rollbackLeftOver`
+  compares the counter of the app config with the `RollbackCount` of the
+  status of its `ActiveSnapshot`. If the config has the higher one,
+  `askForRollbackLeftOver` raises the `RollbackCount` of the
+  `VolumesSnapshotConfig`. That is done from `restoreSnapshotConfigs` or from
+  `handleCreateAppInstanceStatus`, whichever comes when both the app config
+  and the status are there, and before the application is started.
+
+In both cases the application then starts on the config from the controller:
+the local app instance config is not published again after a reboot.
+
+A rollback that was cut off is therefore run again. That is safe, as applying
+the same snapshot twice gives the same volumes. A rollback that failed has its
+count in the status and is not repeated, and its error is still reported.
+
+A record that an older version saved has no count (`RollbackCountKnown` is
+not set). The config can name such a snapshot with the counter of a rollback
+that was done long ago, so nothing is rolled back for it. It gets a count with
+the next rollback to it.
+
 ### Snapshot Deletion Process
 
 #### Zedmanager Initial Handling, deletion
 
-1. **Identifying Snapshots for Deletion**: In the `handleModify` function,
-   zedmanager detects that a snapshot is requested to be deleted by calling
-   the `updateSnapshotsInAIStatus` function. The
-   function `getSnapshotsToBeDeleted` is called
-   within `updateSnapshotsInAIStatus` to identify the snapshots that need to be
-   deleted. It returns a list of snapshots to be deleted based on the snapshots
-   reported to the controller and the snapshots present in the configuration.
-2. **Handling Excess Snapshot Requests**: The function `adjustToMaxSnapshots` is
-   called to verify if the number of snapshots exceeds the set limit. If it
-   does, it marks the oldest snapshots for deletion.
-3. **Setting Snapshots for Deletion**: The function `updateSnapshotsInAIStatus`
-   sets the `SnapshotsToBeDeleted` field in the `SnapStatus` of
-   the `AppInstanceStatus` with the list of snapshots identified for deletion.
-4. **Immediate Deletion Reporting**: The function `updateSnapshotsInAIStatus`
-   removes the snapshots marked for deletion from the `AvailableSnapshots` list
-   in the `SnapStatus` of the `AppInstanceStatus`. Due to the current
-   implementation limitation on the controller side, the device reports
-   successful deletion immediately back to the controller, even though the
-   deletion may be deferred.
-
-5. **Wait For Deferred Deactivation**
-   The steps described above can be considered as preparation for deletion. Even
-   though snapshot removal requires VM deactivation, zedmanager does not trigger
-   it. EVE has to wait for the next app deactivation to proceed with the
-   deletion. Therefore, there is no immediate messaging to volumemgr, and the
-   actual deletion is deferred until the next app deactivation.
+1. **Identifying Snapshots for Deletion**: `snapshotsToDelete` returns the
+   snapshots that exist and have to go: those that the config does not list.
+   A config that lists more snapshots than the limit is left out (see
+   [Ensuring Maximum Snapshots Limit](#ensuring-maximum-snapshots-limit)).
+   Nothing is stored for this. A config that lists the snapshot again before
+   it was deleted keeps it.
+2. **Wait For Deferred Deactivation**: Snapshot removal requires the VM to be
+   down, and zedmanager does not bring it down for that. The deletion waits for
+   the next app deactivation:
 
     1. **Regular App Reactivation**: In the `doUpdate` function, zedmanager
-       checks if the VM is already shut down. If it is, and there are snapshots
-       marked for deletion, it triggers the snapshot deletion process. The
-       function is part of statuses from the domain manager handling. A new
-       status comes when the domain manager deactivates the application.
+       checks if the VM is already shut down. If it is, it triggers the
+       deletion.
     2. **Handling of Purge**: In the removeAIStatus function, zedmanager handles
-       the case where an app is deactivated due to a purge command. If the VM is
-       shut down and there are snapshots marked for deletion, it triggers the
-       snapshot deletion process first. This is done to ensure compliance with
-       the maximum limit of snapshots. Only after the deletion process is
-       triggered, if a snapshot is requested on upgrade and there are prepared
-       volume snapshot configs, zedmanager triggers the creation of new
-       snapshots.
+       the case where an app is deactivated due to a purge command. It triggers
+       the deletion first, to ensure compliance with the maximum limit of
+       snapshots, and then the creation of the prepared snapshots.
 
    In both cases, the `triggerSnapshotDeletion` function is called.
-
-6. **Unpublishing Message to Volumemgr**: In the `triggerSnapshotDeletion`
-   function, for each snapshot to be deleted, zedmanager looks up the
-   corresponding `VolumesSnapshotConfig`. If the snapshot has already been
-   triggered, zedmanager sets the action to VolumesSnapshotDelete and
-   unpublishes the VolumesSnapshotConfig to notify volumemgr about the deletion
-   request.
+3. **Asking Volumemgr**: For each snapshot to be deleted,
+   `triggerSnapshotDeletion` takes its `VolumesSnapshotConfig` away. That is
+   all zedmanager does: a deletion that failed is tried again by volumemgr.
 
 #### Volumemgr Reaction, deletion
 
-1. **Handling and Processing the Deletion Request**: When a snapshot deletion
-   request is received, the `handleVolumesSnapshotConfigDelete` function is
-   called. This function sets the action to `VolumesSnapshotDelete` and calls
-   the `handleVolumesSnapshotConfigImpl` function to process the snapshot
-   deletion request. Setting the action is necessary as the message on
-   unpublishing reflects the last state when it was published, so it's not
-   possible to update it on the caller (zedmanager) side.
-2. **Deleting the Snapshot**: In the `handleVolumesSnapshotConfigImpl` function,
-   the `deleteSnapshot` function is called to handle the snapshot deletion based
-   on the action specified in the config.
-3. **Retrieving Snapshot Status and Metadata**: The `deleteSnapshot` function
-   looks up the `VolumesSnapshotStatus` for the snapshot to be deleted. This
-   status is necessary to get the metadata and the file system specific handlers
-   for the snapshot. If the status is not found, it creates a
-   new `VolumesSnapshotStatus` to report an error. Otherwise, it proceeds with
-   the deletion process.
-4. **Iterating Over Volumes and Retrieving Volume Handlers**: The function
-   iterates over the volumes associated with the snapshot, as specified in
-   the `VolumeSnapshotMeta` field of the `VolumesSnapshotStatus`. For each
-   volume, it looks up the corresponding `VolumeStatus` and retrieves the
-   appropriate volume handler. The volume handler is responsible for performing
-   filesystem-specific operations on the volume, such as creating, deleting, or
-   rolling back snapshots.
-5. **Deleting the Snapshot for Each Volume**:  The function calls
-   the `DeleteSnapshot` method of the volume handler to delete the snapshot for
-   the specified volume according to the low-level logic. It does not touch the
-   files created explicitly by EVE; they will be deleted later by _zedmanager_.
-   If an error occurs during the deletion process, it sets an error in the
-   VolumesSnapshotStatus.
-6. **Unpublishing the Snapshot Status**: After the snapshot has been deleted for
-   all volumes, the `unpublishVolumesSnapshotStatus` function is called to
-   unpublish the `VolumesSnapshotStatus` for the deleted snapshot. This is
-   necessary to notify zedmanager about the result of the deletion.
+1. **Taking Up the Deletion**: `reconcileSnapshot` finds a status without a
+   config, and publishes it in the state `Deleting`. The status is saved as the
+   record, so the snapshot is not whole again after a reboot. A creation that
+   still waits for a worker is dropped instead: there is nothing to delete.
+2. **Iterating Over Volumes and Retrieving Volume Handlers**: The volumes of
+   the snapshot are those in the `VolumeSnapshotMeta` field of the
+   `VolumesSnapshotStatus`. For each volume, the function looks up the
+   `VolumeStatus`, from which the worker retrieves the volume handler. A
+   volume that is gone has nothing to delete.
+3. **Deleting the Snapshot for Each Volume**: In a worker, the
+   `DeleteSnapshot` method of the volume handler is called. If an error occurs,
+   it is set in the `VolumesSnapshotStatus` and the worker goes on with the
+   remaining volumes. A volume that lost the snapshot is taken out of the
+   `VolumeSnapshotMeta`.
+4. **Answering**: If the deletion worked, `finishSnapshotAction` removes the
+   record of the snapshot and unpublishes the `VolumesSnapshotStatus`: a
+   snapshot that is deleted has no status. If the deletion failed, the status
+   stays in the state `Deleting` with the error, and volumemgr tries again
+   later, see
+   [Volumemgr Worker and Snapshot State](#volumemgr-worker-and-snapshot-state).
+
+A snapshot in the state `Deleting` does not come back. A config that
+zedmanager publishes for it again changes nothing.
 
 #### Zedmanager Reaction, deletion
 
-1. **Handling Snapshot Deletion Status**: When a snapshot deletion status is
-   received, the `handleVolumesSnapshotStatusDelete` function is called. This
-   function sets the `ResultOfAction` field of the `volumesSnapshotStatus`
-   to `VolumesSnapshotDelete` and calls the `handleVolumesSnapshotStatusImpl`
-   function to handle the snapshot deletion status.
-2. **Processing the Deletion Status**: The `handleVolumesSnapshotStatusImpl`
-   function processes the snapshot deletion status based on the `ResultOfAction`
-   field of the `volumesSnapshotStatus`. In the case of snapshot deletion, it
-   calls the `reactToSnapshotDelete` function.
-3. **Reacting to Snapshot Deletion**: The `reactToSnapshotDelete` function looks
-   up the `AppInstanceStatus` for the app associated with the snapshot. If the
-   status is not found, it logs an error and returns. If
-   the `volumesSnapshotStatus` has an error, it sets the error in
-   the `AppInstanceStatus` and calls the `setSnapshotStatusError` function to
-   set the error for the specific snapshot. It then publishes the
-   updated `AppInstanceStatus`.
-4. **Deleting the Snapshot from App Status**: If there is no error, the function
-   calls the `deleteSnapshotFromStatus` function to delete the snapshot from
-   the `AppInstanceStatus`. This function removes the snapshot from the list of
-   requested snapshots, available snapshots, and snapshots to be triggered. It
-   also removes the prepared volumes snapshot config for the snapshot.
-5. **Deleting Snapshot Files**: The `reactToSnapshotDelete` function calls
-   the `DeleteSnapshotFiles` function to delete the snapshot directory. This
-   function checks if the snapshot directory exists and, if it does, removes the
-   directory. It's important to note that this step only removes the files that
-   were explicitly created by EVE. It does not remove the files created by the
-   filesystem-specific handlers, as those files are managed separately and have
-   already been removed by volumemgr.
-6. **Publishing App Instance Status**: After deleting the snapshot from the app
-   status and deleting the snapshot files, the `reactToSnapshotDelete` function
-   publishes the updated AppInstanceStatus.
+1. **Snapshot Is Gone**: `handleVolumesSnapshotStatusDelete` is called when
+   volumemgr takes the status away. It
+   deletes the snapshot directory with `DeleteSnapshotFiles`, rebuilds the
+   `Snapshots` list, publishes the `AppInstanceStatus` and calls
+   `updateAIStatusUUID`.
+2. **Deletion Failed**: `handleVolumesSnapshotStatusImpl` gets the status with
+   the error. `refreshSnapshots` puts the error on the snapshot, which stays on
+   the `Snapshots` list and is reported to the controller. The application
+   goes on.
+
+#### Uninstalling the Application
+
+The snapshots of an application go with it, whatever volumemgr is doing with
+them at that moment. `doUninstall` first takes the `VolumeRefConfig`s away.
+When volumemgr has unpublished the `VolumeRefStatus` of each, it has let go of
+the volumes, and `doUninstall` takes the `VolumesSnapshotConfig`s of the
+application away.
+
+To volumemgr these are snapshots to delete, but a volume that is being
+destroyed takes its snapshots along: nothing is done to its image, and the
+status and the record are removed. A volume that a worker has in use for a
+snapshot is not destroyed under it. `deferDestroyForSnapshot` holds the
+destruction back until the worker returns, and the outcome of that action is
+dropped with the snapshot.
 
 ### Waiting for Volumemgr
 
@@ -645,15 +745,24 @@ zedmanager does not start the application while volumemgr works on one of its
 snapshots, as `qemu-img` needs the disk images to itself. The
 `snapshotOpInProgress` function tells this from what is published:
 
-* a `VolumesSnapshotConfig` without a `VolumesSnapshotStatus` is a creation
-  that volumemgr has not answered yet;
-* a `VolumesSnapshotStatus` without a `VolumesSnapshotConfig` is a deletion
-  that volumemgr has not answered yet.
+* volumemgr has not yet told which snapshots exist after a boot;
+* a `VolumesSnapshotConfig` without a `VolumesSnapshotStatus`: volumemgr has
+  not taken up the creation yet;
+* a `VolumesSnapshotConfig` with a higher `RollbackCount` than the status of a
+  snapshot that can be rolled back to: volumemgr has not taken up the rollback
+  yet;
+* a `VolumesSnapshotStatus` without a `VolumesSnapshotConfig` that is not in
+  the state `Deleting`: volumemgr has not taken up the deletion yet;
+* a `VolumesSnapshotStatus` that is busy, which is a state other than `Created`
+  without an error.
 
-In both cases `doUpdate` does not activate the application, and a purge does not
+An action that failed leaves the snapshot in its state with the error. That
+does not hold the application back.
+
+In these cases `doUpdate` does not activate the application, and a purge does not
 go on from bringing the application down to recreating its volumes. The answer
 from volumemgr takes the application up again: `handleVolumesSnapshotStatusImpl`
-calls `updateAIStatusUUID` after a creation and after a deletion.
+and `handleVolumesSnapshotStatusDelete` call `updateAIStatusUUID`.
 
 ## Low-Level Snapshot Management for ext4
 
@@ -699,28 +808,24 @@ the application.
 ### Snapshot Deletion for ext4
 
 Unlike snapshot creation and rollback, snapshot deletion does not require an
-immediate application reboot. When EVE receives a command to delete a snapshot,
-it marks the snapshot as "to be deleted" in its internal metadata. However, the
-actual deletion of the snapshot and the associated files is deferred until the
-next application reboot. This approach avoids disrupting the application's
-operation for snapshot deletion. EVE uses the qemu-img tool with the command
+immediate application reboot. When the controller stops listing a snapshot,
+the actual deletion of the snapshot and the associated files is deferred until
+the next time the application is down. This approach avoids disrupting the
+application's operation for snapshot deletion. EVE uses the qemu-img tool with
+the command
 
 ```bash
 qemu-img snapshot -d snapshot_name /path/to/base_image.qcow2
 ```
 
-to delete the snapshot. Despite the deferred deletion, EVE immediately reports
-back to the controller that the snapshot has been removed. This is done to keep
-the controller informed and prevent it from reporting snapshots that no longer
-exist according to its records. This approach ensures that the controller's view
-of the snapshots is consistent with EVE's internal state.
+to delete the snapshot. The snapshot stays in the report to the controller
+until it is deleted, with the error if the deletion failed.
 
 EVE manages snapshots for ext4 file systems by coordinating snapshot operations
 with the application lifecycle and performing low-level snapshot operations
 using the qemu-img tool. Snapshot creation and rollback require stopping and
 reactivating the application to ensure data consistency. Snapshot deletion is
-deferred until the next application reboot but is immediately reported to the
-controller to maintain consistency in the system's view of the snapshots. This
+deferred until the next time the application is down. This
 approach allows EVE to efficiently manage snapshots while minimizing disruptions
 to the application's operation.
 
@@ -810,8 +915,10 @@ the original volume file associated with the snapshot ID.
 ## Serialization and Deserialization
 
 The snapshotting feature relies on robust serialization and deserialization
-functionality to ensure the continuity of snapshot lists after the system
-reboots. The serialization process converts snapshot data structures into a
+functionality to ensure that the snapshots are known after the system
+reboots. Volumemgr saves and removes the `VolumesSnapshotStatus` record;
+zedmanager saves the `SnapshotInstanceStatus` record and the
+`AppInstanceConfig`, and removes the directory of a snapshot that is deleted. The serialization process converts snapshot data structures into a
 format that can be stored on disk, while deserialization restores the data
 structures from the stored format.
 
@@ -877,39 +984,17 @@ file.
 ## Ensuring Maximum Snapshots Limit
 
 EVE ensures that the number of snapshots does not exceed the maximum limit set
-by the controller. This is achieved through the `adjustToMaxSnapshots` function,
-which verifies the total number of snapshots and marks the oldest snapshots for
-deletion if the limit is exceeded. The function also trims the list of upcoming
-snapshots to fit within the limit. The order in which the lists are considered
-for deletion is as follows:
+by the controller:
 
-1. Existing snapshots
-2. New snapshot requests
-3. Snapshots prepared for capture
+1. A config that lists more snapshots than the limit is invalid. It is the
+   controller that decides which snapshot gives way to a new one, by not
+   listing it any more.
+2. For such a config `pendingSnapshots` and `snapshotsToDelete` return nothing:
+   no snapshot is created and none is deleted until a valid config arrives.
+3. `updateSnapshotsInAIStatus` sets a warning on the app instance that says so.
 
-The function works as follows:
-
-1. **Calculate Total Snapshots**: The function calculates the total number of
-   snapshots requested by adding the number of available snapshots, requested
-   snapshots, and new requested snapshots, and subtracting the number of
-   snapshots to be deleted.
-2. **Check Limit**: If the total number of snapshots is less than or equal to
-   the maximum limit, no action is needed.
-3. **Delete Oldest Snapshots**: The function sorts the available snapshots by
-   creation time and flags the oldest snapshots for deletion until the total
-   number of snapshots is within the limit.
-4. **Delete from Requests List**: If there are still snapshots to be deleted,
-   the function removes them from the new snapshot requests list.
-5. **Delete Unpublished Snapshots**: If there are still snapshots to be deleted,
-   the function flags planned but not yet published snapshots (for which EVE has
-   prepared volumes snapshot config, but it’s not sent to _volumemgr_ yet) for
-   deletion.
-6. **Return Updated Lists**: The function returns the updated lists of snapshots
-   to be deleted and new requested snapshots.
-
-It's important to note that EVE triggers snapshot deletions (possibly requested
-as a result of this adjustment) before snapshot creation to ensure compliance
-with the maximum limit.
+EVE triggers the deletions before the creations, see
+[Snapshot Deletion Process](#snapshot-deletion-process).
 
 Currently, the controller only supports a maximum of 1 snapshot, so this
 functionality is not extensively tested. However, it is designed to handle

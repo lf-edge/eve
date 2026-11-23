@@ -1268,6 +1268,26 @@ func reportAppCPUPlacement(app *info.ZInfoApp, aiStatus *types.AppInstanceStatus
 	app.CpuPlacementStatus, app.CpuPlacementError = cpuPlacementOnTheWire(aiStatus.Placement)
 }
 
+// snapshotInfos lists the snapshots of the app. That includes one that could
+// not be created or deleted, with its error: the controller waits for the
+// outcome.
+func snapshotInfos(snapStatus types.SnapshottingStatus) []*info.ZInfoSnapshot {
+	var snapInfos []*info.ZInfoSnapshot
+	for _, snap := range snapStatus.Snapshots {
+		snapInfo := new(info.ZInfoSnapshot)
+		snapInfo.Id = snap.Snapshot.SnapshotID
+		snapInfo.ConfigId = snap.ConfigVersion.UUID.String()
+		snapInfo.ConfigVersion = snap.ConfigVersion.Version
+		if !snap.TimeCreated.IsZero() {
+			snapInfo.CreateTime = timestamppb.New(snap.TimeCreated)
+		}
+		snapInfo.Type = snap.Snapshot.SnapshotType.ConvertToInfoSnapshotType()
+		snapInfo.SnapErr = snap.Error.ToProto()
+		snapInfos = append(snapInfos, snapInfo)
+	}
+	return snapInfos
+}
+
 // This function is called per change, hence needs to try over all management ports
 // When aiStatus is nil it means a delete and we send a message
 // containing only the UUID to inform zedcloud about the delete.
@@ -1398,16 +1418,7 @@ func PublishAppInfoToZedCloud(ctx *zedagentContext, uuid string,
 				vr.VolumeID.String())
 		}
 
-		for _, snap := range aiStatus.SnapStatus.AvailableSnapshots {
-			snapInfo := new(info.ZInfoSnapshot)
-			snapInfo.Id = snap.Snapshot.SnapshotID
-			snapInfo.ConfigId = snap.ConfigVersion.UUID.String()
-			snapInfo.ConfigVersion = snap.ConfigVersion.Version
-			snapInfo.CreateTime = timestamppb.New(snap.TimeCreated)
-			snapInfo.Type = snap.Snapshot.SnapshotType.ConvertToInfoSnapshotType()
-			snapInfo.SnapErr = snap.Error.ToProto()
-			ReportAppInfo.Snapshots = append(ReportAppInfo.Snapshots, snapInfo)
-		}
+		ReportAppInfo.Snapshots = snapshotInfos(aiStatus.SnapStatus)
 
 		// For Clustered apps on HV=k, 'ClusterAppRunning' designates
 		// the app is running on this node either naturally or after some failover event.

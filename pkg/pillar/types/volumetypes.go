@@ -284,47 +284,60 @@ func (status VolumeStatus) LogKey() string {
 	return string(base.VolumeStatusLogType) + "-" + status.Key()
 }
 
-// VolumesSnapshotAction is the action to perform on the snapshot
-type VolumesSnapshotAction uint8
+// VolumesSnapshotState is what volumemgr does with a snapshot. Creating,
+// RollingBack and Deleting are left when the action has worked. If it fails,
+// the snapshot stays in that state with the error of the status set.
+type VolumesSnapshotState uint8
 
+// The zero value is not a state: it is what the record of a version that did
+// not keep the state has.
 const (
-	// VolumesSnapshotUnspecifiedAction is the default value
-	VolumesSnapshotUnspecifiedAction VolumesSnapshotAction = iota
-	// VolumesSnapshotCreate is used to create a snapshot
-	VolumesSnapshotCreate
-	// VolumesSnapshotRollback is used to roll back to a snapshot
-	VolumesSnapshotRollback
-	// VolumesSnapshotDelete is used to delete a snapshot
-	VolumesSnapshotDelete
+	// VolumesSnapshotStateCreating is the state from the request to create
+	// the snapshot, which includes waiting for a worker
+	VolumesSnapshotStateCreating VolumesSnapshotState = iota + 1
+	// VolumesSnapshotStateCreated is the state of a snapshot that all its
+	// volumes have and that nothing is being done to
+	VolumesSnapshotStateCreated
+	// VolumesSnapshotStateRollingBack is the state from the request to roll
+	// back to the snapshot
+	VolumesSnapshotStateRollingBack
+	// VolumesSnapshotStateDeleting is the state from the request to delete
+	// the snapshot. It is not left any more.
+	VolumesSnapshotStateDeleting
 )
 
-func (action VolumesSnapshotAction) String() string {
-	switch action {
-	case VolumesSnapshotCreate:
-		return "Create"
-	case VolumesSnapshotRollback:
-		return "Rollback"
-	case VolumesSnapshotDelete:
-		return "Delete"
+func (state VolumesSnapshotState) String() string {
+	switch state {
+	case VolumesSnapshotStateCreating:
+		return "Creating"
+	case VolumesSnapshotStateCreated:
+		return "Created"
+	case VolumesSnapshotStateRollingBack:
+		return "RollingBack"
+	case VolumesSnapshotStateDeleting:
+		return "Deleting"
 	default:
 		return "Unspecified"
 	}
 }
 
-// VolumesSnapshotConfig is used to send snapshot requests from zedmanager to volumemgr
+// VolumesSnapshotConfig is what zedmanager wants of a snapshot. Its presence
+// says that the snapshot is to exist: volumemgr creates a snapshot that has a
+// config and no status, and deletes one that has a status and no config.
 type VolumesSnapshotConfig struct {
 	// SnapshotID is the ID of the snapshot
 	SnapshotID string
-	// Action is the action to perform on the snapshot
-	Action VolumesSnapshotAction
 	// VolumeIDs is a list of volumes to snapshot
 	VolumeIDs []uuid.UUID
 	// AppUUID used as a backlink to the app
 	AppUUID uuid.UUID
-	// RollbackCount is incremented with every rollback requested. pubsub does
-	// not deliver an item that is published unchanged, and a second rollback
-	// to the same snapshot is otherwise just that.
+	// RollbackCount asks for a rollback to the snapshot when it is higher
+	// than the RollbackCount of the status
 	RollbackCount int
+	// SnapshotType and ConfigVersion describe the snapshot: what triggered
+	// it, and the version of the app config it keeps.
+	SnapshotType  SnapshotType
+	ConfigVersion UUIDandVersion
 }
 
 // Key returns unique key for the snapshot
@@ -332,7 +345,8 @@ func (config VolumesSnapshotConfig) Key() string {
 	return config.SnapshotID
 }
 
-// VolumesSnapshotStatus is used to send snapshot status from volumemgr to zedmanager
+// VolumesSnapshotStatus is what volumemgr reports of a snapshot to zedmanager.
+// It is also what volumemgr saves as the record of the snapshot.
 type VolumesSnapshotStatus struct {
 	// SnapshotID is the ID of the snapshot, critical field
 	SnapshotID string `mandatory:"true"`
@@ -342,17 +356,34 @@ type VolumesSnapshotStatus struct {
 	TimeCreated time.Time
 	// AppUUID used as a backlink to the app, critical field
 	AppUUID uuid.UUID `mandatory:"true"`
-	// RefCount is the number of times the snapshot is used. Necessary to trigger the handleModify handler
-	RefCount int
-	// ResultOfAction is the type of action that was performed on the snapshot that resulted in this status
-	ResultOfAction VolumesSnapshotAction
-	// ErrorAndTimeWithSource provides SetErrorNow() and ClearError()
+	// State is what volumemgr does with the snapshot
+	State VolumesSnapshotState
+	// RollbackCount is the RollbackCount of the last rollback to the
+	// snapshot that volumemgr took up. That rollback is over when the state
+	// is Created again, and has failed when the error is set.
+	RollbackCount int
+	// RollbackCountKnown is not set for the record of a version that did not
+	// keep RollbackCount. Whether the app was rolled back to that snapshot
+	// cannot be told then.
+	RollbackCountKnown bool
+	// ErrorAndTimeWithSource has the error of the action that the state
+	// names, if it failed
 	ErrorAndTimeWithSource
 }
 
 // Key returns unique key for the snapshot
 func (status VolumesSnapshotStatus) Key() string {
 	return status.SnapshotID
+}
+
+// Busy reports whether volumemgr works on the snapshot or is about to.
+func (status VolumesSnapshotStatus) Busy() bool {
+	switch status.State {
+	case VolumesSnapshotStateCreating, VolumesSnapshotStateRollingBack, VolumesSnapshotStateDeleting:
+		return !status.HasError()
+	default:
+		return false
+	}
 }
 
 // VolumeRefConfig : Used for communication from zedagent to volumemgr, contains info from AppInstanceConfig

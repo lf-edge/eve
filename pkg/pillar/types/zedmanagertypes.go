@@ -297,12 +297,12 @@ const (
 type SnapshottingStatus struct {
 	// MaxSnapshots indicates the maximum number of snapshots to be kept for the app instance.
 	MaxSnapshots uint32
-	// RequestedSnapshots contains the list of snapshots to be taken for the app instance.
-	RequestedSnapshots []SnapshotInstanceStatus
-	// AvailableSnapshots contains the list of snapshots available for the app instance.
-	AvailableSnapshots []SnapshotInstanceStatus
-	// SnapshotsToBeDeleted contains the list of snapshots to be deleted for the app instance.
-	SnapshotsToBeDeleted []SnapshotDesc
+	// Snapshots are the snapshots of the app instance that volumemgr
+	// reports, which is what the controller is told. zedmanager rebuilds
+	// the list from the VolumesSnapshotStatus and decides nothing by it. A
+	// snapshot whose creation or deletion failed is in it with the error;
+	// one that is still being created is not.
+	Snapshots []SnapshotInstanceStatus
 	// PreparedVolumesSnapshotConfigs contains the list of snapshots to be triggered for the app instance.
 	PreparedVolumesSnapshotConfigs []VolumesSnapshotConfig
 	// SnapshotTakenType indicates if and when a snapshot should be taken
@@ -315,6 +315,9 @@ type SnapshottingStatus struct {
 	// RollbackInProgress indicates whether a rollback is in progress for the app instance.
 	// Set to true when a rollback is triggered, set to false when the rollback is completed.
 	RollbackInProgress bool
+	// RollbackCmdCounter is the RollbackCmd counter of the rollback that is
+	// requested or in progress.
+	RollbackCmdCounter uint32
 }
 
 // Indexed by UUIDandVersion as above

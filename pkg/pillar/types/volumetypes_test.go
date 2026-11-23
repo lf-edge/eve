@@ -96,22 +96,38 @@ func TestVolumeConfigGetPVCNameMatchesStatus(t *testing.T) {
 	}
 }
 
-// VolumesSnapshotAction.String
+// VolumesSnapshotState.String
 
-func TestVolumesSnapshotActionString(t *testing.T) {
+func TestVolumesSnapshotStateString(t *testing.T) {
 	cases := []struct {
-		action VolumesSnapshotAction
-		want   string
+		state VolumesSnapshotState
+		want  string
 	}{
-		{VolumesSnapshotCreate, "Create"},
-		{VolumesSnapshotRollback, "Rollback"},
-		{VolumesSnapshotDelete, "Delete"},
-		{VolumesSnapshotUnspecifiedAction, "Unspecified"},
-		{VolumesSnapshotAction(99), "Unspecified"},
+		{VolumesSnapshotStateCreating, "Creating"},
+		{VolumesSnapshotStateCreated, "Created"},
+		{VolumesSnapshotStateRollingBack, "RollingBack"},
+		{VolumesSnapshotStateDeleting, "Deleting"},
+		{VolumesSnapshotState(0), "Unspecified"},
+		{VolumesSnapshotState(99), "Unspecified"},
 	}
 	for _, tc := range cases {
-		assert.Equal(t, tc.want, tc.action.String())
+		assert.Equal(t, tc.want, tc.state.String())
 	}
+}
+
+// VolumesSnapshotStatus.Busy: a state other than Created says what volumemgr
+// does with the snapshot, or what it failed at if the error is set.
+
+func TestVolumesSnapshotStatusBusy(t *testing.T) {
+	for _, state := range []VolumesSnapshotState{
+		VolumesSnapshotStateCreating, VolumesSnapshotStateRollingBack, VolumesSnapshotStateDeleting,
+	} {
+		status := VolumesSnapshotStatus{State: state}
+		assert.True(t, status.Busy(), state.String())
+		status.SetErrorWithSourceAndDescription(ErrorDescription{Error: "qemu-img failed"}, VolumesSnapshotStatus{})
+		assert.False(t, status.Busy(), state.String())
+	}
+	assert.False(t, VolumesSnapshotStatus{State: VolumesSnapshotStateCreated}.Busy())
 }
 
 // VolumesSnapshotConfig.Key

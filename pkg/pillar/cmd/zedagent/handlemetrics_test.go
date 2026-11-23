@@ -47,3 +47,29 @@ func TestAppErrors(t *testing.T) {
 		})
 	}
 }
+
+// The controller learns about a snapshot only from this list, so one that
+// could not be created or deleted has to be on it with its error.
+func TestSnapshotInfosIncludeFailures(t *testing.T) {
+	g := gomega.NewWithT(t)
+	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	snap := func(id string) types.SnapshotInstanceStatus {
+		return types.SnapshotInstanceStatus{Snapshot: types.SnapshotDesc{SnapshotID: id}}
+	}
+	available := snap("available")
+	available.TimeCreated = created
+	failed := snap("failed")
+	failed.Error = types.ErrorDescription{Error: "qemu-img failed", ErrorTime: created}
+
+	infos := snapshotInfos(types.SnapshottingStatus{
+		Snapshots: []types.SnapshotInstanceStatus{available, failed},
+	})
+
+	g.Expect(infos).To(gomega.HaveLen(2))
+	g.Expect(infos[0].Id).To(gomega.Equal("available"))
+	g.Expect(infos[0].CreateTime.AsTime()).To(gomega.Equal(created))
+	g.Expect(infos[0].SnapErr).To(gomega.BeNil())
+	g.Expect(infos[1].Id).To(gomega.Equal("failed"))
+	g.Expect(infos[1].CreateTime).To(gomega.BeNil())
+	g.Expect(infos[1].SnapErr.GetDescription()).To(gomega.Equal("qemu-img failed"))
+}

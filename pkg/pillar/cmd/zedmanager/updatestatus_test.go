@@ -189,6 +189,7 @@ func TestPurgeReportsHaltedOnceDown(t *testing.T) {
 	snap := newSnapshotWaitTestContext(t, nil, nil)
 	ctx.pubVolumesSnapConfig = snap.pubVolumesSnapConfig
 	ctx.subVolumesSnapStatus = snap.subVolumesSnapStatus
+	ctx.snapshotsRestored = true
 
 	status := &types.AppInstanceStatus{
 		UUIDandVersion: types.UUIDandVersion{
