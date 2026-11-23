@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Fri, 20 Nov 2026 15:26:28 +0000
+Subject: [PATCH] virtio-gpu-virgl: refuse to scan out a resource with no
+ texture
+
+A guest names a resource it created in SET_SCANOUT, and the device
+hands the resource's GL texture to the display. One with no GL object
+behind it, such as a resource that lives only in guest memory, has a
+texture of 0: the D-Bus display aborted the machine on it, and the other
+displays had nothing to show.
+
+Refuse it as an invalid resource, as one that does not exist is.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ hw/display/virtio-gpu-virgl.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/hw/display/virtio-gpu-virgl.c b/hw/display/virtio-gpu-virgl.c
+index 9bda572426..658df247d5 100644
+--- a/hw/display/virtio-gpu-virgl.c
++++ b/hw/display/virtio-gpu-virgl.c
+@@ -581,6 +581,13 @@ static void virgl_cmd_set_scanout(VirtIOGPU *g,
+             cmd->error = VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID;
+             return;
+         }
++        if (!info.tex_id && !d3d_tex2d) {
++            qemu_log_mask(LOG_GUEST_ERROR,
++                          "%s: resource %d has no texture to scan out\n",
++                          __func__, ss.resource_id);
++            cmd->error = VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID;
++            return;
++        }
+         if (!virtio_gpu_check_scanout_bounds(ss.scanout_id, ss.resource_id,
+                                              info.width, info.height, &ss.r,
+                                              &cmd->error)) {

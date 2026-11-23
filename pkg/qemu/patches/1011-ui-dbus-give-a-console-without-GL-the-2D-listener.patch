@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Mon, 23 Nov 2026 11:55:29 +0000
+Subject: [PATCH] ui/dbus: give a console without GL the 2D listener
+
+With GL on, every D-Bus listener gets the GL operations, but the D-Bus
+display gives a GL context only to graphic consoles. A text console, as
+for a serial port or the monitor shown in a "vc", has none, and so its
+surface has no texture: a client that listens to it has
+dbus_scanout_texture() called with texture 0, and on a host with GBM
+QEMU aborts on its assert(tex_id).
+
+Choose the listener's operations by whether its console has a GL
+context.
+
+Fixes: 142ca628a733 ("ui: add a D-Bus display backend")
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ ui/dbus-listener.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/ui/dbus-listener.c b/ui/dbus-listener.c
+index 7143c3e6ea..d594606656 100644
+--- a/ui/dbus-listener.c
++++ b/ui/dbus-listener.c
+@@ -1302,7 +1302,11 @@ dbus_display_listener_new(const char *bus_name,
+     con = qemu_console_lookup_by_index(dbus_display_console_get_index(console));
+     assert(con);
+ #ifdef CONFIG_OPENGL
+-    if (display_opengl) {
++    /*
++     * A console without a GL context, as a text console, has surfaces
++     * without a texture: its listeners get the 2D operations.
++     */
++    if (display_opengl && qemu_console_has_gl(con)) {
+         ops = &dbus_gl_dcl_ops;
+     }
+ #endif

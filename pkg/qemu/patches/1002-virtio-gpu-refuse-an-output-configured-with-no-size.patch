@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Mon, 23 Nov 2026 11:49:25 +0000
+Subject: [PATCH] virtio-gpu: refuse an output configured with no size
+
+An output the device's configuration enables, output 0 through xres and
+yres and any output through outputs[n].xres and outputs[n].yres, takes
+its size from there, and nothing checks that the size is not zero. The
+guest is then told of an enabled output with a zero width or height, a
+size no monitor has, while the EDID made for it falls back to QEMU's
+default of 1280x800 there.
+
+Refuse such an output at realize, as an output with an xres but no yres
+already is.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ hw/display/virtio-gpu-base.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/hw/display/virtio-gpu-base.c b/hw/display/virtio-gpu-base.c
+index 270fbaae10..23dfe7e51e 100644
+--- a/hw/display/virtio-gpu-base.c
++++ b/hw/display/virtio-gpu-base.c
+@@ -225,6 +225,14 @@ virtio_gpu_base_device_realize(DeviceState *qdev,
+         }
+     }
+ 
++    for (i = 0; i < g->conf.max_outputs; i++) {
++        if ((g->enabled_output_bitmask & (1 << i)) &&
++            (!g->req_state[i].width || !g->req_state[i].height)) {
++            error_setg(errp, "output %d has a zero xres or yres", i);
++            return false;
++        }
++    }
++
+     if (virtio_gpu_virgl_enabled(g->conf)) {
+         error_setg(&g->migration_blocker, "virgl is not yet migratable");
+         if (migrate_add_blocker(&g->migration_blocker, errp) < 0) {

@@ -1,0 +1,139 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Fri, 20 Nov 2026 15:14:02 +0000
+Subject: [PATCH] virtio-gpu: raise a display event again that the guest
+ cleared unread
+
+A guest handles a display event by reading the display info and clearing
+the event. viogpudo, and Linux since commit d1b894c5bbb3 ("drm/virtio:
+fix deadlock in display_info_cb by removing hotplug from dequeue
+worker"), read first: they wait for the answer to GET_DISPLAY_INFO, then
+clear the event. The device raises the event on every display change, so
+a change that comes between the guest's read and its clear has its event
+cleared along with the one the guest handled: the guest does not read
+the display info again, and keeps the old one until the next change.
+
+Remember that a display event was raised and the guest has not read the
+display info since, and raise the event again on the first clear that
+comes while it has not. Once: a guest that clears it again without
+reading has no use for it, and must not get an interrupt for every
+clear. A guest that clears before reading, as Linux did before that
+commit, usually clears while its read is still queued, and so gets each
+display event twice; it reads the display info once more, which is
+harmless. virtio-gpu and vhost-user-gpu clear events through one
+function for this.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ hw/display/vhost-user-gpu.c    |  4 +---
+ hw/display/virtio-gpu-base.c   | 25 +++++++++++++++++++++++++
+ hw/display/virtio-gpu.c        |  4 +---
+ include/hw/virtio/virtio-gpu.h |  7 +++++++
+ 4 files changed, 34 insertions(+), 6 deletions(-)
+
+diff --git a/hw/display/vhost-user-gpu.c b/hw/display/vhost-user-gpu.c
+index cd684d6363..d2f6c01367 100644
+--- a/hw/display/vhost-user-gpu.c
++++ b/hw/display/vhost-user-gpu.c
+@@ -541,9 +541,7 @@ vhost_user_gpu_set_config(VirtIODevice *vdev,
+         (const struct virtio_gpu_config *)config_data;
+     int ret;
+ 
+-    if (vgconfig->events_clear) {
+-        b->virtio_config.events_read &= ~vgconfig->events_clear;
+-    }
++    virtio_gpu_base_events_clear(b, vgconfig->events_clear);
+ 
+     ret = vhost_dev_set_config(&g->vhost->dev, config_data,
+                                0, sizeof(struct virtio_gpu_config),
+diff --git a/hw/display/virtio-gpu-base.c b/hw/display/virtio-gpu-base.c
+index 18f6d0af4e..e8f86eaa7a 100644
+--- a/hw/display/virtio-gpu-base.c
++++ b/hw/display/virtio-gpu-base.c
+@@ -27,6 +27,7 @@ virtio_gpu_base_reset(VirtIOGPUBase *g)
+     int i;
+ 
+     g->enable = 0;
++    g->repeat_display_event = false;
+ 
+     for (i = 0; i < g->conf.max_outputs; i++) {
+         g->scanout[i].resource_id = 0;
+@@ -51,6 +52,27 @@ virtio_gpu_base_fill_display_info(VirtIOGPUBase *g,
+             dpy_info->pmodes[i].r.height = cpu_to_le32(g->req_state[i].height);
+         }
+     }
++    g->repeat_display_event = false;
++}
++
++/*
++ * A guest handles a display event by reading the display info and clearing
++ * the event, in either order. A change that comes between the two raises
++ * the event again, and a guest that clears after reading clears that one
++ * too: it never reads the display info the event is about. So the first
++ * clear of a display event that the guest has not read the display info
++ * for raises it again. A guest that clears before reading may get each
++ * display event twice, and reads the display info once more; one that
++ * clears it again without reading has no use for it.
++ */
++void virtio_gpu_base_events_clear(VirtIOGPUBase *g, uint32_t events_clear)
++{
++    g->virtio_config.events_read &= ~events_clear;
++    if ((events_clear & VIRTIO_GPU_EVENT_DISPLAY) && g->repeat_display_event) {
++        g->repeat_display_event = false;
++        g->virtio_config.events_read |= VIRTIO_GPU_EVENT_DISPLAY;
++        virtio_notify_config(&g->parent_obj);
++    }
+ }
+ 
+ void
+@@ -95,6 +117,9 @@ static void virtio_gpu_text_update(void *opaque, uint32_t *chardata)
+ static void virtio_gpu_notify_event(VirtIOGPUBase *g, uint32_t event_type)
+ {
+     g->virtio_config.events_read |= event_type;
++    if (event_type & VIRTIO_GPU_EVENT_DISPLAY) {
++        g->repeat_display_event = true;
++    }
+     virtio_notify_config(&g->parent_obj);
+ }
+ 
+diff --git a/hw/display/virtio-gpu.c b/hw/display/virtio-gpu.c
+index d479595ddb..724780fde1 100644
+--- a/hw/display/virtio-gpu.c
++++ b/hw/display/virtio-gpu.c
+@@ -1793,9 +1793,7 @@ virtio_gpu_set_config(VirtIODevice *vdev, const uint8_t *config)
+     const struct virtio_gpu_config *vgconfig =
+         (const struct virtio_gpu_config *)config;
+ 
+-    if (vgconfig->events_clear) {
+-        g->virtio_config.events_read &= ~vgconfig->events_clear;
+-    }
++    virtio_gpu_base_events_clear(g, vgconfig->events_clear);
+ }
+ 
+ static bool virtio_gpu_blob_state_needed(void *opaque)
+diff --git a/include/hw/virtio/virtio-gpu.h b/include/hw/virtio/virtio-gpu.h
+index 220231ec9d..26c33ae413 100644
+--- a/include/hw/virtio/virtio-gpu.h
++++ b/include/hw/virtio/virtio-gpu.h
+@@ -161,6 +161,12 @@ struct VirtIOGPUBase {
+     struct virtio_gpu_scanout scanout[VIRTIO_GPU_MAX_SCANOUTS];
+ 
+     int enabled_output_bitmask;
++    /*
++     * Whether clearing the display event raises it again: set when one is
++     * raised, cleared when the guest reads the display info, when the event
++     * has been raised again, and on reset.
++     */
++    bool repeat_display_event;
+     struct virtio_gpu_requested_state req_state[VIRTIO_GPU_MAX_SCANOUTS];
+ };
+ 
+@@ -331,6 +337,7 @@ void virtio_gpu_base_device_unrealize(DeviceState *qdev);
+ void virtio_gpu_base_reset(VirtIOGPUBase *g);
+ void virtio_gpu_base_fill_display_info(VirtIOGPUBase *g,
+                         struct virtio_gpu_resp_display_info *dpy_info);
++void virtio_gpu_base_events_clear(VirtIOGPUBase *g, uint32_t events_clear);
+ 
+ void virtio_gpu_base_generate_edid(VirtIOGPUBase *g, int scanout,
+                                    struct virtio_gpu_resp_edid *edid);

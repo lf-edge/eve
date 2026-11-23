@@ -1,0 +1,177 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Fri, 20 Nov 2026 15:27:29 +0000
+Subject: [PATCH] ui/dbus: do not abort the machine on a scanout with no
+ texture
+
+dbus_scanout_texture() asserted on its texture, so a scanout without one
+took the whole machine down:
+
+  dbus_scanout_texture: Assertion `tex_id' failed.
+
+It was a console surface with no GL texture: a device reset on a vCPU
+thread replaced the console's surface while no GL context was current
+there, so the new surface got none, and the switch to it handed the
+listener texture 0. Windows guests reset the device whenever their
+virtio-gpu driver is restarted, reinstalled or updated. The next patch
+fixes that reset, and the previous ones a virgl resource without a
+texture and a text console under a GL listener; this is for whatever
+else hands the listener texture 0.
+
+A scanout the listener cannot share is no reason to stop the machine.
+Tell the peer its scanout is gone, so that it does not go on showing
+the last one as if it were current, and report it, naming the console:
+once, until a scanout works again, as a guest may set the same scanout
+on every frame. Do the same for a texture that fails to export or to be
+shared, which left the peer on its last scanout too, and tell the peer
+when it cannot take a dmabuf. And send no updates while the peer has no
+scanout: they would refer to one it does not have.
+
+Fixes: 142ca628a733 ("ui: add a D-Bus display backend")
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ ui/dbus-listener.c | 68 ++++++++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 62 insertions(+), 6 deletions(-)
+
+diff --git a/ui/dbus-listener.c b/ui/dbus-listener.c
+index d594606656..f974b7d472 100644
+--- a/ui/dbus-listener.c
++++ b/ui/dbus-listener.c
+@@ -71,6 +71,10 @@ struct _DBusDisplayListener {
+     DisplayChangeListener dcl;
+     DisplaySurface *ds;
+     enum share_kind ds_share;
++    /* the peer has the GL scanout that updates refer to */
++    bool gl_scanout;
++    /* a scanout failed, and none has worked since: reported already */
++    bool scanout_failed;
+ 
+     bool ds_mapped;
+     bool can_share_map;
+@@ -122,12 +126,31 @@ static void dbus_scanout_disable(DisplayChangeListener *dcl)
+     DBusDisplayListener *ddl = container_of(dcl, DBusDisplayListener, dcl);
+ 
+     ddl->scanout_dmabuf = NULL;
++    ddl->gl_scanout = false;
+     ddl_discard_display_messages(ddl);
+ 
+     qemu_dbus_display1_listener_call_disable(
+         ddl->proxy, G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL, NULL);
+ }
+ 
++/*
++ * The peer cannot have this scanout: tell it its scanout is gone, so that
++ * it does not go on showing the last one as if it were this one, and say
++ * why, once until a scanout works again.
++ */
++static void dbus_scanout_failed(DisplayChangeListener *dcl, const char *why)
++{
++    DBusDisplayListener *ddl = container_of(dcl, DBusDisplayListener, dcl);
++
++    if (ddl->scanout_failed) {
++        return;
++    }
++    error_report("dbus: console %d: %s", qemu_console_get_index(dcl->con),
++                 why);
++    ddl->scanout_failed = true;
++    dbus_scanout_disable(dcl);
++}
++
+ #ifdef WIN32
+ static bool d3d_texture2d_share(ID3D11Texture2D *d3d_texture,
+                                 HANDLE *handle, Error **errp)
+@@ -258,6 +281,12 @@ static void dbus_call_update_gl(DisplayChangeListener *dcl,
+ 
+     trace_dbus_update_gl(x, y, w, h);
+ 
++#if defined(CONFIG_GBM) || defined(WIN32)
++    if (!ddl->gl_scanout) {
++        return;
++    }
++#endif
++
+     glFlush();
+ #ifdef CONFIG_GBM
+     qemu_console_hw_gl_block(ddl->dcl.con, true);
+@@ -426,6 +455,10 @@ static void dbus_scanout_dmabuf(DisplayChangeListener *dcl,
+ 
+     if (dbus_call_scanout_dmabuf(ddl, dmabuf)) {
+         ddl->scanout_dmabuf = dmabuf;
++        ddl->gl_scanout = true;
++        ddl->scanout_failed = false;
++    } else {
++        dbus_scanout_disable(dcl);
+     }
+ }
+ #endif /* GBM */
+@@ -609,19 +642,27 @@ static void dbus_scanout_texture(DisplayChangeListener *dcl,
+ #if defined(CONFIG_GBM) || defined(WIN32)
+     DBusDisplayListener *ddl = container_of(dcl, DBusDisplayListener, dcl);
+ #endif
++#ifdef WIN32
++    bool shared;
++#endif
+ 
+     trace_dbus_scanout_texture(tex_id, backing_y_0_top,
+                                backing_width, backing_height, x, y, w, h);
++
++    if (!tex_id && !d3d_tex2d) {
++        dbus_scanout_failed(dcl, "no texture to scan out");
++        return;
++    }
++
+ #ifdef CONFIG_GBM
+     g_autoptr(QemuDmaBuf) dmabuf = NULL;
+     int fd[DMABUF_MAX_PLANES], num_planes;
+     uint32_t offset[DMABUF_MAX_PLANES], stride[DMABUF_MAX_PLANES], fourcc;
+     uint64_t modifier;
+ 
+-    assert(tex_id);
+     if (!egl_dmabuf_export_texture(tex_id, fd, (EGLint *)offset, (EGLint *)stride,
+                                    (EGLint *)&fourcc, &num_planes, &modifier)) {
+-        error_report("%s: failed to export dmabuf for texture", __func__);
++        dbus_scanout_failed(dcl, "failed to export the texture as a dmabuf");
+         return;
+     }
+     dmabuf = qemu_dmabuf_new(w, h, offset, stride, x, y, backing_width,
+@@ -630,6 +671,10 @@ static void dbus_scanout_texture(DisplayChangeListener *dcl,
+ 
+     if (dbus_call_scanout_dmabuf(ddl, dmabuf)) {
+         ddl->scanout_dmabuf = NULL;
++        ddl->gl_scanout = true;
++        ddl->scanout_failed = false;
++    } else {
++        dbus_scanout_disable(dcl);
+     }
+     qemu_dmabuf_close(dmabuf);
+ #endif
+@@ -640,12 +685,23 @@ static void dbus_scanout_texture(DisplayChangeListener *dcl,
+     assert(surface_height(ddl->ds) == h);
+ 
+     if (d3d_tex2d) {
+-        dbus_scanout_share_d3d_texture(ddl, d3d_tex2d, backing_y_0_top,
+-                                       backing_width, backing_height, x, y, w, h);
++        shared = dbus_scanout_share_d3d_texture(ddl, d3d_tex2d,
++                                                backing_y_0_top,
++                                                backing_width, backing_height,
++                                                x, y, w, h);
+     } else {
+-        dbus_scanout_map(ddl);
+-        egl_fb_setup_for_tex(&ddl->fb, backing_width, backing_height, tex_id, false);
++        shared = dbus_scanout_map(ddl);
++        if (shared) {
++            egl_fb_setup_for_tex(&ddl->fb, backing_width, backing_height,
++                                 tex_id, false);
++        }
++    }
++    if (!shared) {
++        dbus_scanout_failed(dcl, "failed to share the texture");
++        return;
+     }
++    ddl->gl_scanout = true;
++    ddl->scanout_failed = false;
+ #endif
+ }
+ 

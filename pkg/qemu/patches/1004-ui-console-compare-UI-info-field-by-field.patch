@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Fri, 20 Nov 2026 14:12:04 +0000
+Subject: [PATCH] ui/console: compare UI info field by field
+
+qemu_console_set_ui_info() tells a request that changes nothing from one
+that does with memcmp(). That holds while QemuUIInfo has no padding,
+which a later patch ends by adding a bool to it: its padding bytes are
+whatever the UI's copy of the struct left there, and a request equal in
+every field could then look changed.
+
+Compare the fields instead.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ include/ui/console.h |  1 +
+ ui/console.c         | 13 ++++++++++++-
+ 2 files changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/include/ui/console.h b/include/ui/console.h
+index 3aada810c6..f0a7cd8d58 100644
+--- a/include/ui/console.h
++++ b/include/ui/console.h
+@@ -105,6 +105,7 @@ typedef struct ScanoutTexture {
+     void *d3d_tex2d;
+ } ScanoutTexture;
+ 
++/* Compared field by field in ui/console.c: add new fields there too. */
+ typedef struct QemuUIInfo {
+     /* physical dimension */
+     uint16_t width_mm;
+diff --git a/ui/console.c b/ui/console.c
+index 77717e8b06..caaf650a6b 100644
+--- a/ui/console.c
++++ b/ui/console.c
+@@ -706,12 +706,23 @@ const QemuUIInfo *qemu_console_get_ui_info(const QemuConsole *con)
+     return &con->ui_info;
+ }
+ 
++static bool qemu_ui_info_equal(const QemuUIInfo *a, const QemuUIInfo *b)
++{
++    return a->width_mm == b->width_mm &&
++           a->height_mm == b->height_mm &&
++           a->xoff == b->xoff &&
++           a->yoff == b->yoff &&
++           a->width == b->width &&
++           a->height == b->height &&
++           a->refresh_rate == b->refresh_rate;
++}
++
+ int qemu_console_set_ui_info(QemuConsole *con, QemuUIInfo *info, bool delay)
+ {
+     if (!qemu_console_ui_info_supported(con)) {
+         return -1;
+     }
+-    if (memcmp(&con->ui_info, info, sizeof(con->ui_info)) == 0) {
++    if (qemu_ui_info_equal(&con->ui_info, info)) {
+         /* nothing changed -- ignore */
+         return 0;
+     }

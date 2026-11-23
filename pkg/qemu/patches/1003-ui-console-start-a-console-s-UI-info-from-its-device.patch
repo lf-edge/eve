@@ -1,0 +1,310 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Fri, 20 Nov 2026 14:10:46 +0000
+Subject: [PATCH] ui/console: start a console's UI info from its device's state
+
+qemu_console_set_ui_info() drops a request equal to the cached UI info,
+so that a UI repeating its request does not make the guest read an
+unchanged display again, and UIs that change one field start from that
+cache. The cache starts out zeroed, and a zero size means "no monitor"
+to the devices that act on the size, but neither starts that way:
+virtio-gpu enables its first output, and any output given a size, when
+it is realized, and a vfio display with EDID brings its link up at
+display_xres x display_yres.
+
+So a UI that wants such an output off from the start asks for a zero
+size, which matches the zeroed cache and is dropped, and the guest keeps
+a monitor nothing displays. And a UI that changes one field of the
+zeroed cache sends a zero size along with it.
+
+Let the device give the console the state its output starts in, and
+have virtio-gpu and the vfio display do so. A request equal to that
+state is dropped as nothing changed, one that differs reaches the
+device, and a UI that changes one field keeps the device's size.
+
+The vfio display's size falls back to the device's maximum, which is
+zero when the device has none; the EDID then gets its default of
+1280x800, and a size above the maximum gets the maximum. Name that
+default in edid.h, fall back to it too and keep to the maximum, so that
+the console starts at the size the guest is given. And start the console
+from it only once the EDID has been written: if that fails, the first
+request a UI makes reaches the device, which writes it again.
+
+A console that a device takes over from one that went away kept that
+one's UI info; it now starts from nothing, as a new console does.
+
+Fixes: 1185fde40c3b ("console: ignore ui_info updates which don't actually update something")
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ hw/display/edid-generate.c      |  4 +-
+ hw/display/virtio-gpu-base.c    |  7 +++
+ hw/vfio/display.c               | 31 +++++++++++---
+ include/hw/display/edid.h       |  4 ++
+ include/ui/console.h            |  1 +
+ tests/qtest/dbus-display-test.c | 75 +++++++++++++++++++++++++++++++++
+ ui/console.c                    | 12 ++++++
+ 7 files changed, 125 insertions(+), 9 deletions(-)
+
+diff --git a/hw/display/edid-generate.c b/hw/display/edid-generate.c
+index 2cb819675e..5f631c3507 100644
+--- a/hw/display/edid-generate.c
++++ b/hw/display/edid-generate.c
+@@ -400,10 +400,10 @@ void qemu_edid_generate(uint8_t *edid, size_t size,
+         info->name = "QEMU Monitor";
+     }
+     if (!info->prefx) {
+-        info->prefx = 1280;
++        info->prefx = EDID_DEFAULT_PREFX;
+     }
+     if (!info->prefy) {
+-        info->prefy = 800;
++        info->prefy = EDID_DEFAULT_PREFY;
+     }
+     if (info->width_mm && info->height_mm) {
+         width_mm = info->width_mm;
+diff --git a/hw/display/virtio-gpu-base.c b/hw/display/virtio-gpu-base.c
+index 23dfe7e51e..89359182d1 100644
+--- a/hw/display/virtio-gpu-base.c
++++ b/hw/display/virtio-gpu-base.c
+@@ -255,8 +255,15 @@ virtio_gpu_base_device_realize(DeviceState *qdev,
+ 
+     g->hw_ops = &virtio_gpu_ops;
+     for (i = 0; i < g->conf.max_outputs; i++) {
++        QemuUIInfo info = {};
++
+         g->scanout[i].con =
+             qemu_graphic_console_create(DEVICE(g), i, &virtio_gpu_ops, g);
++        if (g->enabled_output_bitmask & (1 << i)) {
++            info.width = g->req_state[i].width;
++            info.height = g->req_state[i].height;
++        }
++        qemu_console_init_ui_info(g->scanout[i].con, &info);
+     }
+ 
+     return true;
+diff --git a/hw/vfio/display.c b/hw/vfio/display.c
+index cb83d98e9a..50346c750f 100644
+--- a/hw/vfio/display.c
++++ b/hw/vfio/display.c
+@@ -54,7 +54,7 @@ err:
+     trace_vfio_display_edid_write_error();
+ }
+ 
+-static void vfio_display_edid_update(VFIOPCIDevice *vdev, bool enabled,
++static bool vfio_display_edid_update(VFIOPCIDevice *vdev, bool enabled,
+                                      int prefx, int prefy)
+ {
+     VFIODisplay *dpy = vdev->dpy;
+@@ -74,7 +74,7 @@ static void vfio_display_edid_update(VFIOPCIDevice *vdev, bool enabled,
+     trace_vfio_display_edid_link_down();
+ 
+     if (!enabled) {
+-        return;
++        return true;
+     }
+ 
+     if (edid.maxx && edid.prefx > edid.maxx) {
+@@ -100,10 +100,11 @@ static void vfio_display_edid_update(VFIOPCIDevice *vdev, bool enabled,
+ 
+     timer_mod(dpy->edid_link_timer,
+               qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + 100);
+-    return;
++    return true;
+ 
+ err:
+     trace_vfio_display_edid_write_error();
++    return false;
+ }
+ 
+ static void vfio_display_edid_ui_info(void *opaque, uint32_t idx,
+@@ -155,18 +156,34 @@ static bool vfio_display_edid_init(VFIOPCIDevice *vdev, Error **errp)
+ 
+     dpy->edid_blob = g_malloc0(dpy->edid_regs->edid_max_size);
+ 
+-    /* if xres + yres properties are unset use the maximum resolution */
++    /*
++     * Unset xres + yres properties default to the maximum resolution or,
++     * without one, to the EDID's default, and the EDID keeps to the
++     * maximum: the monitor starts at that size.
++     */
+     if (!vdev->display_xres) {
+-        vdev->display_xres = dpy->edid_regs->max_xres;
++        vdev->display_xres = dpy->edid_regs->max_xres ?: EDID_DEFAULT_PREFX;
+     }
+     if (!vdev->display_yres) {
+-        vdev->display_yres = dpy->edid_regs->max_yres;
++        vdev->display_yres = dpy->edid_regs->max_yres ?: EDID_DEFAULT_PREFY;
++    }
++    if (dpy->edid_regs->max_xres) {
++        vdev->display_xres = MIN(vdev->display_xres, dpy->edid_regs->max_xres);
++    }
++    if (dpy->edid_regs->max_yres) {
++        vdev->display_yres = MIN(vdev->display_yres, dpy->edid_regs->max_yres);
+     }
+ 
+     dpy->edid_link_timer = timer_new_ms(QEMU_CLOCK_REALTIME,
+                                         vfio_display_edid_link_up, vdev);
+ 
+-    vfio_display_edid_update(vdev, true, 0, 0);
++    /* Unwritten, the EDID is up to the UI's first request to write. */
++    if (vfio_display_edid_update(vdev, true, 0, 0)) {
++        qemu_console_init_ui_info(dpy->con, &(QemuUIInfo) {
++            .width = vdev->display_xres,
++            .height = vdev->display_yres,
++        });
++    }
+     return true;
+ 
+ err:
+diff --git a/include/hw/display/edid.h b/include/hw/display/edid.h
+index 91c0a428af..9c4967d60f 100644
+--- a/include/hw/display/edid.h
++++ b/include/hw/display/edid.h
+@@ -3,6 +3,10 @@
+ 
+ #define EDID_NAME_MAX_LENGTH 12
+ 
++/* The preferred mode of an EDID whose qemu_edid_info gives none */
++#define EDID_DEFAULT_PREFX 1280
++#define EDID_DEFAULT_PREFY 800
++
+ typedef struct qemu_edid_info {
+     const char *vendor; /* http://www.uefi.org/pnp_id_list */
+     const char *name;
+diff --git a/include/ui/console.h b/include/ui/console.h
+index 3634956949..3aada810c6 100644
+--- a/include/ui/console.h
++++ b/include/ui/console.h
+@@ -284,6 +284,7 @@ void qemu_console_unregister_listener(DisplayChangeListener *dcl);
+ bool qemu_console_ui_info_supported(const QemuConsole *con);
+ const QemuUIInfo *qemu_console_get_ui_info(const QemuConsole *con);
+ int qemu_console_set_ui_info(QemuConsole *con, QemuUIInfo *info, bool delay);
++void qemu_console_init_ui_info(QemuConsole *con, const QemuUIInfo *info);
+ 
+ void qemu_console_update(QemuConsole *con, int x, int y, int w, int h);
+ void qemu_console_update_full(QemuConsole *con);
+diff --git a/tests/qtest/dbus-display-test.c b/tests/qtest/dbus-display-test.c
+index 7838ce7323..a58713a7a3 100644
+--- a/tests/qtest/dbus-display-test.c
++++ b/tests/qtest/dbus-display-test.c
+@@ -368,6 +368,77 @@ test_dbus_display_keyboard(void)
+     qtest_quit(qts);
+ }
+ 
++/* A machine with @device, a display device, on the D-Bus display. */
++static void
++test_setup_device(QTestState **qts, GDBusConnection **conn, const char *device)
++{
++    g_autofree char *args = g_strdup_printf(
++        "-vga none -device %s -display dbus,p2p=yes -name dbus-test", device);
++
++    test_setup_args(qts, conn, args);
++}
++
++/* The UIInfo of console @index. */
++static QemuDBusDisplay1UIInfo *
++test_uiinfo_proxy(GDBusConnection *conn, int index)
++{
++    g_autoptr(GError) err = NULL;
++    g_autofree char *path = g_strdup_printf(DBUS_DISPLAY1_ROOT "/Console_%d",
++                                            index);
++    QemuDBusDisplay1UIInfo *ui_info;
++
++    ui_info = QEMU_DBUS_DISPLAY1_UIINFO(
++        qemu_dbus_display1_uiinfo_proxy_new_sync(
++            conn, G_DBUS_PROXY_FLAGS_NONE, NULL, path, NULL, &err));
++    g_assert_no_error(err);
++    return ui_info;
++}
++
++static GVariant *
++test_uiinfo_get(QemuDBusDisplay1UIInfo *ui_info)
++{
++    g_autoptr(GError) err = NULL;
++    GVariant *info = NULL;
++
++    qemu_dbus_display1_uiinfo_call_get_sync(ui_info, G_DBUS_CALL_FLAGS_NONE,
++                                            -1, &info, NULL, &err);
++    g_assert_no_error(err);
++    return info;
++}
++
++static guint32
++test_uiinfo_get_u(QemuDBusDisplay1UIInfo *ui_info, const char *key)
++{
++    g_autoptr(GVariant) info = test_uiinfo_get(ui_info);
++    guint32 value = 0;
++
++    g_assert_true(g_variant_lookup(info, key, "u", &value));
++    return value;
++}
++
++/*
++ * A device's output is not off until a UI says so: UIInfo starts from the
++ * size the virtio-gpu output is created with, not from a zero size.
++ */
++static void
++test_dbus_display_uiinfo_initial(void)
++{
++    g_autoptr(GDBusConnection) conn = NULL;
++    QemuDBusDisplay1UIInfo *ui_info;
++    QTestState *qts = NULL;
++
++    test_setup_device(&qts, &conn, "virtio-gpu-pci,xres=1024,yres=768");
++    ui_info = test_uiinfo_proxy(conn, 0);
++
++    g_assert_cmpuint(test_uiinfo_get_u(ui_info, "width"), ==, 1024);
++    g_assert_cmpuint(test_uiinfo_get_u(ui_info, "height"), ==, 768);
++
++    g_clear_object(&ui_info);
++    g_clear_object(&conn);
++    qtest_quit(qts);
++}
++
++
+ static gsize
+ get_console_ids_count(GDBusConnection *conn)
+ {
+@@ -463,6 +534,10 @@ main(int argc, char **argv)
+     qtest_add_data_func("/dbus-display/console", GINT_TO_POINTER(false), test_dbus_display_console);
+     qtest_add_data_func("/dbus-display/console/map", GINT_TO_POINTER(true), test_dbus_display_console);
+     qtest_add_func("/dbus-display/keyboard", test_dbus_display_keyboard);
++    if (qtest_has_device("virtio-gpu-pci")) {
++        qtest_add_func("/dbus-display/uiinfo/initial",
++                       test_dbus_display_uiinfo_initial);
++    }
+     if (qtest_has_machine("q35") && qtest_has_device("bochs-display")) {
+         qtest_add_func("/dbus-display/hotplug", test_dbus_display_hotplug);
+     }
+diff --git a/ui/console.c b/ui/console.c
+index a8a2a247d8..77717e8b06 100644
+--- a/ui/console.c
++++ b/ui/console.c
+@@ -727,6 +727,16 @@ int qemu_console_set_ui_info(QemuConsole *con, QemuUIInfo *info, bool delay)
+     return 0;
+ }
+ 
++/*
++ * For the device, when it creates the console: the state its output starts
++ * in. qemu_console_set_ui_info() compares requests with it, and UIs that
++ * change one field start from it. The device is not notified.
++ */
++void qemu_console_init_ui_info(QemuConsole *con, const QemuUIInfo *info)
++{
++    con->ui_info = *info;
++}
++
+ void qemu_console_update(QemuConsole *con, int x, int y, int w, int h)
+ {
+     DisplayState *s = con->ds;
+@@ -1138,6 +1148,8 @@ QemuConsole *qemu_graphic_console_create(DeviceState *dev, uint32_t head,
+     s = qemu_graphic_console_lookup_unused();
+     if (s) {
+         trace_console_gfx_reuse(s->index);
++        /* What UIs asked of the last device is not for this one. */
++        memset(&s->ui_info, 0, sizeof(s->ui_info));
+         width = qemu_console_get_width(s, 0);
+         height = qemu_console_get_height(s, 0);
+         if (s->ds->initialized) {

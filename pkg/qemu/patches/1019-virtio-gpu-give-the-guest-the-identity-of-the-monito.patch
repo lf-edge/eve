@@ -1,0 +1,273 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Mon, 23 Nov 2026 13:13:34 +0000
+Subject: [PATCH] virtio-gpu: give the guest the identity of the monitor it is
+ shown on
+
+Every EDID virtio-gpu gives the guest names the same monitor: vendor
+RHT, product 0x1234, serial number 0 and, unless the output is named in
+the device's configuration, the name "QEMU Monitor". A guest keys what
+it remembers about a monitor by that identity, so it takes every
+monitor for the same one. Windows, for one, gives a monitor plugged
+into an output the mode it remembers for the last one there, whatever
+its size.
+
+A UI may know the monitor that shows a console. Let it say so in the UI
+info - manufacturer, product code, serial number, name and serial
+number text, as the monitor's own EDID gives them - and have virtio-gpu
+put them into the EDID it gives the guest. What the UI does not know
+stays QEMU's own, and an output named in the device's configuration
+keeps that name. The next patch lets a D-Bus client give them.
+
+Another monitor on an output the guest has seen is one monitor
+unplugged and another plugged in: the output goes away, and comes back
+once the guest has read the display info without it, as after a
+disconnect and a connect. A guest that only read the new EDID could
+keep what it knew of the first monitor. A guest that does not read
+EDIDs cannot tell the two apart, and sees no change of identity.
+
+The test checks that a guest given no identity still reads QEMU's own
+monitor in its EDID.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ hw/display/virtio-gpu-base.c    | 28 +++++++++++++++
+ include/hw/virtio/virtio-gpu.h  |  1 +
+ include/ui/console.h            | 20 +++++++++++
+ tests/qtest/dbus-display-test.c | 60 +++++++++++++++++++++++++++++++++
+ ui/console.c                    | 13 ++++++-
+ 5 files changed, 121 insertions(+), 1 deletion(-)
+
+diff --git a/hw/display/virtio-gpu-base.c b/hw/display/virtio-gpu-base.c
+index ca70639252..62d7cfff2c 100644
+--- a/hw/display/virtio-gpu-base.c
++++ b/hw/display/virtio-gpu-base.c
+@@ -107,14 +107,23 @@ virtio_gpu_base_generate_edid(VirtIOGPUBase *g, int scanout,
+ {
+     size_t output_idx;
+     VirtIOGPUOutputList *node;
++    const QemuUIIdentity *id = &g->req_state[scanout].identity;
+     qemu_edid_info info = {
+         .width_mm = g->req_state[scanout].width_mm,
+         .height_mm = g->req_state[scanout].height_mm,
+         .prefx = g->req_state[scanout].width,
+         .prefy = g->req_state[scanout].height,
+         .refresh_rate = g->req_state[scanout].refresh_rate,
++        .vendor = id->vendor[0] ? id->vendor : NULL,
++        .product = id->product,
++        .serial_number = id->serial_number,
++        .name = id->name[0] ? id->name : NULL,
++        .serial_string = id->serial_string[0] ? id->serial_string : NULL,
+     };
+ 
++    QEMU_BUILD_BUG_ON(QEMU_UI_IDENTITY_TEXT_LEN != EDID_NAME_MAX_LENGTH);
++
++    /* An output named in the device's configuration keeps that name. */
+     for (output_idx = 0, node = g->conf.outputs;
+          output_idx <= scanout && node; output_idx++, node = node->next) {
+         if (output_idx == scanout && node->value->name) {
+@@ -144,11 +153,20 @@ static void virtio_gpu_ui_info(void *opaque, uint32_t idx, QemuUIInfo *info)
+ {
+     VirtIOGPUBase *g = opaque;
+     uint32_t bit = 1u << idx;
++    bool same_monitor;
+ 
+     if (idx >= g->conf.max_outputs) {
+         return;
+     }
+ 
++    /*
++     * A guest without VIRTIO_GPU_F_EDID reads no EDID, and tells monitors
++     * apart by their size only.
++     */
++    same_monitor =
++        !virtio_vdev_has_feature(VIRTIO_DEVICE(g), VIRTIO_GPU_F_EDID) ||
++        qemu_ui_identity_equal(&g->req_state[idx].identity, &info->identity);
++
+     g->req_state[idx].x = info->xoff;
+     g->req_state[idx].y = info->yoff;
+     g->req_state[idx].refresh_rate = info->refresh_rate;
+@@ -156,6 +174,7 @@ static void virtio_gpu_ui_info(void *opaque, uint32_t idx, QemuUIInfo *info)
+     g->req_state[idx].height = info->height;
+     g->req_state[idx].width_mm = info->width_mm;
+     g->req_state[idx].height_mm = info->height_mm;
++    g->req_state[idx].identity = info->identity;
+ 
+     if (!info->connected) {
+         g->connected_outputs &= ~bit;
+@@ -170,6 +189,15 @@ static void virtio_gpu_ui_info(void *opaque, uint32_t idx, QemuUIInfo *info)
+          * info shows it gone and gives it back.
+          */
+         g->connected_outputs |= bit;
++    } else if ((g->guest_seen_outputs & bit) && !same_monitor) {
++        /*
++         * Another monitor on an output the guest has seen: a guest that only
++         * reads the new EDID may keep what it knew of the first one. Take the
++         * output away and hold it back like one that went away and came
++         * back.
++         */
++        g->connected_outputs |= bit;
++        g->enabled_output_bitmask &= ~bit;
+     } else {
+         g->connected_outputs |= bit;
+         g->enabled_output_bitmask |= bit;
+diff --git a/include/hw/virtio/virtio-gpu.h b/include/hw/virtio/virtio-gpu.h
+index 277e3874ee..197b048935 100644
+--- a/include/hw/virtio/virtio-gpu.h
++++ b/include/hw/virtio/virtio-gpu.h
+@@ -88,6 +88,7 @@ struct virtio_gpu_requested_state {
+     uint32_t width, height;
+     uint32_t refresh_rate;
+     int x, y;
++    QemuUIIdentity identity;
+ };
+ 
+ enum virtio_gpu_base_conf_flags {
+diff --git a/include/ui/console.h b/include/ui/console.h
+index e9dc8bf11b..fa93830e71 100644
+--- a/include/ui/console.h
++++ b/include/ui/console.h
+@@ -105,6 +105,24 @@ typedef struct ScanoutTexture {
+     void *d3d_tex2d;
+ } ScanoutTexture;
+ 
++/* The text of an EDID descriptor: up to 13 characters */
++#define QEMU_UI_IDENTITY_TEXT_LEN 13
++
++/*
++ * A monitor as its EDID names it. A field that is zero or empty is not
++ * known, and a device keeps its own for it. Compared field by field in
++ * ui/console.c: add new fields there too.
++ */
++typedef struct QemuUIIdentity {
++    char      vendor[4];        /* PNP ID: three upper-case letters */
++    uint16_t  product;
++    uint32_t  serial_number;
++    char      name[QEMU_UI_IDENTITY_TEXT_LEN + 1];
++    char      serial_string[QEMU_UI_IDENTITY_TEXT_LEN + 1];
++} QemuUIIdentity;
++
++bool qemu_ui_identity_equal(const QemuUIIdentity *a, const QemuUIIdentity *b);
++
+ /* Compared field by field in ui/console.c: add new fields there too. */
+ typedef struct QemuUIInfo {
+     /* physical dimension */
+@@ -124,6 +142,8 @@ typedef struct QemuUIInfo {
+      * back at.
+      */
+     bool      connected;
++    /* The monitor that shows the console, as far as the UI knows it */
++    QemuUIIdentity identity;
+ } QemuUIInfo;
+ 
+ /* cursor data format is 32bit RGBA */
+diff --git a/tests/qtest/dbus-display-test.c b/tests/qtest/dbus-display-test.c
+index bf073c69c8..23b286a42d 100644
+--- a/tests/qtest/dbus-display-test.c
++++ b/tests/qtest/dbus-display-test.c
+@@ -1275,6 +1275,64 @@ test_dbus_display_gpu_output_name(void)
+     test_gpu_stop(&t);
+ }
+ 
++/* A monitor's identity, as its EDID gives it. */
++typedef struct TestMonitor {
++    const char *vendor;
++    uint16_t product;
++    uint32_t serial_number;
++    const char *name;
++    const char *serial_string;
++} TestMonitor;
++
++/* Whether a text descriptor's 13 characters are @s, as an EDID pads it. */
++static bool
++test_edid_text_is(const char text[14], const char *s)
++{
++    size_t len = strlen(s);
++
++    return !strncmp(text, s, len) &&
++           (len == 13 ||
++            (text[len] == '\n' && strspn(text + len + 1, " ") == 12 - len));
++}
++
++/* Whether the EDID of output 0 names @m; no serial number text, none. */
++static bool
++test_gpu_edid_names(TestGPU *t, const TestMonitor *m)
++{
++    struct virtio_gpu_resp_edid resp = {};
++    uint16_t pnp_id = (m->vendor[0] - '@') << 10 |
++                      (m->vendor[1] - '@') << 5 |
++                      (m->vendor[2] - '@');
++    char text[14];
++
++    test_gpu_edid(t, 0, &resp);
++    if (lduw_be_p(resp.edid + 8) != pnp_id ||
++        lduw_le_p(resp.edid + 10) != m->product ||
++        (uint32_t)ldl_le_p(resp.edid + 12) != m->serial_number) {
++        return false;
++    }
++    test_edid_text(resp.edid, 0xfc, text);
++    if (!test_edid_text_is(text, m->name)) {
++        return false;
++    }
++    test_edid_text(resp.edid, 0xff, text);
++    return m->serial_string[0] ? test_edid_text_is(text, m->serial_string)
++                               : !text[0];
++}
++
++/* Without a monitor's identity, the guest's EDID names QEMU's own. */
++static void
++test_dbus_display_gpu_identity_default(void)
++{
++    static const TestMonitor qemu = { "RHT", 0x1234, 0, "QEMU Monitor", "" };
++    TestGPU t = {};
++
++    test_gpu_start(&t);
++    g_assert_true(test_gpu_edid_names(&t, &qemu));
++
++    test_gpu_stop(&t);
++}
++
+ static gsize
+ get_console_ids_count(GDBusConnection *conn)
+ {
+@@ -1407,6 +1465,8 @@ main(int argc, char **argv)
+                        test_dbus_display_gpu_unchanged);
+         qtest_add_func("/dbus-display/gpu/output-name",
+                        test_dbus_display_gpu_output_name);
++        qtest_add_func("/dbus-display/gpu/identity/default",
++                       test_dbus_display_gpu_identity_default);
+     }
+     if (qtest_has_machine("q35") && qtest_has_device("bochs-display")) {
+         qtest_add_func("/dbus-display/hotplug", test_dbus_display_hotplug);
+diff --git a/ui/console.c b/ui/console.c
+index 995bc1d0e2..258355825a 100644
+--- a/ui/console.c
++++ b/ui/console.c
+@@ -706,6 +706,16 @@ const QemuUIInfo *qemu_console_get_ui_info(const QemuConsole *con)
+     return &con->ui_info;
+ }
+ 
++bool qemu_ui_identity_equal(const QemuUIIdentity *a, const QemuUIIdentity *b)
++{
++    return !strncmp(a->vendor, b->vendor, sizeof(a->vendor)) &&
++           a->product == b->product &&
++           a->serial_number == b->serial_number &&
++           !strncmp(a->name, b->name, sizeof(a->name)) &&
++           !strncmp(a->serial_string, b->serial_string,
++                    sizeof(a->serial_string));
++}
++
+ static bool qemu_ui_info_equal(const QemuUIInfo *a, const QemuUIInfo *b)
+ {
+     return a->width_mm == b->width_mm &&
+@@ -715,7 +725,8 @@ static bool qemu_ui_info_equal(const QemuUIInfo *a, const QemuUIInfo *b)
+            a->width == b->width &&
+            a->height == b->height &&
+            a->refresh_rate == b->refresh_rate &&
+-           a->connected == b->connected;
++           a->connected == b->connected &&
++           qemu_ui_identity_equal(&a->identity, &b->identity);
+ }
+ 
+ int qemu_console_set_ui_info(QemuConsole *con, QemuUIInfo *info, bool delay)
