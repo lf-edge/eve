@@ -153,6 +153,15 @@ links.
 If MAC addresses are omitted, the framework auto-generates them from the device name and
 port label.
 
+Setting `eve_sriov` gives the EVE end of the port an SR-IOV capable NIC, on which EVE can
+create virtual functions and assign them to applications (see
+`TestSRIOVInterfaceOrder`). Only a device provider advertising `CAPABILITY_SRIOV_NIC` can
+do that -- currently the QEMU and Proxmox providers, with an emulated Intel 82576 (`igb`)
+-- and a test using such a port is skipped with any other. EVE loads the driver of this
+NIC as a kernel module, later than the built-in driver of the other NICs, so the SR-IOV
+capable ports of a device must be listed after its other ports for the interface names to
+follow the port order. Like the set of ports, this property cannot be changed at runtime.
+
 ### Bonds
 
 Bonds aggregate ports into a Link Aggregation Group (LAG). You specify the member ports
