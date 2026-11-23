@@ -757,7 +757,9 @@ func GetVolumeAttachmentFromHost(nodeName string, pvNames []string, log *base.Lo
 		return vaList, err
 	}
 	// List all VolumeAttachments and find the one corresponding to the PV
-	volumeAttachments, err := clientset.StorageV1().VolumeAttachments().List(context.TODO(), metav1.ListOptions{})
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+	volumeAttachments, err := clientset.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		err = fmt.Errorf("Error listing VolumeAttachments: %v", err)
 		log.Error(err)
@@ -805,7 +807,9 @@ func DeleteVolumeAttachment(vaName string, log *base.LogObject) error {
 	}
 
 	// Delete the VolumeAttachment
-	err = clientset.StorageV1().VolumeAttachments().Delete(context.TODO(), vaName, deleteOptions)
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+	err = clientset.StorageV1().VolumeAttachments().Delete(ctx, vaName, deleteOptions)
 	if err != nil {
 		err = fmt.Errorf("Error deleting VolumeAttachment %s: %v", vaName, err)
 		log.Error(err)
@@ -824,7 +828,9 @@ func GetVolumeAttachmentAttached(volName string, nodeName string, log *base.LogO
 		return false, err
 	}
 	// List all VolumeAttachments and find the one corresponding to the PV
-	volumeAttachments, err := clientset.StorageV1().VolumeAttachments().List(context.TODO(), metav1.ListOptions{})
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+	volumeAttachments, err := clientset.StorageV1().VolumeAttachments().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		err = fmt.Errorf("Error listing VolumeAttachments: %v", err)
 		log.Error(err)
