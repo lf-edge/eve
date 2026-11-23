@@ -89,6 +89,7 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
         run: |
+          set -o pipefail
           force="$(make -s force_build_pkgs_info | tail -1)"
           make -s HV=kvm ZARCH="$ARCH" PLATFORM=generic pkgs_tags_info > "$RUNNER_TEMP/pkg-tags"
           ./tools/eve-cosign.sh unsigned "$ARCH" < "$RUNNER_TEMP/pkg-tags" > "$RUNNER_TEMP/unsigned"
@@ -222,7 +223,8 @@ jobs:
           HV: ${{ matrix.hv }}
           PLATFORM: ${{ matrix.platform }}
         run: |
-          force="$(make -s force_build_pkgs_info | tail -1)"
+          set -o pipefail
+          force="$(make -s HV="$HV" ZARCH="$ARCH" PLATFORM="$PLATFORM" force_build_pkgs_info | tail -1)"
           make -s HV="$HV" ZARCH="$ARCH" PLATFORM="$PLATFORM" pkgs_tags_info > "$RUNNER_TEMP/pkg-tags"
           ./tools/eve-cosign.sh unsigned "$ARCH" < "$RUNNER_TEMP/pkg-tags" > "$RUNNER_TEMP/unsigned"
           echo "force=$force $(xargs < "$RUNNER_TEMP/unsigned")" >> "$GITHUB_OUTPUT"
