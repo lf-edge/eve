@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lf-edge/eve/evetest/constants"
@@ -65,9 +66,19 @@ type ProxmoxProvider struct {
 	// also every stop or delete of a VM by its VMID (see callOwnedVM), so
 	// that a VMID cannot be allocated again between the check that the VM is
 	// still ours and the call. It never covers the disk/firmware uploads,
-	// waitTask or the pauses between retries. It is acquired before
-	// devMutex, never after.
+	// waitTask or the pauses between retries. The periodic orphan sweep holds
+	// it while it lists the VMs, so that every VM it lists is either owned by
+	// a device already, or not at all (see listVMsAndOwnedIDs). It is
+	// acquired before devMutex, never after.
 	vmIDMutex sync.Mutex
+
+	// uploadSeq numbers the device setups, to give the import volumes of each
+	// setup unique names (see proxmoxDevice.uploadName).
+	uploadSeq atomic.Uint64
+
+	// stopSweep, closed by Close, stops the periodic orphan sweep.
+	stopSweep chan struct{}
+	closeOnce sync.Once
 
 	// sdnApplyMutex keeps VM starts from overlapping an SDN apply. Applying
 	// SDN restarts the zone's dnsmasq, and a VM starting meanwhile fails: PVE's
@@ -160,6 +171,10 @@ type proxmoxDevice struct {
 	// call onward. Both stay false for a device that was never NetworkBootFallback.
 	netbootCompleted bool
 
+	// uploadSeq is the number of the setup that created this device (see
+	// uploadName).
+	uploadSeq uint64
+
 	// teardownFailed: a TeardownDevice of this device failed, leaving it in
 	// p.devices for SetupDevice to remove (see removeLeftoverDevice).
 	// Guarded by devMutex.
@@ -203,6 +218,21 @@ type proxmoxIface struct {
 	isUplink bool
 }
 
+// uploadName returns the name of the device's import volume with the given
+// suffix. It starts with the number of the setup, which is unique, so that
+// removeOrphanedImportVolumes can tell the volumes of each device apart
+// exactly (see uploadPrefix), and so that a setup never reuses the name of a
+// volume that an earlier setup of the same device name left behind, and that
+// removeOrphanedImportVolumes may be removing.
+func (dev *proxmoxDevice) uploadName(suffix string) string {
+	return fmt.Sprintf("%s%s-%s", dev.uploadPrefix(), dev.name, suffix)
+}
+
+// uploadPrefix returns the prefix of the names of the device's import volumes.
+func (dev *proxmoxDevice) uploadPrefix() string {
+	return fmt.Sprintf("%s%d-", namePrefix, dev.uploadSeq)
+}
+
 type proxmoxNetwork struct {
 	name     string // unprefixed evetest network name
 	vnet     string // SDN VNet name (also the Linux bridge VMs attach to)
@@ -242,8 +272,12 @@ const (
 	proxmoxStatusPollPeriod = 2 * time.Second
 	proxmoxConnectTimeout   = 30 * time.Second
 	// proxmoxOrphanSweepTimeout bounds removeOrphans, which stops and deletes
-	// each leftover VM in turn.
+	// each leftover VM in turn, and each periodic sweep of orphaned VMs.
 	proxmoxOrphanSweepTimeout = 15 * time.Minute
+	// proxmoxOrphanSweepInterval is how often the VMs that no device owns
+	// (e.g. one whose failed create could not be removed) are swept while the
+	// broker runs, besides at its start.
+	proxmoxOrphanSweepInterval = 30 * time.Minute
 	// proxmoxTaskMaxPollErrors is how many task status polls in a row may
 	// fail before waitTask gives up: one lost response must not abort the
 	// wait for an operation that is still running, or already succeeded.
@@ -365,6 +399,7 @@ func NewProxmoxProvider(ctx context.Context, conf ProxmoxProviderConf) (*Proxmox
 		devices:        make(map[string]*proxmoxDevice),
 		pending:        make(map[string]*proxmoxDevice),
 		networks:       make(map[string]*proxmoxNetwork),
+		stopSweep:      make(chan struct{}),
 	}
 	sweepCtx, cancel := context.WithTimeout(ctx, proxmoxOrphanSweepTimeout)
 	defer cancel()
@@ -372,7 +407,69 @@ func NewProxmoxProvider(ctx context.Context, conf ProxmoxProviderConf) (*Proxmox
 		logger.FromContext(ctx).Warnf(
 			"Failed to remove some resources orphaned by a previous broker run: %v", err)
 	}
+	go p.runOrphanSweepLoop(context.WithoutCancel(ctx))
 	return p, nil
+}
+
+// runOrphanSweepLoop calls removeOrphans every proxmoxOrphanSweepInterval until
+// Close, so that what a failed setup or teardown leaves behind, e.g. a VM whose
+// failed create could not be removed, does not stay until the next broker run.
+func (p *ProxmoxProvider) runOrphanSweepLoop(ctx context.Context) {
+	log := logger.FromContext(ctx)
+	ticker := time.NewTicker(proxmoxOrphanSweepInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-p.stopSweep:
+			return
+		case <-ticker.C:
+		}
+		sweepCtx, cancel := context.WithTimeout(ctx, proxmoxOrphanSweepTimeout)
+		err := p.removeOrphans(sweepCtx)
+		cancel()
+		if err != nil {
+			log.Warnf("Failed to remove some orphaned resources: %v", err)
+		}
+	}
+}
+
+// retryFailedTeardowns finishes the teardown of the devices whose
+// TeardownDevice failed. Nothing needs such a device anymore, and if its
+// session ended, no SetupDevice of the same name will ever remove it (see
+// removeLeftoverDevice). Each name is reserved in p.pending while its teardown
+// runs, so that a concurrent SetupDevice of it fails instead of destroying the
+// same VM.
+func (p *ProxmoxProvider) retryFailedTeardowns(
+	ctx context.Context, log *logrus.Entry) error {
+	var leftovers []*proxmoxDevice
+	p.devMutex.Lock()
+	for name, dev := range p.devices {
+		if _, isPending := p.pending[name]; dev.teardownFailed && !isPending {
+			p.pending[name] = dev
+			leftovers = append(leftovers, dev)
+		}
+	}
+	p.devMutex.Unlock()
+	if len(leftovers) == 0 {
+		return nil
+	}
+
+	var errs []error
+	for _, dev := range leftovers {
+		log.Infof("Retrying the failed teardown of device %q", dev.name)
+		err := p.destroyDeviceWithRetry(ctx, log, dev)
+		p.devMutex.Lock()
+		if err == nil {
+			delete(p.devices, dev.name)
+		}
+		delete(p.pending, dev.name)
+		p.devMutex.Unlock()
+		if err != nil {
+			errs = append(errs,
+				fmt.Errorf("failed to tear down device %q: %w", dev.name, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // autoDetectNode returns the single node of a single-node Proxmox installation.
@@ -519,6 +616,7 @@ func (p *ProxmoxProvider) SetupDevice(
 		consoleLog:       consoleLog,
 		consoleMux:       newConsoleMux(),
 		netbootMTUCapped: spec.NetworkBootFallback,
+		uploadSeq:        p.uploadSeq.Add(1),
 	}
 	// Replace the nil placeholder so teardownUnusedNetworks can see this
 	// device's networks (via dev.ifaces) once resolveDeviceNetworks below
@@ -692,7 +790,8 @@ func (p *ProxmoxProvider) removeLeftoverDevice(
 
 // removeFailedVM removes VM vmID of dev, whose setup failed, retrying
 // transient failures. It is best-effort: a VM it fails to remove is logged,
-// and its error returned, and left for removeOrphans of the next broker run.
+// and its error returned, and left for the periodic orphan sweep (see
+// runOrphanSweepLoop).
 func (p *ProxmoxProvider) removeFailedVM(ctx context.Context, log *logrus.Entry,
 	node *proxmox.Node, dev *proxmoxDevice, vmID int) error {
 	removed, err := retryProxmoxCall(ctx, log, fmt.Sprintf("remove VM %d of failed setup", vmID),
@@ -1310,41 +1409,53 @@ func (p *ProxmoxProvider) TeardownAll(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// removeOrphans removes the Proxmox resources left behind by a previous
-// broker run that did not tear down its devices, typically because it
-// crashed: VMs named with namePrefix, xconnect VNets of the evetest SDN zone,
-// and volumes uploaded to the import storage under namePrefix. Client
-// sessions do not survive a broker restart, so all of these are orphans. It
-// also removes the nameless placeholder VMs, holding "lock: create", that PVE
-// leaves behind when it fails to start a create worker (see SetupDevice).
+// removeOrphans removes the Proxmox resources of this broker that no device
+// owns: those left behind by a previous broker run that did not tear down its
+// devices, typically because it crashed, and those of failed setups and
+// teardowns in this run. It finishes the failed teardowns first (see
+// retryFailedTeardowns), then removes the VMs named with namePrefix, the
+// xconnect VNets of the evetest SDN zone and the volumes uploaded to the
+// import storage under namePrefix, sparing those of the devices set up or
+// being set up. It also removes the nameless placeholder VMs, holding "lock:
+// create", that PVE leaves behind when it fails to start a create worker (see
+// SetupDevice).
 //
 // This relies on the broker owning every such resource on its Proxmox host,
 // i.e. on running a single broker per host, as the broker installer sets up.
-// Only NewProxmoxProvider calls it, before anyone can use the provider: it
-// neither takes the provider's locks nor spares anything a concurrent
-// SetupDevice creates. It is best-effort and returns all failures joined.
+// NewProxmoxProvider calls it before anyone can use the provider, and
+// runOrphanSweepLoop periodically after that. It is best-effort and returns
+// all failures joined.
 func (p *ProxmoxProvider) removeOrphans(ctx context.Context) error {
 	log := logger.FromContext(ctx)
 	node, err := p.client.Node(ctx, p.conf.Node)
 	if err != nil {
 		return fmt.Errorf("failed to get Proxmox node %q: %w", p.conf.Node, err)
 	}
+	errs := []error{p.retryFailedTeardowns(ctx, log)}
 	// VMs go first: the VNets and the firmware volumes may be in use by them.
-	errs := []error{p.removeOrphanedVMs(ctx, log, node)}
+	errs = append(errs, p.removeOrphanedVMs(ctx, log, node))
 	errs = append(errs, p.removeOrphanedVNets(ctx, log))
+	p.teardownUnusedNetworks(ctx, log)
 	errs = append(errs, p.removeOrphanedImportVolumes(ctx, log, node))
 	return errors.Join(errs...)
 }
 
+// removeOrphanedVMs removes the VMs of this broker that no device owns: those
+// named with namePrefix, and the placeholders of creates that PVE failed to
+// start a worker for (see isAbandonedPlaceholderVM). Safe to call while the
+// provider is in use: the VMs of devices, set up or being set up, are spared.
 func (p *ProxmoxProvider) removeOrphanedVMs(
 	ctx context.Context, log *logrus.Entry, node *proxmox.Node) error {
-	vms, err := node.VirtualMachines(ctx)
+	vms, owned, err := p.listVMsAndOwnedIDs(ctx, node)
 	if err != nil {
-		return fmt.Errorf("failed to list VMs: %w", err)
+		return err
 	}
 	var errs []error
 	for _, vm := range vms {
 		vmID := int(vm.VMID)
+		if owned[vmID] {
+			continue
+		}
 		switch {
 		case strings.HasPrefix(vm.Name, namePrefix):
 		case vm.Lock == "create":
@@ -1373,6 +1484,35 @@ func (p *ProxmoxProvider) removeOrphanedVMs(
 	return errors.Join(errs...)
 }
 
+// listVMsAndOwnedIDs lists the VMs of the node and returns them together with
+// the VMIDs of the devices, set up or being set up. A VM missing from the
+// latter is owned by no device, and never will be: the listing is made under
+// vmIDMutex, which every create holds while it allocates the VMID, records
+// it in its pending device and creates the VM, and the VMID of an existing VM
+// is never allocated again.
+func (p *ProxmoxProvider) listVMsAndOwnedIDs(ctx context.Context, node *proxmox.Node) (
+	proxmox.VirtualMachines, map[int]bool, error) {
+	p.vmIDMutex.Lock()
+	defer p.vmIDMutex.Unlock()
+	listCtx, cancel := context.WithTimeout(ctx, proxmoxVMIDLockedCallTimeout)
+	defer cancel()
+	vms, err := node.VirtualMachines(listCtx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to list VMs: %w", err)
+	}
+	owned := make(map[int]bool)
+	p.devMutex.Lock()
+	for _, devs := range []map[string]*proxmoxDevice{p.devices, p.pending} {
+		for _, dev := range devs {
+			if dev != nil && dev.vmID != 0 {
+				owned[dev.vmID] = true
+			}
+		}
+	}
+	p.devMutex.Unlock()
+	return vms, owned, nil
+}
+
 // isAbandonedPlaceholderVM reports whether the VM holding "lock: create" is
 // a placeholder whose create worker never ran: its config holds nothing but
 // the lock (so no name either), and no task is running for it. The task
@@ -1396,7 +1536,17 @@ func (p *ProxmoxProvider) isAbandonedPlaceholderVM(
 	return len(tasks) == 0, nil
 }
 
+// removeOrphanedVNets removes the xconnect VNets that p.networks does not
+// track. The VNets it tracks, used or not, are left to teardownUnusedNetworks.
+// Holding sdnMutex keeps resolveDeviceNetworks from creating a VNet between
+// the listing and the check against p.networks.
 func (p *ProxmoxProvider) removeOrphanedVNets(ctx context.Context, log *logrus.Entry) error {
+	p.sdnMutex.Lock()
+	defer p.sdnMutex.Unlock()
+	tracked := make(map[string]bool, len(p.networks))
+	for _, network := range p.networks {
+		tracked[network.vnet] = true
+	}
 	cluster, err := p.client.Cluster(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get Proxmox cluster: %w", err)
@@ -1409,7 +1559,8 @@ func (p *ProxmoxProvider) removeOrphanedVNets(ctx context.Context, log *logrus.E
 	var removed []string
 	for _, vnet := range vnets {
 		// The uplink VNet is installer-owned and must stay.
-		if vnet.Zone != sdnZone || !strings.HasPrefix(vnet.Name, xconnectBridgePrefix) {
+		if vnet.Zone != sdnZone || !strings.HasPrefix(vnet.Name, xconnectBridgePrefix) ||
+			tracked[vnet.Name] {
 			continue
 		}
 		if err := cluster.DeleteSDNVNet(ctx, vnet.Name); err != nil {
@@ -1430,6 +1581,12 @@ func (p *ProxmoxProvider) removeOrphanedVNets(ctx context.Context, log *logrus.E
 	return errors.Join(errs...)
 }
 
+// removeOrphanedImportVolumes removes the volumes uploaded to the import
+// storage under namePrefix, except those of the devices set up or being set
+// up, whose names start with the number of the device's setup (see
+// proxmoxDevice.uploadName). A setup records its device, with that number, in
+// p.pending before it uploads anything, and the storage is listed before the
+// devices are, so a volume of a device that is still there is never removed.
 func (p *ProxmoxProvider) removeOrphanedImportVolumes(
 	ctx context.Context, log *logrus.Entry, node *proxmox.Node) error {
 	storage, err := p.getStorageWithRetry(ctx, log, node, p.conf.ImportStorage)
@@ -1441,10 +1598,29 @@ func (p *ProxmoxProvider) removeOrphanedImportVolumes(
 		return fmt.Errorf("failed to list import storage %q: %w", p.conf.ImportStorage, err)
 	}
 	prefix := fmt.Sprintf("%s:import/%s", p.conf.ImportStorage, namePrefix)
+	var ownedPrefixes []string
+	p.devMutex.Lock()
+	for _, devs := range []map[string]*proxmoxDevice{p.devices, p.pending} {
+		for _, dev := range devs {
+			if dev != nil {
+				ownedPrefixes = append(ownedPrefixes,
+					fmt.Sprintf("%s:import/%s", p.conf.ImportStorage, dev.uploadPrefix()))
+			}
+		}
+	}
+	p.devMutex.Unlock()
+	isOwned := func(volID string) bool {
+		for _, owned := range ownedPrefixes {
+			if strings.HasPrefix(volID, owned) {
+				return true
+			}
+		}
+		return false
+	}
 	var errs []error
 	removed := 0
 	for _, item := range content {
-		if !strings.HasPrefix(item.Volid, prefix) {
+		if !strings.HasPrefix(item.Volid, prefix) || isOwned(item.Volid) {
 			continue
 		}
 		if err := p.deleteImportVolume(ctx, log, node, item.Volid); err != nil {
@@ -1531,6 +1707,11 @@ func (p *ProxmoxProvider) ReconfigureDeviceDisks(
 
 // Close releases resources associated with the provider.
 func (p *ProxmoxProvider) Close() error {
+	p.closeOnce.Do(func() {
+		if p.stopSweep != nil {
+			close(p.stopSweep)
+		}
+	})
 	p.sshMutex.Lock()
 	defer p.sshMutex.Unlock()
 	if p.sshClient != nil {
@@ -2035,7 +2216,7 @@ func (p *ProxmoxProvider) uploadDiskImages(ctx context.Context, node *proxmox.No
 		if disk.Format == DiskImageFormatRaw {
 			ext = "raw"
 		}
-		uploadName := fmt.Sprintf("%s-%d.%s", prefixedName(dev.name), i, ext)
+		uploadName := dev.uploadName(fmt.Sprintf("%d.%s", i, ext))
 		task, err := p.uploadWithRetry(ctx, log, storage, path, uploadName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to upload disk image %q to storage %q: %w",
@@ -2115,8 +2296,8 @@ func (p *ProxmoxProvider) uploadFirmware(ctx context.Context, node *proxmox.Node
 			p.conf.ImportStorage, err)
 	}
 
-	codeName := fmt.Sprintf("%s-OVMF_CODE.raw", prefixedName(dev.name))
-	varsName := fmt.Sprintf("%s-OVMF_VARS.raw", prefixedName(dev.name))
+	codeName := dev.uploadName("OVMF_CODE.raw")
+	varsName := dev.uploadName("OVMF_VARS.raw")
 	for _, up := range []struct{ src, name string }{
 		{codeSrc, codeName},
 		{varsSrc, varsName},
@@ -2575,7 +2756,7 @@ func (s *muxSubscriber) Close() error {
 }
 
 // proxmoxVMIDLockedCallTimeout bounds the Proxmox calls made under vmIDMutex
-// (see callOwnedVM).
+// (see callOwnedVM and listVMsAndOwnedIDs).
 const proxmoxVMIDLockedCallTimeout = time.Minute
 
 // proxmoxRetryMaxAttempts bounds retries of a single Proxmox API call against

@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -375,6 +376,51 @@ func TestSetupDeviceRemovesOnlyLeftovers(t *testing.T) {
 	}
 }
 
+// The sweep finishes only the teardowns that failed, and leaves alone a device
+// whose name a setup has reserved.
+func TestRetryFailedTeardowns(t *testing.T) {
+	p, leftover := newFakeVMProvider(t, &fakeVMAPI{missing: true})
+	leftover.teardownFailed = true
+	live := &proxmoxDevice{name: "live-dev", vmID: 111}
+	reserved := &proxmoxDevice{name: "reserved-dev", vmID: 112, teardownFailed: true}
+	p.devices = map[string]*proxmoxDevice{
+		leftover.name: leftover, live.name: live, reserved.name: reserved}
+	p.pending = map[string]*proxmoxDevice{reserved.name: nil}
+
+	if err := p.retryFailedTeardowns(
+		context.Background(), logrus.NewEntry(logrus.New())); err != nil {
+		t.Fatalf("retryFailedTeardowns: %v", err)
+	}
+	if _, ok := p.devices[leftover.name]; ok {
+		t.Error("device of a failed teardown was not removed")
+	}
+	if p.devices[live.name] != live || p.devices[reserved.name] != reserved {
+		t.Errorf("removed a device it should have left alone: %v", p.devices)
+	}
+	if dev, ok := p.pending[reserved.name]; !ok || dev != nil || len(p.pending) != 1 {
+		t.Errorf("pending reservations changed: %v", p.pending)
+	}
+}
+
+func TestRetryFailedTeardownsKeepsEntryOnFailure(t *testing.T) {
+	// The fake API does not serve the VM delete, so the teardown fails again.
+	p, dev := newFakeVMProvider(t, &fakeVMAPI{status: "stopped"})
+	dev.teardownFailed = true
+	p.devices = map[string]*proxmoxDevice{dev.name: dev}
+	p.pending = map[string]*proxmoxDevice{}
+
+	if err := p.retryFailedTeardowns(
+		context.Background(), logrus.NewEntry(logrus.New())); err == nil {
+		t.Fatal("expected an error when the VM cannot be deleted")
+	}
+	if p.devices[dev.name] != dev {
+		t.Error("device entry was dropped although its VM was not removed")
+	}
+	if len(p.pending) != 0 {
+		t.Errorf("failed retry left its name reserved: %v", p.pending)
+	}
+}
+
 // A create that PVE fails transiently, e.g. when it cannot fork the create
 // worker, is retried with a fresh VMID once the failed one has been cleaned
 // up.
@@ -728,5 +774,218 @@ func TestRemoveVMSparesVMIDOfAnotherDevice(t *testing.T) {
 	}
 	if !reflect.DeepEqual(api.lookups, []string{"120"}) {
 		t.Errorf("holder's removal looked up %v, want [120]", api.lookups)
+	}
+}
+
+// fakeSweepAPI serves the listing and removal of the VMs in vms (VMID ->
+// name; an empty name is a placeholder holding "lock: create"), recording the
+// VMIDs it is asked to delete.
+type fakeSweepAPI struct {
+	mu      sync.Mutex
+	vms     map[int]string
+	deleted []int
+}
+
+func (f *fakeSweepAPI) vmJSON(vmID int) string {
+	if name := f.vms[vmID]; name != "" {
+		return fmt.Sprintf(`{"vmid":%d,"name":%q,"status":"stopped"}`, vmID, name)
+	}
+	return fmt.Sprintf(`{"vmid":%d,"status":"stopped","lock":"create"}`, vmID)
+}
+
+func (f *fakeSweepAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	path := strings.TrimPrefix(r.URL.Path, "/api2/json/nodes/pve/")
+	var vmID int
+	switch {
+	case path == "qemu":
+		var list []string
+		for id := range f.vms {
+			list = append(list, f.vmJSON(id))
+		}
+		_, _ = fmt.Fprintf(w, `{"data":[%s]}`, strings.Join(list, ","))
+	case path == "tasks":
+		_, _ = io.WriteString(w, `{"data":[]}`)
+	case strings.HasPrefix(path, "tasks/"):
+		_, _ = io.WriteString(w, `{"data":{"status":"stopped","exitstatus":"OK"}}`)
+	case r.Method == http.MethodDelete:
+		_, _ = fmt.Sscanf(path, "qemu/%d", &vmID)
+		f.deleted = append(f.deleted, vmID)
+		_, _ = fmt.Fprintf(w,
+			`{"data":"UPID:pve:00000001:00000002:00000003:qmdestroy:%d:root@pam:"}`,
+			vmID)
+	case strings.HasSuffix(path, "/status/current"):
+		_, _ = fmt.Sscanf(path, "qemu/%d/status/current", &vmID)
+		_, _ = fmt.Fprintf(w, `{"data":%s}`, f.vmJSON(vmID))
+	case strings.HasSuffix(path, "/config"):
+		_, _ = fmt.Sscanf(path, "qemu/%d/config", &vmID)
+		_, _ = fmt.Fprintf(w, `{"data":{"name":%q}}`, f.vms[vmID])
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+// The sweep that also runs while the broker is in use removes only the VMs
+// that no device owns, sparing the VMs of devices that are set up and of
+// devices that are being set up.
+func TestRemoveOrphanedVMsSparesOwnedVMs(t *testing.T) {
+	saved := proxmoxTaskPollInterval
+	proxmoxTaskPollInterval = time.Millisecond
+	t.Cleanup(func() { proxmoxTaskPollInterval = saved })
+	api := &fakeSweepAPI{vms: map[int]string{
+		111: "ev-eve-set-up",
+		112: "ev-eve-being-set-up",
+		113: "ev-eve-orphan",
+		114: "not-from-the-broker",
+		115: "", // abandoned placeholder of a failed create
+		116: "", // placeholder of a create in progress
+	}}
+	srv := httptest.NewServer(api)
+	t.Cleanup(srv.Close)
+	client := proxmox.NewClient(srv.URL+"/api2/json", proxmox.WithHTTPClient(srv.Client()))
+	p := &ProxmoxProvider{
+		conf:    ProxmoxProviderConf{Node: "pve"},
+		client:  client,
+		devices: map[string]*proxmoxDevice{"set-up": {name: "set-up", vmID: 111}},
+		pending: map[string]*proxmoxDevice{
+			"being-set-up": {name: "being-set-up", vmID: 112},
+			"creating":     {name: "creating", vmID: 116},
+			"reserved":     nil,
+		},
+	}
+	node := (&proxmox.Node{}).New(client, "pve")
+	err := p.removeOrphanedVMs(context.Background(), logrus.NewEntry(logrus.New()), node)
+	if err != nil {
+		t.Fatalf("removeOrphanedVMs: %v", err)
+	}
+	sort.Ints(api.deleted)
+	if !reflect.DeepEqual(api.deleted, []int{113, 115}) {
+		t.Errorf("deleted VMs %v, want [113 115]", api.deleted)
+	}
+}
+
+// fakeOrphanAPI serves the listing and removal of the SDN VNets and of the
+// import storage "imp" volumes, recording what it is asked to delete.
+type fakeOrphanAPI struct {
+	mu             sync.Mutex
+	vnets          map[string]string // VNet name -> zone
+	volumes        []string
+	deletedVNets   []string
+	deletedVolumes []string
+}
+
+func (f *fakeOrphanAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	const upid = "UPID:pve:00000001:00000002:00000003:task:1:root@pam:"
+	path := strings.TrimPrefix(r.URL.Path, "/api2/json")
+	contentPrefix := "/nodes/pve/storage/imp/content/"
+	switch {
+	case path == "/cluster/status":
+		_, _ = io.WriteString(w, `{"data":[]}`)
+	case path == "/cluster/sdn/vnets" && r.Method == http.MethodGet:
+		var list []string
+		for name, zone := range f.vnets {
+			list = append(list, fmt.Sprintf(`{"vnet":%q,"zone":%q}`, name, zone))
+		}
+		_, _ = fmt.Fprintf(w, `{"data":[%s]}`, strings.Join(list, ","))
+	case strings.HasPrefix(path, "/cluster/sdn/vnets/") && r.Method == http.MethodDelete:
+		f.deletedVNets = append(f.deletedVNets,
+			strings.TrimPrefix(path, "/cluster/sdn/vnets/"))
+		_, _ = io.WriteString(w, `{"data":null}`)
+	case strings.HasPrefix(path, "/cluster/sdn") && r.Method == http.MethodPut:
+		_, _ = fmt.Fprintf(w, `{"data":%q}`, upid)
+	case strings.HasPrefix(path, "/nodes/pve/tasks/"):
+		_, _ = io.WriteString(w, `{"data":{"status":"stopped","exitstatus":"OK"}}`)
+	case path == "/nodes/pve/storage/imp/status":
+		_, _ = io.WriteString(w, `{"data":{}}`)
+	case path == "/nodes/pve/storage/imp/content":
+		var list []string
+		for _, volID := range f.volumes {
+			list = append(list, fmt.Sprintf(`{"volid":%q}`, volID))
+		}
+		_, _ = fmt.Fprintf(w, `{"data":[%s]}`, strings.Join(list, ","))
+	case strings.HasPrefix(path, contentPrefix) && r.Method == http.MethodDelete:
+		f.deletedVolumes = append(f.deletedVolumes,
+			strings.TrimPrefix(path, contentPrefix))
+		_, _ = fmt.Fprintf(w, `{"data":%q}`, upid)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func newFakeOrphanProvider(t *testing.T, api *fakeOrphanAPI) (
+	*ProxmoxProvider, *proxmox.Node) {
+	t.Helper()
+	saved := proxmoxTaskPollInterval
+	proxmoxTaskPollInterval = time.Millisecond
+	t.Cleanup(func() { proxmoxTaskPollInterval = saved })
+	srv := httptest.NewServer(api)
+	t.Cleanup(srv.Close)
+	client := proxmox.NewClient(srv.URL+"/api2/json", proxmox.WithHTTPClient(srv.Client()))
+	p := &ProxmoxProvider{
+		conf:     ProxmoxProviderConf{Node: "pve", ImportStorage: "imp"},
+		client:   client,
+		devices:  map[string]*proxmoxDevice{},
+		pending:  map[string]*proxmoxDevice{},
+		networks: map[string]*proxmoxNetwork{},
+	}
+	return p, (&proxmox.Node{}).New(client, "pve")
+}
+
+// The sweep that also runs while the broker is in use removes only the
+// xconnect VNets that the provider does not track.
+func TestRemoveOrphanedVNetsSparesTrackedVNets(t *testing.T) {
+	tracked, orphan := xconnectBridgePrefix+"1", xconnectBridgePrefix+"2"
+	api := &fakeOrphanAPI{vnets: map[string]string{
+		tracked:                    sdnZone,
+		orphan:                     sdnZone,
+		"uplink":                   sdnZone,
+		xconnectBridgePrefix + "3": "other",
+	}}
+	p, _ := newFakeOrphanProvider(t, api)
+	p.networks["net"] = &proxmoxNetwork{name: "net", vnet: tracked}
+
+	if err := p.removeOrphanedVNets(
+		context.Background(), logrus.NewEntry(logrus.New())); err != nil {
+		t.Fatalf("removeOrphanedVNets: %v", err)
+	}
+	if !reflect.DeepEqual(api.deletedVNets, []string{orphan}) {
+		t.Errorf("deleted VNets %v, want [%s]", api.deletedVNets, orphan)
+	}
+}
+
+// The sweep that also runs while the broker is in use removes only the import
+// volumes of no device, sparing those of devices set up or being set up. It
+// tells the devices apart by the number of their setup, also when the name of
+// one device is a prefix of another's, or a setup number of another's.
+func TestRemoveOrphanedImportVolumesSparesOwnedVolumes(t *testing.T) {
+	setUp := &proxmoxDevice{name: "node", uploadSeq: 1}
+	beingSetUp := &proxmoxDevice{name: "being-set-up", uploadSeq: 3}
+	vol := func(dev *proxmoxDevice, suffix string) string {
+		return "imp:import/" + dev.uploadName(suffix)
+	}
+	owned := []string{vol(setUp, "scratch-data.raw"), vol(beingSetUp, "OVMF_CODE.raw")}
+	orphans := []string{
+		vol(&proxmoxDevice{name: "node-2", uploadSeq: 2}, "0.qcow2"),
+		vol(&proxmoxDevice{name: "node", uploadSeq: 12}, "0.qcow2"),
+		// An earlier setup of a name that is reserved again.
+		vol(&proxmoxDevice{name: "reserved", uploadSeq: 4}, "0.qcow2"),
+	}
+	api := &fakeOrphanAPI{volumes: append(append([]string{
+		"imp:import/not-from-the-broker.qcow2"}, owned...), orphans...)}
+	p, node := newFakeOrphanProvider(t, api)
+	p.devices[setUp.name] = setUp
+	p.pending[beingSetUp.name] = beingSetUp
+	p.pending["reserved"] = nil
+
+	err := p.removeOrphanedImportVolumes(
+		context.Background(), logrus.NewEntry(logrus.New()), node)
+	if err != nil {
+		t.Fatalf("removeOrphanedImportVolumes: %v", err)
+	}
+	if !reflect.DeepEqual(api.deletedVolumes, orphans) {
+		t.Errorf("deleted volumes %v, want %v", api.deletedVolumes, orphans)
 	}
 }
