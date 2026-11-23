@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/volumehandlers"
@@ -84,10 +85,12 @@ type fakeSnapshotHandler struct {
 }
 
 func (h fakeSnapshotHandler) CreateSnapshot() (interface{}, time.Time, error) {
-	if err := h.fake.call("create", h.volume); err != nil {
+	err := h.fake.call("create", h.volume)
+	var sound *diskmetrics.SoundImageError
+	if err != nil && !errors.Is(err, diskmetrics.ErrImageNotVerified) && !errors.As(err, &sound) {
 		return "", time.Time{}, err
 	}
-	return "meta of " + h.volume.DisplayName, time.Unix(1, 0), nil
+	return "meta of " + h.volume.DisplayName, time.Unix(1, 0), err
 }
 
 func (h fakeSnapshotHandler) RollbackToSnapshot(interface{}) error {
@@ -420,6 +423,17 @@ func TestSnapshotCreation(t *testing.T) {
 			return
 		}
 		t.Fatal("volume a never came first")
+	})
+	// qemu-img can fail after it has made the snapshot.
+	t.Run("a volume that may have the snapshot although it failed loses it again", func(t *testing.T) {
+		ctx, pub, fake := newSnapshotTestContext(t)
+		ids := snapshotTestVolumes(t, ctx, "a")
+		fake.fail["create a"] = &diskmetrics.SoundImageError{Err: errors.New("cannot tell how far it got")}
+		wantSnapshot(ctx, snapshotTestConfig("s1", ids, 0))
+		finishSnapshotWork(t, ctx)
+		status, _ := snapshotStatus(pub, "s1")
+		assert.Equal(t, []string{"create a", "delete a"}, fake.made(), "nothing else would delete it later")
+		assert.Empty(t, status.VolumeSnapshotMeta)
 	})
 	t.Run("unknown volume", func(t *testing.T) {
 		ctx, pub, fake := newSnapshotTestContext(t)

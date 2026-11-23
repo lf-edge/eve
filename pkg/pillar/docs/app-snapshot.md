@@ -829,6 +829,40 @@ deferred until the next time the application is down. This
 approach allows EVE to efficiently manage snapshots while minimizing disruptions
 to the application's operation.
 
+### Time Limit, Repair and Check for ext4
+
+Applying and deleting a snapshot release every block that differs between the
+snapshot and the disk, so they take longer the more the disk has changed since
+the snapshot. Creating a snapshot goes through all blocks in use. EVE gives each
+`qemu-img snapshot` command one hour.
+
+A `qemu-img` that is stopped half way leaves the image inconsistent: writes to
+it can then corrupt its snapshots. After a failed command EVE therefore repairs
+the image with
+
+```bash
+qemu-img check -r all /path/to/base_image.qcow2
+```
+
+and then looks whether the command had done its part: the snapshot is there
+after a creation, or gone after a deletion. If not, and always for a rollback,
+the command is run once more. If EVE cannot read the list of snapshots, the
+command is not repeated and counts as failed.
+
+Whatever the outcome, the image is checked with `qemu-img check` in the end,
+and repaired if the check finds something. An image is reported as not verified
+if the check still finds it corrupt after the repair, or if the check cannot be
+run. A check that cannot be run is tried three times, as a `qemu-img` that was
+stopped can hold the lock on the image a moment longer. Leaked blocks alone
+only waste space and are not an error.
+
+The check also follows a command that worked. It is what finds an image that
+an earlier `qemu-img` left damaged, for example one that a version of EVE
+without the repair stopped after its two minutes. Without the check the
+application would be started on such an image and damage it further. The
+check reads the metadata of the image, not its data, and runs while the
+application is down anyway.
+
 ## Low-Level Snapshot Management for ZFS
 
 In the EVE project, managing snapshots for ZFS file systems is conducted through

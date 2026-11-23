@@ -544,8 +544,12 @@ func snapshotWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 			var timeCreated time.Time
 			snapshotMeta, timeCreated, err = volumeHandler.CreateSnapshot()
 			if err == nil {
-				d.status.VolumeSnapshotMeta[volumeID] = snapshotMeta
 				d.status.TimeCreated = timeCreated
+			}
+			// A handler that failed returns the meta of what it may have
+			// left on the volume.
+			if err == nil || (snapshotMeta != nil && snapshotMeta != "") {
+				d.status.VolumeSnapshotMeta[volumeID] = snapshotMeta
 			}
 		case snapshotRollback:
 			err = volumeHandler.RollbackToSnapshot(volume.meta)
@@ -580,8 +584,8 @@ func snapshotWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 	return worker.WorkResult{Key: w.Key, Description: d}
 }
 
-// removePartialSnapshot deletes what a failed creation left on the volumes
-// that came before the failing one: nothing is going to refer to it.
+// removePartialSnapshot deletes what a failed creation left on the volumes:
+// nothing is going to refer to it.
 func removePartialSnapshot(ctx *volumemgrContext, d *snapshotWork) {
 	for _, volume := range d.volumes {
 		volumeID := volume.status.VolumeID.String()
