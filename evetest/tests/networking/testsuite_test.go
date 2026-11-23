@@ -422,6 +422,9 @@ func TestAppRoutingSuite(test *testing.T) {
 
 // TestAppNICsSuite drives the network adapters (VIFs and directly assigned
 // physical NICs) of an application: PCI passthrough of a physical NIC.
+// TestSRIOVInterfaceOrder, on the interface order of SR-IOV virtual
+// functions, needs a network model of its own (an SR-IOV capable port),
+// which makes the framework recreate the device, hence placed last.
 // All subtests deploy at least one application and
 // therefore share the HYPERVISOR parameter -- the suite declares
 // evetest.HypervisorParameter() once and every subtest reads it via
@@ -438,6 +441,9 @@ func TestAppNICsSuite(test *testing.T) {
 	evetest.RunTestSuite(
 		evetest.TestCase{
 			Test: TestNetworkAdapterPassthrough,
+		},
+		evetest.TestCase{
+			Test: TestSRIOVInterfaceOrder,
 		},
 	)
 }
