@@ -682,8 +682,12 @@ func vmirsReplicaCountSet(ctx context.Context, log *base.LogObject, vmiRsName st
 }
 
 // DetachUtilVmirsReplicaReset manages retries around scaling down and back up the replica
-// count of a vmirs to push the control plane into scheduling a new vmi
-func DetachUtilVmirsReplicaReset(log *base.LogObject, vmiRsName string) (err error) {
+// count of a vmirs to push the control plane into scheduling a new vmi.
+// wdFunc is kicked on each try, since the retries run on the caller's loop.
+func DetachUtilVmirsReplicaReset(log *base.LogObject, vmiRsName string, wdFunc func()) (err error) {
+	if wdFunc == nil {
+		wdFunc = func() {}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), detachUtilVmirsReplicaResetTimeout)
 	defer cancel()
 
@@ -694,6 +698,7 @@ func DetachUtilVmirsReplicaReset(log *base.LogObject, vmiRsName string) (err err
 			log.Errorf("DetachOldWorkload vmirs scale reset canceled for vmirs:%s err:%v", vmiRsName, err)
 			return err
 		}
+		wdFunc()
 
 		time.Sleep(time.Second)
 
@@ -708,6 +713,7 @@ func DetachUtilVmirsReplicaReset(log *base.LogObject, vmiRsName string) (err err
 			continue
 		}
 
+		wdFunc()
 		err = vmirsReplicaCountSet(ctx, log, vmiRsName, 1)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
@@ -1102,7 +1108,7 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 
 	// Push the kubevirt control plane to schedule new pod, otherwise this can be a larger delay
 	if vmiRsName != "" {
-		if err := DetachUtilVmirsReplicaReset(log, vmiRsName); err != nil {
+		if err := DetachUtilVmirsReplicaReset(log, vmiRsName, wdFunc); err != nil {
 			log.Errorf("DetachOldWorkload vmirs scale reset failed for %s: %v", vmiRsName, err)
 		}
 	}
