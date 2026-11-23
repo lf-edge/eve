@@ -216,6 +216,7 @@ type proxmoxIface struct {
 	vnet     string // SDN VNet / bridge the interface attaches to
 	model    string // PVE config key, e.g. "net0"
 	isUplink bool
+	sriov    bool // SR-IOV capable NIC (see nicOptions); xconnect only
 }
 
 // uploadName returns the name of the device's import volume with the given
@@ -545,8 +546,10 @@ func nodeArchs(ctx context.Context, client *proxmox.Client,
 // It also supports network boot.
 func (p *ProxmoxProvider) Capabilities() []api.Capability {
 	// Plus QMP access: this provider has a QMP monitor of every device VM that
-	// the broker can reach (see ExecuteQMP).
-	return append(commonCapabilities(), api.Capability_CAPABILITY_QMP)
+	// the broker can reach (see ExecuteQMP). And QEMU emulates a NIC with
+	// SR-IOV (see nicOptions).
+	return append(commonCapabilities(), api.Capability_CAPABILITY_QMP,
+		api.Capability_CAPABILITY_SRIOV_NIC)
 }
 
 // DiskImageStrategy returns DiskImageStandalone: uploadDiskImages ships each
@@ -858,6 +861,7 @@ func (p *ProxmoxProvider) resolveDeviceNetworks(
 			vnet:     network.vnet,
 			model:    fmt.Sprintf("net%d", i),
 			isUplink: network.isUplink,
+			sriov:    iface.SRIOV,
 		})
 	}
 
@@ -1964,6 +1968,13 @@ func (p *ProxmoxProvider) vmIDOwnedByOther(owner *proxmoxDevice, vmID int) bool 
 // preserving the disk-first fallthrough: PXE runs only while the target
 // disk has nothing bootable, so the setting stays correct for the device's
 // entire lifetime and survives the MTU-cap lift unchanged.
+//
+// An xconnect interface asked to be SR-IOV capable (NetworkInterfaceSpec.SRIOV)
+// is an emulated Intel 82576 (igb) in place of the virtio NIC, on which the
+// guest creates virtual functions. They show up behind the root port the NIC
+// has anyway, where Linux puts each of them into an IOMMU group of its own,
+// so that EVE can pass every one of them through to an app VM separately. It
+// has none of the virtio-only settings (vhost, host_mtu, queue sizes).
 func (p *ProxmoxProvider) nicOptions(dev *proxmoxDevice, mtuCapped, netboot bool) (
 	options []proxmox.VirtualMachineOption, nicArgs string) {
 	netIdx := 0
@@ -2000,6 +2011,17 @@ func (p *ProxmoxProvider) nicOptions(dev *proxmoxDevice, mtuCapped, netboot bool
 		// "i") keeps this from ever colliding with a real PVE-managed
 		// "tap<vmid>i<netindex>".
 		tap := fmt.Sprintf("tap%dx%d", dev.vmID, i)
+		if iface.sriov {
+			nicArgs += fmt.Sprintf(
+				" -device pcie-root-port,id=evrp%d,bus=pcie.0,addr=0x%x,chassis=%d"+
+					" -netdev type=tap,id=evn_%s_%d,ifname=%s,script=no,downscript=no"+
+					" -device igb,netdev=evn_%s_%d,bus=evrp%d,addr=0x0,mac=%s%s",
+				i, 0x10+i, 200+i,
+				iface.vnet, i, tap,
+				iface.vnet, i, i,
+				strings.ToUpper(iface.mac.String()), bootIndex)
+			continue
+		}
 		nicArgs += fmt.Sprintf(
 			" -device pcie-root-port,id=evrp%d,bus=pcie.0,addr=0x%x,chassis=%d"+
 				" -netdev type=tap,id=evn_%s_%d,ifname=%s,script=no,downscript=no,vhost=on"+
