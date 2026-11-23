@@ -171,21 +171,26 @@ const (
 	Capability_CAPABILITY_QMP Capability = 8
 	// Selecting the active PCR banks of an emulated host TPM.
 	Capability_CAPABILITY_TPM_PCR_BANKS Capability = 9
+	// Giving the device an SR-IOV capable NIC (see Port.eve_sriov in sdn.proto).
+	// Requires a provider that can emulate such a NIC and that places it so that
+	// EVE can assign each of its virtual functions to an application on its own.
+	Capability_CAPABILITY_SRIOV_NIC Capability = 10
 )
 
 // Enum value maps for Capability.
 var (
 	Capability_name = map[int32]string{
-		0: "CAPABILITY_UNSPECIFIED",
-		1: "CAPABILITY_FORWARD_LACP",
-		2: "CAPABILITY_FORWARD_EAPOL",
-		3: "CAPABILITY_FORWARD_LLDP",
-		4: "CAPABILITY_TPM",
-		5: "CAPABILITY_LOCAL_LIVE_IMAGE",
-		6: "CAPABILITY_NETBOOT",
-		7: "CAPABILITY_EDIT_DEVICE_DISK",
-		8: "CAPABILITY_QMP",
-		9: "CAPABILITY_TPM_PCR_BANKS",
+		0:  "CAPABILITY_UNSPECIFIED",
+		1:  "CAPABILITY_FORWARD_LACP",
+		2:  "CAPABILITY_FORWARD_EAPOL",
+		3:  "CAPABILITY_FORWARD_LLDP",
+		4:  "CAPABILITY_TPM",
+		5:  "CAPABILITY_LOCAL_LIVE_IMAGE",
+		6:  "CAPABILITY_NETBOOT",
+		7:  "CAPABILITY_EDIT_DEVICE_DISK",
+		8:  "CAPABILITY_QMP",
+		9:  "CAPABILITY_TPM_PCR_BANKS",
+		10: "CAPABILITY_SRIOV_NIC",
 	}
 	Capability_value = map[string]int32{
 		"CAPABILITY_UNSPECIFIED":      0,
@@ -198,6 +203,7 @@ var (
 		"CAPABILITY_EDIT_DEVICE_DISK": 7,
 		"CAPABILITY_QMP":              8,
 		"CAPABILITY_TPM_PCR_BANKS":    9,
+		"CAPABILITY_SRIOV_NIC":        10,
 	}
 )
 
@@ -868,6 +874,8 @@ type EVEInterface struct {
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	MacAddress    string                 `protobuf:"bytes,2,opt,name=mac_address,json=macAddress,proto3" json:"mac_address,omitempty"`
 	SdnMacAddress string                 `protobuf:"bytes,3,opt,name=sdn_mac_address,json=sdnMacAddress,proto3" json:"sdn_mac_address,omitempty"` // MAC address of the cross-connected peer on the SDN side
+	// If set, the interface is an SR-IOV capable NIC. Requires CAPABILITY_SRIOV_NIC.
+	Sriov         *SRIOVNic `protobuf:"bytes,4,opt,name=sriov,proto3" json:"sriov,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -923,6 +931,53 @@ func (x *EVEInterface) GetSdnMacAddress() string {
 	return ""
 }
 
+func (x *EVEInterface) GetSriov() *SRIOVNic {
+	if x != nil {
+		return x.Sriov
+	}
+	return nil
+}
+
+// SRIOVNic asks for an SR-IOV capable NIC, i.e. a physical function on which
+// EVE can create virtual functions. Setting the message is the request: it has
+// no options yet, but is a message so that options (e.g. the NIC model or the
+// number of virtual functions the NIC offers) can be added later.
+type SRIOVNic struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SRIOVNic) Reset() {
+	*x = SRIOVNic{}
+	mi := &file_common_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SRIOVNic) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SRIOVNic) ProtoMessage() {}
+
+func (x *SRIOVNic) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SRIOVNic.ProtoReflect.Descriptor instead.
+func (*SRIOVNic) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{7}
+}
+
 // Response containing captured console output from a device.
 type ConsoleOutputResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -933,7 +988,7 @@ type ConsoleOutputResponse struct {
 
 func (x *ConsoleOutputResponse) Reset() {
 	*x = ConsoleOutputResponse{}
-	mi := &file_common_proto_msgTypes[7]
+	mi := &file_common_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -945,7 +1000,7 @@ func (x *ConsoleOutputResponse) String() string {
 func (*ConsoleOutputResponse) ProtoMessage() {}
 
 func (x *ConsoleOutputResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[7]
+	mi := &file_common_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -958,7 +1013,7 @@ func (x *ConsoleOutputResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsoleOutputResponse.ProtoReflect.Descriptor instead.
 func (*ConsoleOutputResponse) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{7}
+	return file_common_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ConsoleOutputResponse) GetConsoleOutput() string {
@@ -982,7 +1037,7 @@ type ConsoleProperties struct {
 
 func (x *ConsoleProperties) Reset() {
 	*x = ConsoleProperties{}
-	mi := &file_common_proto_msgTypes[8]
+	mi := &file_common_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -994,7 +1049,7 @@ func (x *ConsoleProperties) String() string {
 func (*ConsoleProperties) ProtoMessage() {}
 
 func (x *ConsoleProperties) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[8]
+	mi := &file_common_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1007,7 +1062,7 @@ func (x *ConsoleProperties) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsoleProperties.ProtoReflect.Descriptor instead.
 func (*ConsoleProperties) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{8}
+	return file_common_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ConsoleProperties) GetEchoed() bool {
@@ -1038,7 +1093,7 @@ type IPRoute struct {
 
 func (x *IPRoute) Reset() {
 	*x = IPRoute{}
-	mi := &file_common_proto_msgTypes[9]
+	mi := &file_common_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1050,7 +1105,7 @@ func (x *IPRoute) String() string {
 func (*IPRoute) ProtoMessage() {}
 
 func (x *IPRoute) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[9]
+	mi := &file_common_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1063,7 +1118,7 @@ func (x *IPRoute) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IPRoute.ProtoReflect.Descriptor instead.
 func (*IPRoute) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{9}
+	return file_common_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *IPRoute) GetDstNetwork() string {
@@ -1124,12 +1179,15 @@ const file_common_proto_rawDesc = "" +
 	"\fip_addresses\x18\x02 \x03(\tR\vipAddresses\x12\x1f\n" +
 	"\vmac_address\x18\x03 \x01(\tR\n" +
 	"macAddress\x12\x0e\n" +
-	"\x02up\x18\x04 \x01(\bR\x02up\"k\n" +
+	"\x02up\x18\x04 \x01(\bR\x02up\"\x9f\x01\n" +
 	"\fEVEInterface\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1f\n" +
 	"\vmac_address\x18\x02 \x01(\tR\n" +
 	"macAddress\x12&\n" +
-	"\x0fsdn_mac_address\x18\x03 \x01(\tR\rsdnMacAddress\">\n" +
+	"\x0fsdn_mac_address\x18\x03 \x01(\tR\rsdnMacAddress\x122\n" +
+	"\x05sriov\x18\x04 \x01(\v2\x1c.org.lfedge.evetest.SRIOVNicR\x05sriov\"\n" +
+	"\n" +
+	"\bSRIOVNic\">\n" +
 	"\x15ConsoleOutputResponse\x12%\n" +
 	"\x0econsole_output\x18\x01 \x01(\tR\rconsoleOutput\"C\n" +
 	"\x11ConsoleProperties\x12\x16\n" +
@@ -1151,7 +1209,7 @@ const file_common_proto_rawDesc = "" +
 	"\n" +
 	"\x06HV_KVM\x10\x01\x12\n" +
 	"\n" +
-	"\x06HV_XEN\x10\x02*\xa0\x02\n" +
+	"\x06HV_XEN\x10\x02*\xba\x02\n" +
 	"\n" +
 	"Capability\x12\x1a\n" +
 	"\x16CAPABILITY_UNSPECIFIED\x10\x00\x12\x1b\n" +
@@ -1163,7 +1221,9 @@ const file_common_proto_rawDesc = "" +
 	"\x12CAPABILITY_NETBOOT\x10\x06\x12\x1f\n" +
 	"\x1bCAPABILITY_EDIT_DEVICE_DISK\x10\a\x12\x12\n" +
 	"\x0eCAPABILITY_QMP\x10\b\x12\x1c\n" +
-	"\x18CAPABILITY_TPM_PCR_BANKS\x10\t*\x8c\x01\n" +
+	"\x18CAPABILITY_TPM_PCR_BANKS\x10\t\x12\x18\n" +
+	"\x14CAPABILITY_SRIOV_NIC\x10\n" +
+	"*\x8c\x01\n" +
 	"\n" +
 	"TPMPCRBank\x12\x1c\n" +
 	"\x18TPM_PCR_BANK_UNSPECIFIED\x10\x00\x12\x15\n" +
@@ -1205,7 +1265,7 @@ func file_common_proto_rawDescGZIP() []byte {
 }
 
 var file_common_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_common_proto_goTypes = []any{
 	(ArchType)(0),                 // 0: org.lfedge.evetest.ArchType
 	(HypervisorType)(0),           // 1: org.lfedge.evetest.HypervisorType
@@ -1220,27 +1280,29 @@ var file_common_proto_goTypes = []any{
 	(*EVEDeviceStatus)(nil),       // 10: org.lfedge.evetest.EVEDeviceStatus
 	(*EVEInterfaceStatus)(nil),    // 11: org.lfedge.evetest.EVEInterfaceStatus
 	(*EVEInterface)(nil),          // 12: org.lfedge.evetest.EVEInterface
-	(*ConsoleOutputResponse)(nil), // 13: org.lfedge.evetest.ConsoleOutputResponse
-	(*ConsoleProperties)(nil),     // 14: org.lfedge.evetest.ConsoleProperties
-	(*IPRoute)(nil),               // 15: org.lfedge.evetest.IPRoute
-	(*timestamppb.Timestamp)(nil), // 16: google.protobuf.Timestamp
+	(*SRIOVNic)(nil),              // 13: org.lfedge.evetest.SRIOVNic
+	(*ConsoleOutputResponse)(nil), // 14: org.lfedge.evetest.ConsoleOutputResponse
+	(*ConsoleProperties)(nil),     // 15: org.lfedge.evetest.ConsoleProperties
+	(*IPRoute)(nil),               // 16: org.lfedge.evetest.IPRoute
+	(*timestamppb.Timestamp)(nil), // 17: google.protobuf.Timestamp
 }
 var file_common_proto_depIdxs = []int32{
 	1,  // 0: org.lfedge.evetest.ImageRef.hypervisor:type_name -> org.lfedge.evetest.HypervisorType
 	0,  // 1: org.lfedge.evetest.ImageRef.arch:type_name -> org.lfedge.evetest.ArchType
 	4,  // 2: org.lfedge.evetest.LogMessage.severity:type_name -> org.lfedge.evetest.LogSeverity
-	16, // 3: org.lfedge.evetest.LogMessage.timestamp:type_name -> google.protobuf.Timestamp
+	17, // 3: org.lfedge.evetest.LogMessage.timestamp:type_name -> google.protobuf.Timestamp
 	12, // 4: org.lfedge.evetest.EVEDevice.interfaces:type_name -> org.lfedge.evetest.EVEInterface
 	6,  // 5: org.lfedge.evetest.EVEDevice.image:type_name -> org.lfedge.evetest.ImageRef
 	3,  // 6: org.lfedge.evetest.EVEDevice.tpm_pcr_banks:type_name -> org.lfedge.evetest.TPMPCRBank
 	9,  // 7: org.lfedge.evetest.EVEDeviceStatus.spec:type_name -> org.lfedge.evetest.EVEDevice
 	5,  // 8: org.lfedge.evetest.EVEDeviceStatus.state:type_name -> org.lfedge.evetest.EVEDeviceState
 	11, // 9: org.lfedge.evetest.EVEDeviceStatus.interfaces:type_name -> org.lfedge.evetest.EVEInterfaceStatus
-	10, // [10:10] is the sub-list for method output_type
-	10, // [10:10] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	13, // 10: org.lfedge.evetest.EVEInterface.sriov:type_name -> org.lfedge.evetest.SRIOVNic
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }
@@ -1254,7 +1316,7 @@ func file_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      6,
-			NumMessages:   10,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
