@@ -1514,6 +1514,7 @@ func (b *broker) SetupDevices(
 				provider.NetworkInterfaceSpec{
 					Name:       eveIntf.GetName(),
 					MACAddress: eveIntfMAC,
+					SRIOV:      eveIntf.GetSriov() != nil,
 					Connection: provider.ConnectionSpec{
 						XConnect: &provider.XConnectSpec{
 							PeerDeviceName:    sdnProvDevName,

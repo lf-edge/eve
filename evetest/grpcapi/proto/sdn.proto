@@ -178,6 +178,16 @@ message Port {
 
   // Traffic control parameters applied to this port to emulate degraded network conditions.
   TrafficControl traffic_control = 6;
+
+  // EveSriov, if set, makes the interface on the EVE side an SR-IOV capable
+  // NIC, i.e. a physical function on which EVE can create virtual functions.
+  // A test using such a port is skipped unless the device provider advertises
+  // CAPABILITY_SRIOV_NIC.
+  // EVE loads the driver of such a NIC as a kernel module, i.e. later than
+  // the built-in driver of the other NICs, so among the ports of one EVE
+  // device the SR-IOV capable ones must be listed last for the interface
+  // names to follow the order of ports.
+  SRIOVNic eve_sriov = 7;
 }
 
 // TrafficControl allows control over traffic going through a port.

@@ -884,6 +884,7 @@ func (th *TestHarness) setupEVEDevices(
 					Name:          fmt.Sprintf("eth%d", i),
 					MacAddress:    port.EveMacAddress,
 					SdnMacAddress: port.SdnMacAddress,
+					Sriov:         port.EveSriov,
 				})
 			}
 		}
