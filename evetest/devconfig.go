@@ -553,6 +553,10 @@ type PhysicalIOConfig struct {
 	USBAddress    string
 	InterfaceName string
 	Serial        string
+	// VFCount is the number of SR-IOV virtual functions EVE creates on a
+	// physical function (Type PhyIoNetEthPF). EVE adds every one of them to
+	// the assignable adapters as <LogicalLabel>vf<index>, index starting at 0.
+	VFCount uint32
 }
 
 // toPhysicalIOProto returns the EVE protobuf PhysicalIO for this device.
@@ -574,6 +578,10 @@ func (config PhysicalIOConfig) toPhysicalIOProto() *eveconfig.PhysicalIO {
 	if assigngrp == "" {
 		assigngrp = config.LogicalLabel
 	}
+	var vfList *eveconfig.VfList
+	if config.VFCount != 0 {
+		vfList = &eveconfig.VfList{VfCount: config.VFCount}
+	}
 	return &eveconfig.PhysicalIO{
 		Ptype:           config.Type,
 		Logicallabel:    config.LogicalLabel,
@@ -582,6 +590,7 @@ func (config PhysicalIOConfig) toPhysicalIOProto() *eveconfig.PhysicalIO {
 		Phylabel:        config.PhysicalLabel,
 		Phyaddrs:        physAddrs,
 		Usage:           config.Usage,
+		Vflist:          vfList,
 	}
 }
 
@@ -1050,8 +1059,12 @@ func (config ApplicationInstanceConfig) toProto(th *TestHarness, devName string,
 			if adapter.InterfaceOrder != nil {
 				interfaceOrder = *adapter.InterfaceOrder
 			}
+			adapterType := adapter.Type
+			if adapterType == evecommon.PhyIoType_PhyIoNoop {
+				adapterType = evecommon.PhyIoType_PhyIoNetEth
+			}
 			appInstConfig.Adapters = append(appInstConfig.Adapters, &eveconfig.Adapter{
-				Type:           evecommon.PhyIoType_PhyIoNetEth,
+				Type:           adapterType,
 				Name:           adapter.LogicalLabel,
 				InterfaceOrder: interfaceOrder,
 			})
@@ -1492,7 +1505,10 @@ type AppNetworkAdapter interface {
 // DirectlyAssignedNetworkAdapter represents network adapter directly assigned
 // to an application (e.g. using PCI passthrough).
 type DirectlyAssignedNetworkAdapter struct {
-	LogicalLabel   string
+	LogicalLabel string
+	// Type defaults to PhyIoNetEth. Set PhyIoNetEthVF to assign an SR-IOV
+	// virtual function (see PhysicalIOConfig.VFCount).
+	Type           evecommon.PhyIoType
 	InterfaceOrder *uint32
 }
 
