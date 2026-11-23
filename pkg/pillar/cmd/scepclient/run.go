@@ -36,6 +36,17 @@ const (
 	// validity period has elapsed.
 	defaultRenewPeriod = uint8(50)
 
+	defaultKeyType       = eveconfig.KeyType_KEY_TYPE_RSA_2048
+	defaultHashAlgorithm = eveconfig.HashAlgorithm_HASH_ALGORITHM_SHA256
+
+	// Topic for SCEPClient netdumps of successful cert enrollments/renewals.
+	netDumpConfigOKTopic = agentName + "-ok"
+	// Topic for SCEPClient netdumps of failed cert enrollments/renewals.
+	netDumpConfigFailTopic = agentName + "-fail"
+)
+
+// Variables (not constants) so that unit tests can redirect them.
+var (
 	// Directory inside which enrolled certificates are persistently stored.
 	certDir = "/persist/pnac"
 
@@ -69,14 +80,6 @@ const (
 	// Therefore, storing the key in the encrypted vault provides a reasonable
 	// security trade-off without the complexity of TPM-backed PKCS#11 integration.
 	privateKeyDir = "/persist/vault/pnac"
-
-	defaultKeyType       = eveconfig.KeyType_KEY_TYPE_RSA_2048
-	defaultHashAlgorithm = eveconfig.HashAlgorithm_HASH_ALGORITHM_SHA256
-
-	// Topic for SCEPClient netdumps of successful cert enrollments/renewals.
-	netDumpConfigOKTopic = agentName + "-ok"
-	// Topic for SCEPClient netdumps of failed cert enrollments/renewals.
-	netDumpConfigFailTopic = agentName + "-fail"
 )
 
 // SCEPClient is a microservice responsible for enrolling and renewing
@@ -91,6 +94,8 @@ const (
 // The service continuously monitors the certificate’s validity period.
 // When the renewal window is reached, it begins attempting renewal and
 // continues retrying until the certificate is successfully renewed.
+// If the SCEP server does not support renewal, a replacement certificate
+// is enrolled with a new private key instead.
 type SCEPClient struct {
 	agentbase.AgentBase
 	ps     *pubsub.PubSub
@@ -246,6 +251,8 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject,
 		log.Fatal(err)
 	}
 	scepClient.log.Functionf("Vault is ready")
+	scepClient.removeStaleTmpFiles()
+	scepClient.recoverCertInstalls()
 
 	// Initialize the HTTP client used for communicating with the SCEP server,
 	// either directly or via the controller SCEP proxy.

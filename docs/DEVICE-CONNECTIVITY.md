@@ -758,8 +758,12 @@ Relevant [configuration properties](CONFIG-PROPERTIES.md):
 The enrolled certificate is stored on the device along with its private key (kept in the vault
 for protection). EVE monitors the certificate's validity and automatically initiates renewal
 when the configured percentage of the certificate's lifetime has elapsed
-(controlled by `RenewPeriodPercent` in the CSR profile). If the SCEP server or CSR profile
-configuration changes, EVE will re-enroll the certificate against the new parameters.
+(controlled by `RenewPeriodPercent` in the CSR profile). The renewal request is signed with
+the current certificate and reuses its private key. If the SCEP server does not advertise
+the `Renewal` capability (`GetCACaps`), EVE instead enrolls a replacement certificate with
+a new private key, keeping the current certificate in use until the new one is issued.
+If the SCEP server or CSR profile configuration changes, EVE will re-enroll the certificate
+against the new parameters.
 
 ### Status and metrics reporting
 
