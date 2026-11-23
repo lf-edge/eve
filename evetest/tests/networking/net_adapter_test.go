@@ -296,6 +296,16 @@ var (
 //     After every cycle the EVE memory usage reported in device metrics is
 //     logged. An unexpected reboot (e.g. after an agent was killed for running
 //     out of memory) fails the test.
+//  8. Certificate renewal: the SCEP server is reconfigured to issue certificates
+//     valid from 1 minute before until 4 minutes after issuance, and a new SCEP
+//     profile with RenewPeriodPercent=50 is enrolled. Then:
+//     a. With the SCEP server supporting renewal, EVE must replace the certificate
+//     before it expires, with the status staying AVAILABLE throughout.
+//     b. The SCEP server is reconfigured to not advertise the Renewal capability
+//     and to reject renewal requests. EVE must enroll a replacement certificate
+//     (with a new key) before the current one expires, again with the status
+//     staying AVAILABLE, and the port must authenticate with it.
+//     This phase adds about 7 minutes to the test.
 //
 // Test params
 // -----------
@@ -341,12 +351,19 @@ func TestPNAC(test *testing.T) {
 	// Build and apply the initial device configuration.
 	devConfig := evetest.NewEdgeDeviceConfig(devName)
 	cfgProps := pillartypes.NewConfigItemValueMap()
-	cfgProps.SetGlobalValueInt(pillartypes.SCEPRetryInterval, 10)
+	// The minimum allowed value. The same interval is used to check whether
+	// an enrolled certificate has entered its renewal window (phase 8).
+	cfgProps.SetGlobalValueInt(pillartypes.SCEPRetryInterval, 60)
 	// When PNAC is disabled in phase 7d, the first test of the new DPC can
 	// fail before the port has an IP from the pre-auth VLAN; nim then falls
 	// back to the previous DPC and retries the new one only after this
 	// interval (default 10 minutes, beyond reauthTimeout).
 	cfgProps.SetGlobalValueInt(pillartypes.NetworkTestBetterInterval, 60)
+	// The same can happen when the SCEP profile of the port is replaced (phases
+	// 2 and 8): the port loses authentication with the old certificate, and the new
+	// DPC may be tested before DHCP moves the port to the pre-auth VLAN. A failed
+	// DPC is not retested sooner than this interval (default 5 minutes).
+	cfgProps.SetGlobalValueInt(pillartypes.NetworkTestFailInterval, pillartypes.MinuteInSec)
 	devConfig.SetConfigProperties(cfgProps)
 	dhcpNet := devConfig.AddNetwork(
 		evetest.DHCPNetworkConfig{
@@ -596,22 +613,30 @@ func TestPNAC(test *testing.T) {
 	preAuthVLANSubnet := evetest.IPSubnet("172.20.10.0/24")
 	reauthTimeout := 5 * time.Minute
 	var reauthGeneration uint32
-	// authenticatorModel returns the network model with the authenticator
-	// trusting the given CA; every call also re-initializes the port.
-	authenticatorModel := func(caCertPEM, caKeyPEM string) *api.NetworkModel {
-		reauthGeneration++
+	// SCEP server settings changed in phase 8.
+	var scepCertValidity, scepCertBackdate time.Duration
+	var scepRenewalDisabled bool
+	// pnacModel returns the network model with the authenticator trusting
+	// the given CA and the SCEP server configured as set above.
+	pnacModel := func(caCertPEM, caKeyPEM string) *api.NetworkModel {
 		model := netmodels.SingleEthWithPNAC(requireSCEPProxy)
 		pnac := model.Bridges[0].Pnac
 		pnac.CaCertPem = caCertPEM
 		pnac.CaKeyPem = caKeyPEM
 		pnac.ReauthGeneration = reauthGeneration
+		scepSrv := model.Endpoints.ScepServers[0]
+		scepSrv.CertValiditySeconds = uint32(scepCertValidity.Seconds())
+		scepSrv.CertBackdateSeconds = uint32(scepCertBackdate.Seconds())
+		scepSrv.DisableRenewal = scepRenewalDisabled
 		return model
 	}
-	defer func() {
-		if reauthCycles > 0 {
-			evetest.UpdateNetworkModel(netmodels.SingleEthWithPNAC(requireSCEPProxy))
-		}
-	}()
+	// authenticatorModel is like pnacModel, but every call also
+	// re-initializes the port.
+	authenticatorModel := func(caCertPEM, caKeyPEM string) *api.NetworkModel {
+		reauthGeneration++
+		return pnacModel(caCertPEM, caKeyPEM)
+	}
+	defer evetest.UpdateNetworkModel(netmodels.SingleEthWithPNAC(requireSCEPProxy))
 	keyTypes := []eveconfig.KeyType{
 		eveconfig.KeyType_KEY_TYPE_RSA_2048,
 		eveconfig.KeyType_KEY_TYPE_RSA_3072,
@@ -711,6 +736,76 @@ func TestPNAC(test *testing.T) {
 				memory.GetUsedEveMB(), memory.GetAllocatedEveMB())
 		}
 	}
+
+	// Certificate renewal: enroll a short-lived certificate and wait for EVE
+	// to replace it before it expires, first with a SCEP server that supports
+	// renewal, then with one that does not.
+	// Certificates are valid from 1 minute before until 4 minutes after
+	// issuance. With RenewPeriodPercent=50, EVE starts renewing 1.5 minutes
+	// after issuance and has 2.5 minutes to finish (renewal is checked every
+	// minute, see scep.retry.interval).
+	scepCertValidity = 4 * time.Minute
+	scepCertBackdate = time.Minute
+	renewalTimeout := scepCertValidity + time.Minute
+	evetest.UpdateNetworkModel(pnacModel(
+		netmodels.PnacRootCACertPEM, netmodels.PnacRootCAKeyPEM))
+	profile := newSCEPProfile(netmodels.PnacRootCACertPEM)
+	profile.Name = "scep-renewal"
+	profile.CSR.RenewPeriodPercent = 50
+	devConfig.DeleteSCEPProfile(scepProfileName)
+	devConfig.AddSCEPProfile(profile)
+	adapterConfig.PNAC.CertEnrollmentProfileName = profile.Name
+	devConfig.UpdateNetworkAdapter(adapterConfig)
+	enrollAfter := time.Now()
+	device.ApplyConfig(devConfig, false, false)
+	t.Eventually(devUpdates, reauthTimeout).Should(Receive(matchers.SatisfyPredicate(
+		"short-lived certificate enrolled",
+		func(info *eveinfo.ZInfoDevice) bool {
+			certs := info.GetEnrolledCerts()
+			if len(certs) != 1 {
+				return false
+			}
+			cert = certs[0]
+			return cert.GetCertEnrollmentProfileName() == profile.Name &&
+				cert.GetStatus() == eveinfo.CertStatus_CERT_STATUS_AVAILABLE
+		})))
+	validity := cert.GetExpirationTimestamp().AsTime().Sub(
+		cert.GetIssueTimestamp().AsTime())
+	t.Expect(validity).To(BeNumerically("~",
+		scepCertValidity+scepCertBackdate, 10*time.Second))
+	pnacStatus = waitForPNACAuthenticated(t, devUpdates, "ethernet0",
+		enrollAfter, authVLANSubnet, reauthTimeout,
+		"port authenticated with the short-lived certificate")
+	evetest.Checkpoint("short-lived-cert-enrolled")
+
+	// a. The SCEP server supports renewal.
+	cert = waitForCertRenewal(t, devUpdates, cert, time.Time{}, renewalTimeout)
+	evetest.Checkpoint("cert-renewed")
+
+	// b. The SCEP server no longer advertises the Renewal capability and rejects
+	// renewal requests: EVE must enroll a replacement certificate (with a new
+	// key) instead. The server is reconfigured right after the previous renewal,
+	// so that it does not restart in the middle of the next one.
+	scepRenewalDisabled = true
+	evetest.UpdateNetworkModel(pnacModel(
+		netmodels.PnacRootCACertPEM, netmodels.PnacRootCAKeyPEM))
+	renewalDisabledAt := time.Now()
+	evetest.Checkpoint("scep-renewal-disabled")
+	cert = waitForCertRenewal(t, devUpdates, cert,
+		renewalDisabledAt.Add(-scepCertBackdate), renewalTimeout)
+	evetest.Checkpoint("cert-reenrolled")
+
+	// The port must authenticate with the re-enrolled certificate and new key.
+	lastAuth := getPNACStatus("ethernet0", device.GetDeviceInfo()).
+		GetLastAuthTimestamp().AsTime()
+	evetest.UpdateNetworkModel(authenticatorModel(
+		netmodels.PnacRootCACertPEM, netmodels.PnacRootCAKeyPEM))
+	waitForPNACAuthenticated(t, devUpdates, "ethernet0",
+		lastAuth, authVLANSubnet, reauthTimeout,
+		"port authenticated with the re-enrolled certificate")
+	_, stderr, err = device.RunShellScript(command, 0, 30*time.Second)
+	t.Expect(err).ToNot(HaveOccurred(), "curl failed: %s", stderr)
+	evetest.Checkpoint("port-authenticated-with-reenrolled-cert")
 }
 
 // waitForPNACAuthenticated waits until the port with the given logical label
@@ -738,6 +833,50 @@ func waitForPNACAuthenticated(t Gomega, updates <-chan *eveinfo.ZInfoDevice,
 			return true
 		})))
 	return result
+}
+
+// waitForCertRenewal waits until the single enrolled certificate is replaced
+// by a certificate with a different fingerprint, valid from notBefore or later
+// and issued before the certificate it replaces expired. Certificates valid
+// from before notBefore are accepted as intermediate renewals. It fails
+// immediately if the certificate status leaves AVAILABLE (e.g. renewal failed
+// or the certificate expired). It returns the renewed certificate.
+func waitForCertRenewal(t Gomega, updates <-chan *eveinfo.ZInfoDevice,
+	current *eveinfo.CertInfo, notBefore time.Time,
+	timeout time.Duration) *eveinfo.CertInfo {
+	var renewed *eveinfo.CertInfo
+	t.Eventually(updates, timeout).Should(Receive(matchers.SatisfyPredicate(
+		fmt.Sprintf("certificate %s renewed before it expires",
+			current.GetSha256Fingerprint()),
+		func(info *eveinfo.ZInfoDevice) bool {
+			certs := info.GetEnrolledCerts()
+			if len(certs) != 1 ||
+				certs[0].GetSha256Fingerprint() == current.GetSha256Fingerprint() {
+				return false
+			}
+			if certs[0].GetIssueTimestamp().AsTime().Before(notBefore) {
+				current = certs[0]
+				return false
+			}
+			renewed = certs[0]
+			return true
+		}).StopIf(func(info *eveinfo.ZInfoDevice) (string, bool) {
+		for _, cert := range info.GetEnrolledCerts() {
+			if cert.GetStatus() != eveinfo.CertStatus_CERT_STATUS_AVAILABLE {
+				return fmt.Sprintf("certificate status is %v (error: %v)",
+					cert.GetStatus(), cert.GetErr()), true
+			}
+		}
+		return "", false
+	})))
+	t.Expect(renewed.GetCertEnrollmentProfileName()).To(
+		Equal(current.GetCertEnrollmentProfileName()))
+	t.Expect(renewed.GetErr()).To(BeNil())
+	expiresAt := current.GetExpirationTimestamp().AsTime()
+	t.Expect(renewed.GetIssueTimestamp().AsTime().Before(expiresAt)).To(BeTrue(),
+		"certificate was renewed only after the previous one expired")
+	t.Expect(renewed.GetExpirationTimestamp().AsTime().After(expiresAt)).To(BeTrue())
+	return renewed
 }
 
 // getPNACStatus returns the PNAC (802.1X) status for the port with the given

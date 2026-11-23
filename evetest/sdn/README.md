@@ -228,8 +228,11 @@ Available endpoint types:
 
 - **SCEP server** -- [micromdm/scep](https://github.com/micromdm/scep) server for
   Simple Certificate Enrollment Protocol. Used together with PNAC bridges for
-  certificate-based 802.1X device onboarding. Configurable CA certificate and optional
-  challenge password.
+  certificate-based 802.1X device onboarding. Configurable CA certificate, optional
+  challenge password, validity (and backdating) of issued certificates and whether
+  certificate renewal is supported. The server is built with a small patch
+  (`vm/patches/micromdm-scep.patch`) that adds the last two options, so that certificate
+  renewal can be tested within minutes.
 
 ### Firewall
 

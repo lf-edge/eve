@@ -1,0 +1,178 @@
+diff --git a/cmd/scepserver/scepserver.go b/cmd/scepserver/scepserver.go
+index 97c0170..1ad9338 100644
+--- a/cmd/scepserver/scepserver.go
++++ b/cmd/scepserver/scepserver.go
+@@ -13,6 +13,7 @@ import (
+ 	"path/filepath"
+ 	"strconv"
+ 	"syscall"
++	"time"
+ 
+ 	"github.com/micromdm/scep/v2/csrverifier"
+ 	executablecsrverifier "github.com/micromdm/scep/v2/csrverifier/executable"
+@@ -47,13 +48,15 @@ func main() {
+ 		flPort              = flag.String("port", envString("SCEP_HTTP_LISTEN_PORT", "8080"), "http port to listen on (if you want to specify an address, use -http-addr instead)")
+ 		flDepotPath         = flag.String("depot", envString("SCEP_FILE_DEPOT", "depot"), "path to ca folder")
+ 		flCAPass            = flag.String("capass", envString("SCEP_CA_PASS", ""), "passwd for the ca.key")
+-		flClDuration        = flag.String("crtvalid", envString("SCEP_CERT_VALID", "365"), "validity for new client certificates in days")
++		flClDuration        = flag.String("crtvalid", envString("SCEP_CERT_VALID", "365"), "validity for new client certificates in days, or as a duration (e.g. 5m)")
+ 		flClAllowRenewal    = flag.String("allowrenew", envString("SCEP_CERT_RENEW", "14"), "do not allow renewal until n days before expiry, set to 0 to always allow")
+ 		flChallengePassword = flag.String("challenge", envString("SCEP_CHALLENGE_PASSWORD", ""), "enforce a challenge password")
+ 		flCSRVerifierExec   = flag.String("csrverifierexec", envString("SCEP_CSR_VERIFIER_EXEC", ""), "will be passed the CSRs for verification")
+ 		flDebug             = flag.Bool("debug", envBool("SCEP_LOG_DEBUG"), "enable debug logging")
+ 		flLogJSON           = flag.Bool("log-json", envBool("SCEP_LOG_JSON"), "output JSON logs")
+ 		flSignServerAttrs   = flag.Bool("sign-server-attrs", envBool("SCEP_SIGN_SERVER_ATTRS"), "sign cert attrs for server usage")
++		flClBackdate        = flag.Duration("crtbackdate", 10*time.Minute, "how far into the past the validity of new client certificates starts")
++		flNoRenewal         = flag.Bool("norenewal", envBool("SCEP_NO_RENEWAL"), "do not advertise the Renewal capability and reject renewal requests")
+ 	)
+ 	flag.Usage = func() {
+ 		flag.PrintDefaults()
+@@ -113,9 +116,11 @@ func main() {
+ 		lginfo.Log("err", err, "msg", "No valid number for allowed renewal time")
+ 		os.Exit(1)
+ 	}
+-	clientValidity, err := strconv.Atoi(*flClDuration)
+-	if err != nil {
+-		lginfo.Log("err", err, "msg", "No valid number for client cert validity")
++	var clientValidity time.Duration
++	if days, err := strconv.Atoi(*flClDuration); err == nil {
++		clientValidity = time.Duration(days) * 24 * time.Hour
++	} else if clientValidity, err = time.ParseDuration(*flClDuration); err != nil {
++		lginfo.Log("err", err, "msg", "No valid number of days or duration for client cert validity")
+ 		os.Exit(1)
+ 	}
+ 	var csrVerifier csrverifier.CSRVerifier
+@@ -141,7 +146,8 @@ func main() {
+ 		}
+ 		signerOpts := []scepdepot.Option{
+ 			scepdepot.WithAllowRenewalDays(allowRenewal),
+-			scepdepot.WithValidityDays(clientValidity),
++			scepdepot.WithValidity(clientValidity),
++			scepdepot.WithBackdate(*flClBackdate),
+ 			scepdepot.WithCAPass(*flCAPass),
+ 		}
+ 		if *flSignServerAttrs {
+@@ -154,7 +160,11 @@ func main() {
+ 		if csrVerifier != nil {
+ 			signer = csrverifier.Middleware(csrVerifier, signer)
+ 		}
+-		svc, err = scepserver.NewService(crts[0], key, signer, scepserver.WithLogger(logger))
++		svcOpts := []scepserver.ServiceOption{scepserver.WithLogger(logger)}
++		if *flNoRenewal {
++			svcOpts = append(svcOpts, scepserver.WithoutRenewal())
++		}
++		svc, err = scepserver.NewService(crts[0], key, signer, svcOpts...)
+ 		if err != nil {
+ 			lginfo.Log("err", err)
+ 			os.Exit(1)
+diff --git a/depot/signer.go b/depot/signer.go
+index cba19da..5296f2c 100644
+--- a/depot/signer.go
++++ b/depot/signer.go
+@@ -14,7 +14,8 @@ type Signer struct {
+ 	depot            Depot
+ 	caPass           string
+ 	allowRenewalDays int
+-	validityDays     int
++	validity         time.Duration
++	backdate         time.Duration
+ 	serverAttrs      bool
+ 	signatureAlgo    x509.SignatureAlgorithm
+ }
+@@ -27,7 +28,8 @@ func NewSigner(depot Depot, opts ...Option) *Signer {
+ 	s := &Signer{
+ 		depot:            depot,
+ 		allowRenewalDays: 14,
+-		validityDays:     365,
++		validity:         365 * 24 * time.Hour,
++		backdate:         10 * time.Minute,
+ 		signatureAlgo:    0,
+ 	}
+ 	for _, opt := range opts {
+@@ -62,7 +64,22 @@ func WithAllowRenewalDays(r int) Option {
+ // WithValidityDays sets the validity period new certs will use
+ func WithValidityDays(v int) Option {
+ 	return func(s *Signer) {
+-		s.validityDays = v
++		s.validity = time.Duration(v) * 24 * time.Hour
++	}
++}
++
++// WithBackdate sets how far into the past the validity period of new certs
++// starts (to tolerate clock skew between the server and clients).
++func WithBackdate(d time.Duration) Option {
++	return func(s *Signer) {
++		s.backdate = d
++	}
++}
++
++// WithValidity sets the validity period new certs will use
++func WithValidity(d time.Duration) Option {
++	return func(s *Signer) {
++		s.validity = d
+ 	}
+ }
+ 
+@@ -93,8 +110,8 @@ func (s *Signer) SignCSR(m *scep.CSRReqMessage) (*x509.Certificate, error) {
+ 	tmpl := &x509.Certificate{
+ 		SerialNumber: serial,
+ 		Subject:      m.CSR.Subject,
+-		NotBefore:    time.Now().Add(time.Second * -600).UTC(),
+-		NotAfter:     time.Now().AddDate(0, 0, s.validityDays).UTC(),
++		NotBefore:    time.Now().Add(-s.backdate).UTC(),
++		NotAfter:     time.Now().Add(s.validity).UTC(),
+ 		SubjectKeyId: id,
+ 		KeyUsage:     x509.KeyUsageDigitalSignature,
+ 		ExtKeyUsage: []x509.ExtKeyUsage{
+diff --git a/server/service.go b/server/service.go
+index e0bfcef..aedb340 100644
+--- a/server/service.go
++++ b/server/service.go
+@@ -48,12 +48,19 @@ type service struct {
+ 	// issuance, RA proxying, etc.
+ 	signer CSRSignerContext
+ 
++	// If true, the Renewal capability is not advertised and RenewalReq
++	// messages are rejected.
++	noRenewal bool
++
+ 	/// info logging is implemented in the service middleware layer.
+ 	debugLogger log.Logger
+ }
+ 
+ func (svc *service) GetCACaps(ctx context.Context) ([]byte, error) {
+ 	defaultCaps := []byte("Renewal\nSHA-1\nSHA-256\nAES\nDES3\nSCEPStandard\nPOSTPKIOperation")
++	if svc.noRenewal {
++		defaultCaps = []byte("SHA-1\nSHA-256\nAES\nDES3\nSCEPStandard\nPOSTPKIOperation")
++	}
+ 	return defaultCaps, nil
+ }
+ 
+@@ -79,6 +86,12 @@ func (svc *service) PKIOperation(ctx context.Context, data []byte) ([]byte, erro
+ 		return nil, err
+ 	}
+ 
++	if svc.noRenewal && msg.MessageType == scep.RenewalReq {
++		svc.debugLogger.Log("msg", "rejecting RenewalReq, renewal is disabled")
++		certRep, err := msg.Fail(svc.crt, svc.key, scep.BadRequest)
++		return certRep.Raw, err
++	}
++
+ 	crt, err := svc.signer.SignCSRContext(ctx, msg.CSRReqMessage)
+ 	if err == nil && crt == nil {
+ 		err = errors.New("no signed certificate")
+@@ -109,6 +122,14 @@ func WithLogger(logger log.Logger) ServiceOption {
+ 	}
+ }
+ 
++// WithoutRenewal disables support for certificate renewal (RenewalReq).
++func WithoutRenewal() ServiceOption {
++	return func(s *service) error {
++		s.noRenewal = true
++		return nil
++	}
++}
++
+ // WithAddlCA appends an additional certificate to the slice of CA certs
+ func WithAddlCA(ca *x509.Certificate) ServiceOption {
+ 	return func(s *service) error {
