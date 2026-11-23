@@ -2,6 +2,224 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-23 -- 0.0.0-16.0-stable-f3142331 (run #43)](https://github.com/lf-edge/eve/actions/runs/45103341150)
+
+[Full report](https://lf-edge.github.io/eve/test/16.0-stable/runs/43/)
+
+### TestAppNICsSuite: failure analysis
+
+#### TestNetworkAdapterPassthrough
+
+##### Failure
+
+```
+timed out after 5m0.000188989s (excluding download) waiting for app "9cbac602-6303-451f-ac7e-d957282c9ad7" (passthrough-app) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live inspection shows the test actually succeeded shortly after the harness gave up: `evetest eve app-info` now reports `passthrough-app` in state `RUNNING`, and the on-device `VolumeStatus` JSON shows the volume's `CreateTime` was `2026-11-23T03:16:13` — about 53 seconds **after** the 5-minute `WaitUntilAppIsRunning` deadline (which fired at 03:15:20, with the volume having been requested back at ~03:10:06-03:10:10). So this is not a stuck/deadlocked volume worker (there was real recent concern about that class of bug — see commit `ae49853d7` "volumemgr,baseosmgr: don't drop work refused by a full pool" — but that fix is already present on this branch and the worker did complete, just slowly) — it's a plain timing near-miss.
+
+The device is under heavy resource contention: `uptime`/`vmstat` show load average ~5.2-6.0 against `nproc`=1 visible core, with 42-45% iowait, and I caught the qemu-system-x86_64 process for this very app only spawning at 03:16 (after the test had already timed out and paused). This matches the environment-driven "slow volume/content-tree creation narrowly misses the test timeout" pattern already logged in the ledger for 2026-11-22's `TestUpgradeSuite/TestEVEUpgradeKVMtoKVMWithOCIDatastore` (there it was content-tree unpack taking ~7m29s against a 10m budget with the app reaching RUNNING just 17s after timeout; here it's volume creation taking ~6m against a 5m budget, finishing ~53s late). Both runs show the same signature of CPU/I/O-starved infrastructure causing legitimate-but-slow EVE operations to blow past test timeouts, rather than any product defect. I found no earlier ledger entry specifically for `TestAppNICsSuite`/`TestNetworkAdapterPassthrough`, so this specific test hasn't failed this way before, but it shares the same underlying root cause (host-level resource contention) as the prior day's `TestUpgradeSuite` flake.
+
+### TestControllerFaultsSuite: failure analysis
+
+#### TestInfoRetriedAfterServerError
+
+##### Failure
+
+```
+timed out after 5m0.007577586s (excluding download) waiting for app "06ac57a8-349a-4807-bf55-f8bdb540fda3" (reported-app) on device "edge-dev" to reach RUNNING state (last state: INSTALLED)
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+The test failed in Phase 1 — a plain deploy-and-wait with no controller fault armed yet — because `zedrouter` went completely silent for ~3m36s on this freshly-booted device. Logs show `zedrouter` producing routine activity every few seconds up to `03:12:26.648` (right after it created the pending `AppNetworkStatus` for `reported-app`, `PendingAdd:true`), then **zero** log lines of any kind from `zedrouter` until `03:16:02` — no periodic ticks, no error, no warning, no external command invocation (`Calling command iptables…` only starts at `03:16:13`). Meanwhile `domainmgr` kept its own 5s metrics-collection cadence running throughout that same window, so this wasn't a VM-wide freeze (no kernel soft-lockup/RCU-stall messages either) — it was `zedrouter`'s own goroutine/event loop that stalled. Once it woke up at `03:16:02`, it rapidly ran the NI reconciler, applied the bridge/iptables/DHCP config, which let `zedmanager` finally call `MaybeAddDomainConfig`/`doActivate` at `03:16:16`, and the domain booted to RUNNING by `03:16:31` — about 3 minutes after the test's 5-minute `WaitUntilAppIsRunning` had already timed out (`03:15:13`), with the app stuck reporting `INSTALLED` the whole time. The live device now shows the app at `RUNNING` (`bootTime 03:16:21`), confirming it was a timing/deadline miss rather than a hung or broken app.
+
+This is unrelated to the controller-fault logic the test actually exercises (that only arms in Phase 2, well after this failure point), so it does not share a root cause with the controller-fault-injection mechanism itself; it also doesn't match the earlier ledger entry about slow OCI-image unpacking (that was a disk-I/O/iowait bottleneck in `volumemgr`, whereas here the volume/image steps finished quickly and the stall was entirely inside `zedrouter`). I checked `live-ledger.md` and found no prior entry for `TestControllerFaultsSuite`/`TestInfoRetriedAfterServerError`, so this is a new, not-previously-recorded issue, not a known recurring flake. I can't pin down *why* `zedrouter` stalled (no error/lock/command evidence survives in the logs) — only that it did, during early-boot CPU/scheduling contention on this VM.
+
+### TestDeviceConnectivitySuite: failure analysis
+
+#### TestIntermittentConnectivity
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to setup SDN device: device "sdn-6b66f6e9" already exists
+```
+
+##### Claude's conclusion
+
+This confirms no SDN client is currently set up (setup failed before devices were created), consistent with `evetest status` showing "No EVE devices found."
+
+**Root cause:** This is a broker/Proxmox provisioner bug, not a product or test-logic issue. Comparing teardown cycles in `gotest.json`: after `TestPortFailover` (03:29:18) and `TestDHCPIPv4Only`'s successor (03:21:57), teardown logged removal of *both* `Removed Proxmox VM 106 for device "eve-...-edge-dev"` and `Removed Proxmox VM 107 for device "sdn-6b66f6e9"`. But after `TestNetworkConfigFallback` (teardown started 03:41:40), only the eve-device VM 106 removal was logged — the SDN VM 107 removal message never appeared, silently leaving the Proxmox VM `sdn-6b66f6e9` registered. When `TestIntermittentConnectivity`'s setup then tried to provision a fresh SDN device under the same deterministic name (`sdn-<client_id>`), it hit `device "sdn-6b66f6e9" already exists` at 03:44:38, failing setup. This does not share a root cause with any other failure in this run (the suite's earlier tests passed), and there is no prior entry in `live-ledger.md` for this suite/failure signature, so this is a newly-observed issue, not a known recurring one.
+#### TestMgmtTrafficRoutedViaApp
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to setup SDN device: device "sdn-6b66f6e9" already exists
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+This is the **same root cause as the already-investigated `TestIntermittentConnectivity` failure** in this run, now cascading forward to a second test. The smoking gun is in `gotest.json`: at 03:42:47 during `TestIntermittentConnectivity`'s failed-setup teardown, the broker logged `Attempt 1/3: failed to destroy device "sdn-6b66f6e9" (will retry): failed to remove VM 107 for device "sdn-6b66f6e9": failed waiting for VM 107 deletion: context deadline exceeded` — the Proxmox SDN VM 107 never actually got removed despite the broker reporting "Removed Proxmox VM 107" messages look like they succeed elsewhere. Since every test in this suite reuses the same deterministic device ID (`6b66f6e9`), each subsequent test's setup tries to re-provision an SDN device named `sdn-6b66f6e9`, hits the same stuck/orphaned Proxmox VM 107, and fails identically: `TestMgmtTrafficRoutedViaApp` failed at 03:46:18 with the exact same `device "sdn-6b66f6e9" already exists` error, and its own failed-setup teardown again only removed VM 106 (the eve-device) — not VM 107 — perpetuating the orphan for the next test. `evetest status` currently shows "No EVE devices found," consistent with setup failing before device registration.
+
+This is not in `live-ledger.md` under either prior nightly entry (2026-11-21 run #33 or 2026-11-22 run #38), so it is not a previously known/recurring issue by that record — it's a new-this-run Proxmox provisioner bug (VM deletion timing out and leaving a stale VM registered under a name the harness can't reuse) that is now failing every subsequent test in the suite until the orphaned VM 107 is cleaned up.
+#### TestDeviceIPv6Connectivity
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to setup SDN device: device "sdn-6b66f6e9" already exists
+```
+
+##### Claude's conclusion
+
+This is the exact same cascading failure already diagnosed in this run: this test's teardown (lines 561-564) again only logged removal of Proxmox VM 106 (the eve-device) and never logged a "Removed Proxmox VM 107" / SDN-VM-deletion message, leaving the orphaned SDN VM registered under the deterministic name `sdn-6b66f6e9`. `evetest status` confirms "No EVE devices found" — setup is failing before any device is created, consistent with the stuck orphan. This is the identical failure signature (`device "sdn-6b66f6e9" already exists`) already investigated for both `TestIntermittentConnectivity` and `TestMgmtTrafficRoutedViaApp` earlier in this same run, which traced it to a Proxmox VM 107 deletion that timed out (`context deadline exceeded`) during `TestIntermittentConnectivity`'s failed teardown — so this is a third consecutive test failing from that same stuck/orphaned Proxmox SDN VM, not a new bug. Per `live-ledger.md`, this exact failure signature does not appear in the 2026-11-21 or 2026-11-22 nightly entries, so it's not a previously known/recurring issue — it's new to this run (2026-11-23) and will keep cascading to every remaining test in the suite until the orphaned VM 107 is manually cleaned up out-of-band.
+#### TestDeviceNTPConfig
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to setup SDN device: device "sdn-6b66f6e9" already exists
+```
+
+##### Claude's conclusion
+
+This is the identical cascading failure already diagnosed three times earlier in this same run (`TestIntermittentConnectivity`, `TestMgmtTrafficRoutedViaApp`, `TestDeviceIPv6Connectivity`): setup for this 4th consecutive test again hit `device "sdn-6b66f6e9" already exists`, and the live `gotest.json` shows the identical pattern — teardown at 03:48:08 only logs `Removed Proxmox VM 110 for device "eve-6b66f6e9-edge-dev"` (the EVE device), with no corresponding "Removed Proxmox VM ... sdn-6b66f6e9" message, so the orphaned SDN VM (originally stuck mid-deletion with `context deadline exceeded` back during `TestIntermittentConnectivity`'s teardown) remains registered and keeps blocking every subsequent test that tries to reprovision under the same deterministic `client_id` (`6b66f6e9`). `evetest status` confirms "No EVE devices found," matching the pattern of setup failing before any device registration. This is not a new bug — it's the same Proxmox SDN-VM-deletion-timeout orphan already identified earlier in this run, and per `live-ledger.md` it has no prior occurrence in the 2026-11-21 or 2026-11-22 nightly entries, so it remains new to this run rather than a previously known recurring issue (though it will keep cascading to every remaining test in this suite until the orphaned VM is cleaned up out-of-band).
+#### TestActiveBackupBond
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to setup SDN device: device "sdn-6b66f6e9" already exists
+```
+
+##### Claude's conclusion
+
+This confirms the same pattern exactly as the prior failures in this run — teardown only removed Proxmox VM 110 (the eve-device), with no corresponding "Removed Proxmox VM ... sdn-6b66f6e9" line, leaving the orphaned SDN VM 107 registered under the deterministic name.
+
+**Root cause:** This is the identical cascading failure already diagnosed four times earlier in this same run (`TestIntermittentConnectivity`, `TestMgmtTrafficRoutedViaApp`, `TestDeviceIPv6Connectivity`, `TestDeviceNTPConfig`). `gotest.json` at 03:49:18-19 shows `TestActiveBackupBond`'s setup hitting `device "sdn-6b66f6e9" already exists`, and its own failed-setup teardown again logs only `Removed Proxmox VM 110 for device "eve-6b66f6e9-edge-dev"` — no "Removed Proxmox VM ... sdn-6b66f6e9" message — perpetuating the orphaned SDN VM 107 that originated from the `context deadline exceeded` VM-deletion timeout during `TestIntermittentConnectivity`'s teardown. `evetest status` confirms "No EVE devices found," consistent with setup failing before registration. This is the fifth consecutive test in this run to fail from the same stuck/orphaned Proxmox SDN VM, not a distinct bug. Per `live-ledger.md`, this signature doesn't appear in the 2026-11-21 or 2026-11-22 entries, so it remains new to this run (2026-11-23), not a previously known recurring issue — but it will keep cascading until the orphaned VM is cleaned up out-of-band.
+#### TestLACPBond
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to setup SDN device: device "sdn-6b66f6e9" already exists
+```
+
+##### Claude's conclusion
+
+This is the sixth consecutive test in this run (`TestIntermittentConnectivity`, `TestMgmtTrafficRoutedViaApp`, `TestDeviceIPv6Connectivity`, `TestDeviceNTPConfig`, `TestActiveBackupBond`, now `TestLACPBond`) to hit the identical `device "sdn-6b66f6e9" already exists` error, confirmed by the same `evetest status` → "No EVE devices found" pattern (setup failing before device creation).
+
+**Root cause:** This shares the exact same root cause already diagnosed earlier in this run — the orphaned Proxmox SDN VM 107 (`sdn-6b66f6e9`) that was left registered when its deletion timed out (`context deadline exceeded`) during `TestIntermittentConnectivity`'s failed-setup teardown back at 03:42:47. Because every test in this suite reuses the same deterministic `client_id` (`6b66f6e9`), each subsequent test's setup tries to re-provision an SDN device under that same name and fails identically against the stuck VM, perpetuating the orphan (each failed-setup teardown only removes the eve-device VM, never the stuck SDN VM). This is not a distinct bug — it's the same cascading failure that has now claimed six tests in this run. Per `live-ledger.md`, this signature doesn't appear in the 2026-11-21 or 2026-11-22 entries, so it remains new to this run (2026-11-23) rather than a previously known recurring issue, but it will keep cascading to every remaining test in the suite until the orphaned Proxmox VM 107 is cleaned up out-of-band.
+#### TestVLANSubinterfaces
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to setup SDN device: device "sdn-6b66f6e9" already exists
+```
+
+##### Claude's conclusion
+
+This is the identical, now seventh-consecutive failure of the exact same signature in this run: `device "sdn-6b66f6e9" already exists`, confirmed live by `evetest status` showing "No EVE devices found" (setup failing before any device registration), matching the pattern of every prior failure recorded in `live-investigation.md` for this run (`TestIntermittentConnectivity`, `TestMgmtTrafficRoutedViaApp`, `TestDeviceIPv6Connectivity`, `TestDeviceNTPConfig`, `TestActiveBackupBond`, `TestLACPBond`, now `TestVLANSubinterfaces`).
+
+**Root cause:** This shares the exact same root cause already diagnosed earlier in this run — the orphaned Proxmox SDN VM 107 (`sdn-6b66f6e9`) left registered after its deletion timed out (`context deadline exceeded`) during `TestIntermittentConnectivity`'s failed-setup teardown. Because every test in this suite reuses the same deterministic `client_id` (`6b66f6e9`), each subsequent test's setup attempts to re-provision an SDN device under that same name and immediately collides with the stuck VM; each failed-setup teardown only removes the eve-device VM, never the orphaned SDN VM, so the cascade perpetuates itself. This is not a new or distinct bug — it's the same cascading Proxmox provisioner failure that has now claimed seven consecutive tests in this run. Per `live-ledger.md`, this signature does not appear in the 2026-11-21 or 2026-11-22 nightly entries, so it remains new to this run (2026-11-23) rather than a previously known recurring issue, and it will keep failing every remaining test in the suite until the orphaned Proxmox VM 107 is cleaned up out-of-band.
+#### TestVLANSubinterfacesOnTopOfLAGs
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to setup SDN device: device "sdn-6b66f6e9" already exists
+```
+
+##### Claude's conclusion
+
+This is the identical `device "sdn-6b66f6e9" already exists` signature confirmed live by `evetest status` → "No EVE devices found" (setup failing before device registration), the same pattern as all eight prior failures recorded in `live-investigation.md` for this run.
+
+**Root cause:** This shares the exact same root cause already diagnosed repeatedly in this run — the orphaned Proxmox SDN VM 107 (`sdn-6b66f6e9`) left registered after its deletion timed out (`context deadline exceeded`) during `TestIntermittentConnectivity`'s failed-setup teardown at 03:42:47. Since every test in this suite reuses the same deterministic `client_id` (`6b66f6e9`), each subsequent test's setup collides with the stuck orphaned VM and fails identically, and each failed-setup teardown only removes the eve-device VM, never the orphaned SDN VM, perpetuating the cascade. This is now the ninth consecutive test in this run to fail from this same stuck/orphaned Proxmox SDN VM — not a new or distinct bug. Per `live-ledger.md`, this signature doesn't appear in the 2026-11-21 or 2026-11-22 nightly entries, so it remains new to this run (2026-11-23) rather than a previously known recurring issue, and will keep cascading to any remaining tests until the orphaned Proxmox VM 107 is cleaned up out-of-band.
+
+### TestLocalNetworkInstanceSuite: failure analysis
+
+#### TestFlowLog
+
+##### Failure
+
+```
+timed out after 5m0.000938177s (excluding download) waiting for app "82060888-8af9-4cd3-9e61-47d833d9a230" (flowlog-test-app) on device "edge-dev" to reach RUNNING state (last state: RESOLVING_TAG)
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+`TestFlowLog`'s app (`flowlog-test-app`) got permanently stuck in `RESOLVING_TAG` state (confirmed live via `AppInstanceStatus`/`ContentTreeStatus` on the device, `State:101`), because its container image reference `lfedge/evetest-ubuntu-ctr:1.0` needs an OCI tag→digest resolution against the registry/broker at `192.168.170.2:5000`. Device logs show the resolve call (`downloader.resolveTagsToHash` → `ociutil.manifestsDescImg`) started at `03:32:16.005` and then produced **zero** further resolve-related log lines for the rest of the run — no error, no retry, no completion — consistent with `objectMetadata()` in `pkg/pillar/cmd/downloader/download.go` using a bare `context.WithCancel(context.Background())` with no deadline, so a hung registry response blocks the resolve goroutine indefinitely instead of failing within a bounded time.
+
+Probing the registry live confirms it's in a broken state: `/v2/lfedge/evetest-ubuntu-ctr/tags/list` and `/v2/library/busybox/tags/list` both return their tag lists fine, but a manifest `GET` for *any* tag of *either* repo (`evetest-ubuntu-ctr:1.0/1.1/1.2/1.3`, `busybox:latest`) returns `404 Not Found` — i.e. the registry's tag index is populated but its manifest storage is not serving anything, an infra-side (evetest-broker/registry mirror) problem, not an SDN issue (`evetest sdn status` reports no config errors).
+
+This does not share a root cause with the other tests in this suite run — `TestLocalNI`, `TestNIReplace`, `TestMoveAppBetweenNIs`, and `TestLimitedIPSpace` all passed earlier in the same run. It's also not a known/recurring issue per `live-ledger.md`: the ledger has no prior entries mentioning `TestFlowLog`, `RESOLVING_TAG`, or registry/manifest problems (its only two entries, 2026-11-21 and 2026-11-22, cover unrelated NI-route-race, SSH-timing, and OCI-unpack-slowness flakes). The combination — a broken registry manifest store plus pillar's missing timeout on the resolve path — is the likely cause; no PR diff was provided for this investigation.
+
+### TestSwitchNetworkInstanceSuite: failure analysis
+
+#### TestSwitchNIDeletedWithAppsAttached
+
+##### Failure
+
+```
+timed out after 5m0.000531968s (excluding download) waiting for app "c331cb8f-d2e8-474f-824d-26bdfc7a8999" (app-1) on device "edge-dev" to reach RUNNING state (last state: RESOLVING_TAG)
+```
+
+##### Claude's conclusion
+
+###### Root cause analysis
+
+The test's own apps (`app-1`, `app-2`) never got past `RESOLVING_TAG` for the entire 5-minute test. Device logs show the downloader's resolve goroutines started two OCI registry lookups (`192.168.170.2:5000/lfedge/evetest-ubuntu-ctr:1.2`) at `04:50:14.475`/`.481` (`manifestsDescImg(...) getting image ref ...`), and then **nothing more was ever logged for either request** — no success, no error, no retry — for the rest of the run (confirmed again live: `evetest eve app-info` still shows both apps stuck in `RESOLVING_TAG` an hour later).
+
+Live inspection of the device confirms this isn't an app-level hang but a network-level one: `/proc/<zedbox-pid>/net/tcp` shows **two TCP connections to 192.168.170.2:5000 still ESTABLISHED with unacknowledged outbound data sitting in the send queue (`tx_queue=0x10F`) and 11 retransmits each**, i.e. the registry-bound packets are going unanswered (a TCP black-hole), while a fresh `curl` to the same registry from the same device succeeds instantly. Because `eve-libs/zedUpload`'s OCI datastore path sets no end-to-end HTTP timeout on `remote.Get()` (only TCP-handshake/TLS timeouts), a stalled-but-still-established connection blocks the resolve forever with no retry/backoff ever kicking in — matching the observed permanent `RESOLVING_TAG`.
+
+This occurred during the test's initial app deployment (image resolve for both apps on the freshly created switch NI), before the "delete NI with apps attached" step was ever reached, so it looks like an environment/network flake unrelated to the NI-deletion logic under test, though it coincided closely with NIM applying ACL/flowlog mangle-table iptables rules on the device's mgmt interface a few hundred ms later — a plausible but unconfirmed trigger for the black hole. I found no unrelated earlier failure in this run to share a root cause with, and `live-ledger.md` has no prior entry for `TestSwitchNetworkInstanceSuite`/`TestSwitchNIDeletedWithAppsAttached`, so this is not a previously known/recurring issue — it's a new occurrence.
+
+### TestUpgradeSuite: failure analysis
+
+#### TestEVEUpgradeKVMtoKVM
+
+##### Failure
+
+```
+timed out after 10m0.000788155s (excluding download) waiting for app "0c307c25-fe33-40f6-a0d0-3ab74c66eea8" (upgrade-test-app) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+Still CREATING_VOLUME live. This gives a clear, consistent picture.
+
+**Root cause:** Slow/contended disk I/O during container image unpack, same as the prior night's flake. Live device logs show `volumemgr` kicked off `CreateVolume`/`UnpackClientImage` for the same 56.7MB OCI image (`lfedge/evetest-ubuntu-ctr@sha256:333e5cba92...`) at 04:09:48, and as of now (04:18+, ~9 minutes later) it still hasn't logged completion — `app-info` still shows `CREATING_VOLUME` live. `vmstat`/`uptime` on the device confirm heavy disk contention: load average 4.0–5.4 on a 4-vCPU VM with ~37–40% iowait, nearly identical to the 2026-11-22 (run #38) `TestEVEUpgradeKVMtoKVMWithOCIDatastore` failure, which saw the exact same image unpack take ~7m29s under ~30% iowait/load ~3.8-3.95 and missed the deadline by only 17 seconds. Download/verify itself was fast here (content tree reached LOADED at 04:09:43, only ~1m50s after creation), so the entire 10-minute RUNNING-state budget was consumed by the subsequent containerd image-unpack step, not by downloading.
+
+This is the same underlying root cause as the 2026-11-22 (run #38) entry in the ledger for `TestEVEUpgradeKVMtoKVMWithOCIDatastore` (same image, same symptom: slow unpack under disk I/O contention eating the whole 10-minute timeout budget), though that one is a different test (`TestEVEUpgradeKVMtoKVM` here vs. `...WithOCIDatastore` there) and only one night old, so I'd call it an emerging/recurring environment performance issue (since 2026-11-22) rather than a one-off, though not yet repeated enough times to be fully "known" in the ledger sense.
+#### TestEVEUpgradeKVMtoKVMWithOCIDatastore
+
+##### Failure
+
+```
+timed out after 10m0.000999987s (excluding download) waiting for app "629b5241-e471-4f43-affc-ab50f3514f0e" (upgrade-test-app) on device "edge-dev" to reach RUNNING state (last state: BOOTING)
+```
+
+##### Claude's conclusion
+
+Load average and iowait (~23-33%) confirm continued disk contention, consistent with the earlier failures in this same run and the prior night's ledger entry.
+
+**Root cause:** This is the same disk-I/O-contention pattern already identified twice tonight. Live device logs show `volumemgr` kicked off `CreateVolume` for the app's root volume (same 56.7MB OCI image `lfedge/evetest-ubuntu-ctr@sha256:333e5cba92...`) at 04:53:19.349, and `createContainerVolume(...) DONE` didn't fire until 04:59:44.650 — ~6m25s just to unpack the image, consuming nearly the entire 10-minute RUNNING-state budget. The app then raced through INSTALLED → BOOTING (bootTime 05:00:06.23) and the test's `WaitUntilAppIsRunning` timed out at 05:00:08.966, but the app reached RUNNING live at 05:00:12.98 — only ~4 seconds after the timeout fired. `uptime`/`vmstat` on the device right now still show load average 2.84–4.37 on a 4-vCPU VM with 7-33% iowait, consistent with ongoing disk contention.
+
+This shares the same root cause as the `TestEVEUpgradeKVMtoKVM` failure earlier in this very suite run (recorded in `live-investigation.md`: slow unpack of the same image under disk contention, missing the deadline by seconds) and matches the `TestEVEUpgradeKVMtoKVMWithOCIDatastore` entry from the prior night (2026-11-22, run #38) in `live-ledger.md`, which saw the identical image/unpack pattern (~7m29s unpack, missed by 17s). This is a recurring, known issue first logged 2026-11-22 and now reproducing on consecutive nights with two different tests in the same suite — it looks like an environment-level performance regression (slow/contended disk I/O during container image unpack) rather than an EVE logic bug, and the fixed 10-minute timeout budget leaves essentially no margin for it.
+
 ## [2026-11-22 -- 0.0.0-16.0-stable-f3142331 (run #38)](https://github.com/lf-edge/eve/actions/runs/44978581836)
 
 [Full report](https://lf-edge.github.io/eve/test/16.0-stable/runs/38/)
