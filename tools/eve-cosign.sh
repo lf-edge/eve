@@ -465,10 +465,18 @@ records() {
 }
 
 # force_built <name>:<tag>: succeed when every build rebuilds the package
-# (FORCE_BUILD_PKGS in the Makefile).
+# (FORCE_BUILD_PKGS in the Makefile). Callers run it as a condition, where
+# errexit does not apply, so a failing make must die here: an empty list
+# would skip the packages every build rebuilds.
 force_built() {
-    local name="${1%%:*}"
-    [ -n "${FORCE_BUILT+x}" ] || FORCE_BUILT=" $(make -s -C "$EVE" force_build_pkgs_info | tail -1) "
+    local name="${1%%:*}" out
+    if [ -z "${FORCE_BUILT+x}" ]; then
+        # The environment may set PLATFORM but the Makefile ignores HV from
+        # it, so pass HV along; PLATFORM=ai-generic requires HV=k.
+        out=$(make -s -C "$EVE" ${HV:+HV="$HV"} force_build_pkgs_info) ||
+            die "make force_build_pkgs_info failed"
+        FORCE_BUILT=" ${out##*$'\n'} "
+    fi
     [[ "$FORCE_BUILT" == *" ${name#eve-} "* ]]
 }
 
