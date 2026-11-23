@@ -177,7 +177,7 @@ func (p *ProxmoxProvider) ExecuteQMP(ctx context.Context, name, execute string,
 
 // scratchUploadName is the file name of a scratch image on the import storage.
 func scratchUploadName(dev *proxmoxDevice, imageName string) string {
-	return fmt.Sprintf("%s-scratch-%s.raw", prefixedName(dev.name), imageName)
+	return dev.uploadName(fmt.Sprintf("scratch-%s.raw", imageName))
 }
 
 // CreateScratchImage uploads a sparse raw image to the import storage, the
