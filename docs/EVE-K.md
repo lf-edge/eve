@@ -232,6 +232,14 @@ Volume replicas are blocked from scheduling onto a tie breaker node to decrease 
 
 Volumemgr queries the kubernetes node objects to determine if a tie breaker node exists.  If found then all volume instances are created using the above mentioned storage class 'lh-sc-rep2' which ensures that all volumes only contain 2 replicas and schedule to only nodes not set as a tie breaker.
 
+## 2-Node HA
+
+A cluster of only two devices can survive the failure of either one of them
+when the controller configures a witness, a lightweight etcd-only member that
+casts the third etcd vote from one of the two devices instead of a third
+device. See [EVE-K-2-NODE-HA.md](EVE-K-2-NODE-HA.md) for how it works, what
+it requires and how each failure is handled.
+
 ## NVIDIA Device Plugin Configuration
 
 On NVIDIA hardware EVE deploys the NVIDIA device plugin from
