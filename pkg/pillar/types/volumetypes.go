@@ -366,6 +366,10 @@ type VolumesSnapshotStatus struct {
 	// keep RollbackCount. Whether the app was rolled back to that snapshot
 	// cannot be told then.
 	RollbackCountKnown bool
+	// Verifying is set after a boot for a snapshot whose action had failed
+	// before it, until volumemgr has checked the images of its volumes: the
+	// errors of the volumes are not kept across a reboot.
+	Verifying bool
 	// ErrorAndTimeWithSource has the error of the action that the state
 	// names, if it failed
 	ErrorAndTimeWithSource
@@ -380,7 +384,7 @@ func (status VolumesSnapshotStatus) Key() string {
 func (status VolumesSnapshotStatus) Busy() bool {
 	switch status.State {
 	case VolumesSnapshotStateCreating, VolumesSnapshotStateRollingBack, VolumesSnapshotStateDeleting:
-		return !status.HasError()
+		return !status.HasError() || status.Verifying
 	default:
 		return false
 	}

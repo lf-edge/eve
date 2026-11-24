@@ -227,6 +227,12 @@ func (handler *volumeHandlerFile) CreateSnapshot() (interface{}, time.Time, erro
 	return snapshotName, timeCreated, nil
 }
 
+// VerifyImage checks the disk image and repairs it if needed. volumemgr
+// calls it for an image that a failed snapshot action may have left damaged.
+func (handler *volumeHandlerFile) VerifyImage() error {
+	return diskmetrics.VerifyImg(context.Background(), handler.log, handler.status.FileLocation)
+}
+
 func (handler *volumeHandlerFile) RollbackToSnapshot(snapshotMeta interface{}) error {
 	snapshotName, ok := snapshotMeta.(string)
 	if !ok {

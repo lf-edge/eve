@@ -101,6 +101,10 @@ func (h fakeSnapshotHandler) DeleteSnapshot(interface{}) error {
 	return h.fake.call("delete", h.volume)
 }
 
+func (h fakeSnapshotHandler) VerifyImage() error {
+	return h.fake.call("verify", h.volume)
+}
+
 // newSnapshotTestContext returns a volumemgr that runs: zedagent has published
 // the volumes and zedmanager its snapshot configs.
 func newSnapshotTestContext(t *testing.T) (*volumemgrContext, pubsub.Publication, *fakeSnapshotVolumes) {
@@ -981,17 +985,63 @@ func TestSnapshotsAfterAReboot(t *testing.T) {
 	}
 
 	t.Run("a snapshot that nothing was being done to", func(t *testing.T) {
+		ctx, pub, _ := rebooted(t, record(created, false))
+		status, _ := snapshotStatus(pub, "s1")
+		assert.Equal(t, created, status.State)
+		assert.False(t, status.HasError())
+		assert.Equal(t, 3, status.RollbackCount)
+		assert.True(t, status.RollbackCountKnown)
+		assert.False(t, status.Busy())
+		assert.Empty(t, ctx.snapshotsWaiting)
+	})
+	// The failed action can have left an image that cannot be used, and the
+	// error that kept the app off it is gone with the reboot.
+	t.Run("an action that had failed", func(t *testing.T) {
 		for _, saved := range []types.VolumesSnapshotStatus{
-			record(created, false), record(creating, true), record(rollingBack, true),
+			record(creating, true), record(rollingBack, true), record(creating, false),
 		} {
-			ctx, pub, _ := rebooted(t, saved)
-			status, _ := snapshotStatus(pub, "s1")
-			assert.Equal(t, saved.State, status.State)
-			assert.Equal(t, saved.Error, status.Error, "a failure has to be known after a reboot as well")
-			assert.Equal(t, 3, status.RollbackCount)
-			assert.True(t, status.RollbackCountKnown)
-			assert.Empty(t, ctx.snapshotsWaiting)
+			for _, unusable := range []bool{false, true} {
+				ctx, pub, fake := rebooted(t, saved)
+				if unusable {
+					fake.fail["verify a"] = fmt.Errorf("%w: 5 errors", diskmetrics.ErrImageNotVerified)
+				}
+				status, _ := snapshotStatus(pub, "s1")
+				assert.Equal(t, saved.State, status.State)
+				wantError := saved.Error
+				if wantError == "" {
+					wantError = "interrupted by a reboot"
+				}
+				assert.Contains(t, status.Error, wantError, "a failure has to be known after a reboot as well")
+				assert.Equal(t, 3, status.RollbackCount)
+				assert.True(t, status.Busy(), "zedmanager has to keep the app down until the images are checked")
+				driveSnapshots(ctx)
+				assert.Empty(t, fake.made(), "the volumes are not there yet")
+
+				ids := snapshotTestVolumes(t, ctx, "a")
+				ctx.signalledRestartedStatus = true
+				driveSnapshots(ctx)
+				finishSnapshotWork(t, ctx)
+				assert.Equal(t, []string{"verify a"}, fake.made(), "the failed action is not run again")
+				status, _ = snapshotStatus(pub, "s1")
+				assert.Equal(t, saved.State, status.State)
+				assert.Contains(t, status.Error, wantError)
+				assert.False(t, status.Busy())
+				volume := ctx.lookupVolumeStatusByUUID(ids[0].String())
+				assert.Equal(t, unusable, volume.HasError())
+				assert.Equal(t, unusable, len(status.ErrorEntities) == 1,
+					"zedmanager waits for the error of the volume that the snapshot names")
+			}
 		}
+	})
+	t.Run("a failed action whose snapshot is not wanted any more", func(t *testing.T) {
+		ctx, pub, fake := rebooted(t, record(rollingBack, true))
+		snapshotTestVolumes(t, ctx, "a")
+		ctx.signalledRestartedStatus = true
+		handleVolumesSnapshotConfigRestarted(ctx, 1)
+		finishSnapshotWork(t, ctx)
+		_, published := snapshotStatus(pub, "s1")
+		assert.False(t, published)
+		assert.Equal(t, []string{"delete a"}, fake.made(), "a deletion checks the image as well")
 	})
 	t.Run("the record of a version that kept no state", func(t *testing.T) {
 		old := record(0, true)
@@ -1004,11 +1054,10 @@ func TestSnapshotsAfterAReboot(t *testing.T) {
 		assert.WithinDuration(t, time.Unix(1, 0), status.TimeCreated, 0)
 	})
 	t.Run("a creation that was cut off", func(t *testing.T) {
-		ctx, pub, _ := rebooted(t, record(creating, false))
+		_, pub, _ := rebooted(t, record(creating, false))
 		status, _ := snapshotStatus(pub, "s1")
 		assert.Equal(t, creating, status.State)
 		assert.Contains(t, status.Error, "interrupted by a reboot", "what the volumes got of it is not known")
-		assert.Empty(t, ctx.snapshotsWaiting)
 	})
 	t.Run("a rollback that was cut off", func(t *testing.T) {
 		ctx, pub, fake := rebooted(t, record(rollingBack, false))

@@ -885,10 +885,11 @@ type VolumesSnapshotStatus struct {
     State              VolumesSnapshotState
     RollbackCount      int
     RollbackCountKnown bool
+    Verifying          bool                   // after a boot: the images of a failed action are still to be checked
     ErrorAndTimeWithSource
 }
 func (status VolumesSnapshotStatus) Key() string  // SnapshotID
-func (status VolumesSnapshotStatus) Busy() bool   // being worked on: a state other than Created, no error
+func (status VolumesSnapshotStatus) Busy() bool   // being worked on: a state other than Created, with no error or with Verifying
 ```
 
 ### `ContentTreeConfig` / `ContentTreeStatus` (`contenttreetypes.go`)

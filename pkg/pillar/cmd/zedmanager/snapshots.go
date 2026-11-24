@@ -459,7 +459,9 @@ func triggerSnapshotDeletion(ctx *zedmanagerContext, config types.AppInstanceCon
 //   - while volumemgr has not taken up what the configs ask for: a snapshot
 //     to create, to roll back to or to delete,
 //   - while volumemgr works on a snapshot, which is a state other than
-//     Created without an error.
+//     Created without an error,
+//   - until zedmanager has the error of every volume that the error of a
+//     snapshot names.
 func snapshotOpInProgress(ctx *zedmanagerContext, appUUID uuid.UUID) bool {
 	if !ctx.snapshotsRestored {
 		return true
@@ -484,6 +486,17 @@ func snapshotOpInProgress(ctx *zedmanagerContext, appUUID uuid.UUID) bool {
 		}
 		if st.State != types.VolumesSnapshotStateDeleting && snapshotConfig(ctx, id) == nil {
 			return true
+		}
+		// The error of a volume comes in the VolumeRefStatus, which can
+		// arrive after this status.
+		for _, entity := range st.ErrorEntities {
+			if entity.EntityType != types.ErrorEntityVolume {
+				continue
+			}
+			vrs := lookupVolumeRefStatus(ctx, entity.EntityID+"#"+appUUID.String())
+			if vrs != nil && !vrs.HasError() {
+				return true
+			}
 		}
 	}
 	return false

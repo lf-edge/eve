@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/lf-edge/eve/pkg/pillar/diskmetrics"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/utils"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
@@ -33,7 +34,16 @@ const (
 	snapshotDelete
 	// snapshotDrop forgets a snapshot whose creation has not started
 	snapshotDrop
+	// snapshotVerify checks the images of a snapshot whose action failed
+	// before a reboot, see restoreSnapshotState
+	snapshotVerify
 )
+
+// imageVerifier is a volume handler whose volume has an image that a failed
+// snapshot action can leave damaged.
+type imageVerifier interface {
+	VerifyImage() error
+}
 
 func (action snapshotAction) String() string {
 	switch action {
@@ -45,6 +55,8 @@ func (action snapshotAction) String() string {
 		return "delete"
 	case snapshotDrop:
 		return "drop"
+	case snapshotVerify:
+		return "verify the images of"
 	default:
 		return "do nothing to"
 	}
@@ -57,6 +69,22 @@ type snapshotWork struct {
 	appUUID uuid.UUID
 	status  types.VolumesSnapshotStatus
 	volumes []snapshotVolume
+	// sound has the keys of the volumes whose image passed its check in the
+	// end. unusable has those whose image could not be repaired or checked,
+	// with the error.
+	sound    []string
+	unusable map[string]string
+}
+
+func (d *snapshotWork) noteUnusable(volume *types.VolumeStatus, err error) {
+	if !errors.Is(err, diskmetrics.ErrImageNotVerified) {
+		return
+	}
+	if d.unusable == nil {
+		d.unusable = make(map[string]string)
+	}
+	d.unusable[volume.Key()] = fmt.Sprintf("Snapshot %s of volume %s: %s",
+		d.status.SnapshotID, volume.DisplayName, err)
 }
 
 type snapshotVolume struct {
@@ -120,6 +148,12 @@ func restoreVolumesSnapshotStatuses(ctx *volumemgrContext) {
 // with. The apps are down then, and zedmanager keeps them down while a
 // snapshot is busy.
 func restoreSnapshotState(status *types.VolumesSnapshotStatus) {
+	// The errors of the volumes are gone with the reboot. An action that
+	// failed can have left an image that cannot be used, so the images are
+	// checked again before the app may start. A deletion checks them when it
+	// is tried again.
+	status.ErrorEntities = nil
+	status.Verifying = false
 	switch status.State {
 	case types.VolumesSnapshotStateCreating:
 		if !status.HasError() {
@@ -127,10 +161,12 @@ func restoreSnapshotState(status *types.VolumesSnapshotStatus) {
 			snapshotError(status, "The creation of snapshot %s was interrupted by a reboot",
 				status.SnapshotID)
 		}
+		status.Verifying = true
 	case types.VolumesSnapshotStateCreated:
 	case types.VolumesSnapshotStateRollingBack:
 		// Without an error it was cut off, and goes on once zedmanager
 		// has published the config again.
+		status.Verifying = status.HasError()
 	case types.VolumesSnapshotStateDeleting:
 		// Cut off, or failed and due for another attempt.
 		status.ClearErrorWithSource()
@@ -214,6 +250,10 @@ func snapshotActionNeeded(ctx *volumemgrContext, config *types.VolumesSnapshotCo
 	// one says nothing.
 	unwanted := config == nil && ctx.snapshotConfigsComplete
 	failed := status.HasError()
+	if status.Verifying && !unwanted {
+		// A deletion ends with a check of the images as well.
+		return snapshotVerify
+	}
 	switch status.State {
 	case types.VolumesSnapshotStateCreating:
 		switch {
@@ -296,8 +336,14 @@ func reconcileSnapshot(ctx *volumemgrContext, snapshotID string) {
 		status.RollbackCountKnown = true
 	case snapshotDelete:
 		status.State = types.VolumesSnapshotStateDeleting
+	case snapshotVerify:
+		// The state and the error stay: they are the outcome of the action
+		// that failed before the reboot.
+		startSnapshotAction(ctx, status, action, config)
+		return
 	}
 	// What is left of an earlier action is not the outcome of this one.
+	status.Verifying = false
 	status.ClearErrorWithSource()
 	_ = publishVolumesSnapshotStatus(ctx, status)
 	if !taken {
@@ -382,6 +428,9 @@ func snapshotVolumes(ctx *volumemgrContext, status *types.VolumesSnapshotStatus,
 			// The snapshot goes with the image.
 			log.Noticef("snapshotVolumes: snapshot %s: volume %s is gone", status.SnapshotID, volumeID)
 			delete(status.VolumeSnapshotMeta, volumeID)
+			continue
+		case (gone || leaving || notCreated) && action == snapshotVerify:
+			// No image to check.
 			continue
 		case gone:
 			return nil, false, fmt.Errorf("volume %s not found", volumeID)
@@ -555,6 +604,16 @@ func snapshotWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 			err = volumeHandler.RollbackToSnapshot(volume.meta)
 		case snapshotDelete:
 			err = volumeHandler.DeleteSnapshot(volume.meta)
+		case snapshotVerify:
+			if verifier, ok := volumeHandler.(imageVerifier); ok {
+				err = verifier.VerifyImage()
+			}
+		}
+		// A command that failed on an image which then passed its check
+		// says as much about the image as one that worked.
+		var sound *diskmetrics.SoundImageError
+		if err == nil || errors.As(err, &sound) {
+			d.sound = append(d.sound, volume.status.Key())
 		}
 		if err == nil {
 			log.Noticef("snapshotWorker: %s snapshot %s for volume %s done", d.action, snapshotID, volumeID)
@@ -564,6 +623,7 @@ func snapshotWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 			}
 			continue
 		}
+		d.noteUnusable(&volume.status, err)
 		failure := fmt.Sprintf("volume %s, %s", volumeID, err)
 		if d.action == snapshotRollback && i > 0 {
 			failure += fmt.Sprintf(" (%d of %d volumes are rolled back)", i, len(d.volumes))
@@ -574,7 +634,7 @@ func snapshotWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 		}
 		// Go on: every volume that loses the snapshot frees space.
 	}
-	if len(failures) > 0 {
+	if len(failures) > 0 && d.action != snapshotVerify {
 		snapshotError(&d.status, "Failed to %s snapshot %s for %s",
 			d.action, snapshotID, strings.Join(failures, "; "))
 		if d.action == snapshotCreate {
@@ -593,9 +653,15 @@ func removePartialSnapshot(ctx *volumemgrContext, d *snapshotWork) {
 		if !ok {
 			continue
 		}
+		if _, unusable := d.unusable[volume.status.Key()]; unusable {
+			// Not the image to work on some more. The deletion of the
+			// snapshot gets to it.
+			continue
+		}
 		if err := getSnapshotVolumeHandler(ctx, &volume.status).DeleteSnapshot(meta); err != nil {
 			log.Errorf("removePartialSnapshot: snapshot %s stays on volume %s: %s",
 				d.status.SnapshotID, volumeID, err)
+			d.noteUnusable(&volume.status, err)
 			// Stays known, so that the deletion of the snapshot tries again.
 			continue
 		}
@@ -612,6 +678,7 @@ func processSnapshotResult(ctxPtr interface{}, res worker.WorkResult) error {
 	snapshotID := d.status.SnapshotID
 	delete(ctx.snapshotOpInFlight, d.appUUID)
 	destroyVolumesAfterSnapshot(ctx, snapshotID)
+	applyVolumeErrors(ctx, &d)
 	finishSnapshotAction(ctx, &d.status, d.action)
 	// The config can have changed while the worker was busy.
 	reconcileSnapshot(ctx, snapshotID)
@@ -627,6 +694,12 @@ func processSnapshotResult(ctxPtr interface{}, res worker.WorkResult) error {
 // worked takes the status away.
 func finishSnapshotAction(ctx *volumemgrContext, status *types.VolumesSnapshotStatus, action snapshotAction) {
 	log.Noticef("finishSnapshotAction(%s): %s done, error: %q", status.SnapshotID, action, status.Error)
+	if action == snapshotVerify {
+		// The error is the one of the action that failed before the reboot.
+		status.Verifying = false
+		_ = publishVolumesSnapshotStatus(ctx, status)
+		return
+	}
 	if status.HasError() {
 		_ = publishVolumesSnapshotStatus(ctx, status)
 		return
@@ -642,6 +715,73 @@ func finishSnapshotAction(ctx *volumemgrContext, status *types.VolumesSnapshotSt
 		status.State = previous
 		snapshotError(status, "Failed to save the record of snapshot %s, %s", status.SnapshotID, err)
 		_ = publishVolumesSnapshotStatus(ctx, status)
+	}
+}
+
+// applyVolumeErrors puts an error on the volumes whose image could not be
+// repaired or checked, which keeps their app from starting, and takes it off
+// those that passed the check. The error of the snapshot names the volumes of
+// the snapshot that have such an error: the volumes are published apart from
+// the snapshot, and zedmanager has to wait for them.
+func applyVolumeErrors(ctx *volumemgrContext, d *snapshotWork) {
+	for _, key := range d.sound {
+		vs := ctx.LookupVolumeStatus(key)
+		if vs == nil || !vs.IsErrorSource(types.VolumesSnapshotStatus{}) {
+			continue
+		}
+		log.Noticef("applyVolumeErrors: volume %s can be used again", key)
+		vs.ClearErrorWithSource()
+		publishVolumeStatus(ctx, vs)
+		updateVolumeRefStatus(ctx, vs)
+		forgetVolumeError(ctx, d.status.SnapshotID, key)
+	}
+	for key, errStr := range d.unusable {
+		vs := ctx.LookupVolumeStatus(key)
+		if vs == nil {
+			continue
+		}
+		log.Errorf("applyVolumeErrors: %s", errStr)
+		vs.SetErrorWithSource(errStr, types.VolumesSnapshotStatus{}, time.Now())
+		publishVolumeStatus(ctx, vs)
+		updateVolumeRefStatus(ctx, vs)
+	}
+	if !d.status.HasError() {
+		return
+	}
+	// That includes the volumes that this action did not get to.
+	var keys []string
+	for _, volume := range d.volumes {
+		vs := ctx.LookupVolumeStatus(volume.status.Key())
+		if vs != nil && vs.IsErrorSource(types.VolumesSnapshotStatus{}) {
+			keys = append(keys, vs.Key())
+		}
+	}
+	sort.Strings(keys)
+	d.status.ErrorEntities = nil
+	for _, key := range keys {
+		d.status.ErrorEntities = append(d.status.ErrorEntities,
+			&types.ErrorEntity{EntityType: types.ErrorEntityVolume, EntityID: key})
+	}
+}
+
+// forgetVolumeError removes the volume from the errors of the other
+// snapshots: zedmanager would wait for an error that is gone.
+func forgetVolumeError(ctx *volumemgrContext, exceptSnapshotID string, volumeKey string) {
+	for _, st := range ctx.pubVolumesSnapStatus.GetAll() {
+		status := st.(types.VolumesSnapshotStatus)
+		if status.SnapshotID == exceptSnapshotID {
+			continue
+		}
+		var kept []*types.ErrorEntity
+		for _, entity := range status.ErrorEntities {
+			if entity.EntityType != types.ErrorEntityVolume || entity.EntityID != volumeKey {
+				kept = append(kept, entity)
+			}
+		}
+		if len(kept) != len(status.ErrorEntities) {
+			status.ErrorEntities = kept
+			_ = publishVolumesSnapshotStatus(ctx, &status)
+		}
 	}
 }
 

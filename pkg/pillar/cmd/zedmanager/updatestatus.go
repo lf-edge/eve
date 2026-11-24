@@ -488,8 +488,11 @@ func doInstall(ctx *zedmanagerContext,
 
 	for i := range status.VolumeRefStatusList {
 		vrs := &status.VolumeRefStatusList[i]
-		// install volume ref again if we had an error
-		if status.State < types.CREATED_VOLUME || status.PurgeInprogress != types.NotInprogress || vrs.HasError() {
+		// install volume ref again if we had an error, or if volumemgr
+		// found one on a volume that was fine before
+		reported := lookupVolumeRefStatus(ctx, vrs.Key())
+		if status.State < types.CREATED_VOLUME || status.PurgeInprogress != types.NotInprogress || vrs.HasError() ||
+			(reported != nil && reported.HasError()) {
 			c := doInstallVolumeRef(ctx, config, status, vrs)
 			if c {
 				changed = true
@@ -502,7 +505,10 @@ func doInstall(ctx *zedmanagerContext,
 		if vrs.State < minState {
 			minState = vrs.State
 		}
-		if vrs.HasError() {
+		// A purge is about to replace the volumes the config dropped.
+		replaced := status.PurgeInprogress == types.DownloadAndVerify &&
+			getVolumeRefConfigFromAIConfig(&config, vrs) == nil
+		if vrs.HasError() && !replaced {
 			errorSource = vrs.ErrorSourceType
 			errorTime = vrs.ErrorTime
 			volumeErrors = append(volumeErrors, vrs.Error)

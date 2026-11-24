@@ -126,6 +126,9 @@ func TestVolumesSnapshotStatusBusy(t *testing.T) {
 		assert.True(t, status.Busy(), state.String())
 		status.SetErrorWithSourceAndDescription(ErrorDescription{Error: "qemu-img failed"}, VolumesSnapshotStatus{})
 		assert.False(t, status.Busy(), state.String())
+		// After a boot the images of a failed action are checked first.
+		status.Verifying = true
+		assert.True(t, status.Busy(), state.String())
 	}
 	assert.False(t, VolumesSnapshotStatus{State: VolumesSnapshotStateCreated}.Busy())
 }

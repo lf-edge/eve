@@ -190,17 +190,29 @@ func snapshotCmd(ctx context.Context, log *base.LogObject, diskfile, flag, snaps
 		}
 		cmdErr = finishSnapshotCmd(ctx, log, diskfile, flag, snapshotName, cmdErr, done)
 	}
-	if err := checkImg(ctx, log, diskfile, false); err != nil {
-		log.Errorf("snapshotCmd: %s, repairing %s", err, diskfile)
-		if err := checkImg(ctx, log, diskfile, true); err != nil {
-			if cmdErr != nil {
-				return fmt.Errorf("%w: %s; after: %s", ErrImageNotVerified, err, cmdErr)
-			}
-			return fmt.Errorf("%w: %s", ErrImageNotVerified, err)
+	if err := VerifyImg(ctx, log, diskfile); err != nil {
+		if cmdErr != nil {
+			return fmt.Errorf("%w; after: %s", err, cmdErr)
 		}
+		return err
 	}
 	if cmdErr != nil {
 		return &SoundImageError{Err: cmdErr}
+	}
+	return nil
+}
+
+// VerifyImg checks the image and repairs it if the check finds something.
+// Returns an error wrapping ErrImageNotVerified if the image could not be
+// repaired or checked.
+func VerifyImg(ctx context.Context, log *base.LogObject, diskfile string) error {
+	err := checkImg(ctx, log, diskfile, false)
+	if err == nil {
+		return nil
+	}
+	log.Errorf("VerifyImg: %s, repairing %s", err, diskfile)
+	if err := checkImg(ctx, log, diskfile, true); err != nil {
+		return fmt.Errorf("%w: %s", ErrImageNotVerified, err)
 	}
 	return nil
 }

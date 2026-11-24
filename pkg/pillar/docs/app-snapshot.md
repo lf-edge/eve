@@ -414,8 +414,15 @@ snapshot, and `unpublishVolumesSnapshotStatus` removes the record with the
 status. So the record says what volumemgr was doing when the device went down.
 At boot `restoreSnapshotState` turns each record into the status to start with:
 
-* `Created`, or a state with an error, is published as it was saved. A
-  creation, rollback or deletion that failed is still known as failed.
+* `Created` is published as it was saved.
+* `Creating` or `RollingBack` with an error is published as it was saved, so a
+  creation or rollback that failed is still known as failed, and with
+  `Verifying` set. The action can have left an image that cannot be used, and
+  the error that kept the application off it is gone with the reboot. So
+  volumemgr checks the images of the snapshot again, see
+  [Time Limit, Repair and Check for ext4](#time-limit-repair-and-check-for-ext4),
+  and the status counts as busy until that is done. The failed action is not
+  run again.
 * `RollingBack` without an error is a rollback that the reboot cut off. It goes
   on once zedmanager has published the config of the snapshot again.
 * `Deleting` is a deletion that was cut off or that failed. It is tried again,
@@ -754,7 +761,10 @@ snapshots, as `qemu-img` needs the disk images to itself. The
 * a `VolumesSnapshotStatus` without a `VolumesSnapshotConfig` that is not in
   the state `Deleting`: volumemgr has not taken up the deletion yet;
 * a `VolumesSnapshotStatus` that is busy, which is a state other than `Created`
-  without an error.
+  without an error;
+* the error of a status that names a volume whose `VolumeRefStatus` does not
+  show an error yet, see
+  [Time Limit, Repair and Check for ext4](#time-limit-repair-and-check-for-ext4).
 
 An action that failed leaves the snapshot in its state with the error. That
 does not hold the application back.
@@ -862,6 +872,38 @@ without the repair stopped after its two minutes. Without the check the
 application would be started on such an image and damage it further. The
 check reads the metadata of the image, not its data, and runs while the
 application is down anyway.
+
+An action that fails and leaves an image that passes the check puts no error
+on the volume. The snapshot carries the error of the action, and the
+application starts on the volumes as they are.
+
+EVE does not start the application on an image that is reported as not
+verified. Volumemgr puts the error on the `VolumeStatus` of that volume, from
+where it reaches the `VolumeRefStatus` and stops zedmanager in `doInstall`, as
+any other error of a volume does. The error stays on the volume whatever
+happens to the snapshot. There are two ways to get rid of it:
+
+* A later snapshot action on the volume ends with an image that passes its
+  check. A rollback to a healthy snapshot is the usual one. An action that
+  fails on an image which then passes the check counts as well; `diskmetrics`
+  returns a `SoundImageError` for it.
+* A purge replaces the volume. The error of a volume that the purge is about to
+  replace does not stop the purge.
+
+The error of the volume and the status of the snapshot reach zedmanager in two
+publications, in any order. A snapshot status without an error means that the
+application can start. A status with an error names the volumes of the snapshot
+that have such an error, in the `ErrorEntities` of the error, and
+`snapshotOpInProgress` holds the application back until the `VolumeRefStatus`
+of each of them carries its error. Volumemgr removes a volume from the errors
+of the other snapshots when it takes the error off the volume.
+
+The error of the volume is not kept across a reboot, and nothing is saved to
+bring it back: the image itself tells. After a boot volumemgr checks the images
+of every snapshot whose creation or rollback had failed, before the
+application may start, and puts the error on a volume whose image does not
+pass. A deletion that had failed is tried again at boot and ends with the
+same check. `restoreSnapshotState` sets this up.
 
 ## Low-Level Snapshot Management for ZFS
 
