@@ -202,6 +202,14 @@ func (f *fakeVMAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// failingCallCtx bounds a call that keeps failing, which would otherwise be
+// retried for its whole retry window.
+func failingCallCtx(t *testing.T) context.Context {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	t.Cleanup(cancel)
+	return ctx
+}
+
 func newFakeVMProvider(t *testing.T, api *fakeVMAPI) (*ProxmoxProvider, *proxmoxDevice) {
 	t.Helper()
 	saved := proxmoxRetryDelay
@@ -340,7 +348,7 @@ func TestRemoveLeftoverDeviceKeepsEntryOnFailure(t *testing.T) {
 	p, dev := newFakeVMProvider(t, &fakeVMAPI{status: "stopped"})
 	p.devices = map[string]*proxmoxDevice{dev.name: dev}
 	if err := p.removeLeftoverDevice(
-		context.Background(), logrus.NewEntry(logrus.New()), dev); err == nil {
+		failingCallCtx(t), logrus.NewEntry(logrus.New()), dev); err == nil {
 		t.Fatal("expected an error when the VM cannot be deleted")
 	}
 	if _, ok := p.devices[dev.name]; !ok {
@@ -368,7 +376,7 @@ func TestSetupDeviceRemovesOnlyLeftovers(t *testing.T) {
 		t.Error("rejected setup left its name reserved")
 	}
 
-	if err := p.TeardownDevice(ctx, dev.name); err == nil {
+	if err := p.TeardownDevice(failingCallCtx(t), dev.name); err == nil {
 		t.Fatal("expected the teardown to fail when the VM cannot be deleted")
 	}
 	if !p.devices[dev.name].teardownFailed {
@@ -410,7 +418,7 @@ func TestRetryFailedTeardownsKeepsEntryOnFailure(t *testing.T) {
 	p.pending = map[string]*proxmoxDevice{}
 
 	if err := p.retryFailedTeardowns(
-		context.Background(), logrus.NewEntry(logrus.New())); err == nil {
+		failingCallCtx(t), logrus.NewEntry(logrus.New())); err == nil {
 		t.Fatal("expected an error when the VM cannot be deleted")
 	}
 	if p.devices[dev.name] != dev {
@@ -476,7 +484,7 @@ func TestCreateVMRetriesWithNewVMID(t *testing.T) {
 	}}
 	log := logrus.NewEntry(logrus.New())
 
-	_, err := retryProxmoxCall(context.Background(), log, "create",
+	_, err := retryProxmoxCall(context.Background(), log, "create", time.Minute,
 		func(ctx context.Context) (*proxmox.Task, error) {
 			return p.createVM(ctx, ctx, log, node, cluster, dev, nil, "")
 		})
@@ -489,94 +497,125 @@ func TestCreateVMRetriesWithNewVMID(t *testing.T) {
 	}
 }
 
-func TestAttemptContext(t *testing.T) {
-	savedDelay, savedMin := proxmoxRetryDelay, proxmoxMinAttemptTime
-	proxmoxRetryDelay, proxmoxMinAttemptTime = 10*time.Second, 30*time.Second
-	t.Cleanup(func() { proxmoxRetryDelay, proxmoxMinAttemptTime = savedDelay, savedMin })
+// A call that keeps failing transiently is retried until its window passes,
+// however many attempts that takes, and returns the last failure.
+func TestRetryProxmoxCallRetriesUntilWindowPasses(t *testing.T) {
+	saved := proxmoxRetryDelay
+	proxmoxRetryDelay = time.Millisecond
+	t.Cleanup(func() { proxmoxRetryDelay = saved })
 
-	for _, tc := range []struct {
-		name         string
-		timeLeft     time.Duration
-		attemptsLeft int
-		want         time.Duration
-		wantLast     bool
-	}{
-		// (320s - 2 pauses) / 3
-		{"split among 3", 320 * time.Second, 3, 100 * time.Second, false},
-		// (320s - 1 pause) / 2
-		{"split among 2", 320 * time.Second, 2, 155 * time.Second, false},
-		{"last gets all", 320 * time.Second, 1, 320 * time.Second, true},
-		// (75s - 2 pauses) / 3 < 30s, so only 2 attempts: (75s - 1 pause) / 2.
-		{"too short for 3", 75 * time.Second, 3, 32500 * time.Millisecond, false},
-		// Too short even for 2 attempts: one gets all the time left.
-		{"too short for 2", 50 * time.Second, 3, 50 * time.Second, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), tc.timeLeft)
-			defer cancel()
-			attemptCtx, attemptCancel, last := attemptContext(ctx, tc.attemptsLeft)
-			defer attemptCancel()
-			deadline, _ := attemptCtx.Deadline()
-			if got := time.Until(deadline); got > tc.want || got < tc.want-time.Second {
-				t.Errorf("attempt deadline in %v, want %v", got, tc.want)
-			}
-			if last != tc.wantLast {
-				t.Errorf("last = %v, want %v", last, tc.wantLast)
-			}
+	attempts := 0
+	start := time.Now()
+	_, err := retryProxmoxCall(context.Background(), logrus.NewEntry(logrus.New()),
+		"create", 200*time.Millisecond, func(context.Context) (struct{}, error) {
+			attempts++
+			return struct{}{}, fmt.Errorf("attempt %d: can't lock file - got timeout",
+				attempts)
 		})
+	if elapsed := time.Since(start); elapsed < 200*time.Millisecond {
+		t.Errorf("gave up after %v, before the window passed", elapsed)
 	}
-
-	attemptCtx, attemptCancel, last := attemptContext(context.Background(), 3)
-	defer attemptCancel()
-	if _, ok := attemptCtx.Deadline(); ok || last {
-		t.Errorf("attempt of a call without a deadline: deadline set %v, last %v, "+
-			"want neither", ok, last)
+	if attempts < 10 {
+		t.Errorf("got %d attempts, want retries until the window passed", attempts)
+	}
+	if err == nil || err.Error() != fmt.Sprintf(
+		"attempt %d: can't lock file - got timeout", attempts) {
+		t.Errorf("got %v, want the failure of the last attempt", err)
 	}
 }
 
-// A call with too little time left for several attempts is made once, with
-// all of it, instead of being cut into attempts too short to succeed.
-func TestRetryProxmoxCallMakesOneAttemptWhenShortOfTime(t *testing.T) {
-	savedDelay, savedMin := proxmoxRetryDelay, proxmoxMinAttemptTime
-	proxmoxRetryDelay, proxmoxMinAttemptTime = time.Millisecond, time.Hour
-	t.Cleanup(func() { proxmoxRetryDelay, proxmoxMinAttemptTime = savedDelay, savedMin })
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
+// An attempt that hangs is ended by the window, and the call is not retried
+// after it: the window is all the time the operation may take.
+func TestRetryProxmoxCallEndsHungAttemptWithWindow(t *testing.T) {
 	attempts := 0
-	_, err := retryProxmoxCall(ctx, logrus.NewEntry(logrus.New()), "delete",
+	_, err := retryProxmoxCall(context.Background(), logrus.NewEntry(logrus.New()),
+		"delete", 50*time.Millisecond, func(ctx context.Context) (struct{}, error) {
+			attempts++
+			<-ctx.Done()
+			return struct{}{}, ctx.Err()
+		})
+	if !errors.Is(err, context.DeadlineExceeded) || attempts != 1 {
+		t.Errorf("got err=%v after %d attempts, want one attempt ended by the window",
+			err, attempts)
+	}
+}
+
+// The deadline of ctx ends the retries when it comes before the window
+// passes.
+func TestRetryProxmoxCallStopsAtDeadline(t *testing.T) {
+	saved := proxmoxRetryDelay
+	proxmoxRetryDelay = time.Millisecond
+	t.Cleanup(func() { proxmoxRetryDelay = saved })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := retryProxmoxCall(ctx, logrus.NewEntry(logrus.New()), "delete", time.Hour,
 		func(context.Context) (struct{}, error) {
+			return struct{}{}, errors.New("transient failure")
+		})
+	if err == nil || time.Since(start) > 10*time.Second {
+		t.Errorf("got err=%v after %v, want a failure at the deadline", err,
+			time.Since(start))
+	}
+}
+
+// A zero window makes a single attempt, e.g. for a status read that is polled
+// anyway.
+func TestRetryProxmoxCallZeroWindowMakesOneAttempt(t *testing.T) {
+	attempts := 0
+	_, err := retryProxmoxCall(context.Background(), logrus.NewEntry(logrus.New()),
+		"get VM", 0, func(context.Context) (struct{}, error) {
 			attempts++
 			return struct{}{}, errors.New("transient failure")
 		})
 	if err == nil || attempts != 1 {
-		t.Fatalf("expected one failed attempt, got err=%v attempts=%d", err, attempts)
+		t.Errorf("got err=%v after %d attempts, want one failed attempt", err, attempts)
 	}
 }
 
-// An attempt that hangs until its share of the deadline runs out must leave
-// time for the retries, e.g. for a VM delete that PVE completes just after
-// the first attempt gave up waiting for it.
-func TestRetryProxmoxCallRetriesAfterAttemptTimeout(t *testing.T) {
-	savedDelay, savedMin := proxmoxRetryDelay, proxmoxMinAttemptTime
-	proxmoxRetryDelay, proxmoxMinAttemptTime = time.Millisecond, 100*time.Millisecond
-	t.Cleanup(func() { proxmoxRetryDelay, proxmoxMinAttemptTime = savedDelay, savedMin })
+// A failure that a retry cannot fix is returned at once: one marked
+// permanent, or a request that PVE rejected as invalid, unless for a lock
+// timeout, which PVE reports as an invalid request too.
+func TestRetryProxmoxCallPermanentFailures(t *testing.T) {
+	saved := proxmoxRetryDelay
+	proxmoxRetryDelay = time.Millisecond
+	t.Cleanup(func() { proxmoxRetryDelay = saved })
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	attempts := 0
-	_, err := retryProxmoxCall(ctx, logrus.NewEntry(logrus.New()), "delete",
-		func(ctx context.Context) (struct{}, error) {
-			attempts++
-			if attempts == 1 {
-				<-ctx.Done()
-				return struct{}{}, ctx.Err()
+	for _, tc := range []struct {
+		name      string
+		err       error
+		wantRetry bool
+	}{
+		{"marked permanent", permanent(errors.New("VM does not exist")), false},
+		{"invalid request", errors.New("bad request: 400 Parameter verification " +
+			`failed. - {"virtio0":"invalid format"}`), false},
+		{"lock timeout reported as invalid request", errors.New("bad request: 400 " +
+			`Parameter verification failed. - {"virtio0":"unable to apply pending ` +
+			"change virtio0 : can't lock file '/var/lock/pve-manager/" +
+			`pve-storage-pool' - got timeout\n"}`), true},
+		{"server error", errors.New("500 Internal Server Error"), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			attempts := 0
+			_, err := retryProxmoxCall(context.Background(),
+				logrus.NewEntry(logrus.New()), "call", time.Minute,
+				func(context.Context) (struct{}, error) {
+					attempts++
+					if attempts == 1 {
+						return struct{}{}, tc.err
+					}
+					return struct{}{}, nil
+				})
+			if tc.wantRetry && (err != nil || attempts != 2) {
+				t.Errorf("got err=%v after %d attempts, want success on a retry",
+					err, attempts)
 			}
-			return struct{}{}, nil
+			if !tc.wantRetry && (err == nil || attempts != 1) {
+				t.Errorf("got err=%v after %d attempts, want the failure at once",
+					err, attempts)
+			}
 		})
-	if err != nil || attempts != 2 {
-		t.Fatalf("expected success on the second attempt, got err=%v attempts=%d",
-			err, attempts)
 	}
 }
 
@@ -667,7 +706,7 @@ func createWithRetry(t *testing.T, fake *fakeCreateAPI,
 	}}
 	log := logrus.NewEntry(logrus.New())
 	ctx := context.Background()
-	_, err := retryProxmoxCall(ctx, log, "create",
+	_, err := retryProxmoxCall(ctx, log, "create", time.Minute,
 		func(callCtx context.Context) (struct{}, error) {
 			return struct{}{}, p.createAndWaitVM(
 				callCtx, ctx, log, node, cluster, dev, nil, "")
