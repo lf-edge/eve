@@ -194,6 +194,34 @@ func TestRollbackResultForDeletedApp(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// An app that is deleted while a purge brings it down has to be removed once
+// it is down: there is no config to go on with.
+func TestAppDeletedDuringPurgeIsRemoved(t *testing.T) {
+	ctx, config := newRollbackTestContext(t)
+	// Persistent subscriptions were filled at Activate; drop the configs there.
+	ps := pubsub.New(pubsub.NewMemoryDriver(), logrus.StandardLogger(), log)
+	noConfig := func(agent string) pubsub.Subscription {
+		sub, err := ps.NewSubscription(pubsub.SubscriptionOptions{
+			AgentName:   agent,
+			MyAgentName: agentName,
+			TopicImpl:   types.AppInstanceConfig{},
+			Persistent:  true,
+		})
+		assert.NoError(t, err)
+		assert.NoError(t, sub.Activate())
+		return sub
+	}
+	ctx.subAppInstanceConfig = noConfig("zedagent")
+	ctx.subLocalAppInstanceConfig = noConfig(agentName)
+	status := lookupAppInstanceStatus(ctx, config.Key())
+	status.SnapStatus.RollbackInProgress = false
+	status.PurgeInprogress = types.BringDown
+
+	removeAIStatus(ctx, status)
+
+	assert.Nil(t, lookupAppInstanceStatus(ctx, config.Key()), "the app must be removed")
+}
+
 // What doUpdate changes once the rollback is over has to be published; here
 // it is the phase of the purge that the rollback is part of.
 func TestRollbackResultIsPublished(t *testing.T) {

@@ -170,6 +170,9 @@ func TestPurgeReportsHaltedOnceDown(t *testing.T) {
 		TopicType: types.AppInstanceStatus{},
 	})
 	assert.NoError(t, err)
+	// The app has no config, so it is removed once it is down.
+	recorder := &statusRecorder{Publication: ctx.pubAppInstanceStatus}
+	ctx.pubAppInstanceStatus = recorder
 	newConfigSub := func(agent string) pubsub.Subscription {
 		sub, err := ps.NewSubscription(pubsub.SubscriptionOptions{
 			AgentName:   agent,
@@ -197,9 +200,20 @@ func TestPurgeReportsHaltedOnceDown(t *testing.T) {
 	}
 	removeAIStatus(ctx, status)
 
-	published := lookupAppInstanceStatus(ctx, status.Key())
-	if assert.NotNil(t, published) {
+	if assert.NotEmpty(t, recorder.published) {
+		published := recorder.published[0]
 		assert.Equal(t, types.RecreateVolumes, published.PurgeInprogress)
 		assert.Equal(t, types.HALTED, published.State)
 	}
+}
+
+// statusRecorder keeps what is published, as a removed app leaves nothing.
+type statusRecorder struct {
+	pubsub.Publication
+	published []types.AppInstanceStatus
+}
+
+func (r *statusRecorder) Publish(key string, item interface{}) error {
+	r.published = append(r.published, item.(types.AppInstanceStatus))
+	return r.Publication.Publish(key, item)
 }
