@@ -3,71 +3,105 @@
 ---
 name: Close PRs from master
 
+# Closing a PR needs a token that can write, which a pull_request run on a
+# fork does not get, and GitHub blocks pull_request_target on public
+# repositories. Instead, look for open PRs from a master or main branch:
+#   - after "PR Event", so most PRs are closed right after they are opened;
+#   - on a schedule, since GitHub holds a first-time contributor's
+#     "PR Event" run until a maintainer approves it, and those are the PRs
+#     most likely to come from master.
+# The scan reads everything from the API, so nothing from the triggering
+# run is trusted, and it covers PRs into every branch.
 on:  # yamllint disable-line rule:truthy
-  pull_request_target:
-    types: [opened, reopened]
+  workflow_run:
+    workflows: ["PR Event"]
+    types: [completed]
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
 
 permissions: {}
 
+# Two scans at once would both comment on the same PR
+concurrency:
+  group: close-master-pr
+
 jobs:
   close-master-pr:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.head_branch == 'master' ||
+      github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       pull-requests: write
       issues: write
     steps:
-      - name: Close PR if from master
-        if: github.event.pull_request.head.ref == 'master' || github.event.pull_request.head.ref == 'main'
+      - name: Close PRs from master
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
-          # 1) Close the PR via GitHub API
-          curl -s -X PATCH \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            -d '{"state":"closed"}' \
-            "https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}"
+          set -euo pipefail
+          prs=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" \
+                  --jq '.[] | select(.head.ref == "master" or .head.ref == "main")
+                        | [.number, .head.ref,
+                           (.head.repo.clone_url // "<your fork>")] | @tsv')
+          if [ -z "$prs" ]; then
+            echo "No open PR from master or main"
+            exit 0
+          fi
+          while IFS=$'\t' read -r number ref fork_url; do
+            echo "Closing #$number (from $ref)"
+            gh api -X PATCH "repos/$REPO/pulls/$number" -f state=closed \
+              </dev/null >/dev/null
+            gh api -X POST "repos/$REPO/issues/$number/comments" \
+              -F body=@- >/dev/null <<EOF
+          🚨 Hey there!  We automatically close PRs from the \`$ref\` branch.
 
-          # 2) Add a comment explaining why
-          COMMENT_PAYLOAD=$(cat <<EOF
-          {
-            "body": "🚨 Hey there!  We automatically close PRs from the \`master\` branch.\n\n\
-            Please create a dedicated feature branch instead. Follow these steps to do it properly:\n\n\
-            1. Add the upstream repository if you haven't already:\n\n\
-            \`\`\`sh\n\
-            git remote add upstream https://github.com/${{ github.repository }}.git\n\
-            \`\`\`\n\
-            2. Add your fork as a separate remote:\n\n\
-            \`\`\`sh\n\
-            git remote add myfork ${{ github.event.pull_request.head.repo.clone_url }}\n\
-            \`\`\`\n\
-            3. Fetch the latest changes from the upstream repository:\n\n\
-            \`\`\`sh\n\
-            git fetch upstream\n\
-            \`\`\`\n\
-            4. Rebase your \`master\` branch on top of the upstream \`master\`:\n\n\
-            \`\`\`sh\n\
-            git rebase upstream/master\n\
-            \`\`\`\n\
-            5. Create a new feature branch from the updated \`master\`:\n\n\
-            \`\`\`sh\n\
-            git checkout -b feature/my-change\n\
-            \`\`\`\n\
-            6. Reset \`master\` to match the upstream version without affecting your feature branch:\n\n\
-            \`\`\`sh\n\
-            git branch -f master upstream/master\n\
-            \`\`\`\n\
-            7. Push the new feature branch to your fork:\n\n\
-            \`\`\`sh\n\
-            git push myfork feature/my-change\n\
-            \`\`\`\n\n\
-            Finally, open a new pull request from your \`feature/my-change\` branch.\n\n\
-            Please also review our [contributing guidelines](https://github.com/${{ github.repository }}/blob/master/CONTRIBUTING.md).\n\n\
-            Thanks!"
-          }
+          Please create a dedicated feature branch instead. Follow these steps to do it properly:
+
+          1. Add the upstream repository if you haven't already:
+
+             \`\`\`sh
+             git remote add upstream https://github.com/$REPO.git
+             \`\`\`
+          2. Add your fork as a separate remote:
+
+             \`\`\`sh
+             git remote add myfork $fork_url
+             \`\`\`
+          3. Fetch the latest changes from the upstream repository:
+
+             \`\`\`sh
+             git fetch upstream
+             \`\`\`
+          4. Rebase your \`$ref\` branch on top of the upstream \`master\`:
+
+             \`\`\`sh
+             git rebase upstream/master
+             \`\`\`
+          5. Create a new feature branch from the updated \`$ref\`:
+
+             \`\`\`sh
+             git checkout -b feature/my-change
+             \`\`\`
+          6. Reset \`$ref\` to match the upstream version without affecting your feature branch:
+
+             \`\`\`sh
+             git branch -f $ref upstream/master
+             \`\`\`
+          7. Push the new feature branch to your fork:
+
+             \`\`\`sh
+             git push myfork feature/my-change
+             \`\`\`
+
+          Finally, open a new pull request from your \`feature/my-change\` branch.
+
+          Please also review our [contributing guidelines](https://github.com/$REPO/blob/master/CONTRIBUTING.md).
+
+          Thanks!
           EOF
-          )
-
-          curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            -d "$COMMENT_PAYLOAD" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
+          done <<<"$prs"

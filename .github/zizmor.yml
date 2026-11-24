@@ -15,9 +15,10 @@
 rules:
   dangerous-triggers:
     ignore:
-      # pull_request_target: posts an explanatory comment and closes the
-      # PR via the GitHub API. No checkout of the head ref; no shell
-      # execution touches PR-controlled content.
+      # workflow_run after "PR Event", plus a schedule: lists open PRs
+      # from master or main over the API, closes them and posts an
+      # explanatory comment. No checkout; nothing from the triggering run
+      # is used beyond its branch name in the job's if:.
       - close-master-pr.yml
       # workflow_run after "PR Event", and issue_comment:
       # every PR is from a fork, so a pull_request run gets no secrets.

@@ -9,6 +9,7 @@ name: PR Event
 # from master, with their own permissions:
 #   - claude-review.yml and claude-sec-review.yml
 #   - request_codeowners_review.yml
+#   - close-master-pr.yml (which also runs on a schedule)
 # Nothing from this run is trusted there: a PR can rewrite this file, so
 # they look the PR up again by its head commit.
 #
