@@ -509,6 +509,10 @@ type daemon struct {
 	// cannot back the event channel up.
 	healthInflight bool
 
+	// servicelbCleanup is re-armed on every k3s start and run by the
+	// health worker.
+	servicelbCleanup components.ServiceLBCleanup
+
 	// transitionStep names the cluster-mode transition step
 	// currently executing (e.g. "rotate-token"). Written by the
 	// transition worker goroutine via its progress callback; read
@@ -2221,6 +2225,8 @@ func (d *daemon) enterRunning(ctx context.Context) {
 
 	d.runningCtx, d.cancelRunning = context.WithCancel(ctx)
 
+	d.servicelbCleanup.Reset()
+
 	d.mon = monitor.New(d.deviceName, d.uuid, d.eveRelease, d.installKubevirt)
 	d.mon.StartWithRestartCh(d.runningCtx, d.monRestartCh)
 
@@ -2868,6 +2874,10 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 	if err := components.ReconcileNvidiaConfig(ctx); err != nil {
 		log.Printf("WARNING: reconcile NVIDIA device-plugin config: %v", err)
 	}
+
+	// Remove servicelb and Traefik leftovers from before they were
+	// disabled. Idle once a pass settles, until the next k3s start.
+	d.servicelbCleanup.Run(ctx)
 
 	// Keep the stale-mount-cleanup daemon alive. It shares the
 	// kubelet mount namespace (inside the kube container) and
