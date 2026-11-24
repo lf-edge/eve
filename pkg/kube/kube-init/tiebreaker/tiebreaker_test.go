@@ -146,3 +146,27 @@ func TestClusterNodeCountIsThree(t *testing.T) {
 		t.Errorf("nodeSelectorPatch shape changed")
 	}
 }
+
+func TestTieBreakerUnset(t *testing.T) {
+	cases := []struct {
+		name string
+		obj  map[string]interface{}
+		want bool
+	}{
+		{"no infra", map[string]interface{}{"spec": map[string]interface{}{}}, false},
+		{"other keys only", map[string]interface{}{"spec": map[string]interface{}{
+			"infra": map[string]interface{}{"nodeSelector": map[string]interface{}{
+				"kubernetes.io/os": "linux"}}}}, false},
+		{"tie-breaker true", map[string]interface{}{"spec": map[string]interface{}{
+			"infra": map[string]interface{}{"nodeSelector": map[string]interface{}{
+				tieBreakerNodeLabel: tieBreakerLabelSet}}}}, false},
+		{"tie-breaker false", map[string]interface{}{"spec": map[string]interface{}{
+			"infra": map[string]interface{}{"nodeSelector": map[string]interface{}{
+				"kubernetes.io/os": "linux", tieBreakerNodeLabel: tieBreakerLabelUnset}}}}, true},
+	}
+	for _, tc := range cases {
+		if got := tieBreakerUnset(tc.obj, "spec", "infra", "nodeSelector"); got != tc.want {
+			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

@@ -29,6 +29,10 @@ var (
 		Group: "longhorn.io", Version: "v1beta2", Resource: "instancemanagers",
 	}
 
+	CDIGVR = schema.GroupVersionResource{
+		Group: "cdi.kubevirt.io", Version: "v1beta1", Resource: "cdis",
+	}
+
 	AddonGVR = schema.GroupVersionResource{
 		Group: "k3s.cattle.io", Version: "v1", Resource: "addons",
 	}
