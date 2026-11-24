@@ -158,3 +158,96 @@ func TestRemoveAIStatusWaitsForSnapshot(t *testing.T) {
 	assert.NotPanics(t, func() { removeAIStatus(ctx, &status) })
 	assert.Equal(t, types.BringDown, status.PurgeInprogress)
 }
+
+// newIdleAppTestContext publishes an app that is down after a purge and has
+// nothing left to wait for but the given snapshot configs and statuses.
+func newIdleAppTestContext(t *testing.T, configs []types.VolumesSnapshotConfig,
+	statuses []types.VolumesSnapshotStatus) (*zedmanagerContext, types.AppInstanceConfig) {
+	t.Helper()
+	ctx, config := newRollbackTestContext(t)
+	status := lookupAppInstanceStatus(ctx, config.Key())
+	status.SnapStatus.RollbackInProgress = false
+	publishAppInstanceStatus(ctx, status)
+	useSnapshotState(t, ctx, configs, statuses)
+	return ctx, config
+}
+
+func useSnapshotState(t *testing.T, ctx *zedmanagerContext, configs []types.VolumesSnapshotConfig,
+	statuses []types.VolumesSnapshotStatus) {
+	t.Helper()
+	snap := newSnapshotWaitTestContext(t, configs, statuses)
+	ctx.pubVolumesSnapConfig = snap.pubVolumesSnapConfig
+	ctx.subVolumesSnapStatus = snap.subVolumesSnapStatus
+}
+
+// Nothing but the answer from volumemgr ends the wait, so the answer has to
+// take the app up again.
+func TestSnapshotAnswerResumesTheApp(t *testing.T) {
+	app := uuid.Must(uuid.FromString("11111111-1111-1111-1111-111111111111"))
+	config := types.VolumesSnapshotConfig{SnapshotID: "s2", AppUUID: app, Action: types.VolumesSnapshotCreate}
+	created := types.VolumesSnapshotStatus{SnapshotID: "s2", AppUUID: app, ResultOfAction: types.VolumesSnapshotCreate}
+	deleted := types.VolumesSnapshotStatus{SnapshotID: "s2", AppUUID: app, ResultOfAction: types.VolumesSnapshotDelete}
+	tests := []struct {
+		name string
+		// what is published while volumemgr works, and once it has answered
+		pendingConfigs, answeredConfigs   []types.VolumesSnapshotConfig
+		pendingStatuses, answeredStatuses []types.VolumesSnapshotStatus
+		answer                            types.VolumesSnapshotStatus
+	}{
+		{
+			name:             "creation",
+			pendingConfigs:   []types.VolumesSnapshotConfig{config},
+			answeredConfigs:  []types.VolumesSnapshotConfig{config},
+			answeredStatuses: []types.VolumesSnapshotStatus{created},
+			answer:           created,
+		},
+		{
+			name:            "deletion",
+			pendingStatuses: []types.VolumesSnapshotStatus{deleted},
+			answer:          deleted,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, appConfig := newIdleAppTestContext(t, tt.pendingConfigs, tt.pendingStatuses)
+			updateAIStatusUUID(ctx, appConfig.Key())
+			assert.Equal(t, types.RecreateVolumes, lookupAppInstanceStatus(ctx, appConfig.Key()).PurgeInprogress)
+
+			useSnapshotState(t, ctx, tt.answeredConfigs, tt.answeredStatuses)
+			handleVolumesSnapshotStatusImpl(ctx, tt.answer)
+			assert.Equal(t, types.BringUp, lookupAppInstanceStatus(ctx, appConfig.Key()).PurgeInprogress)
+		})
+	}
+}
+
+// The wait also has to hold for an operation that the same call started.
+func TestAppWaitsForTheSnapshotOperationItStarts(t *testing.T) {
+	app := uuid.Must(uuid.FromString("11111111-1111-1111-1111-111111111111"))
+	config := types.VolumesSnapshotConfig{SnapshotID: "s2", AppUUID: app, Action: types.VolumesSnapshotCreate}
+
+	t.Run("deletion in doUpdate", func(t *testing.T) {
+		created := types.VolumesSnapshotStatus{SnapshotID: "s2", AppUUID: app, ResultOfAction: types.VolumesSnapshotCreate}
+		ctx, appConfig := newIdleAppTestContext(t,
+			[]types.VolumesSnapshotConfig{config}, []types.VolumesSnapshotStatus{created})
+		status := lookupAppInstanceStatus(ctx, appConfig.Key())
+		status.SnapStatus.SnapshotsToBeDeleted = []types.SnapshotDesc{{SnapshotID: "s2"}}
+
+		doUpdate(ctx, appConfig, status)
+
+		assert.Nil(t, lookupVolumesSnapshotConfig(ctx, "s2"), "the deletion must be requested")
+		assert.Equal(t, types.RecreateVolumes, status.PurgeInprogress)
+	})
+	t.Run("creation in a purge", func(t *testing.T) {
+		ctx, appConfig := newIdleAppTestContext(t, nil, nil)
+		status := lookupAppInstanceStatus(ctx, appConfig.Key())
+		useDomainStatus(t, ctx, types.DomainStatus{UUIDandVersion: status.UUIDandVersion})
+		status.PurgeInprogress = types.BringDown
+		status.SnapStatus.SnapshotTakenType = types.SnapshotImmediate
+		status.SnapStatus.PreparedVolumesSnapshotConfigs = []types.VolumesSnapshotConfig{config}
+
+		removeAIStatus(ctx, status)
+
+		assert.NotNil(t, lookupVolumesSnapshotConfig(ctx, "s2"), "the creation must be requested")
+		assert.Equal(t, types.BringDown, status.PurgeInprogress)
+	})
+}
