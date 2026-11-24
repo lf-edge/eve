@@ -2,39 +2,158 @@
 # SPDX-License-Identifier: Apache-2.0
 ---
 name: Claude Security Review
+# Runs after "Claude Review Request", like the "Claude Code" workflow: see
+# there why this cannot be pull_request or pull_request_target.
+#
+# The anthropics/claude-code-security-review action only works on
+# pull_request(_target) events, so its audit script is run here directly.
+# As in "Claude Code", the job that holds the Anthropic key has a read-only
+# token and returns findings as data; a job without secrets posts them.
 on:  # yamllint disable-line rule:truthy
-  pull_request_target:
-    types: [opened, synchronize, ready_for_review, reopened]
+  workflow_run:
+    workflows: ["Claude Review Request"]
+    types: [completed]
 
-permissions:
-  contents: read
-  pull-requests: write
+permissions: {}
+
+env:
+  # anthropics/claude-code-security-review main, 2026-08-27
+  SEC_REVIEW_REF: 0c6a49f1fa56a1d472575da86a94dbc1edb78eda
 
 jobs:
-  security-review:
+  resolve:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    concurrency:
-      group: claude-sec-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
+    timeout-minutes: 5
     if: |
-      github.event.pull_request.author_association == 'MEMBER' ||
-      github.event.pull_request.author_association == 'COLLABORATOR' ||
-      github.event.pull_request.author_association == 'OWNER'
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      number: ${{ steps.pr.outputs.number }}
+      sha: ${{ steps.pr.outputs.sha }}
     steps:
-      # Check out the base branch, never the PR head: secrets are in scope on
-      # pull_request_target, and the claude CLI runs in this tree and honors
-      # its .claude and .mcp.json configs. The action fetches the PR diff
-      # through the GitHub API, so the base tree only supplies context.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           persist-credentials: false
-      # fork of anthropics/claude-code-security-review: upstream refuses to
-      # run on pull_request_target, which this repo needs for fork PRs
-      - uses: shjala/claude-code-security-review@4d62096960937fdd393d3e4b15ac501ff1a77ede  # main
+          sparse-checkout: .github/actions/claude-pr-resolve
+      - id: pr
+        uses: ./.github/actions/claude-pr-resolve
         with:
-          claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          claude-model: claude-opus-4-8
-          comment-pr: true
-          upload-results: true
-          exclude-directories: vendor
+          github-token: ${{ github.token }}
+
+  security-review:
+    needs: resolve
+    if: needs.resolve.outputs.number != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: claude-sec-${{ needs.resolve.outputs.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      findings: ${{ steps.audit.outputs.findings }}
+    steps:
+      # master, never the PR head: the claude CLI runs in this tree and
+      # honors its .claude and .mcp.json configs. The script reads the PR's
+      # diff through the API, so this tree only supplies context.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          repository: anthropics/claude-code-security-review
+          ref: ${{ env.SEC_REVIEW_REF }}
+          path: .sec-review
+          persist-credentials: false
+      - name: Install the audit tool
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q -r .sec-review/claudecode/requirements.txt
+          npm install -g @anthropic-ai/claude-code@2.1.331  # zizmor: ignore[adhoc-packages]
+      - id: audit
+        name: Run the audit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ needs.resolve.outputs.number }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_MODEL: claude-opus-4-8
+          CLAUDE_TIMEOUT: "20"
+          ENABLE_CLAUDE_FILTERING: "true"
+          EXCLUDE_DIRECTORIES: vendor
+          REPO_PATH: ${{ github.workspace }}
+        run: |
+          set -uo pipefail
+          results="$RUNNER_TEMP/results.json"
+          # Exits 1 when it finds a HIGH severity issue; that is a result,
+          # not a failure, so judge the run by its output instead.
+          (cd .sec-review && PYTHONPATH="$PWD" "$RUNNER_TEMP/venv/bin/python" \
+             -u claudecode/github_action_audit.py) \
+            > "$results" 2> "$RUNNER_TEMP/error.log"
+          if ! jq -e 'has("findings")' "$results" >/dev/null 2>&1; then
+            echo "::error::Security audit failed: $(jq -r '.error // empty' "$results" 2>/dev/null)"
+            cat "$RUNNER_TEMP/error.log"
+            exit 1
+          fi
+          jq '.filtering_summary | del(.excluded_findings_details)' "$results"
+          echo "findings=$(jq -c .findings "$results")" >> "$GITHUB_OUTPUT"
+      - if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: security-review-results
+          path: |
+            ${{ runner.temp }}/results.json
+            ${{ runner.temp }}/error.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  post:
+    needs: [resolve, security-review]
+    if: needs.security-review.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ needs.resolve.outputs.number }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          FINDINGS: ${{ needs.security-review.outputs.findings }}
+        run: |
+          set -euo pipefail
+          # Each push is audited again; post only findings whose comment is
+          # not already on the PR.
+          posted=$(gh api --paginate "repos/$REPO/pulls/$PR/comments" |
+                   jq -s '[.[][] | select(.user.type == "Bot") | .body]')
+          payload=$(jq -n --argjson f "${FINDINGS:-[]}" --argjson posted "$posted" \
+                      --arg sha "$SHA" '
+            [$f[] | {path: .file, line: ((.line // 1) | tonumber? // 1),
+                     side: "RIGHT",
+                     body: ("🤖 **Security Issue: \(.description // "Security vulnerability detected")**\n\n"
+                            + "**Severity:** \(.severity // "HIGH")\n"
+                            + "**Category:** \(.category // "security_issue")\n"
+                            + (if .exploit_scenario then "\n**Exploit Scenario:** \(.exploit_scenario)\n" else "" end)
+                            + (if .recommendation then "\n**Recommendation:** \(.recommendation)\n" else "" end))}
+             | select(.body as $b | $posted | index($b) | not)] as $c
+            | {commit_id: $sha, event: "COMMENT",
+               body: "**Claude security review** of \($sha[:12]): \($c | length) new finding(s)",
+               comments: $c}')
+          if [ "$(jq '.comments | length' <<<"$payload")" -eq 0 ]; then
+            echo "No new findings"
+            exit 0
+          fi
+          if ! gh api "repos/$REPO/pulls/$PR/reviews" --input - \
+                 <<<"$payload" >/dev/null; then
+            # GitHub rejects the whole review if one comment is not on a
+            # line of the diff; fold them into the body instead.
+            echo "::warning::Inline comments refused; posting them in the review body"
+            jq '.body += ([.comments[] | "\n\n---\n`\(.path):\(.line)`\n\n\(.body)"]
+                          | join("")) | .body |= .[:65000] | del(.comments)' \
+              <<<"$payload" | gh api "repos/$REPO/pulls/$PR/reviews" --input - >/dev/null
+          fi

@@ -28,6 +28,11 @@ rules:
       # its structured output. PR-controlled values reach the shell only
       # through env.
       - claude-review.yml
+      # workflow_run after "Claude Review Request": same split as
+      # claude-review.yml. Checks out master only; the audit script reads
+      # the PR diff over the API with a read-only token, and a job without
+      # secrets posts the findings.
+      - claude-sec-review.yml
       # pull_request_target: checks out the base ref and reads
       # .github/CODEOWNERS from it; the head SHA is fetched only to diff
       # the file list. PR-controlled values reach the shell through env.
