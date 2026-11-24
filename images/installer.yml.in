@@ -2,18 +2,18 @@ kernel:
   image: KERNEL_TAG
   cmdline: "rootdelay=3"
 init:
-  - linuxkit/init:075ff447b68e23feef95589c90010a039533e5b5
+  - linuxkit/init:24f9f554ed98f452fd940f5cff7f2ae1887e9974
   - RUNC_TAG # runc v1.3.3 built from source, stripped
   # pillar's logic rely on existence of getty and /etc/init.d/001-getty inside
-  - linuxkit/getty:v1.3.0
-  - linuxkit/memlogd:v1.3.0
+  - linuxkit/getty:acf4c09396ac91c060abe0ccfe35122decb45121
+  - linuxkit/memlogd:4c2755160e29a7d0efad2a58f2f3eaec5bd22c49
   - GRUB_TAG
   - DOM0ZTOOLS_TAG
   - FW_TAG
   - UDEV_TAG
 onboot:
   - name: sysctl
-    image: linuxkit/sysctl:43ac1d39da329c3567fcb9689e5ca99de6d169b6
+    image: linuxkit/sysctl:e24d301343e31e2c477a1b07e504192dcdf5b700
     binds:
       - /etc/sysctl.d:/etc/sysctl.d
     capabilities:
