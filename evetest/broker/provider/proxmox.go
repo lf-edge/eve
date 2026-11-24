@@ -666,7 +666,7 @@ func (p *ProxmoxProvider) SetupDevice(
 	}
 
 	_, err = retryProxmoxCall(ctx, log,
-		fmt.Sprintf("failed to create VM for device %q", name),
+		fmt.Sprintf("failed to create VM for device %q", name), proxmoxCreateRetryWindow,
 		func(callCtx context.Context) (struct{}, error) {
 			return struct{}{}, p.createAndWaitVM(callCtx, ctx, log, node, cluster, dev,
 				diskVolIDs, firmwareArgs)
@@ -692,18 +692,19 @@ func (p *ProxmoxProvider) SetupDevice(
 // createAndWaitVM creates dev's VM (see createVM) and waits for PVE to complete
 // the creation, which imports the disks. A VM whose creation failed is removed.
 //
-// The API calls are bounded by callCtx, the share of the deadline of this
-// attempt. The wait and the cleanup run on setupCtx, the deadline of the whole
-// device setup: the import can take a while, and the cleanup must not run on
-// the context that just expired.
+// The API calls are bounded by callCtx, which ends with the retry window of
+// the create. The wait and the cleanup run on setupCtx, the deadline of the
+// whole device setup: the import can take a while, and the cleanup must not
+// run on the context that just expired.
 //
 // A create task that PVE ran to completion and reported as failed is returned
 // as a retryable error once its VM is removed: such a failure is a runtime
-// problem on the host (e.g. PVE holds the storage lock for the whole import of
-// a disk, so the creates of several VMs at once can time out on it), as PVE
-// rejects invalid options already in the create call. The failure is
-// permanent when the VM cannot be removed, or when the wait itself failed
-// (e.g. it timed out client-side), as PVE may still be creating the VM.
+// problem on the host (e.g. a timeout on the storage lock, which PVE holds
+// while it allocates or frees a disk, and which a busy storage can hold for
+// longer than PVE waits for it), as PVE rejects invalid options already in the
+// create call. The failure is permanent when the VM cannot be removed, or when
+// the wait itself failed (e.g. it timed out client-side), as PVE may still be
+// creating the VM.
 func (p *ProxmoxProvider) createAndWaitVM(callCtx, setupCtx context.Context,
 	log *logrus.Entry, node *proxmox.Node, cluster *proxmox.Cluster, dev *proxmoxDevice,
 	diskVolIDs []string, firmwareArgs string) error {
@@ -729,8 +730,8 @@ func (p *ProxmoxProvider) createAndWaitVM(callCtx, setupCtx context.Context,
 // nicOptions). A failed create is cleaned up, so the caller can retry it, with
 // a newly allocated VMID.
 //
-// The API calls are bounded by callCtx, the share of the deadline of this
-// attempt. The cleanup runs on setupCtx, the deadline of the whole device
+// The API calls are bounded by callCtx, which ends with the retry window of
+// the create. The cleanup runs on setupCtx, the deadline of the whole device
 // setup, as callCtx may be the one that just expired and failed the create.
 func (p *ProxmoxProvider) createVM(callCtx, setupCtx context.Context, log *logrus.Entry,
 	node *proxmox.Node, cluster *proxmox.Cluster, dev *proxmoxDevice,
@@ -794,7 +795,8 @@ func (p *ProxmoxProvider) removeLeftoverDevice(
 // runOrphanSweepLoop).
 func (p *ProxmoxProvider) removeFailedVM(ctx context.Context, log *logrus.Entry,
 	node *proxmox.Node, dev *proxmoxDevice, vmID int) error {
-	removed, err := retryProxmoxCall(ctx, log, fmt.Sprintf("remove VM %d of failed setup", vmID),
+	removed, err := retryProxmoxCall(ctx, log,
+		fmt.Sprintf("remove VM %d of failed setup", vmID), proxmoxCleanupRetryWindow,
 		func(ctx context.Context) (bool, error) {
 			return p.removeVM(ctx, log, node, dev, vmID)
 		})
@@ -884,7 +886,8 @@ func (p *ProxmoxProvider) resolveDeviceNetworks(
 // the next broker run.
 func (p *ProxmoxProvider) destroyDeviceWithRetry(
 	ctx context.Context, log *logrus.Entry, dev *proxmoxDevice) error {
-	_, err := retryProxmoxCall(ctx, log, fmt.Sprintf("failed to destroy device %q", dev.name),
+	_, err := retryProxmoxCall(ctx, log,
+		fmt.Sprintf("failed to destroy device %q", dev.name), proxmoxChangeRetryWindow,
 		func(ctx context.Context) (struct{}, error) {
 			return struct{}{}, p.destroyDevice(ctx, log, dev)
 		})
@@ -940,7 +943,7 @@ func (p *ProxmoxProvider) TeardownDevice(ctx context.Context, name string) error
 // requirement.
 func (p *ProxmoxProvider) PowerOnDevice(ctx context.Context, name string) error {
 	log := logger.FromContext(ctx)
-	dev, vm, err := p.lookupVM(ctx, name)
+	dev, vm, err := p.lookupVM(ctx, name, proxmoxReadRetryWindow)
 	if err != nil {
 		return err
 	}
@@ -1090,7 +1093,9 @@ func (p *ProxmoxProvider) setVMPowerState(ctx context.Context, dev *proxmoxDevic
 	desc string, inTarget func(*proxmox.VirtualMachine) bool,
 	op func(context.Context, *proxmox.VirtualMachine) error) error {
 	log := logger.FromContext(ctx)
-	_, err := retryProxmoxCall(ctx, log, fmt.Sprintf("%s VM %d of device %q", desc, dev.vmID, dev.name),
+	_, err := retryProxmoxCall(ctx, log,
+		fmt.Sprintf("%s VM %d of device %q", desc, dev.vmID, dev.name),
+		proxmoxChangeRetryWindow,
 		func(ctx context.Context) (struct{}, error) {
 			vm, err := p.getVM(ctx, dev.vmID)
 			if err != nil {
@@ -1153,8 +1158,16 @@ func (p *ProxmoxProvider) AttachToDeviceConsole(_ context.Context,
 // GetDeviceStatus returns the current status of the VM.
 func (p *ProxmoxProvider) GetDeviceStatus(
 	ctx context.Context, name string) (DeviceStatus, error) {
+	return p.deviceStatus(ctx, name, proxmoxReadRetryWindow)
+}
+
+// deviceStatus reads the status of the device, retrying a failed read for
+// retryWindow. WatchDeviceStatus reads it without retries: it polls it anyway,
+// and a retry would hold up the poll.
+func (p *ProxmoxProvider) deviceStatus(ctx context.Context, name string,
+	retryWindow time.Duration) (DeviceStatus, error) {
 	log := logger.FromContext(ctx)
-	_, vm, err := p.lookupVM(ctx, name)
+	_, vm, err := p.lookupVM(ctx, name, retryWindow)
 	if err != nil {
 		return DeviceStatusUnknown, err
 	}
@@ -1225,7 +1238,7 @@ func (p *ProxmoxProvider) WatchDeviceStatus(
 			}
 		}()
 
-		last, err := p.GetDeviceStatus(ctx, name)
+		last, err := p.deviceStatus(ctx, name, 0)
 		if err != nil {
 			// All device/VM lookups (via lookupVM and the map lookups) wrap
 			// ErrNotFound with %w, so errors.Is detects a missing device.
@@ -1243,7 +1256,7 @@ func (p *ProxmoxProvider) WatchDeviceStatus(
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				st, err := p.GetDeviceStatus(ctx, name)
+				st, err := p.deviceStatus(ctx, name, 0)
 				if err != nil {
 					// Same reasoning as the initial read above: a device torn
 					// down while being watched must produce a terminal status
@@ -1470,7 +1483,8 @@ func (p *ProxmoxProvider) removeOrphanedVMs(
 		default:
 			continue
 		}
-		_, err := retryProxmoxCall(ctx, log, fmt.Sprintf("remove orphaned VM %d", vmID),
+		_, err := retryProxmoxCall(ctx, log,
+			fmt.Sprintf("remove orphaned VM %d", vmID), proxmoxCleanupRetryWindow,
 			func(ctx context.Context) (bool, error) {
 				return p.removeVM(ctx, log, node, nil, vmID)
 			})
@@ -1652,7 +1666,7 @@ func (p *ProxmoxProvider) removeOrphanedImportVolumes(
 func (p *ProxmoxProvider) ReconfigureDeviceDisks(
 	ctx context.Context, name string, newDisks []DiskImage) error {
 	log := logger.FromContext(ctx)
-	dev, vm, err := p.lookupVM(ctx, name)
+	dev, vm, err := p.lookupVM(ctx, name, proxmoxReadRetryWindow)
 	if err != nil {
 		return err
 	}
@@ -1736,16 +1750,17 @@ func (p *ProxmoxProvider) lookupDevice(name string) (*proxmoxDevice, error) {
 	return dev, nil
 }
 
-// lookupVM returns the device and a fresh VirtualMachine handle. Safe to call
-// without holding p.devMutex; see lookupDevice.
-func (p *ProxmoxProvider) lookupVM(
-	ctx context.Context, name string) (*proxmoxDevice, *proxmox.VirtualMachine, error) {
+// lookupVM returns the device and a fresh VirtualMachine handle, retrying a
+// failed read for retryWindow (see retryProxmoxCall). Safe to call without
+// holding p.devMutex; see lookupDevice.
+func (p *ProxmoxProvider) lookupVM(ctx context.Context, name string,
+	retryWindow time.Duration) (*proxmoxDevice, *proxmox.VirtualMachine, error) {
 	dev, err := p.lookupDevice(name)
 	if err != nil {
 		return nil, nil, err
 	}
 	vm, err := retryProxmoxCall(ctx, logger.FromContext(ctx),
-		fmt.Sprintf("get VM %d for device %q", dev.vmID, name),
+		fmt.Sprintf("get VM %d for device %q", dev.vmID, name), retryWindow,
 		func(ctx context.Context) (*proxmox.VirtualMachine, error) {
 			return p.getVM(ctx, dev.vmID)
 		})
@@ -2171,20 +2186,23 @@ func diskOptions(storage string, diskRefs []string) []proxmox.VirtualMachineOpti
 // attempt re-opens and re-streams the source file from scratch (see
 // (*Storage).upload in go-proxmox), so a retry after a failed POST is always
 // safe: no task/UPID is obtained (and thus nothing to clean up) unless an
-// attempt fully succeeds.
+// attempt fully succeeds. UploadWithName takes no context, so the retry window
+// only keeps a new attempt from starting, and cannot end one.
 func (p *ProxmoxProvider) uploadWithRetry(ctx context.Context, log *logrus.Entry,
 	storage *proxmox.Storage, path, uploadName string) (*proxmox.Task, error) {
 	desc := fmt.Sprintf("failed to upload %q to storage %q", path, p.conf.ImportStorage)
-	return retryProxmoxCall(ctx, log, desc, func(context.Context) (*proxmox.Task, error) {
-		return storage.UploadWithName("import", path, uploadName)
-	})
+	return retryProxmoxCall(ctx, log, desc, proxmoxUploadRetryWindow,
+		func(context.Context) (*proxmox.Task, error) {
+			return storage.UploadWithName("import", path, uploadName)
+		})
 }
 
 // getStorageWithRetry calls node.Storage, retrying on failure. Safe to retry
 // unconditionally: this is a read-only metadata fetch with no side effects.
 func (p *ProxmoxProvider) getStorageWithRetry(ctx context.Context, log *logrus.Entry,
 	node *proxmox.Node, name string) (*proxmox.Storage, error) {
-	return retryProxmoxCall(ctx, log, fmt.Sprintf("failed to get storage %q", name),
+	return retryProxmoxCall(ctx, log,
+		fmt.Sprintf("failed to get storage %q", name), proxmoxReadRetryWindow,
 		func(ctx context.Context) (*proxmox.Storage, error) {
 			return node.Storage(ctx, name)
 		})
@@ -2759,9 +2777,27 @@ func (s *muxSubscriber) Close() error {
 // (see callOwnedVM and listVMsAndOwnedIDs).
 const proxmoxVMIDLockedCallTimeout = time.Minute
 
-// proxmoxRetryMaxAttempts bounds retries of a single Proxmox API call against
-// transient failures.
-const proxmoxRetryMaxAttempts = 3
+// Retry windows: how long retryProxmoxCall keeps retrying an operation that
+// fails transiently. A failure can last minutes, e.g. while PVE times out on
+// its storage lock, on a host whose storage is busy. Each window is a share of
+// the deadline of the RPC or sweep that makes the call, which other steps
+// share: a setup also installs EVE, and a sweep removes all orphans.
+const (
+	// proxmoxCreateRetryWindow bounds the retries of a VM create.
+	proxmoxCreateRetryWindow = 5 * time.Minute
+	// proxmoxChangeRetryWindow bounds the retries of a device teardown and
+	// of a VM power operation.
+	proxmoxChangeRetryWindow = 3 * time.Minute
+	// proxmoxCleanupRetryWindow bounds the retries of a best-effort removal,
+	// of the VM of a failed setup or of an orphan: what it fails to remove
+	// is left to the next orphan sweep.
+	proxmoxCleanupRetryWindow = 2 * time.Minute
+	// proxmoxUploadRetryWindow bounds the retries of an upload to the import
+	// storage.
+	proxmoxUploadRetryWindow = 5 * time.Minute
+	// proxmoxReadRetryWindow bounds the retries of a read.
+	proxmoxReadRetryWindow = time.Minute
+)
 
 // proxmoxRetryDelay is the pause between retryProxmoxCall attempts. It is a
 // variable only so that tests can shorten it.
@@ -2781,63 +2817,42 @@ func permanent(err error) error {
 	return permanentError{err: err}
 }
 
-// proxmoxMinAttemptTime is the least time attemptContext plans for an attempt
-// of a call with a deadline. It is a variable only so that tests can shorten
-// it.
-var proxmoxMinAttemptTime = 30 * time.Second
-
-// attemptContext returns the context for the first of at most attemptsLeft
-// attempts, and whether it is the last one. Without a deadline on ctx, that is
-// ctx itself. With one, the time left until it, minus the pauses before the
-// remaining attempts, is split equally among the attempts, and an attempt that
-// fails early leaves its unused time to the next ones. When the time left does
-// not give each attempt proxmoxMinAttemptTime, fewer attempts are planned: an
-// attempt cut short by a tiny share only wastes the time, and may still leave
-// behind what the call started. The last attempt gets all the time left.
-func attemptContext(ctx context.Context, attemptsLeft int) (
-	context.Context, context.CancelFunc, bool) {
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		attemptCtx, cancel := context.WithCancel(ctx)
-		return attemptCtx, cancel, attemptsLeft <= 1
+// isPermanentProxmoxErr reports whether err is a failure that a retry cannot
+// fix: one marked permanent, or a request that PVE rejected as invalid (HTTP
+// 400), unless for a lock it timed out on, which PVE reports as 400 too (e.g.
+// "unable to apply pending change virtio0 : can't lock file ... - got
+// timeout").
+func isPermanentProxmoxErr(err error) bool {
+	if errors.As(err, new(permanentError)) {
+		return true
 	}
-	left := time.Until(deadline)
-	for ; attemptsLeft > 1; attemptsLeft-- {
-		pauses := time.Duration(attemptsLeft-1) * proxmoxRetryDelay
-		share := (left - pauses) / time.Duration(attemptsLeft)
-		if share >= proxmoxMinAttemptTime {
-			attemptCtx, cancel := context.WithTimeout(ctx, share)
-			return attemptCtx, cancel, false
-		}
-	}
-	attemptCtx, cancel := context.WithCancel(ctx)
-	return attemptCtx, cancel, true
+	msg := err.Error()
+	return strings.Contains(msg, "bad request: 400") && !strings.Contains(msg, "lock")
 }
 
-// retryProxmoxCall calls fn up to proxmoxRetryMaxAttempts times, retrying on
-// failure with a proxmoxRetryDelay pause in between, unless fn marks the
-// failure permanent. desc names the operation, for the warning logged between
-// attempts.
-//
-// If ctx has a deadline, each attempt gets an equal share of the time left
-// for it and the attempts after it, so that an attempt that hangs until the
-// deadline does not leave no time for the retries, and fewer attempts are made
-// when the time left is short (see attemptContext).
+// retryProxmoxCall calls fn, retrying its failures with a proxmoxRetryDelay
+// pause in between until window has passed, unless a failure is permanent
+// (see isPermanentProxmoxErr). desc names the operation, for the warning
+// logged between attempts. fn gets a context that ends with the window, or
+// earlier with ctx, so that an attempt that hangs cannot take longer either;
+// the last error is returned. A zero window makes a single attempt, bounded by
+// ctx only.
 func retryProxmoxCall[T any](ctx context.Context, log *logrus.Entry, desc string,
-	fn func(ctx context.Context) (T, error)) (T, error) {
+	window time.Duration, fn func(ctx context.Context) (T, error)) (T, error) {
+	if window <= 0 {
+		return fn(ctx)
+	}
+	retryCtx, cancel := context.WithTimeout(ctx, window)
+	defer cancel()
 	for attempt := 1; ; attempt++ {
-		attemptCtx, cancel, last := attemptContext(ctx, proxmoxRetryMaxAttempts-attempt+1)
-		result, err := fn(attemptCtx)
-		cancel()
-		if err == nil || last || errors.As(err, new(permanentError)) {
+		result, err := fn(retryCtx)
+		if err == nil || isPermanentProxmoxErr(err) || retryCtx.Err() != nil {
 			return result, err
 		}
-		log.Warnf("Attempt %d/%d: %s (will retry): %v",
-			attempt, proxmoxRetryMaxAttempts, desc, err)
+		log.Warnf("Attempt %d: %s (will retry): %v", attempt, desc, err)
 		select {
-		case <-ctx.Done():
-			var zero T
-			return zero, ctx.Err()
+		case <-retryCtx.Done():
+			return result, err
 		case <-time.After(proxmoxRetryDelay):
 		}
 	}

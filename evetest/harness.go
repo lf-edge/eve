@@ -72,14 +72,17 @@ const (
 	// This includes building a disk image for every requested EVE device
 	// (with the libvirt provider, a multi-device cluster can spend well over
 	// a minute per device on this alone), starting the SDN VM and waiting
-	// for it to acquire IP addresses via DHCP.
-	brokerSetupDevicesTimeout = 15 * time.Minute
+	// for it to acquire IP addresses via DHCP. On a busy host, the Proxmox
+	// provider may also retry the create of the SDN VM, and then of the EVE
+	// VMs, for up to 5 minutes each.
+	brokerSetupDevicesTimeout = 20 * time.Minute
 
 	// Timeouts for powering an EVE VM on, off, or rebooting it (not for waiting
 	// for it to boot). The broker RPC returns once the provider confirms the
 	// new power state. On Proxmox that is a task which can wait a minute on a
 	// busy host (e.g. for a storage lock held by a parallel VM create), and the
-	// broker retries a failed one up to 3 times, so 1 minute is not enough.
+	// broker retries a failed one for up to 3 minutes, so 1 minute is not
+	// enough.
 	brokerPowerOnEVEDeviceTimeout  = 5 * time.Minute
 	brokerPowerOffEVEDeviceTimeout = 5 * time.Minute
 	// Editing a disk rewrites megabytes through qemu-img/qemu-io on a
@@ -89,8 +92,9 @@ const (
 	// connection setup the proxmox provider may have to do first.
 	brokerExecuteQMPTimeout = time.Minute
 	// brokerScratchImageTimeout bounds creating or deleting a scratch image,
-	// which on proxmox uploads up to 1 GiB to the PVE host.
-	brokerScratchImageTimeout = 5 * time.Minute
+	// which on proxmox uploads up to 1 GiB to the PVE host, retrying a failed
+	// upload for up to 5 minutes.
+	brokerScratchImageTimeout = 7 * time.Minute
 
 	// Timeout for triggering an EVE VM reboot (not for waiting for it to
 	// boot). See brokerPowerOnEVEDeviceTimeout.

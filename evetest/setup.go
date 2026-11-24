@@ -1197,7 +1197,9 @@ func (th *TestHarness) onboardEVEDevices() {
 	// install on the broker side (see broker.PowerOnDevice), so it needs a much
 	// larger budget than the short brokerPowerOnEVEDeviceTimeout used for a
 	// plain power-on -- NetbootDownloadTimeout for the network boot
-	// itself plus EVEInstallationTimeout for the installer it then runs.
+	// itself plus EVEInstallationTimeout for the installer it then runs, and
+	// a second brokerPowerOnEVEDeviceTimeout for the power-on that boots the
+	// installed image.
 	powerOnErrCh := make(chan error, len(devices))
 	for _, dev := range devices {
 		go func(dev deviceState) {
@@ -1207,7 +1209,8 @@ func (th *TestHarness) onboardEVEDevices() {
 			}
 			timeout := brokerPowerOnEVEDeviceTimeout
 			if dev.requirement.DeviceReusePolicy == CreateFromScratchWithNetworkBoot {
-				timeout += constants.NetbootDownloadTimeout + constants.EVEInstallationTimeout
+				timeout += brokerPowerOnEVEDeviceTimeout +
+					constants.NetbootDownloadTimeout + constants.EVEInstallationTimeout
 			}
 			ctx, cancel := context.WithTimeout(th.ctx, timeout)
 			_, err := th.brokerClient.PowerOnDevice(ctx, devCtrlReq)
