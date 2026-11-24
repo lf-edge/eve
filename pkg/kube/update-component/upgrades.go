@@ -17,7 +17,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -50,19 +53,11 @@ const (
 	logMaxBackups = 3   // old log files to retain
 	logMaxAge     = 365 // days to retain old log files
 
-	// Keep these in sync with pkg/kube/cluster-utils.sh: MGMTPROXY_URL,
-	// MGMTPROXY_DISABLE_FLAG, and the body of mgmtproxy_no_proxy().
-	// KubectlApply uses them when fetching upgrade YAMLs from external HTTPS
-	// URLs so the dynamic upgrade path honors network.download.max.cost via
-	// pillar's mgmtproxy. Local-file applies are not routed through the
-	// proxy.
-	// The ClusterIPPrefix subnet appended dynamically by the shell helper is
-	// omitted here: update-component only talks to the local apiserver via
-	// kubeconfig (127.0.0.1, already covered by 127.0.0.0/8), and the HTTPS
-	// URL fetch is the only external traffic that matters for this binary.
+	// Keep in sync with kube-init's mgmtproxy.URL and DisableFlag.
+	// KubectlApply downloads upgrade YAMLs from HTTPS URLs through pillar's
+	// mgmtproxy so the upgrade path honors network.download.max.cost.
 	mgmtproxyURL         = "http://127.0.0.1:5443"
 	mgmtproxyDisableFlag = "/run/kube/mgmtproxy-disable"
-	mgmtproxyNoProxy     = "127.0.0.0/8,10.42.0.0/16,10.43.0.0/16,169.254.0.0/16,localhost,.svc,.cluster.local"
 )
 
 var (
@@ -101,11 +96,8 @@ type commonComponent struct {
 	cs *kubernetes.Clientset
 }
 
-// isHTTPSURL reports whether path is an https URL kubectl will fetch over the
-// network rather than a local filesystem path. Used to decide whether the
-// kubectl subprocess needs HTTPS_PROXY for cost-aware routing. Only https is
-// matched: Go's http client consults HTTPS_PROXY exclusively for https
-// requests, and the proxy is CONNECT/https-only by design.
+// isHTTPSURL reports whether path is an https URL. Only https goes through
+// mgmtproxy, which is CONNECT-only.
 func isHTTPSURL(path string) bool {
 	return strings.HasPrefix(path, "https://")
 }
@@ -118,27 +110,72 @@ func mgmtproxyEnabled() bool {
 	return os.IsNotExist(err)
 }
 
-func (ctx *commonComponent) KubectlApply(path string) error {
-	cmd := exec.Command("kubectl", "apply", "-f", path)
+// kubectlApplyArgs applies server-side under kube-init's field manager, as
+// kube-init installs the components.
+func kubectlApplyArgs(src string) []string {
+	return []string{"apply", "--server-side", "--force-conflicts",
+		"--field-manager=" + fieldManager, "-f", src}
+}
+
+// manifestFetchTimeout bounds the download of an upgrade manifest.
+const manifestFetchTimeout = 5 * time.Minute
+
+// fetchManifest downloads an http(s) manifest to a temp file, so the
+// ownership step and the apply read one copy. The caller removes the file.
+func fetchManifest(url string) (string, error) {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
 	switch {
-	case isHTTPSURL(path) && mgmtproxyEnabled():
-		// Inject HTTPS_PROXY/NO_PROXY so kubectl's manifest fetch routes
-		// through pillar's cost-aware mgmtproxy. Use append(os.Environ(), ...)
-		// so the parent's PATH/KUBECONFIG/HOME are preserved — kubectl needs
-		// them to find the apiserver.
-		cmd.Env = append(os.Environ(),
-			"HTTPS_PROXY="+mgmtproxyURL,
-			"NO_PROXY="+mgmtproxyNoProxy)
-		log.Printf("KubectlApply: routing through mgmtproxy (%s): %s", mgmtproxyURL, path)
-	case isHTTPSURL(path):
+	case isHTTPSURL(url) && mgmtproxyEnabled():
+		proxyURL, err := neturl.Parse(mgmtproxyURL)
+		if err != nil {
+			return "", err
+		}
+		transport.Proxy = http.ProxyURL(proxyURL)
+		log.Printf("KubectlApply: routing through mgmtproxy (%s): %s", mgmtproxyURL, url)
+	case isHTTPSURL(url):
 		log.Printf("KubectlApply: mgmtproxy disabled (%s present), fetching direct: %s",
-			mgmtproxyDisableFlag, path)
-	case strings.HasPrefix(path, "http://"):
-		// Plain-HTTP URLs are a network fetch that mgmtproxy does not cover
-		// (HTTPS_PROXY only affects https requests; the proxy is CONNECT-only).
-		// Log so such a fetch is visible rather than silently bypassing.
-		log.Printf("KubectlApply: plain-HTTP URL not routed through mgmtproxy, fetching direct: %s", path)
+			mgmtproxyDisableFlag, url)
+	default:
+		log.Printf("KubectlApply: plain-HTTP URL not routed through mgmtproxy, fetching direct: %s", url)
 	}
+	client := &http.Client{Transport: transport, Timeout: manifestFetchTimeout}
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("status %s", resp.Status)
+	}
+	f, err := os.CreateTemp("", "manifest-*.yaml")
+	if err != nil {
+		return "", err
+	}
+	_, err = io.Copy(f, resp.Body)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		_ = os.Remove(f.Name())
+		return "", err
+	}
+	return f.Name(), nil
+}
+
+func (ctx *commonComponent) KubectlApply(path string) error {
+	src := path
+	if isHTTPSURL(path) || strings.HasPrefix(path, "http://") {
+		file, err := fetchManifest(path)
+		if err != nil {
+			return fmt.Errorf("fetch %s: %w", path, err)
+		}
+		defer func() { _ = os.Remove(file) }()
+		src = file
+	}
+	if err := adoptInstalledFields(src); err != nil {
+		log.Printf("WARNING: adopt installed fields of %s: %v", path, err)
+	}
+	cmd := exec.Command("kubectl", kubectlApplyArgs(src)...)
 	var outStr strings.Builder
 	var errStr strings.Builder
 	cmd.Stdout = &outStr
@@ -318,7 +355,7 @@ func main() {
 		ready = true
 		uptimeStamp, err := compHandler.Uptime(currentVersion)
 		if err != nil {
-			log.Printf("Component: " + component + " uptime err:" + err.Error())
+			log.Print("Component: " + component + " uptime err:" + err.Error())
 			os.Exit(1)
 		} else {
 			uptimeSeconds = time.Since(uptimeStamp).Seconds()

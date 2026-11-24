@@ -21,7 +21,7 @@ import (
 // CheckClusterComponents short-circuits when applied >= KubeVersion
 // (i.e. node already at target, or EVE was downgraded — downgrades
 // are unsupported, see addresses upstream a67d55ce9).
-const KubeVersion = 3
+const KubeVersion = 4
 
 // VersionGet returns the last applied KubeVersion as a string, or
 // "0" if the marker file is missing or unreadable.
