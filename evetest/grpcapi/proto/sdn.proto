@@ -814,6 +814,20 @@ message SCEPServer {
   // Optional SCEP challenge password (shared secret).
   // When set, clients must present this password during enrollment.
   string challenge_password = 5;
+
+  // Validity period of issued client certificates in seconds,
+  // counted from the time of issuance.
+  // If not specified, certificates are valid for 365 days.
+  uint32 cert_validity_seconds = 6;
+
+  // How far into the past (in seconds) the validity period of issued client
+  // certificates starts, to tolerate clock skew between the server and clients.
+  // If not specified, the server default of 10 minutes is used.
+  uint32 cert_backdate_seconds = 7;
+
+  // Do not advertise the Renewal capability (GetCACaps)
+  // and reject certificate renewal requests (RenewalReq).
+  bool disable_renewal = 8;
 }
 
 // Network firewall.

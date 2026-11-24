@@ -3839,8 +3839,19 @@ type SCEPServer struct {
 	// Optional SCEP challenge password (shared secret).
 	// When set, clients must present this password during enrollment.
 	ChallengePassword string `protobuf:"bytes,5,opt,name=challenge_password,json=challengePassword,proto3" json:"challenge_password,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Validity period of issued client certificates in seconds,
+	// counted from the time of issuance.
+	// If not specified, certificates are valid for 365 days.
+	CertValiditySeconds uint32 `protobuf:"varint,6,opt,name=cert_validity_seconds,json=certValiditySeconds,proto3" json:"cert_validity_seconds,omitempty"`
+	// How far into the past (in seconds) the validity period of issued client
+	// certificates starts, to tolerate clock skew between the server and clients.
+	// If not specified, the server default of 10 minutes is used.
+	CertBackdateSeconds uint32 `protobuf:"varint,7,opt,name=cert_backdate_seconds,json=certBackdateSeconds,proto3" json:"cert_backdate_seconds,omitempty"`
+	// Do not advertise the Renewal capability (GetCACaps)
+	// and reject certificate renewal requests (RenewalReq).
+	DisableRenewal bool `protobuf:"varint,8,opt,name=disable_renewal,json=disableRenewal,proto3" json:"disable_renewal,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *SCEPServer) Reset() {
@@ -3906,6 +3917,27 @@ func (x *SCEPServer) GetChallengePassword() string {
 		return x.ChallengePassword
 	}
 	return ""
+}
+
+func (x *SCEPServer) GetCertValiditySeconds() uint32 {
+	if x != nil {
+		return x.CertValiditySeconds
+	}
+	return 0
+}
+
+func (x *SCEPServer) GetCertBackdateSeconds() uint32 {
+	if x != nil {
+		return x.CertBackdateSeconds
+	}
+	return 0
+}
+
+func (x *SCEPServer) GetDisableRenewal() bool {
+	if x != nil {
+		return x.DisableRenewal
+	}
+	return false
 }
 
 // Network firewall.
@@ -4350,7 +4382,7 @@ const file_sdn_proto_rawDesc = "" +
 	"\flisten_proto\x18\x02 \x01(\x0e2$.org.lfedge.evetest.ProxyListenProtoR\vlistenProto\"}\n" +
 	"\x10TransparentProxy\x128\n" +
 	"\bendpoint\x18\x01 \x01(\v2\x1c.org.lfedge.evetest.EndpointR\bendpoint\x12/\n" +
-	"\x05proxy\x18\x02 \x01(\v2\x19.org.lfedge.evetest.ProxyR\x05proxy\"\xc7\x01\n" +
+	"\x05proxy\x18\x02 \x01(\v2\x19.org.lfedge.evetest.ProxyR\x05proxy\"\xd8\x02\n" +
 	"\n" +
 	"SCEPServer\x128\n" +
 	"\bendpoint\x18\x01 \x01(\v2\x1c.org.lfedge.evetest.EndpointR\bendpoint\x12\x12\n" +
@@ -4358,7 +4390,10 @@ const file_sdn_proto_rawDesc = "" +
 	"\vca_cert_pem\x18\x03 \x01(\tR\tcaCertPem\x12\x1c\n" +
 	"\n" +
 	"ca_key_pem\x18\x04 \x01(\tR\bcaKeyPem\x12-\n" +
-	"\x12challenge_password\x18\x05 \x01(\tR\x11challengePassword\"<\n" +
+	"\x12challenge_password\x18\x05 \x01(\tR\x11challengePassword\x122\n" +
+	"\x15cert_validity_seconds\x18\x06 \x01(\rR\x13certValiditySeconds\x122\n" +
+	"\x15cert_backdate_seconds\x18\a \x01(\rR\x13certBackdateSeconds\x12'\n" +
+	"\x0fdisable_renewal\x18\b \x01(\bR\x0edisableRenewal\"<\n" +
 	"\bFirewall\x120\n" +
 	"\x05rules\x18\x01 \x03(\v2\x1a.org.lfedge.evetest.FwRuleR\x05rules\"\xcb\x01\n" +
 	"\x06FwRule\x12\x1d\n" +
