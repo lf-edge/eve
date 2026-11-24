@@ -1,0 +1,28 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: PR Event
+# Trigger for the workflows that must act on a PR with write access or
+# secrets. A pull_request run on a fork gets neither, and GitHub blocks
+# pull_request_target on public repositories, so this workflow only marks
+# that a PR changed. The workflows that react to it run on workflow_run,
+# from master, with their own permissions:
+#   - claude-review.yml and claude-sec-review.yml
+#   - request_codeowners_review.yml
+# Nothing from this run is trusted there: a PR can rewrite this file, so
+# they look the PR up again by its head commit.
+#
+# A pull_request run comes from the PR's target branch, so a PR into a
+# stable branch only triggers these if that branch has this file.
+on:  # yamllint disable-line rule:truthy
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+permissions: {}
+
+jobs:
+  event:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo "PR event recorded"

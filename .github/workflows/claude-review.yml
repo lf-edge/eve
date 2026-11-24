@@ -6,7 +6,7 @@ name: Claude Code
 # secrets, and GitHub blocks pull_request_target on public repositories from
 # December 2, 2026. Reviews therefore start in two ways that both run this
 # file from master, with the secrets:
-#   - workflow_run, after "Claude Review Request" ran on the PR's
+#   - workflow_run, after "PR Event" ran on the PR's
 #     pull_request event (opened, pushed to, reopened, ready for review);
 #   - issue_comment, when someone writes @claude in the Conversation tab.
 #     A review comment gets no secrets on a fork PR and cannot be used.
@@ -23,7 +23,7 @@ name: Claude Code
 # review runs, then success or error, linking to the run.
 on:  # yamllint disable-line rule:truthy
   workflow_run:
-    workflows: ["Claude Review Request"]
+    workflows: ["PR Event"]
     types: [completed]
   issue_comment:
     types: [created]

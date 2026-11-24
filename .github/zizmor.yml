@@ -19,7 +19,7 @@ rules:
       # PR via the GitHub API. No checkout of the head ref; no shell
       # execution touches PR-controlled content.
       - close-master-pr.yml
-      # workflow_run after "Claude Review Request", and issue_comment:
+      # workflow_run after "PR Event", and issue_comment:
       # every PR is from a fork, so a pull_request run gets no secrets.
       # Nothing from the triggering run is trusted; the PR is looked up
       # again by its head SHA. The PR head is checked out to a
@@ -28,7 +28,7 @@ rules:
       # its structured output. PR-controlled values reach the shell only
       # through env.
       - claude-review.yml
-      # workflow_run after "Claude Review Request": same split as
+      # workflow_run after "PR Event": same split as
       # claude-review.yml. Checks out master only; the audit script reads
       # the PR diff over the API with a read-only token, and a job without
       # secrets posts the findings.

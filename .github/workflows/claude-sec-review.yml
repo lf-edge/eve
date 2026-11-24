@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 ---
 name: Claude Security Review
-# Runs after "Claude Review Request", like the "Claude Code" workflow: see
+# Runs after "PR Event", like the "Claude Code" workflow: see
 # there why this cannot be pull_request or pull_request_target.
 #
 # The anthropics/claude-code-security-review action only works on
@@ -16,7 +16,7 @@ name: Claude Security Review
 # finding of the same category was already posted near the same line.
 on:  # yamllint disable-line rule:truthy
   workflow_run:
-    workflows: ["Claude Review Request"]
+    workflows: ["PR Event"]
     types: [completed]
 
 permissions: {}

@@ -5,7 +5,7 @@ name: Resolve the PR for a Claude review
 description: >-
   Shared by claude-review.yml and claude-sec-review.yml. Finds the PR a
   workflow_run or issue_comment event is about and decides whether to review
-  it. Nothing from a "Claude Review Request" run is trusted, since a PR can
+  it. Nothing from a "PR Event" run is trusted, since a PR can
   rewrite that workflow: the PR is looked up again by its head branch and
   SHA. Outputs are empty when the PR should not be reviewed.
 
