@@ -2,6 +2,55 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-24 -- 0.0.0-14.5-stable-bfde35f1 (run #49)](https://github.com/lf-edge/eve/actions/runs/45323297285)
+
+[Full report](https://lf-edge.github.io/eve/test/14.5-stable/runs/49/)
+
+### TestAppRoutingSuite: failure analysis
+
+#### TestLocalNIWithMultiplePorts
+
+##### Failure
+
+```
+
+Told to stop trying after 19.479s.
+Stop waiting for: NI ONLINE with both static routes via ethernet0 and all connected routes present
+Network instance is in error state
+networkID:"3a39f4fe-c4dc-4f84-acd1-11db19588f9f"  networkVersion:"1"  instType:2  displayname:"multi-port-ni"  activated:true  CurrentUplinkIntf:"eth0"  ports:"eth0"  ports:"eth1"  ports:"eth2"  ports:"eth3"  bridgeNum:1  bridgeName:"bn1"  bridgeIPAddr:"10.50.0.1"  ipAssignments:{macAddress:"00:16:3e:06:00:01"  ipAddress:"10.50.0.1"}  networkErr:{description:"IP Route: {dst=0.0.0.0/0, gw=<nil>, port=internet, probe={enabledGwPing=true, gwPingMaxCost=5, userProbe=<none>}, preferLowerCost=true, preferStrongerWwanSignal=false} is not matching any port\nIP Route: {dst=10.88.88.0/24, gw=<nil>, port=httpserver, probe={enabledGwPing=true, gwPingMaxCost=0, userProbe=tcp://10.88.88.70:80}, preferLowerCost=true, preferStrongerWwanSignal=false} is not matching any port"  timestamp:{seconds:1795503835  nanos:746037945}  severity:SEVERITY_ERROR}  state:ZNETINST_STATE_ERROR  mtu:1500  ip_routes:{destination_network:"0.0.0.0/0"  gateway:"192.168.30.1"  port:"eth2"}  ip_routes:{destination_network:"192.168.30.0/24"  port:"eth2"}
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live inspection of the paused device shows this is a **startup/convergence race during NI activation**, not a persistent misconfiguration. At the moment of failure, `/run/zedrouter/NetworkInstanceStatus/3a39f4fe-....json` showed the NI's `Ports` list still using raw kernel-assigned interface names (`eth0`/`eth1`/`eth2`/`eth3`), while `PortProber` had only just started probing them (`"PortProber: Started port probing for route dst=0.0.0.0/0 ..."` at `07:03:55.745786`), producing the `"... is not matching any port"` error within the same millisecond — before any probe result could possibly have arrived. The device log confirms the actual fix-up happens ~49s later: at `07:04:44` zedrouter removes the probed ports named `eth0..eth3` and re-adds them as `ethernet0..ethernet3` (the proper logical adapter names), after which `PortProber` immediately resolves both the `internet` and `httpserver` labeled routes to `ethernet0`. So the NI is activated and its static-route labels are evaluated against transient/temporary port names before the device's final logical port naming has been applied, and the test's `niHasError` `StopIf` treats this transient `ZNETINST_STATE_ERROR` as fatal rather than waiting it out (consistent with 19.5s elapsed vs. the test's `StopIf`/early-bail behavior).
+
+`TestPropagatedRoutes`, which ran immediately before in this suite, passed cleanly, so there's no shared cause with another failure in this run.
+
+This is a known, recurring issue per the ledger: the identical failure signature (same `eth0/eth1/eth2/eth3` naming, same `networkErr` text for `internet`/`httpserver` labels "is not matching any port", same `niHasError` quick-bail) appeared in the **2026-11-22** entry (2.116s failure), which was diagnosed there as a startup convergence race with transient bogus routes. A second, differently-shaped manifestation of the same test (slow TCP-probe convergence past the 10-minute budget) also recurred on 2026-11-23. So `TestLocalNIWithMultiplePorts` in `TestAppRoutingSuite` has been intermittently failing on NI-activation convergence races since at least 2026-11-22, and tonight's failure adds concrete evidence (the `eth0→ethernet0` rename event) pinpointing one specific cause of that race: route-label resolution running against pre-rename port names.
+#### TestApplicationGateway
+
+##### Failure
+
+```
+
+Told to stop trying after 26.575s.
+Stop waiting for: ni-eth0 is ONLINE
+Network instance is in error state
+networkID:"d8b70e83-e58f-4744-8256-c9e36d5f9269"  networkVersion:"1"  instType:2  displayname:"ni-eth0"  bridgeNum:4  bridgeIPAddr:"10.50.0.1"  ipAssignments:{macAddress:"00:16:3e:06:00:04"  ipAddress:"10.50.0.1"}  networkErr:{description:"failed to select ports for network instance d8b70e83-e58f-4744-8256-c9e36d5f9269: no port is matching label 'ethernet0'"  timestamp:{seconds:1795504735  nanos:955882760}  severity:SEVERITY_ERROR}  state:ZNETINST_STATE_ERROR  mtu:1500
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live logs show zedrouter failed sanity-checking `ni-eth0` (port label `ethernet0`) at `07:18:55.955` with `"no port is matching label 'ethernet0'"`, right as `nim` was mid-flight switching the device's active DevicePortConfig from the generic "lastresort" DPC (ports named plain `eth0`/`eth1`) to the final controller-supplied "zedagent" DPC (ports relabeled `ethernet0`/`ethernet1`). The nim log at `07:18:54.486-07:18:54.5xx` shows it tearing down the DHCP clients/routes for `eth0`/`eth1` and reconfiguring under the new logical labels in the same window the NI (created at `07:18:54.527`) was being activated — so `DeviceNetworkStatus` momentarily had no port matching the label `ethernet0` when zedrouter went to select ports, exactly the kind of transient convergence gap seen before. `PortProber` only picked up `ethernet0` at `07:19:26.480`, long after the test's 26.6s `StopIf` budget had already given up.
+
+This is the same underlying race already diagnosed for `TestLocalNIWithMultiplePorts` earlier in this very run (`live-investigation.md`): NI activation and route/port-label resolution racing ahead of the device's DPC/logical-port-naming convergence, just manifesting here as a port-selection failure instead of a route-matching failure. It is **not** a new, independent bug in this run.
+
+Per the ledger, this exact `TestApplicationGateway` failure signature (`"no port is matching label"`) hasn't appeared before, but the broader class of issue — NI activation racing ahead of device port/DPC convergence — has been a known recurring problem in `TestAppRoutingSuite` since at least 2026-11-22 (affecting `TestLocalNIWithMultiplePorts` on 2026-11-22 and 2026-11-23, and now this run).
+
 ## [2026-11-23 -- 0.0.0-14.5-stable-e70cea0b (run #44)](https://github.com/lf-edge/eve/actions/runs/45109187699)
 
 [Full report](https://lf-edge.github.io/eve/test/14.5-stable/runs/44/)
