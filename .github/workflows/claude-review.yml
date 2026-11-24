@@ -111,7 +111,7 @@ jobs:
           allowed_non_write_users: "*"
           show_full_output: false
           claude_args: |
-            --model claude-opus-4-8
+            --model claude-opus-5-5
             --permission-mode default
             --allowedTools "Read,Grep,Glob,Bash(gh pr diff:*),Bash(gh pr view:*)"
             --add-dir pr-head
