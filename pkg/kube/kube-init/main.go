@@ -41,6 +41,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -67,6 +68,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/pubsubclient"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/tiebreaker"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/update"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/witness"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/witnessstatus"
@@ -503,6 +505,11 @@ type daemon struct {
 
 	// Health check ticker (active only in RUNNING).
 	healthTicker *time.Ticker
+
+	// tieBreakerReconcile is set on each entry into RUNNING and cleared
+	// once the health worker has reconciled the tie-breaker workload
+	// config.
+	tieBreakerReconcile atomic.Bool
 
 	// healthInflight gates the health worker: ticks are dropped
 	// while a worker is already running so a slow kubectl call
@@ -2228,6 +2235,7 @@ func (d *daemon) enterRunning(ctx context.Context) {
 	// — the cluster-config monitor feeds the same channel from outside
 	// RUNNING, so a per-RUNNING bridge would drop those signals.
 
+	d.tieBreakerReconcile.Store(true)
 	d.healthTicker = time.NewTicker(healthCheckInterval)
 	go d.forwardHealthTicks(d.runningCtx)
 
@@ -2954,6 +2962,14 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 
 		if err := components.LonghornPostInstallConfig(); err != nil {
 			log.Printf("WARNING: longhorn post-install config: %v", err)
+		}
+
+		if d.tieBreakerReconcile.Load() {
+			if err := tiebreaker.WorkloadConfigReconcile(ctx); err != nil {
+				log.Printf("WARNING: tie-breaker workload config: %v", err)
+			} else {
+				d.tieBreakerReconcile.Store(false)
+			}
 		}
 
 		// A witness on this device is about to cold-join and cannot clear
