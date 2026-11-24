@@ -24,9 +24,9 @@ ARG BUILD_PKGS_BASE="build-base meson samurai pkgconf python3 py3-setuptools py3
 # Headers and libraries of the target that QEMU and liburing build against.
 ARG TARGET_DEV_PKGS="musl-dev libgcc linux-headers glib-dev pixman-dev zlib-dev gnutls-dev \
     libusb-dev zstd-dev libaio-dev bzip2-dev libcap-ng-dev attr-dev util-linux-dev dtc-dev"
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:3a8c6b2742af0f1e40d16063fb5ccfb1a1aece6f
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:1f42cfeeb539f80de28baada31772dbf8f18b3fe
 
-FROM lfedge/eve-uefi:e9ae8647714d06083df34e667cdf575641b75738 AS uefi-build
+FROM lfedge/eve-uefi:23a44cf0fb2ba5f43135349bcbb4afd85112ce59 AS uefi-build
 
 # The base the scripts run on, and the Alpine libraries QEMU links.
 # hadolint ignore=DL3006
