@@ -1,0 +1,21 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Claude Review Request
+# First half of the Claude review. A pull_request run on a fork gets no
+# secrets, so this workflow only marks that a PR changed; the "Claude Code"
+# workflow picks it up through workflow_run, which runs from master with the
+# secrets. Nothing from this run is trusted there: a PR can rewrite this file,
+# so the reviewer looks the PR up again by its head commit.
+on:  # yamllint disable-line rule:truthy
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+permissions: {}
+
+jobs:
+  request:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo "Claude review requested"

@@ -19,11 +19,14 @@ rules:
       # PR via the GitHub API. No checkout of the head ref; no shell
       # execution touches PR-controlled content.
       - close-master-pr.yml
-      # pull_request_target: checks out the base ref only and reads the PR
-      # diff over the API. Nothing PR-controlled reaches the shell, and the
-      # reviewer prompt is instructed to treat the diff as untrusted data.
-      # A plain pull_request run cannot work here: every PR is from a fork,
-      # so the token would be read-only and the secrets unavailable.
+      # workflow_run after "Claude Review Request", and issue_comment:
+      # every PR is from a fork, so a pull_request run gets no secrets.
+      # Nothing from the triggering run is trusted; the PR is looked up
+      # again by its head SHA. The PR head is checked out to a
+      # subdirectory for reading only, Claude gets a read-only token and
+      # no tool that runs code, and a separate job without secrets posts
+      # its structured output. PR-controlled values reach the shell only
+      # through env.
       - claude-review.yml
       # pull_request_target: checks out the base ref and reads
       # .github/CODEOWNERS from it; the head SHA is fetched only to diff
