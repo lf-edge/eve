@@ -77,14 +77,16 @@ jobs:
           EMAIL: ${{ steps.verify.outputs.email }}
         run: |
           set -euo pipefail
-          bundle="$RUNNER_TEMP/release/$TAG.maintainer.sigstore.json"
-          type=$(jq -r .predicateType "$RUNNER_TEMP/release/approval.json")
+          # oras refuses absolute file paths, so the files are read from the release directory.
+          cd "$RUNNER_TEMP/release"
+          bundle="$TAG.maintainer.sigstore.json"
+          type=$(jq -r .predicateType approval.json)
           verified() {
             cosign verify-attestation --type "$type" --certificate-identity "$EMAIL" \
               --certificate-oidc-issuer "$SIGNER_ISSUER" "$1" > /dev/null 2>&1
           }
           jq -r '.subject[] | select(.name | contains("/")) | "\(.name)@sha256:\(.digest.sha256)"' \
-            "$RUNNER_TEMP/release/approval.json" | while read -r ref; do
+            approval.json | while read -r ref; do
             if verified "$ref"; then
               echo "already attached: $ref"
               continue
