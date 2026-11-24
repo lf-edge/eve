@@ -13,7 +13,7 @@ its own builds the same way.
 | --- | --- | --- |
 | `lfedge/eve:<tag>[-<platform>]-<hv>-<arch>`, `lfedge/eve-sources:…`, their multi-arch indexes, and an SPDX SBOM attestation on each EVE image except riscv64 | `release-sign.yml@refs/heads/master` | release tags, after approval |
 | `<arch>.<hv>.<platform>.sha256sums` release asset | `release-sign.yml@refs/heads/master` | release tags, after approval |
-| `<tag>.tagger.sigstore.json` release asset: an in-toto statement, type `https://github.com/lf-edge/eve/release-tagger/v1`, naming who pushed the tag (`github.actor` and its ID), over every image, index and `sha256sums` above | `release-sign.yml@refs/heads/master` | release tags, after approval |
+| `<tag>.tagger.sigstore.json` release asset, also attached to every image and index above as an OCI referrer: an in-toto statement, type `https://github.com/lf-edge/eve/release-tagger/v1`, naming who pushed the tag (`github.actor` and its ID), over every image, index and `sha256sums` above | `release-sign.yml@refs/heads/master` | release tags, after approval; the referrers once a release signer has approved |
 | `<tag>.maintainer.sigstore.json` release asset, also attached to every image and index above as an OCI referrer: an in-toto statement, type `https://github.com/lf-edge/eve/release-approval/v1`, over the same subjects as the tagger statement, naming the repository, release and commit | a release signer's GitHub account, issuer `https://github.com/login/oauth` | after the workflow signatures, by a signer other than the tagger |
 | `lfedge/eve-<pkg>` platform manifests and indexes | `publish.yml@refs/heads/<branch>` | pushes to `master`, `N.N` and `N.N-stable` that build the package |
 | `lfedge/eve-<pkg>` platform manifests and indexes | `buildondemand.yml@refs/heads/master` | manual runs of that workflow on `master` |
@@ -46,7 +46,7 @@ exception). Then:
    bundles to the draft.
 5. A release signer other than the tagger signs the release with their own
    GitHub account and publishes it as a pre-release; `release-approval.yml`
-   attaches their signature to the images.
+   attaches their signature and the tagger statement to the images.
 
 Nothing is tagged before the approval of the `release` environment, and
 nothing is published before a release signer's signature. Because the signing job
@@ -146,8 +146,9 @@ rebuild with the release images:
    `.github/release-signers`. The script checks the signature against that
    email, uploads it as `<tag>.maintainer.sigstore.json`, publishes the
    release, and starts `release-approval.yml`. That workflow verifies the
-   signature again, attaches it to every image and index on Docker Hub as a
-   referrer, and closes the approval issue. If it fails, run it again with
+   signature again, attaches it and the tagger statement to every image and
+   index on Docker Hub as referrers, and closes the approval issue. If it
+   fails, run it again with
    `gh workflow run release-approval.yml -R lf-edge/eve --ref master -f tag=<tag>`.
 
    One statement over every digest needs one login: Sigstore's GitHub login
@@ -210,6 +211,8 @@ POLICY=(--certificate-oidc-issuer https://token.actions.githubusercontent.com
 
 cosign verify "${POLICY[@]}" lfedge/eve:$TAG-kvm-amd64
 cosign verify-attestation --type spdxjson "${POLICY[@]}" lfedge/eve:$TAG-kvm-amd64
+cosign verify-attestation --type https://github.com/lf-edge/eve/release-tagger/v1 \
+  "${POLICY[@]}" lfedge/eve:$TAG-kvm-amd64
 
 cosign verify-blob "${POLICY[@]}" \
   --bundle amd64.kvm.generic.sha256sums.sigstore.json amd64.kvm.generic.sha256sums

@@ -1,11 +1,12 @@
 # Copyright (c) 2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 ---
-# Attaches a release signer's approval, <tag>.maintainer.sigstore.json, to
-# every image of the published release as an OCI referrer, then closes the
-# approval issue. tools/eve-release-approval.sh approve starts it on master
-# after publishing; anyone with write access can run it again, since the
-# approval verifies on its own. docs/SIGNING.md describes the policy.
+# Attaches the tagger statement, <tag>.tagger.sigstore.json, and a release
+# signer's approval, <tag>.maintainer.sigstore.json, to every image of the
+# published release as OCI referrers, then closes the approval issue.
+# tools/eve-release-approval.sh approve starts it on master after
+# publishing; anyone with write access can run it again, since both
+# statements verify on their own. docs/SIGNING.md describes the policy.
 name: Release approval
 on:  # yamllint disable-line rule:truthy
   workflow_dispatch:
@@ -21,6 +22,8 @@ env:
   REPOSITORY: lf-edge/eve
   BUNDLE_TYPE: application/vnd.dev.sigstore.bundle.v0.3+json
   SIGNER_ISSUER: https://github.com/login/oauth
+  WORKFLOW_IDENTITY: https://github.com/lf-edge/eve/.github/workflows/release-sign.yml@refs/heads/master
+  WORKFLOW_ISSUER: https://token.actions.githubusercontent.com
 
 jobs:
   attach:
@@ -79,33 +82,44 @@ jobs:
           set -euo pipefail
           # oras refuses absolute file paths, so the files are read from the release directory.
           cd "$RUNNER_TEMP/release"
-          bundle="$TAG.maintainer.sigstore.json"
-          type=$(jq -r .predicateType approval.json)
-          verified() {
-            cosign verify-attestation --type "$type" --certificate-identity "$EMAIL" \
-              --certificate-oidc-issuer "$SIGNER_ISSUER" "$1" > /dev/null 2>&1
-          }
-          jq -r '.subject[] | select(.name | contains("/")) | "\(.name)@sha256:\(.digest.sha256)"' \
-            approval.json | while read -r ref; do
-            if verified "$ref"; then
-              echo "already attached: $ref"
-              continue
-            fi
-            oras attach --artifact-type "$BUNDLE_TYPE" \
-              --annotation dev.sigstore.bundle.content=dsse-envelope \
-              --annotation "dev.sigstore.bundle.predicateType=$type" \
-              "$ref" "$bundle:$BUNDLE_TYPE" > /dev/null
-            start=$SECONDS
-            until verified "$ref"; do
-              if [ $((SECONDS - start)) -ge 300 ]; then
-                echo "::error::not visible after $((SECONDS - start))s: $ref"
-                verified "$ref"
-                exit 1
+          jq -r .dsseEnvelope.payload "$TAG.tagger.sigstore.json" | base64 -d > tagger.json
+          # attach BUNDLE STATEMENT COSIGN_FLAGS... attaches BUNDLE to every image
+          # STATEMENT lists, unless it already verifies there under COSIGN_FLAGS.
+          attach() {
+            local bundle=$1 statement=$2 type ref start
+            local -a policy=("${@:3}")
+            type=$(jq -r .predicateType "$statement")
+            verified() {
+              cosign verify-attestation --type "$type" "${policy[@]}" "$1" > /dev/null 2>&1
+            }
+            jq -r '.subject[] | select(.name | contains("/")) | "\(.name)@sha256:\(.digest.sha256)"' \
+              "$statement" | while read -r ref; do
+              if verified "$ref"; then
+                echo "already attached: $bundle to $ref"
+                continue
               fi
-              sleep 5
+              oras attach --artifact-type "$BUNDLE_TYPE" \
+                --annotation dev.sigstore.bundle.content=dsse-envelope \
+                --annotation "dev.sigstore.bundle.predicateType=$type" \
+                "$ref" "$bundle:$BUNDLE_TYPE" > /dev/null
+              start=$SECONDS
+              until verified "$ref"; do
+                if [ $((SECONDS - start)) -ge 300 ]; then
+                  echo "::error::not visible after $((SECONDS - start))s: $bundle on $ref"
+                  verified "$ref"
+                  exit 1
+                fi
+                sleep 5
+              done
+              echo "attached $bundle, visible after $((SECONDS - start))s: $ref"
             done
-            echo "attached, visible after $((SECONDS - start))s: $ref"
-          done
+          }
+          attach "$TAG.tagger.sigstore.json" tagger.json \
+            --certificate-oidc-issuer "$WORKFLOW_ISSUER" --certificate-identity "$WORKFLOW_IDENTITY" \
+            --certificate-github-workflow-repository "$REPOSITORY" \
+            --certificate-github-workflow-ref "refs/tags/$TAG"
+          attach "$TAG.maintainer.sigstore.json" approval.json \
+            --certificate-identity "$EMAIL" --certificate-oidc-issuer "$SIGNER_ISSUER"
       - name: Close the approval issue
         env:
           GH_TOKEN: ${{ github.token }}
