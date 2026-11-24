@@ -2,6 +2,100 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-24 -- 0.0.0-16.0-stable-be6386de (run #48)](https://github.com/lf-edge/eve/actions/runs/45316371575)
+
+[Full report](https://lf-edge.github.io/eve/test/16.0-stable/runs/48/)
+
+### TestBootstrapSuite: failure analysis
+
+#### TestBootstrapWithStaticIP
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to setup SDN device: failed waiting for VM 112 creation: timed out after 5m0s waiting for Proxmox task UPID:farfalle:002CB3A4:85262CC3:6B050654:qmcreate:112:root@pam:
+```
+
+##### Claude's conclusion
+
+No prior ledger entries mention Proxmox VM-creation timeouts, qmcreate/qmdestroy, or TestBootstrapSuite failures. This is a new failure signature not previously logged.
+
+###### Root cause
+
+The live Proxmox broker log is unambiguous: the task `UPID:farfalle:002CB3A4:...:qmcreate:112:...` (creating VM 112, the SDN emulator VM for this test) never completed within the 5-minute wait, and the subsequent cleanup attempts to destroy that same VM 112 failed three times in a row with `can't lock file '/var/lock/qemu-server/lock-112.conf' - got timeout` — meaning the original `qmcreate` task was *still holding the VM's config lock* on the Proxmox host (`farfalle`) well after evetest gave up waiting on it, and `qmdestroy` couldn't even start because of that held lock. The broker eventually gave up and "leaked" VM 112 rather than removing it. This points to a stuck/overloaded Proxmox host-side VM-creation operation (e.g. slow/contended storage during qcow2 allocation) rather than any EVE/pillar or SDN-emulator defect — note the EVE device's own VM (105) was created successfully moments earlier (03:36:49), so it's specifically VM 112's create task that hung. Because setup never got far enough to bring up the SDN device, no EVE device or SDN client was ever created (`evetest status`/`eve collect-info`/`sdn status` all confirm "no devices"), so there's no pillar/EVE-side log evidence to inspect — this is purely a broker/Proxmox provisioning failure, isolated to this one test (no other failure earlier in this run to share a cause with). I checked `live-ledger.md`'s prior three nightly entries (2026-11-21, 2026-11-22, 2026-11-23) and found no previous occurrence of `TestBootstrapSuite` failures, VM-creation timeouts, or `qmcreate`/lock-file errors, so this is a new issue, not a previously known/recurring one — though it's thematically similar to last night's separately-logged Proxmox VM-deletion-timeout/orphan issue (`sdn-6b66f6e9` VM 107), suggesting the Proxmox host (`farfalle`) may have a broader pattern of slow/stuck VM lifecycle operations under load, even though the exact signature differs (creation hang vs. deletion hang).
+#### TestBootstrapWithManualProxyConfig
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to setup EVE device "edge-dev": failed waiting for VM 110 creation: task failed on Proxmox: unable to create VM 110 - cannot import from 'local:import/ev-170-eve-db33565d-edge-dev-0.qcow2' - can't lock file '/var/lock/pve-manager/pve-storage-farfalle-pve-zfs-pool' - got timeout (task UPID:farfalle:002CDA71:85278812:6B0509CD:qmcreate:110:root@pam:)
+```
+
+##### Claude's conclusion
+
+This has enough evidence. The pattern is clear: both this run's failures trace to Proxmox host `farfalle` lock contention, now also showing deletion failures (VM 115 at 03:50) right before the VM 110 creation failure.
+
+###### Root cause
+
+Live `evetest status` and `gotest.json` confirm VM 110 (the EVE device's VM) failed to be created because the Proxmox task couldn't acquire the storage-pool lock `/var/lock/pve-manager/pve-storage-farfalle-pve-zfs-pool` on host `farfalle`, retried twice (03:51:19, 03:51:36) and still timed out at 03:51:53. Notably, just minutes earlier in this same test's own teardown, the SDN VM 115's deletion hit an analogous lock timeout (`can't lock file '/var/lock/qemu-server/lock-115.conf'`, 03:50:34–03:50:49) — i.e. the host was already failing to release Proxmox locks before this VM-creation attempt was even made. This is the same underlying root cause already diagnosed earlier in this run for `TestBootstrapWithStaticIP` (VM 112 creation/deletion stuck on `lock-112.conf`), just manifesting against a different lock (the ZFS storage-pool lock this time instead of a per-VM config lock) — both point to the Proxmox host `farfalle` being unable to serialize/release its internal locks under load during VM create/destroy operations. This signature (Proxmox lock-timeout on `farfalle` during qmcreate/qmdestroy) does not appear in any of the three prior nightly ledger entries (2026-11-21, 2026-11-22, 2026-11-23), so while it shares a root cause with tonight's earlier `TestBootstrapWithStaticIP` failure, it is not yet a ledger-documented recurring issue — tonight looks like the start of a broader pattern of `farfalle` lock contention across both VM-level and storage-level locks.
+#### TestBootstrapWithManualProxyConfigUsingOverrideJSON
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to setup EVE device "edge-dev": failed waiting for VM 110 creation: task failed on Proxmox: unable to create VM 110 - cannot import from 'local:import/ev-171-eve-db33565d-edge-dev-0.qcow2' - can't lock file '/var/lock/pve-manager/pve-storage-farfalle-pve-zfs-pool' - got timeout (task UPID:farfalle:002CDD6A:8527ACD8:6B050A2B:qmcreate:110:root@pam:)
+```
+
+##### Claude's conclusion
+
+No EVE device was ever created (setup failed before device registration), so there's nothing further to inspect on-device; the evidence is fully contained in the broker/Proxmox failure message itself, which I've confirmed live via `evetest status`.
+
+###### Root cause
+
+This test's setup failed identically to `TestBootstrapWithManualProxyConfig` earlier in this very run: VM 110 creation failed because the Proxmox task couldn't acquire `/var/lock/pve-manager/pve-storage-farfalle-pve-zfs-pool` on host `farfalle` and timed out, blocking the qcow2 import from completing. This is the same underlying Proxmox host-side storage-pool lock contention already diagnosed for `TestBootstrapWithManualProxyConfig` in this run (same lock file, same VM slot/number 110, same host), so it shares that root cause rather than being a new/independent bug. It also fits the broader pattern already noted for `TestBootstrapWithStaticIP` earlier tonight (VM 112 stuck on a per-VM config lock), suggesting host `farfalle` is under sustained lock contention across multiple Proxmox lifecycle operations (both VM-config locks and the ZFS storage-pool lock) this run. Per `live-ledger.md`, this signature (Proxmox lock-timeout on `farfalle` during `qmcreate`/`qmdestroy`) does not appear in the three prior nightly runs (2026-11-21, 2026-11-22, 2026-11-23), so this is not yet a ledger-documented recurring issue — it's the third occurrence of the same `farfalle` lock-contention problem within tonight's run alone, strongly suggesting an infrastructure-level issue on the Proxmox host rather than anything in the EVE/pillar codebase.
+#### TestBootstrapWithMgmtVLANUsingOverrideJSON
+
+##### Failure
+
+```
+Failed to setup devices [edge-dev]: rpc error: code = Unknown desc = failed to setup EVE device "edge-dev": failed waiting for VM 107 creation: timed out after 5m0s waiting for Proxmox task UPID:farfalle:002D40B4:852B1C01:6B0512F5:qmcreate:107:root@pam:
+```
+
+##### Claude's conclusion
+
+This has sufficient evidence confirming the pattern.
+
+**Root cause:** This is the same Proxmox host (`farfalle`) lock-contention issue already diagnosed three times earlier in this run. The broker log shows the `qmcreate:107` task (EVE device VM) starting at 04:33:12 and never completing within the 5-minute wait; the teardown that followed to clean up the failed VM 107 also hit a held lock (`can't lock file '/var/lock/qemu-server/lock-107.conf' - got timeout`, retried once before succeeding at 04:38:11) — identical in shape to the earlier `TestBootstrapWithStaticIP` (VM 112) and `TestBootstrapWithManualProxyConfig`/`TestBootstrapWithManualProxyConfigUsingOverrideJSON` (VM 110) failures recorded in `live-investigation.md`. No EVE device or SDN client was ever created, so there's no pillar/EVE-side evidence to add — this is purely a `farfalle` host-side VM lifecycle stall, now the fourth occurrence in this single run. Per `live-ledger.md` (checked for `qmcreate`/`qmdestroy`/lock/Proxmox-task/farfalle keywords across all prior nightly entries), this exact signature has never appeared before tonight, so it is not a previously known/recurring issue — it looks like tonight is the first night the `farfalle` Proxmox host has shown this sustained lock-contention pattern across VM create/destroy operations.
+
+### TestSecuritySuite: failure analysis
+
+#### TestVComContainer
+
+##### Failure
+
+```
+
+vComLink check as uid 65534 failed:  
+Unexpected error:
+    <*fmt.wrapError | 0x2240c79e16e0>: 
+    failed to execute script over SSH for app e2365ce9-2c7d-4990-9ef3-da587ecb551d: Process exited with status 120 (stderr: )
+    {
+        msg: "failed to execute script over SSH for app e2365ce9-2c7d-4990-9ef3-da587ecb551d: Process exited with status 120 (stderr: )",
+        err: <*ssh.ExitError | 0x2240c7932140>{
+            Waitmsg: {status: 120, signal: "", msg: "", lang: ""},
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+###### Root cause analysis
+
+The failing assertion is in the brand-new `TestVComContainer` (added by commit `551e9ff05`, its first-ever nightly run) at `evetest/tests/security/vcom_container_test.go:135-138`: the *first* loop iteration ("as root") succeeded, but the *second* iteration — running `setpriv --reuid 65534 --regid 65534 --clear-groups python3 /tmp/vcomcheck.py` inside the Ubuntu container app over SSH — came back as a clean, non-signal SSH `exit-status` of **120**, with **zero** stdout and **zero** stderr. Live `evetest eve app-info` confirms the app (`vcom-test-ctr`) is healthy and `RUNNING`, and `evetest eve logs` shows **no vcomlink, qemu/vsock, OOM, or any other error/warn activity whatsoever** on the EVE host during the exact failure window (05:09:07–05:10:10) — the host side is clean. Since the SSH client library only returns a concrete `*ssh.ExitError{status: 120}` (not `ExitMissingError`/`exit-signal`) when the remote shell genuinely reports that exit code, this was a real, silent, non-crashing exit from inside the guest — not a client-side timeout artifact, not a product/host-level issue, and not something I could reproduce because directly SSH-ing into the app container is blocked by this environment's tool permissions.
+
+This is the first and only failure in this run's `gotest.json` (no earlier failure to share a root cause with), and `live-ledger.md` has no prior entry mentioning `TestVComContainer`, `vComLink`, or this exit-code-120 signature — this is not a known/recurring issue, it's new. Given the test is new and this is specifically the uid/gid-drop + vsock code path (not exercised by the sibling `TestVCom`, which only runs as root in a VM), the most likely explanation is a test/environment incompatibility in the privilege-drop step (`setpriv` or AF_VSOCK access as the unprivileged uid 65534 inside this container image) rather than an EVE product defect — but I can't confirm the exact mechanism behind exit code 120 without being able to shell into the running container directly, which this session's tooling doesn't permit.
+
 ## [2026-11-23 -- 0.0.0-16.0-stable-f3142331 (run #43)](https://github.com/lf-edge/eve/actions/runs/45103341150)
 
 [Full report](https://lf-edge.github.io/eve/test/16.0-stable/runs/43/)
