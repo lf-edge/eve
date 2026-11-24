@@ -2,6 +2,301 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-24 -- 0.0.0-master-92671766 (run #46)](https://github.com/lf-edge/eve/actions/runs/45275289457)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/46/)
+
+### TestControllerFaultsSuite: failure analysis
+
+#### TestDeferredQueueDropsReported
+
+##### Failure
+
+```
+
+Timed out after 480.000s.
+When passed a matcher, ReceiveMatcher's channel *must* receive something.
+```
+
+##### Claude's conclusion
+
+Host load is moderate (13% CPU, swap barely used, memory available) — nothing pointing to infra overload here; this is consistent with a deterministic test-harness race rather than host flakiness.
+
+###### Root cause
+
+This is the same test-harness timing race documented twice before in the ledger. Live device logs show `domainmgr` transitioning `reported-app` to HALTED at 22:18:46.862, and zedagent immediately generating/sending the HALTED `ZInfoApp` at 22:18:46.879 — but the fault proxy was still answering `POST .../info` with 404 at that instant (22:18:46.887: `dropping message, controller responded 404 Not Found`). The harness's `ClearControllerFaults()` ran one cycle later (the test's own "Last message given up on at 22:18:48.114..." marks the final 404), by which point the HALTED report was already permanently discarded (404 is treated as non-retriable). Adam's own `app-info` record for this app confirms the last state it ever received is RUNNING — the HALTED report never arrived, and since there's no periodic full-info resync for the normal cloud destination, `settleApp`'s 8-minute `Eventually(Receive(HALTED))` could never succeed, causing the observed 480s timeout.
+
+This matches the exact mechanism in the ledger for `TestControllerFaultsSuite/TestDeferredQueueDropsReported` seen on 2026-11-06 (run #9, first occurrence) and again on 2026-11-22 (run #36) — a known, recurring issue dating back to at least 2026-11-06, caused by the harness's own fault-clear timing racing the device's terminal-state report, not a pillar/EVE regression. Broker host load is modest right now (13% CPU, no swap pressure), which is consistent with this being a deterministic harness-timing bug rather than infra overload.
+
+### TestDeviceConnectivitySuite: failure analysis
+
+#### TestPNACWithProxy
+
+##### Failure
+
+```
+
+Timed out after 300.001s.
+Expected to satisfy: cycle 3: enrolled certificate removed, PNAC disabled and the port moved to the pre-auth VLAN
+machineArch:"x86_64"  cpuArch:"x86_64"  platform:"x86_64"  ncpu:4  memory:7919  storage:40006  powerCycleCounter:-1  minfo:{manufacturer:"QEMU"  productName:"Standard PC (Q35 + ICH9, 2009)"  version:"pc-q35-10.1"  serialNumber:"AKO0OLXD"  UUID:"Not Settable"  biosVendor:"EDK II"  biosVersion:"unknown"  biosReleaseDate:"02/02/2022"}  assignableAdapters:{type:PhyIoNetEth  name:"ethernet0"  members:"ethernet0"  usedByBaseOS:true  ioAddressList:{macAddress:"da:39:78:d0:19:f2"}  usage:PhyIoUsageMgmtAndApps}  dns:{DNSservers:"127.0.0.1:53"  DNSsearch:"test."}  storageList:{device:"nbd6"}  storageList:{device:"/persist/vector/data/buffer/v2/keep_sent_queue_socket/buffer-data-0.dat"}  storageList:{device:"nbd13"}  storageList:{mountPath:"/persist/nettrace"}  storageList:{mountPath:"/persist/newlog"}  storageList:{device:"vda7"  total:2048  partitionLabel:"EFI System"  partitionTypeGuid:"c12a7328-f81f-11d2-ba4b-00a0c93ec93b"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30056"}  storageList:{mountPath:"/persist/memory-monitor/output"}  storageList:{mountPath:"/persist/vault/downloader"}  storageList:{device:"nbd3"}  storageList:{mountPath:"/persist/netdump"}  storageList:{device:"nbd2"}  storageList:{mountPath:"/hostfs"  total:244}  storageList:{device:"vda2"  total:10240  partitionLabel:"IMGA"  partitionTypeGuid:"5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30052"}  storageList:{mountPath:"/persist/clear"}  storageList:{device:"vda3"  total:10240  partitionLabel:"IMGB"  partitionTypeGuid:"5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30053"}  storageList:{mountPath:"/persist/status"}  storageList:{device:"nbd0"}  storageList:{mountPath:"/persist/vault/volumes"}  storageList:{mountPath:"/persist/patchEnvelopesUsageCache"}  storageList:{mountPath:"/persist/agentdebug"}  storageList:{mountPath:"/"  total:3960}  storageList:{mountPath:"/persist"  total:40006  storageLocation:true}  storageList:{device:"nbd11"}  storageList:{mountPath:"/persist/clear/volumes"}  storageList:{mountPath:"/persist/lost+found"}  storageList:{device:"vda9"  total:40953  partitionLabel:"P3"  partitionTypeGuid:"5f24425a-2dfa-11e8-a270-7b663faccc2c"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30059"}  storageList:{device:"vda1"  total:2048  partitionLabel:"EFI System"  partitionTypeGuid:"c12a7328-f81f-11d2-ba4b-00a0c93ec93b"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30051"}  storageList:{device:"/persist/vector/data/buffer/v2/dev_upload_socket/buffer-data-0.dat"}  storageList:{mountPath:"/persist/log"}  storageList:{mountPath:"/persist/checkpoint"}  storageList:{mountPath:"/persist/containerd-system-root"}  storageList:{mountPath:"/persist/patchEnvelopesCache"}  storageList:{mountPath:"/persist/vault/containerd"}  storageList:{device:"nbd12"}  storageList:{device:"nbd9"}  storageList:{mountPath:"/persist/vault/verifier"}  storageList:{device:"vda4"  total:5  partitionLabel:"CONFIG"  partitionTypeGuid:"13307e62-cd9c-4920-8f9b-91b45828b798"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30054"}  storageList:{mountPath:"/persist/vault"}  storageList:{mountPath:"/config"  total:5}  storageList:{device:"nbd5"}  storageList:{device:"nbd10"}  storageList:{device:"nbd4"}  storageList:{mountPath:"/persist/certs"}  storageList:{mountPath:"/persist/tmp"}  storageList:{mountPath:"/persist/ingested"}  storageList:{device:"nbd15"}  storageList:{device:"nbd7"}  storageList:{device:"nbd14"}  storageList:{device:"nbd1"}  storageList:{device:"vda"  total:65536}  storageList:{device:"nbd8"}  bootTime:{seconds:1795473249}  swList:{activated:true  partitionLabel:"IMGA"  partitionDevice:"/dev/vda2"  partitionState:"active"  status:INSTALLED  shortVersion:"0.0.0-master-92671766-kvm-amd64"  downloadProgress:100  userStatus:UPDATED}  swList:{partitionLabel:"IMGB"  partitionDevice:"/dev/vda3"  partitionState:"unused"  status:INITIAL}  HostName:"7e1f6895-e9f3-47c0-bae8-afa1e25a455b"  lastRebootReason:"NORMAL: controller reboot at EVE version 0.0.0-master-92671766-kvm-amd64 at 2026-11-23T22:33:24.41180269Z\n"  lastRebootTime:{seconds:1795473204  nanos:508953604}  systemAdapter:{currentIndex:1  status:{version:1  key:"zedagent"  timePriority:{seconds:1795473625  nanos:978280332}  lastFailed:{seconds:1795473645  nanos:84078837}  ports:{ifname:"eth0"  name:"ethernet0"  isMgmt:true  free:true  dhcpType:4  proxy:{}  dns:{}  err:{description:"All attempts to connect to https://adam.evetest:443/api/v2/edgedevice/ping failed: send via eth0 with src IP 172.20.20.123: Get \"https://adam.evetest:443/api/v2/edgedevice/ping\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"  timestamp:{seconds:1795473645  nanos:83912025}  severity:SEVERITY_ERROR}  usage:PhyIoUsageMgmtAndApps  networkUUID:"3005717d-2603-4822-8fcd-bc1893159fc9"  config_source:{origin:NETWORK_CONFIG_ORIGIN_CONTROLLER  submitted_at:{seconds:1795473625  nanos:978280332}}}  lastError:"All attempts to connect to adam.evetest:443/api/v2/edgedevice/ping failed: send via eth0 with src IP 172.20.20.123: Get \"https://adam.evetest:443/api/v2/edgedevice/ping\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"}  status:{version:1  key:"zedagent"  timePriority:{seconds:1795473524  nanos:535717022}  lastSucceeded:{seconds:1795473892  nanos:408259567}  ports:{ifname:"eth0"  name:"ethernet0"  isMgmt:true  free:true  dhcpType:4  subnet:"172.20.10.0/24"  domainname:"test."  proxy:{}  macAddr:"da:39:78:d0:19:f2"  IPAddrs:"172.20.10.123"  defaultRouters:"172.20.10.1"  dns:{DNSservers:"10.16.16.25"  DNSdomain:"test."}  up:true  err:{description:"No certificate enrollment status found for SCEP profile \"scep-cycle-2\""  timestamp:{seconds:1795473893  nanos:611958466}  severity:SEVERITY_ERROR}  usage:PhyIoUsageMgmtAndApps  networkUUID:"3005717d-2603-4822-8fcd-bc1893159fc9"  mtu:1500  config_source:{origin:NETWORK_CONFIG_ORIGIN_CONTROLLER  submitted_at:{seconds:1795473524  nanos:535717022}}  pnac_status:{enabled:true  err:{description:"No certificate enrollment status found for SCEP profile \"scep-cycle-2\""  timestamp:{seconds:1795473893  nanos:611958290}  severity:SEVERITY_ERROR}}}}}  restartCounter:1  HSMStatus:NOTFOUND  dataSecAtRestInfo:{status:DATASEC_AT_REST_DISABLED  info:"TPM is either absent or not in use"  vaultList:{name:"Application Data Store"  status:DATASEC_AT_REST_DISABLED  vaultErr:{description:"TPM is either absent or not in use"  timestamp:{seconds:1795473293  nanos:418705402}  severity:SEVERITY_ERROR}  pcrStatus:PCR_DISABLED  unlock_method:VAULT_UNLOCK_METHOD_NO_TPM}}  sec_info:{sha_root_ca:"\xf2\"qs\xf62\x88\xa0\xdc\xc3\"9\x84~\xe0\x0e\xac&K\xc06\xac\x83\xcf\xea\xccI\x02\x8e\x06\x94_"}  configItemStatus:{configItems:{key:"app.allow.vnc"  value:{value:"true"}}  configItems:{key:"debug.default.loglevel"  value:{value:"debug"}}  configItems:{key:"debug.default.remote.loglevel"  value:{value:"debug"}}  configItems:{key:"debug.enable.console"  value:{value:"true"}}  configItems:{key:"debug.enable.ssh"  value:{value:"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC+H1RQUqHjFBJgGpslC73XsLz8Fg5WpNPble9naKyWz1Um8D2bOtQK/yguCImPeBYcH7/73z8dtC6d+dT0UF26+o7Vh6RN/U2X/5nkaZr7oM5QwwZTsD7Nd2Szww9wrRhXvpV0aFgUBDM9BIF1qBQxLNd+Jp8uttrgF3zj/cm7+SXllG54sv8WFBMfTX7J8cQ1jxLyp/Sc6PXK0zBaVzZwhmCCmI6CIzJK6ahMRgXm2vSP6doYibkB3ETSskaCXSHxDiZoaQK2ZY+GqNZkUusbau43MXVPTiJknXqUcmXhQmwyMSltQ3G54jcgn4TDObSQnW7vGdLI7zIEAHnk5D1BmKzQUBh5aRLdhBtb6T3uvVtAqGgnXWKD+d2GjMiy4G31zfIlArvC3G8LxwsDoxQL0XKaFjnEmXIptVXC68zq+laIM8YGDDOCEc6RfczP7lA4p6rv0gQUfTNqy0P3a4ulvIDb4hET1Gkh+Azkuw1do9NIhXPxDBmPdkTnKwJv6XelpdCPCw1QT5o7WdOkUgorf/e03jGDnnn1QBWpSPB9gLB/oDmT/Gzm8tCYaq7ggwYUq1fSMBvnbFaclH1KVcC2Gwn8UPLt9HHa/mGywuISZYl3gy7ztlKyAjHEZH053U7I8OaMvv/CFo9aR4Teeb5848REZYAes+yJIz3lJV1K5Q=="}}  configItems:{key:"newlog.allow.fastupload"  value:{value:"true"}}  configItems:{key:"scep.retry.interval"  value:{value:"300"  error:"***ParseItem: Error in parsing Item. Replacing it with existing Value. key: scep.retry.interval, value: 10, Existing Value: {Key:scep.retry.interval ItemType:1 IntValue:300 StrValue: BoolValue:false TriStateValue:0}. Err: value out of bounds. Parsed value: 10, Max: 3600, Min: 60"}}  configItems:{key:"timer.config.interval"  value:{value:"5"}}  configItems:{key:"timer.deviceinfo.interval"  value:{value:"30"}}  configItems:{key:"timer.download.retry"  value:{value:"60"}}  configItems:{key:"timer.location.app.interval"  value:{value:"20"}}  configItems:{key:"timer.location.cloud.interval"  value:{value:"300"}}  configItems:{key:"timer.metric.interval"  value:{value:"20"}}  configItems:{key:"timer.port.testbetterinterval"  value:{value:"60"}}  configItems:{key:"timer.test.baseimage.update"  value:{value:"60"}}}  rebootConfigCounter:1  last_boot_reason:BOOT_REASON_REBOOT_CMD  hardware_watchdog_present:true  capabilities:{HWAssistedVirtualization:true  IOVirtualization:true}  state:ZDEVICE_STATE_ONLINE  storage_info:{pool_name:"/persist"  storage_type:STORAGE_TYPE_INFO_EXT4  storage_state:STORAGE_STATUS_ONLINE  disks:{disk_name:{name:"/dev/vda9"  serial:"unknown"}  status:STORAGE_STATUS_ONLINE  smart_status:"failed"}}  attestation_info:{state:ATTESTATION_STATE_COMPLETE}  api_capability:API_CAPABILITY_DEFERRED_QUEUE_METRICS  optional_capabilities:{hw_inventory_support:true  cpu_placement:true}  device_name:"edge-dev"  cpu_pools:{kind:CPU_POOL_KIND_HOUSEKEEPING  cpu_ids:0  cpu_ids:1  cpu_ids:2  cpu_ids:3  free_cpu_ids:3  total_threads:4  allocated_threads:3  free_threads:1  total_cores:4  free_whole_cores:1}  cpu_pools:{kind:CPU_POOL_KIND_DEDICATED}  cpu_pools:{kind:CPU_POOL_KIND_ISOLATED}
+```
+
+##### Claude's conclusion
+
+Confirmed: the hostapd log has been silent for over 5 minutes, stuck exactly where past occurrences stall.
+
+###### Root cause
+
+Live evidence on the SDN bridge (`/run/hostapd/bridge0.log`, last modified 22:40:31 vs current time 22:45:51, >5 min of inactivity) shows the device (`da:39:78:d0:19:f2`) completing a successful EAP-TLS handshake after its SCEP-cert-rotation reboot (`CTRL-EVENT-EAP-SUCCESS` → `AP-STA-CONNECTED`, port authorized), then immediately sending an `EAPOL-Logoff`, being unauthorized, and the re-authentication attempt permanently wedging at `IEEE 802.1X: Scheduled disconnection of da:39:78:d0:19:f2 after EAP-Failure` before ever reaching a new identity exchange. Correspondingly, `evetest status` shows `pnac_status.err: "No certificate enrollment status found for SCEP profile \"scep-cycle-2\""`, consistent with the device being stuck mid-cycle and unable to progress to cycle 3's cert-removal/PNAC-disable/VLAN-move assertion within the 300s window.
+
+This is the exact 802.1X re-auth-stall-after-EAP-Failure mechanism documented repeatedly in `live-ledger.md` as a known, recurring issue on `TestPNACWithProxy`/`TestPNACWithoutProxy`, dating back to at least 2026-11-09 (run #12) and recurring on 2026-11-13, 2026-11-16, 2026-11-18, and 2026-11-20 (run #36) — tonight's failure is a continuation of that same unresolved bug in the SCEP/PNAC cert-rotation re-auth path, not a new regression. No PR diff was supplied for this investigation, so no relatedness verdict is given.
+#### TestDNSFunctionality
+
+##### Failure
+
+```
+
+Timed out after 120.000s.
+The function passed to Eventually failed at /evetest/tests/networking/dns_test.go:414 with:
+dnsmasq must have logged forwarding attempts for http-server1.test
+Expected
+    <[]evetest.LogMsg | len:0, cap:0>: nil
+not to be empty
+```
+
+##### Claude's conclusion
+
+That background SSH command (a leftover check for `http-server1.test` in `/persist/newlog` and `/run`) was killed after its time limit — it's no longer needed since the root cause was already confirmed via the Adam-side log batch evidence. No further action needed; my analysis above stands.
+
+### TestLocalNetworkInstanceSuite: failure analysis
+
+#### TestMoveAppBetweenNIs
+
+##### Failure
+
+```
+
+Timed out after 180.000s.
+Expected to satisfy: App has a VIF IP address from 10.11.12.0/24
+AppID:"ea6b762c-2b35-40f6-81b0-6c228a3d91a8"  appVersion:"1"  AppName:"pong"  bootTime:{seconds:1795475023  nanos:22891629}  state:RUNNING  network:{macAddr:"02:16:3e:00:00:03"  devName:"vif0"  defaultRouters:"10.11.12.1"  dns:{}  localName:"nbu1x3"}  volumeRefs:"e1ff4f43-6a73-4591-8cfd-b28d6e7fb9be"  cluster_app_running:true
+```
+
+##### Claude's conclusion
+
+Only the one test failure in this run (the other two subtests of the suite are still in progress/paused, not failed). This isn't a shared-root-cause with another failure in this run, and it's not a recurring entry in the ledger for this test.
+
+###### Root cause
+
+This is a narrow timing race, not a functional bug. Live evidence on the device shows the app `pong`'s vif (`nbu1x3`/MAC `02:16:3e:00:00:03`) was correctly plumbed onto bridge `bn1` at 23:03:39, with the static DHCP reservation (`10.11.12.3`) written and the domain reaching `RUNNING` at 23:03:49 — but the guest never sent a single `DHCPDISCOVER` on that vif until **23:06:50.510**, over 3 minutes after boot (its sibling app `ping1` on the same bridge completed DHCP within seconds of its own boot). The moment the guest did discover, `dnsmasq` answered instantly (`DHCPOFFER`→`DHCPACK` in milliseconds) and `zedrouter`/`zedagent` propagated the IP end-to-end (`PublishAppInfoToZedCloud` at 23:06:50.593 shows `IPAddrs:"10.11.12.3"`), confirming the networking/reconciler/pubsub stack behaved correctly throughout. Given the test's 180s deadline, this lines up almost exactly (180s from `RUNNING` at 23:03:49 ≈ 23:06:49, vs. the actual DHCP completion at 23:06:50) — the guest's DHCP client was simply slow to start inside the VM, and missed the deadline by about a second. `evetest broker status` shows the host is heavily overcommitted right now (load avg 10.3 on top of 99% of host memory already assigned to running VMs, only 14.4 GiB free), which is a plausible aggravating factor for slow guest-OS boot/network bring-up, though I can't directly prove causation for this specific window. This exact test/signature does not appear anywhere in `live-ledger.md`, so it isn't a known recurring issue — this looks like a new, environment-driven flake rather than a code regression.
+#### TestLocalNetInstanceACLsWithFlowLog
+
+##### Failure
+
+```
+timed out after 5m0.000684926s (excluding download) waiting for app "c361d284-54ea-41de-81c3-f6f15a6ac018" (acl-app-1) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence shows the app's volume (`acl-app-1-root`) was waiting on its content tree (`acl-app-1-image`) to resolve a tag against the SDN's local OCI registry (`192.168.170.2:5000/lfedge/evetest-ubuntu-ctr:1.0`). The `manifestsDescImg` resolve call was issued at 23:38:16.108 and didn't log `Resolve config Done` until 23:41:04.962 — a **2m49s** stall — whereas every other resolve of the same image earlier in this exact test run (23:13, 23:14, 23:18, 23:24, 23:32) completed in under a second. That single anomalous delay ate directly into the test's fixed 5-minute "waiting for RUNNING" budget: app config was applied at 23:38:16, the volume didn't finish creating until 23:43:52, and the test had already timed out moments before that (5 min from config-apply ≈ 23:43:16).
+
+This is **not a new issue** — it's the identical, well-documented recurring `downloader`/OCI tag-resolution stall in `live-ledger.md`, first seen 2026-10-31 and recurring repeatedly (2026-11-02 and others), including a prior occurrence on this *exact* test (`TestLocalNetInstanceACLsWithFlowLog`, ledger line ~1997-2013) where the stuck resolve never completed at all, and another sibling-app case with the identical **~2m49s** delay (ledger line ~5243) before eventually succeeding — matching tonight's timing almost exactly. The mechanism is a `runResolveHandler` goroutine in `downloader` that sometimes takes an anomalously long, fixed-feeling ~2m49s (and in other occurrences hangs indefinitely) for a single resolve request against the SDN registry while sibling/earlier resolves for the same image complete instantly; the registry itself has been confirmed healthy in prior investigations of this same signature.
+
+This does not share a root cause with the other failure already investigated in this run (`TestMoveAppBetweenNIs`, a slow in-guest DHCP client race) — different mechanism entirely. No PR diff was supplied, so no relatedness assessment is given.
+#### TestPortForwarding
+
+##### Failure
+
+```
+
+Timed out after 180.337s.
+The function passed to Eventually failed at /evetest/tests/networking/netinst_test.go:1516 with:
+Unexpected error:
+    <*fmt.wrapError | 0x196a4366b060>: 
+    unable to reach app "dc2c3782-0c59-412a-8a8e-34935691c1b7" SSH on device "edge-dev": no reachable endpoint among [172.20.20.123:2223]
+    {
+        msg: "unable to reach app \"dc2c3782-0c59-412a-8a8e-34935691c1b7\" SSH on device \"edge-dev\": no reachable endpoint among [172.20.20.123:2223]",
+        err: <*errors.errorString | 0x196a428590d0>{
+            s: "no reachable endpoint among [172.20.20.123:2223]",
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+The app under test, `app1` (`dc2c3782-0c59-412a-8a8e-34935691c1b7`), reached `RUNNING` at 23:58:00 but its guest never actually completed DHCP until **00:01:00.863** — almost exactly 3 minutes later, after cycling through at least 6 different DHCP transaction IDs (repeated `DHCPDISCOVER` retries) before `dnsmasq-dhcp` finally logged `DHCPACK(bn1) 10.11.12.3`. The test's 180.337s `Eventually` deadline (measured from `RUNNING` at 23:58:00) expired at ~00:01:00.337 — essentially the same instant the IP finally came up — so the SSH port-forward (`172.20.20.123:2223` DNAT/SNAT-hairpinned to `10.11.12.3:22`, which I confirmed is correctly programmed and now fully reachable via direct `ping`/`nc` post-failure) simply had no live endpoint behind it for the entire test window.
+
+This is the same mechanism as the `TestMoveAppBetweenNIs` failure already investigated earlier in this exact suite run (a different app, but an identical "guest DHCP client takes minutes to start, racing a fixed-180s deadline" pattern). `evetest broker status` shows the host is heavily overcommitted right now (load avg 14.41 on 40 CPUs, 96% of host memory assigned to running VMs), a plausible aggravating factor consistent with that prior finding, though not provably the trigger for this specific window. This exact test (`TestPortForwarding`) doesn't appear by name in `live-ledger.md`, so it's not a previously logged recurring failure for this test specifically, but the underlying slow-guest-DHCP-vs-timeout mechanism matches a pattern already seen twice tonight.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestDNIDandBackupDNID
+
+##### Failure
+
+```
+timed out after 30m0.000047523s (excluding download) waiting for app "e3866fd8-b4e0-4fba-a96d-0e37f5642070" (vm1) on device "edge-dev1" to reach RUNNING state (last state: BOOTING)
+```
+
+##### Claude's conclusion
+
+This exactly matches today's failure — same test, same symptom, same mechanism, confirmed first seen 2026-10-29. This is sufficient to write the conclusion now.
+
+###### Root cause
+
+This is the same known, long-recurring bug documented repeatedly in the ledger (first seen 2026-10-29, run #1, introduced by commit `98acf1411`, test added in `6574dccd3`), and reproduced identically as recently as yesterday's run (2026-11-22, run #36). Live evidence confirms it exactly:
+
+- `vm1`'s VMI (`vm1-e3866-0cldzw`) has only a *Preferred* (soft, weight-100) node affinity toward its DNID `edge-dev1`, so KubeVirt's scheduler placed and ran it on `edge-dev3` instead (`kubectl get vmi` shows `Running`/`Ready` on `edge-dev3`, phase transitions complete by 22:24:04Z, well before the 30-minute timeout).
+- Cluster-wide `evetest cluster info` confirms `eve_vm_apps` for this VMI as `KUBE_VMI_STATUS_RUNNING` on `node_name:"edge-dev3"` — the app is actually healthy.
+- But `evetest eve app-info -d edge-dev1` for the same app UUID is stuck at `BOOTING` forever, because `zedmanager`'s `getKubeAppActivateStatus`/`publishAppInstanceStatus` logic on the DNID node (`edge-dev1`) suppresses further status reporting once it detects the pod is scheduled/running on a peer node — by design it never reports `RUNNING` itself in this case, so the controller-visible app status for `edge-dev1` wedges at `BOOTING` even though the guest is fine elsewhere.
+- The test's step 1 explicitly polls `dev1.WaitUntilAppIsRunning(...)` (the DNID device specifically), so this placement/reporting gap deterministically times out it at 30 minutes.
+
+This is the identical root cause and code path already catalogued in the ledger for this test (not the same as this run's other `TestNodeClusterResilienceSuite` failures, `TestVMAppPurgeDuringFailover`/`TestClusterPVCRedownload`, which are separate known issues). No PR diff was provided for this investigation, so no relatedness verdict applies.
+#### TestClusterPVCGCDeletesOnlyOrphans
+
+##### Failure
+
+```
+
+Timed out after 360.000s.
+The function passed to Eventually failed at /evetest/tests/cluster/pvcgc_test.go:218 with:
+the cluster still lists PVC "593294da-4246-4a3f-aa0e-e17c412df339-pvc-0"
+Expected
+    <map[string]bool | len:4>: {
+        "593294da-4246-4a3f-aa0e-e17c412df339-pvc-0": true,
+        "593294da-4246-4a3f-aa0e-e17c412df339-pvc-1": true,
+        "99c28b4a-7b85-4e01-bf20-db007b1bdbde-pvc-0": true,
+        "babd5698-96e6-466e-b6c9-4e1c081ac102-pvc-1": true,
+    }
+not to have key
+    <string>: 593294da-4246-4a3f-aa0e-e17c412df339-pvc-0
+```
+
+##### Claude's conclusion
+
+**Root cause:** During `TestClusterPVCGCDeletesOnlyOrphans`, `edge-dev3` flipped `ONLINE → SUSPECT` at 23:18:55 (confirmed in `gotest.json` and still reflected live now via `evetest cluster info`, which shows `edge-dev3`'s Kubernetes `Ready` condition missing `set:true` and the orphan PVC `593294da-...-pvc-0`'s replica on `edge-dev3` — along with all three replicas of that volume — still `STORAGE_VOLUME_REPLICA_STATUS_OFFLINE`). The test's 360s `Eventually` then timed out 49 seconds later at 23:19:44 with that same orphan PVC still listed. This matches `pkg/pillar/cmd/volumemgr/initialvolumestatus.go`'s `gcPVCs`/`pvcsToReap`, which (via `isCurrentlyBackupDNIDForVolume` in `dnidbackup.go`) only reaps a superseded PVC of a replicated volume from the cluster's app-op-leader node once the volume's designated node has been unhealthy past `dnidOutageThreshold` — device logs confirm no `gcPVCs: deleting PVC 593294da-...` ever fired for this volume on any of the three devices, unlike the sibling orphan (`babd5698-...`) which *did* get reaped earlier at 23:08:52, before any node flapped. This is a direct repeat of the one prior ledger entry for this exact failure line (`pvcgc_test.go:218`, from run #12 on 2026-11-09): a brief node-health blip delaying the backup-DNID-gated PVC reap past the test's fixed 360s window — not a new bug, but now a second occurrence of what was previously a one-off signature, so it looks like a recurring (if intermittent) timing gap between the GC's deliberate outage-threshold/backup-DNID gating and the test's fixed timeout. It does not share a root cause with the other failure already investigated earlier in this run (`TestDNIDandBackupDNID`'s soft-affinity scheduling/activation-status gap on `edge-dev1`) — that was a VMI placement/reporting issue, unrelated to this PVC-GC node-flap timing race. Broker host load (12.98 on 32 CPUs, 73% RAM assigned, 19 VMs running) is mildly elevated but not obviously pathological, so it's a plausible but unconfirmed contributor to the transient SUSPECT flip rather than a certain cause.
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.001s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+Confirmed live: this is an exact repeat of the identical signature already seen twice earlier in this very run (23:53:25Z and 00:40:50Z-ish occurrences logged in `live-investigation.md`/`live-ledger.md`). Now this is a third occurrence tonight.
+
+**Root cause:** `edge-dev1` (the designated node for app `39975af0-...`/`failover-purge-app`) is `EVE_DEVICE_STATE_SUSPECT`, deliberately powered off by the test. Live `kubectl get vmirs,vmi,vm,pod -A` on `edge-dev2` returns zero VMIRS/VMI/VM anywhere in the cluster (only infra pods: cdi, longhorn, kubevirt, coredns, etc.) — exactly matching the test's `found []`. `edge-dev2`'s live zedmanager logs show an unbroken loop still firing right up to the current moment (00:00:36Z): `getKubeAppActivateStatus(39975af0-...): not designated, node ae05af63-..., onTheDevice false, statusRunning false` → `publishAppInstanceStatus(...) suppressed: IsDNidNode=false ScheduledOnThisNode=false AppKubeStatus=NotInCluster`, repeating every ~15-20s with no new VMIRS ever re-requested after the purge deleted the old one.
+
+This is the identical designated-node/backup-DNID activation-gate deadlock already investigated twice earlier tonight in this same suite run (`live-investigation.md`), and per `live-ledger.md` it's a long-known, unfixed issue first seen 2026-10-29 (run #1, introduced by commit `98acf1411`), reproducing in nearly every nightly run since — tonight's occurrence is simply this run's third hit of the exact same deadlock (now with a different app UUID), not a new bug.
+#### TestClusterPVCRedownload
+
+##### Failure
+
+```
+
+vm1's content tree is in state LOADED, not REMOTELOADED -- it was re-downloaded despite the PVC already being complete
+Expected
+    <types.SwState>: 108
+to equal
+    <types.SwState>: 125
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence on `edge-dev1` matches the exact same `pkg/pillar/cmd/volumemgr` PVC-adoption race documented repeatedly in this run's ledger for `TestClusterPVCRedownload`. After vm1's post-reboot reactivation (volumemgr restarted ~00:34:43, vm1-reactivated checkpoint at 00:37:17), the content tree `c4ef30c4-83ea-4cfa-98a1-6c3b43ab20cc` ("vm1-image") logs `contentTreeSatisfiedByPVCs(...): no local volumes reference this content tree` — the matching VolumeConfig/PVC hadn't been republished to volumemgr yet — so `doUpdateContentTree` falls through the ordinary (non-PVC) path, finds all three blobs already present/verified in local CAS, and self-completes `VERIFIED → LOADING → LOADED` in short order, logging "image ... exists in CAS, Content Tree load is completely LOADED." This lands it on `LOADED` (108) instead of `REMOTELOADED` (125), exactly matching `/run/volumemgr/ContentTreeStatus/c4ef30c4-....json` (`"State":108`, still live right now) and the failing assertion; the live `VolumeStatus` for `vm1-root` correspondingly only reaches `CREATED_VOLUME` (110), confirming the volume/PVC side was still catching up when the content tree raced ahead and completed.
+
+This is not a new bug: per `live-ledger.md`, this is a long-standing, well-known recurring issue specific to `TestClusterPVCRedownload`, first seen 2026-10-30 (run #2) and reproducing in the large majority of nightly runs since (including multiple occurrences within this very run earlier tonight, per `live-investigation.md`). It does not share a root cause with this run's other investigated failures (`TestDNIDandBackupDNID`'s soft-affinity scheduling gap, `TestClusterPVCGCDeletesOnlyOrphans`'s GC-timeout-vs-node-flap, or `TestVMAppPurgeDuringFailover`'s designated-node/zedmanager deadlock) — it's a continuation of this specific, unbroken content-tree/PVC-publish-timing race.
+
+### TestNodeClusterSuite: failure analysis
+
+#### TestAppInstancePurge
+
+##### Failure
+
+```
+timed out after 10m0.018622112s (excluding download) waiting for app "623a3363-d75a-480e-bbe9-bdb3b1b95193" (purge-app) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+Confirmed: no further retries logged after 05:50:32 (the pause happened at ~05:50-something, matching the stuck state), identical to the pattern previously documented. This is a strong, confirmed match with the known/recurring issue.
+
+No PR diff was given in this task, so I'll conclude without a RELATED line.
+
+**Root cause:** `TestAppInstancePurge`'s own purge logic cordons/drains `edge-dev` (single-node cluster), and at 05:35:20 the drain evicts the `coredns` pod — knocking out cluster DNS. From 05:35:54 to 05:45:23, `volumemgr`'s `RolloutDiskToPVC` for `purge-app`'s root volume (`f187975a-...`) fails every ~30s with `dial tcp: lookup longhorn-backend on 10.43.0.10:53: ... connection refused`, and at 05:40:54 this crosses into a harder "no upload pod annotation" error that trips `CREATING_VOLUME` with an error state. Once CoreDNS/the node drain settles and the node is uncordoned (`cordonNode ... unschedulable:false complete` at 05:50:18), volumemgr retries at 05:50:32 but hits a second, non-retriable failure: `CopyImgDirToRawImg: Failed to create raw image file ... /persist/vault/volumes/f187975a-...-pvc-0.img already exists` — confirmed live, the `.img` file exists on disk timestamped 05:41 (left over from the aborted first attempt). This error isn't classified as a retriable "transient cluster-storage error," so the volume has been stuck in `CREATING_VOLUME` with no further retry logged since 05:50:32, exactly matching the 10-minute timeout the test hit.
+
+This is a **known, recurring issue**: the ledger documents the identical `TestAppInstancePurge` signature and exact mechanism (self-cordon → CoreDNS outage → DNS failure on `longhorn-backend` → stale `.img` file blocking retry → permanently stuck `CREATING_VOLUME`) on **2026-11-05 (run #8)**, where the error text (`CopyImgDirToRawImg: Failed to create raw image file ... pvc-0.img already exists`) is word-for-word the same. The underlying bug — volumemgr's copy-image-to-qcow retry path doesn't clean up or tolerate a pre-existing raw-image file left over from an earlier aborted attempt — remains unfixed. This failure does not appear to share a root cause with any other failure noted elsewhere in tonight's run (no other `TestNodeClusterSuite` failures were found in this run's artifacts).
+#### TestMgmtProxy
+
+##### Failure
+
+```
+Device "edge-dev1" failed to confirm the latest config (version 1): timed out waiting for LastProcessedConfig >= 2026-11-24 06:28:38.597574822 +0000 UTC
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+This is the same known race documented three times already in `live-ledger.md`: zedagent processes the config fetch essentially on time, but the confirming periodic **metrics** POST (which carries `LastProcessedConfig`) gets wedged. Live evidence for `edge-dev1` confirms it exactly — device logs show `edge-dev1` fetched config v1 at 06:28:39, then at 06:28:52 `"All management ports are marked failed; trying all"` / `"interface eth1: no DNS server available"` as NIM flipped the active DevicePortConfig from the bootstrap `lastresort` key to the controller-assigned one, producing `"interface eth0: no suitable IP address available"` and DNS-resolution failures. The first metrics POST then logged `client.Do (timeout 120000000000) fail: ... dial tcp: lookup adam.evetest ... i/o timeout` at 06:28:55, with further `config`/`metrics`/`info` lookup failures through at least 06:29:09 — i.e. the metrics client blocked/retried past the harness's 120s wait window (started 06:28:39, timed out 06:30:39), and the device only transitioned `BOOTING → ONLINE` at 06:31:15, ~36s after the test had already paused. Meanwhile `edge-dev2`/`edge-dev3` hit the same DPC churn but confirmed config within ~15s, showing this is a timing race, not a deterministic failure.
+
+This is a **known, recurring issue**: `live-ledger.md` records the identical `"failed to confirm the latest config (version 1): timed out waiting for LastProcessedConfig"` signature, with the same DPC-flip/DNS-stall mechanism, on 2026-11-07 (run #10, `TestZVolProvisionedSizeReported`), 2026-11-09 (run #12, `TestVMAppPurgeAfterPowerCycle`), and again later (`TestManyAppInterfaces`) — tonight is simply this same unresolved harness/timing race recurring for `TestMgmtProxy`. It does **not** share the root cause of the other failure already investigated in this run (`TestAppInstancePurge`, a Kubernetes CoreDNS-outage/stale-`.img`-file volumemgr bug) — different mechanism, different layer (device-level DPC/DNS churn vs. in-cluster CoreDNS/Longhorn).
+
+### TestSwitchNetworkInstanceSuite: failure analysis
+
+#### TestSwitchNIDeletedWithAppsAttached
+
+##### Failure
+
+```
+timed out after 5m0.001039957s (excluding download) waiting for app "c3b0b69d-5034-4992-806e-ac15cf1ca491" (app-1) on device "edge-dev" to reach RUNNING state (last state: RESOLVING_TAG)
+```
+
+##### Claude's conclusion
+
+**Root cause:** `app-1`'s content tree (`6bf8ea21-...`, image `lfedge/evetest-ubuntu-ctr:1.2`) is stuck in `ContentTreeStatus.State:101` (RESOLVING_TAG), confirmed live via `app-info`. The downloader log shows `manifestsDescImg(192.168.170.2:5000/lfedge/evetest-ubuntu-ctr:1.2)` fired once at 23:12:06.628 and then nothing further was ever logged — no completion, no error — while the sibling `app-2`'s identical concurrent resolve succeeded and reached `State:108`. The registry itself is healthy (`curl http://192.168.170.2:5000/v2/` → 200), and there's a live `ESTABLISHED` TCP connection to `192.168.170.2:5000` from zedbox with a non-empty send queue, consistent with a hung request/goroutine rather than a registry or network outage. The broker host is not overloaded (11% CPU, no swap, 20/21 VMs running) so this isn't an environment resource issue.
+
+This is a known, recurring issue: the ledger shows the identical "one of two concurrent tag-resolve requests hangs forever in RESOLVING_TAG, downloader logs the resolve call and then nothing" signature repeatedly, including this exact same test (`TestSwitchNIDeletedWithAppsAttached`) on 2026-11-02, plus `TestFlowLog`/`acl-app` failures on at least two other nights. It was first flagged in the ledger as "new to this run" around 2026-11-02 and has recurred multiple times since, so this is an ongoing, unresolved hung-tag-resolution bug in the downloader/pillar image-resolve path, not a one-off.
+
+No PR diff was provided for this run, so there's nothing to assess for relatedness.
+
+### TestUpgradeSuite: failure analysis
+
+#### TestThreeNodesUpgrade
+
+##### Failure
+
+```
+Timed out waiting for cluster nodes [edge-dev1 edge-dev2 edge-dev3] to become ready in cluster "test-cluster" (device "edge-dev3")
+```
+
+##### Claude's conclusion
+
+This confirms it exactly: both edge-dev2 and edge-dev3 are running `/usr/bin/k3s init` (standalone single-node bootstrap), not `k3s server --server https://<join-ip>:6443` joining edge-dev1 — identical to the mechanism previously diagnosed on 2026-11-16 and 2026-11-17.
+
+I have enough evidence now.
+
+###### Root cause
+
+All three devices booted up individually and are healthy (`kubectl get nodes` on each shows itself as `Ready control-plane`), but each one ran `kube-init` as a standalone single-node bootstrap (`/usr/bin/k3s init`, confirmed live via `ps` on edge-dev2 and edge-dev3) instead of two of them joining the first as `k3s server --server https://<join-ip>:6443`. The result is three independent single-node clusters rather than one 3-node cluster, so `admission_status` never leaves `NODE_ADMISSION_JOINING` for any node and `WaitUntilClusterInfoSatisfies` times out after 30 minutes (23:57:31→00:27:31), exactly as `evetest cluster info` shows live. Longhorn's storage health is also flapping `FAILED`/healthy on edge-dev1/edge-dev3, but that's a downstream symptom of the split cluster, not the cause.
+
+This is not a new failure: it is the identical "kube-init bootstraps each node standalone despite correct zedkube cluster config" mechanism first diagnosed in this same ledger on 2026-11-16 (run #20) and again 2026-11-17 (run #21), both against the same pinned pre-upgrade base image `0.0.0-master-66475696` used again tonight — a known, recurring issue that has now reproduced for a third time, not a regression from any current code change. It does not share a root cause with any other failure in this run's `gotest.json` (TestThreeNodesUpgrade was the only failing test tonight), and the host itself (`evetest broker status`: 111% of RAM committed to running VMs, load 30 on 40 CPUs) is under pressure but is a secondary aggravating factor, not the primary mechanism, since the standalone-bootstrap behavior itself is a deterministic kube-init install-path bug rather than a timing race.
+
 ## [2026-11-23 -- 0.0.0-master-d4fd28da (run #41)](https://github.com/lf-edge/eve/actions/runs/45075176035)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/41/)
