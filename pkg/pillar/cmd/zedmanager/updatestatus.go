@@ -143,8 +143,10 @@ func removeAIStatus(ctx *zedmanagerContext, status *types.AppInstanceStatus) {
 			publishAppInstanceSummary(ctx)
 		}
 	} else {
-		log.Errorf("removeAIStatus(%s): PurgeInprogress no config!",
+		// The app was deleted while it was brought down.
+		log.Warnf("removeAIStatus(%s): no config after the purge, removing the app",
 			status.Key())
+		removeAIStatus(ctx, status)
 	}
 }
 
