@@ -24,10 +24,10 @@ var ErrNoCgroupTree = errors.New("no cgroup v2 tree")
 
 // A domain's cgroup, /eve-user-apps/<task>, is pillar's. It carries the
 // domain's memory limit and its CPUs, and holds two children: AppTaskCgroupName,
-// where runc puts the domain itself, and appHelpersCgroupName, the helper
+// where runc puts the domain itself, and AppHelpersCgroupName, the helper
 // processes EVE runs for the domain, its containerd shim and its swtpm. On KVM
 // the hypervisor spreads QEMU's threads over thread groups below the task
-// child.
+// child and gives the helpers child the CPUs of QEMU's emulator threads.
 //
 // The helpers are per-domain overhead, like the domain's qemu, but EVE's
 // services, containerd and vtpm, start them in their own cgroups, whose memory
@@ -44,8 +44,10 @@ var ErrNoCgroupTree = errors.New("no cgroup v2 tree")
 // still alive then, and the domain's cgroup are pillar's to empty and remove.
 const (
 	// AppTaskCgroupName names the child of a domain's cgroup runc runs it in.
-	AppTaskCgroupName    = "task"
-	appHelpersCgroupName = "helpers"
+	AppTaskCgroupName = "task"
+	// AppHelpersCgroupName names the child of a domain's cgroup its helpers
+	// are charged to.
+	AppHelpersCgroupName = "helpers"
 )
 
 // UserAppsCgroup creates the cgroup /eve-user-apps/<name>, where the
@@ -79,7 +81,7 @@ func AppTaskCgroup(task string) string {
 // child's path in the tree and its directory on the host, or ErrNoCgroupTree
 // when root holds no cgroup v2 tree.
 func AppHelpersCgroup(root, task string) (string, string, error) {
-	cgroup, hostDir, err := UserAppsCgroup(root, task+"/"+appHelpersCgroupName)
+	cgroup, hostDir, err := UserAppsCgroup(root, task+"/"+AppHelpersCgroupName)
 	if err != nil {
 		return "", "", err
 	}
@@ -144,7 +146,7 @@ func setAppCgroupCPUs(root, task, cpus string) error {
 // hold stay charged where they are, so this is done as late as possible. A
 // task without a helpers cgroup needs nothing.
 func evictAppHelpers(root, task string) error {
-	helpers := filepath.Join(root, ctrdServicesNamespace, task, appHelpersCgroupName)
+	helpers := filepath.Join(root, ctrdServicesNamespace, task, AppHelpersCgroupName)
 	procs, err := os.ReadFile(filepath.Join(helpers, "cgroup.procs"))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -174,7 +176,7 @@ func evictAppHelpers(root, task string) error {
 // the helpers have been evicted. A domain without them needs nothing.
 func removeAppCgroup(root, task string) error {
 	domain := filepath.Join(root, ctrdServicesNamespace, task)
-	for _, dir := range []string{filepath.Join(domain, appHelpersCgroupName), domain} {
+	for _, dir := range []string{filepath.Join(domain, AppHelpersCgroupName), domain} {
 		if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("cannot remove the cgroup %s: %w", dir, err)
 		}

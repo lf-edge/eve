@@ -2106,6 +2106,18 @@ func (ctx KvmContext) Start(domainName string) error {
 		}
 	}
 
+	// The swtpm joins the domain's helpers only now, when the domain's cgroup
+	// has the CPUs it starts on: VirtualTPMSetup runs before the task exists,
+	// and so before the cgroup has CPUs, or exists at all. It is running (vtpm
+	// waits for its pid file) and charged to vtpm's cgroup, where staying is
+	// harmless, so a failure to move it is only logged.
+	if ctx.status != nil && ctx.status.VirtualTPM {
+		id := ctx.status.UUIDandVersion.UUID
+		if err := joinSwtpmCgroup(cgroup.Root, "/proc", id, domainName); err != nil {
+			logrus.Warnf("swtpm of %s stays in vtpm's cgroup: %v", domainName, err)
+		}
+	}
+
 	var assigned types.CPUAssignment
 	if ctx.status != nil {
 		assigned = ctx.status.Placement.Assigned
@@ -2358,15 +2370,8 @@ func (ctx KvmContext) VirtualTPMSetup(domainName string, wp *types.WatchdogParam
 	if err != nil {
 		return fmt.Errorf("failed to extract UUID from domain name: %v", err)
 	}
-	if err := requestvTPMLaunch(domainUUID, wp, swtpmTimeout); err != nil {
-		return err
-	}
-	// The swtpm is running (vtpm waits for its pid file) and charged to vtpm's
-	// cgroup; staying there is harmless, so a failure to move it is only logged.
-	if err := joinSwtpmCgroup(cgroup.Root, "/proc", domainUUID, domainName); err != nil {
-		logrus.Warnf("swtpm of %s stays in vtpm's cgroup: %v", domainName, err)
-	}
-	return nil
+	return requestvTPMLaunch(domainUUID, wp, swtpmTimeout)
+
 }
 
 // VirtualTPMTerminate terminates the vTPM instance

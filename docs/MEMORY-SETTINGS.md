@@ -94,7 +94,8 @@ application under a limit of its own, its RAM plus the VMM overhead, and
 `helpers`, where the processes EVE runs for it, its containerd shim and its
 swtpm, are charged. The application's cgroup gets a fixed 32 MiB on top of
 the task's limit for them, which the memory check for new application
-instances counts too, and they run on the application's CPUs.
+instances counts too, and they run on the application's CPUs, for a VM where
+its emulator threads run (see [CPU-PLACEMENT.md](CPU-PLACEMENT.md)).
 
 ### Memory settings in EVE
 

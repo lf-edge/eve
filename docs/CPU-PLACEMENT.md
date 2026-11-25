@@ -220,11 +220,12 @@ When a VM starts, `domainmgr` and the KVM backend:
    ```
 
    For a pinned VM each `vcpu<i>` holds its one host CPU, and `emulator` the IO
-   CPUs under `io_placement=HOUSEKEEPING`; a group whose CPUs are the domain's
-   leaves its cpuset empty and follows the domain, as `task` does and both
-   groups of an unpinned VM do. Each group gets its CPUs before a thread joins
-   it, and the domain's group all of its CPUs last. A vCPU count mismatch, or
-   any failure to arrange the threads, fails the launch.
+   CPUs under `io_placement=HOUSEKEEPING`, as `helpers` does, which the swtpm
+   joins just before; a group whose CPUs are the domain's leaves its cpuset
+   empty and follows the domain, as `task` does and both groups of an unpinned
+   VM do. Each group gets its CPUs before a thread joins it, and the domain's
+   group all of its CPUs last. A vCPU count mismatch, or any failure to
+   arrange the threads, fails the launch.
 4. Release the guest with QMP `cont`.
 5. On x86, wait in the background, up to 30 seconds, for KVM's NX huge-page
    recovery thread, which the first vCPU to run creates in its own group, and
@@ -249,10 +250,12 @@ cgroup cpuset through containerd; nothing pins its threads.
 
 Housekeeping workloads run on the housekeeping set, and so do the host's own
 processes. EVE's services run in `/eve/services` on the CPUs reserved for EVE.
-`containerd` with every shim runs in `/eve/containerd` on the lowest
-`ctrd_max_vcpus` CPUs, and the memory monitor in `/eve-memory-monitor` on those
-of `/eve`, the lowest `dom0_max_vcpus`: they stay off the dedicated and isolated
-CPUs while neither limit exceeds `eve_max_vcpus`, as by default.
+EVE's system `containerd`, with the shims of EVE's own containers, runs in
+`/eve/containerd` on the lowest `ctrd_max_vcpus` CPUs, and the memory monitor
+in `/eve-memory-monitor` on those of `/eve`, the lowest `dom0_max_vcpus`: they
+stay off the dedicated and isolated CPUs while neither limit exceeds
+`eve_max_vcpus`, as by default. A workload's own shim and swtpm run in its
+`helpers` group, where its emulator threads run.
 What is left in the root cgroup -- `init`, `udevd`, the getty -- is moved into
 a top-level `housekeeping` group beside them, whose CPUs `domainmgr` sets to the
 housekeeping set before it moves any process, at startup and on every
