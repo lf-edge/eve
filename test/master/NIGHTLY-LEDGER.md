@@ -2,6 +2,157 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-25 -- 0.0.0-master-3f582576 (run #51)](https://github.com/lf-edge/eve/actions/runs/45496622546)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/51/)
+
+### TestAppsSuite: failure analysis
+
+#### TestLayerDownloadErrorsBounded
+
+##### Failure
+
+```
+Device "edge-dev" failed to confirm the latest config (version 1): timed out waiting for LastProcessedConfig >= 2026-11-25 00:55:20.644596661 +0000 UTC
+```
+
+##### Claude's conclusion
+
+Host load looks healthy (1% CPU, plenty of memory free), so this isn't infra overload — it's the same deterministic timing race already documented.
+
+###### Root cause
+
+Live device logs show `zedagent` processed config version 1 promptly: `parseConfigItems` applied it at 00:55:23.342 (right on the heels of the controller submitting it at 00:55:20.644). However, `LastProcessedConfig` is only surfaced to the controller via the periodic **metrics** POST, and that metrics send got wedged — it started around the same moment (coinciding with the DPC switch: `nim` logged `interface eth0/eth1: no suitable IP address available` and DNS resolver failures `lookup adam.evetest on 127.0.0.1:53: connection refused` / `server misbehaving` right at 00:55:26–00:55:32) and didn't fail until **00:57:23.348** with `client.Do (timeout 120000000000) fail: ... .../metrics": context deadline exceeded` — a full 120s client timeout, well past evetest's wait window. Broker host load is negligible (1% CPU, 33 GiB free), ruling out infra overload as a contributor.
+
+This is the identical, well-documented recurring race in `live-ledger.md`: the metrics POST that carries `LastProcessedConfig` binds to a stale route/connection right as the DevicePortConfig flips and blocks for the entire 120s HTTP client timeout, missing the harness's shorter confirmation window. The exact same signature (`"failed to confirm the latest config (version 1): timed out waiting for LastProcessedConfig"` + metrics-POST hang) is recorded repeatedly: 2026-11-07 (`TestZVolProvisionedSizeReported`), 2026-11-09 (`TestVMAppPurgeAfterPowerCycle`), 2026-11-12 (`TestManyAppInterfaces`), and 2026-11-18 (`TestMgmtProxy`) — so this is a known, recurring harness/timing issue dating back to at least 2026-11-07, not a new regression, and does not share a root cause with the unrelated earlier failures logged for this run (the SDN/Proxmox VM-teardown issue affecting the previous `TestLayerDownloadErrorsBounded` attempt in run #46 was a completely different mechanism). No PR diff was provided for this investigation.
+#### TestVGAPassthroughNoHostAccess
+
+##### Failure
+
+```
+bpftrace-compiler exited before running the tracer (exit status 1); its last output:
+2026/11/25 01:02:42 could not find compiled script in cache, compiling now ...
+#1 [internal] load remote build context
+#1 DONE 0.7s
+
+#1 [internal] load remote build context
+#1 DONE 0.7s
+
+#2 copy /context /
+#2 DONE 2.8s
+
+#3 resolve image config for docker.io/docker/buildkit-syft-scanner:stable-1
+#3 ERROR: failed to do request: Head "https://registry-1.docker.io/v2/docker/buildkit-syft-scanner/manifests/stable-1": net/http: TLS handshake timeout
+the script's output:
+reusing builder state volume linuxkit-builder-state
+creating builder container 'linuxkit-builder' in context 'default'
+0f6de436e5392707a36ed58d7e00147a0be2c65cfb5c2db3f230eeadbf5e5dd6
+waiting for buildkit builder to be ready, up to 30 seconds
+buildkit builder ready!
+building for platform linux/amd64
+```
+
+##### Claude's conclusion
+
+**Root cause:** This failure has nothing to do with the EVE device or pillar — `bpftrace-compiler` runs locally on the CI runner (`farfalle-runner-evetest-03`) and invokes `linuxkit`/buildkit to compile the tracer script into an image. Because SBOM attestation is enabled, buildkit tries to resolve the default SBOM generator image `docker.io/docker/buildkit-syft-scanner:stable-1` from Docker Hub, and that `Head` request hit `net/http: TLS handshake timeout` against `registry-1.docker.io` — a transient outbound network/TLS failure from the runner to Docker Hub, confirmed by `evetest status`'s captured output showing the buildkit builder started fine (`buildkit builder ready!`) and only failed at the remote image-config resolution step. The EVE device itself (`edge-dev`) is healthy and reachable (`evetest eve ssh` returns a consistent live clock), and the Proxmox broker host load is unremarkable (2% CPU, 32 GiB free, one client session), ruling out local resource contention as the cause. This is a different failure signature than the earlier-documented `TestVGAPassthroughNoHostAccess` issue in this run (the vCPU-thread-misnamed-as-host-interference tracer bug) — that one fails *after* the tracer runs and misclassifies PCI writes, whereas this one fails *before* the tracer ever starts, during the one-time compile/cache-miss step, so they don't share a root cause. I searched `live-ledger.md` for this exact signature (`buildkit-syft-scanner`, `registry-1.docker.io`, bpftrace-compiler build-context TLS timeout) and found no prior occurrence — this looks like a new, one-off Docker Hub reachability flake from the runner rather than a previously known/recurring issue.
+
+### TestLimitsSuite: failure analysis
+
+#### TestManyAppInterfaces
+
+##### Failure
+
+```
+
+Told to stop trying after 100.045s.
+pillar did not survive: the console shows: Rebooting EVE. Reason: panic: send on closed channelWatchdog report for IMGA EVE version 0.0.0-master-3f582576-kvm-amd64 at 2026-11-25T01:58:19+00:00: 3 /run/zedbox.pid
+At one point, however, the function did return successfully.
+Yet, Eventually failed because the matcher was not satisfied:
+The function passed to Eventually failed at /evetest/tests/limits/helpers_test.go:128 with:
+all 15 applications are reported running has not happened yet
+Expected
+    <bool>: false
+to be true
+```
+
+##### Claude's conclusion
+
+Confirmed — byte-for-byte the same stack trace as all previous occurrences.
+
+**Root cause:** Live `/persist/reboot-stack` on the device confirms `zedbox` panicked with `panic: send on closed channel` in goroutine 11335, at `pkg/pillar/cmd/downloader/download.go:473` inside `objectMetadata`'s helper goroutine (`receiveChan <- nil`), spawned from `download.go:468`. This is the known close-vs-send race: `receiveChan` is created per download object in `downloadHandler.create()` and `close()`d in `downloadHandler.delete()` (`pkg/pillar/cmd/downloader/handlers.go`), with no synchronization preventing an in-flight `objectMetadata` goroutine from writing to it after close. `TestManyAppInterfaces` provisions 15 apps with many interfaces, generating a burst of concurrent downloader config creates/deletes that reliably triggers this race — exactly matching the symptom (`all 15 applications are reported running` never became true because zedbox rebooted mid-run).
+
+This is a **known, recurring issue** per `live-ledger.md`: the identical panic/stack trace hit `TestManyAppInterfaces` on 2026-11-05 (first documented occurrence), 2026-11-08, and 2026-11-20 — tonight is at least the fourth occurrence of this same unresolved downloader concurrency bug, unrelated to any single recent change on `master` (the HEAD commits for this run are UEFI/qemu and Go-toolchain bumps, unrelated to `pkg/pillar/cmd/downloader`).
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.001s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+Host load is light (5% CPU, modest memory use) — nothing infra-related here, consistent with this being a deterministic code-level deadlock rather than resource starvation.
+
+###### Root cause
+
+Live evidence confirms this is the same long-known `TestVMAppPurgeDuringFailover` designated-node/backup-DNID activation-gate deadlock, now reproducing a **fourth** time tonight in this same suite run. `edge-dev1` (the app's designated node) is `EVE_DEVICE_STATE_SUSPECT` (deliberately powered off by the test), `kubectl get vmirs,vmi,vm,pod -A` against edge-dev2 right now returns **zero VMIRS/VMI/VM anywhere in the cluster** (only infra pods: cdi, longhorn, kubevirt, coredns), exactly matching the test's `found []`. `edge-dev2`'s live zedmanager/zedkube logs show an unbroken loop still firing up through the current moment (01:00:00Z): `getKubeAppActivateStatus(ff5cc3b3-...): not designated, node 215a8e8e-..., onTheDevice false, statusRunning false` → `publishAppInstanceStatus(...) suppressed: IsDNidNode=false ScheduledOnThisNode=false AppKubeStatus=NotInCluster`, repeating every ~15-20s with no new VMIRS ever re-requested after the purge deleted the old one. This is the identical mechanism, just with a different app UUID than the three earlier occurrences already logged in this run's own ledger entry (`live-ledger.md` line 183, timestamped 23:53:25Z and ~00:40:50Z). It's a long-known, unfixed issue per the ledger — first seen 2026-10-29 (run #1, introduced by commit `98acf1411`), reproducing in nearly every nightly run since, including explicitly on 2026-11-22 (run #36) and three times already tonight — so this is simply the fourth hit of the same unresolved deadlock, not a new bug. Broker host load is light (5% CPU, 48% of host memory assigned to VMs), ruling out infra overload as a contributing factor.
+#### TestClusterPVCRedownload
+
+##### Failure
+
+```
+
+vm1's content tree is in state LOADED, not REMOTELOADED -- it was re-downloaded despite the PVC already being complete
+Expected
+    <types.SwState>: 108
+to equal
+    <types.SwState>: 125
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live `volumemgr` logs on `edge-dev1` show the exact same `contentTreeSatisfiedByPVCs`/`doUpdateContentTree` PVC-adoption race documented repeatedly in this run's own ledger. After volumemgr restarted (pid 3002, consistent with vm1's post-reboot reactivation), `contentTreeSatisfiedByPVCs(de6dbb69-...)` logs "no local volumes reference this content tree" twice at 01:34:45.97 and 01:34:49.93 — the matching VolumeConfig/PVC hadn't been republished to volumemgr yet — so `doUpdateContentTree` falls through the ordinary non-PVC path: `VERIFIED → LOADING` at 01:34:49.96, then "image ... exists in CAS, Content Tree load is completely LOADED" at 01:34:50.165, landing on `LOADED` (108) instead of `REMOTELOADED` (125) within the same reconcile pass. This matches the live `/run/volumemgr/ContentTreeStatus/de6dbb69-....json` (`"State":108`, still present on the device right now) and exactly matches the failing assertion.
+
+This does **not** share a root cause with the other failure already investigated in this run tonight (`TestVMAppPurgeDuringFailover`'s zedmanager/zedkube designated-node purge-after-failover deadlock, recorded in `live-investigation.md`) — it's an unrelated, separate bug class. Per `live-ledger.md`, this is a long-standing, well-known recurring issue specific to `TestClusterPVCRedownload` in `pkg/pillar/cmd/volumemgr`, first seen 2026-10-30 (run #2) and reproducing in the large majority of nightly runs since (20+ logged occurrences across many nights, including multiple times within this very run earlier tonight) — tonight's failure is simply the next instance of that unbroken, still-unfixed streak, not a new bug.
+
+### TestSecuritySuite: failure analysis
+
+#### TestVaultKeyModeRecoveryOnExt4
+
+##### Failure
+
+```
+
+Timed out after 120.001s.
+vaultmgr must read the merged derivation the fault recorded (no new log record containing "Vault config inited with tpmkeyonly false"; still 0)
+Expected
+    <int>: 0
+to be >
+    <int>: 0
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+`vaultmgr` behaved correctly: the device-side agent log confirms the fault landed and was handled exactly as designed — `"Vault config inited with tpmkeyonly false"` was logged at `23:35:49.124`, followed immediately by the correct retry/success sequence (`23:35:50.100`–`23:35:50.473`, `tpmKeyOnly=false` failing, `tpmKeyOnly=true` opening the vault, and the corrected mode being persisted). The test failed not because that message is missing, but because it never reaches the on-device location the test's `newlogCount()` helper polls (`/persist/newlog/collect/dev.log.keep.*` + `/persist/newlog/keepSentQueue/*.gz`), which by design is read instead of the controller because controller delivery is "too late" for this test's window.
+
+Live evidence shows why: the `vector` process (pid 2577) has been pegged at ~77% CPU since this exact boot, continuously emitting `transform{...component_id=parse_json_keep...}: vector_buffers::buffer_usage_data: Buffer counter overflowed. Clamping value to u64::MAX` every ~10s, non-stop, from `23:35:xx` through the present (`23:42+`). This is the Vector transform feeding the "keep" sink (`dev_keep_sink` → `/run/devKeep_sink.sock`, a 256MB disk buffer with `when_full: block`). Correspondingly, `/persist/newlog/collect/dev.log.keep.*` (the device's local "keep" log file, containing only the boot-time `devID`/`eveVersion` header, 111 bytes) and `/persist/newlog/keepSentQueue/` have not received a single new record since `23:35:31` — frozen at the exact moment this Vector pipeline stalled — while the parallel "upload" pipeline (`parse_json_upload` → `devUpload`) kept rotating and shipping chunks to the controller normally the whole time (confirming network/controller connectivity and `loguploader` were fine, and explaining why `evetest eve logs`, which reflects what reached the controller, does show the message).
+
+This does not match the previously-logged `TestVaultKeyModeRecoveryOnExt4` ledger entries (stale attempt-count assertion, reboot-timeout-under-host-load, or the earlier newlogd-rotation race) — none of those involve Vector or a stuck "keep" buffer, and a search of `live-ledger.md` for `parse_json_keep`/`vector_buffers`/"Buffer counter overflowed" returns no prior hits, so this looks like a new, not-previously-recorded failure mode. Host load on the broker is modest (6% CPU, no swap pressure beyond baseline), ruling out infra overload as the trigger. No shared root cause with any other failure exists in this run (it's the only failure so far). No PR diff was supplied for this investigation.
+
 ## [2026-11-24 -- 0.0.0-master-92671766 (run #46)](https://github.com/lf-edge/eve/actions/runs/45275289457)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/46/)
