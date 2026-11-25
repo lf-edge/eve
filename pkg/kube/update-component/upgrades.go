@@ -14,6 +14,7 @@ package main
 //
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -172,10 +173,66 @@ func (ctx *commonComponent) KubectlApply(path string) error {
 		defer func() { _ = os.Remove(file) }()
 		src = file
 	}
+	return applyManifest(src, path)
+}
+
+// applyManifest applies the manifest file src, named name in messages,
+// server-side. Its CRDs go first and an error there stops the apply:
+// kubectl continues past a rejected object, which would roll out a
+// workload on top of a CRD that was not updated.
+func applyManifest(src, name string) error {
 	if err := adoptInstalledFields(src); err != nil {
-		log.Printf("WARNING: adopt installed fields of %s: %v", path, err)
+		log.Printf("WARNING: adopt installed fields of %s: %v", name, err)
 	}
-	cmd := exec.Command("kubectl", kubectlApplyArgs(src)...)
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", name, err)
+	}
+	crds, rest, crdObjs, err := splitManifest(data)
+	if err != nil {
+		log.Printf("WARNING: split %s: %v; applying it in one step", name, err)
+		return kubectlApplyFile(src, name)
+	}
+	if len(crdObjs) == 0 {
+		return kubectlApplyFile(src, name)
+	}
+	crdFile, err := writeTempManifest(crds)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(crdFile) }()
+	if err := applyCRDs(crdFile, crdObjs, name); err != nil {
+		return err
+	}
+	if len(bytes.TrimSpace(rest)) == 0 {
+		return nil
+	}
+	restFile, err := writeTempManifest(rest)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(restFile) }()
+	return kubectlApplyFile(restFile, name)
+}
+
+func writeTempManifest(data []byte) (string, error) {
+	f, err := os.CreateTemp("", "manifest-*.yaml")
+	if err != nil {
+		return "", err
+	}
+	_, err = f.Write(data)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		_ = os.Remove(f.Name())
+		return "", err
+	}
+	return f.Name(), nil
+}
+
+func kubectlApplyFile(file, name string) error {
+	cmd := exec.Command("kubectl", kubectlApplyArgs(file)...)
 	var outStr strings.Builder
 	var errStr strings.Builder
 	cmd.Stdout = &outStr
@@ -183,9 +240,9 @@ func (ctx *commonComponent) KubectlApply(path string) error {
 	err := cmd.Run()
 	if err != nil {
 		rc := cmd.ProcessState.ExitCode()
-		return fmt.Errorf("apply %s, rc: %d, stdout: %s, stderr: %s, err: %v", path, rc, outStr.String(), errStr.String(), err)
+		return fmt.Errorf("apply %s, rc: %d, stdout: %s, stderr: %s, err: %v", name, rc, outStr.String(), errStr.String(), err)
 	}
-	log.Printf("apply %s, stdout: %s, stderr: %s\n", path, outStr.String(), errStr.String())
+	log.Printf("apply %s, stdout: %s, stderr: %s\n", name, outStr.String(), errStr.String())
 	return nil
 }
 
