@@ -27,8 +27,15 @@ const ctrdConfiguredCgroup = "/eve/containerd"
 // is forced, pressing on the services whose budget it is. Charged beside the
 // domains instead, what the daemon caches for the apps costs the apps' side,
 // and the daemon runs on the applications' CPUs rather than on the few EVE's
-// services share.
+// services share. It is none of the domains, though: where EVE pins them,
+// domainmgr keeps its cgroup on the housekeeping CPUs, off the CPUs they hold.
 const userContainerdCgroupName = "containerd"
+
+// UserContainerdCgroup is the cgroup the user containerd daemon runs in, named
+// relative to the root of the cgroup v2 tree.
+func UserContainerdCgroup() string {
+	return ctrdServicesNamespace + "/" + userContainerdCgroupName
+}
 
 // userContainerdCgroupTimeout bounds the wait for the daemon to join its
 // configured cgroup, which it does while it initializes.

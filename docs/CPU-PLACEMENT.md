@@ -261,6 +261,9 @@ a top-level `housekeeping` group beside them, whose CPUs `domainmgr` sets to the
 housekeeping set before it moves any process, at startup and on every
 allocation change; a shell started with `eve exec` goes there too. The root's
 cpuset itself cannot be narrowed. Kernel threads are left where they are.
+The user `containerd`, which holds the workloads' images, runs in
+`/eve-user-apps/containerd`, beside the workloads but none of them, and
+`domainmgr` gives that group the housekeeping set as well.
 
 The CPUs a workload holds are fixed at launch: moving it to others means
 restarting it. Only the IO CPUs under `io_placement=HOUSEKEEPING` move, with the
@@ -397,6 +400,6 @@ holds to the same rules everywhere.
 | The plan, for inspection only (nothing reads it back) | `/run/domainmgr/cpuplan.json` |
 | The pools | `/run/domainmgr/CPUPoolStatus/global.json` |
 | The demand set | `/run/zedmanager/CPUDemandSet/` |
-| cpusets | `/sys/fs/cgroup/eve-user-apps/<domain>/cpuset.cpus`, the same in the `emulator/` and `vcpu<i>/` groups below its `task/`, `/sys/fs/cgroup/housekeeping/cpuset.cpus` |
+| cpusets | `/sys/fs/cgroup/eve-user-apps/<domain>/cpuset.cpus`, the same in the `emulator/` and `vcpu<i>/` groups below its `task/`, `/sys/fs/cgroup/housekeeping/cpuset.cpus`, `/sys/fs/cgroup/eve-user-apps/containerd/cpuset.cpus` |
 | Which threads are in which group | `cgroup.threads` of each group; `/proc/<qemu pid>/task/<tid>/cgroup` |
 | A thread's host CPUs | `grep Cpus_allowed_list /proc/<qemu pid>/task/<tid>/status` |

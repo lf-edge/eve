@@ -19,7 +19,8 @@ import (
 
 // containerdCPUsScript prints, for every containerd daemon and shim, its
 // cpuset cgroup (cgroup v1: the cpuset hierarchy; v2: the unified one) and
-// its allowed CPUs, plus zedbox's allowed CPUs and the apps' effective CPUs.
+// its allowed CPUs, plus zedbox's allowed CPUs and the effective CPUs of the
+// apps and of the housekeeping group.
 const containerdCPUsScript = `for p in $(pgrep containerd); do
     cg=$(awk -F: '$2 ~ /cpuset/ || $1 == 0 {print $3; exit}' /proc/$p/cgroup 2>/dev/null)
     cpus=$(awk '/Cpus_allowed_list/ {print $2}' /proc/$p/status 2>/dev/null)
@@ -27,12 +28,14 @@ const containerdCPUsScript = `for p in $(pgrep containerd); do
     echo "containerd[$p]=$cg $cpus"
 done
 echo "zedbox=$(awk '/Cpus_allowed_list/ {print $2}' /proc/$(pgrep -o zedbox)/status)"
-echo "apps=$(cat /sys/fs/cgroup/eve-user-apps/cpuset.cpus.effective 2>/dev/null)"`
+echo "apps=$(cat /sys/fs/cgroup/eve-user-apps/cpuset.cpus.effective 2>/dev/null)"
+echo "housekeeping=$(cat /sys/fs/cgroup/housekeeping/cpuset.cpus.effective 2>/dev/null)"`
 
 // TestContainerdCPUs verifies that EVE's system containerd and the shims of
 // its services run on the CPUs ctrd_max_vcpus assigns (docs/BOOTING.md,
 // docs/README.md), separately from EVE's services (eve_max_vcpus), while the
-// apps' containerd and the apps' shims run beside the apps, on the apps' CPUs.
+// apps' containerd and the apps' shims run beside the apps: the shims on the
+// apps' CPUs, the apps' containerd, on kvm, on the housekeeping CPUs.
 //
 // Network model
 // -------------
@@ -49,12 +52,14 @@ echo "apps=$(cat /sys/fs/cgroup/eve-user-apps/cpuset.cpus.effective 2>/dev/null)
 // ----------
 //   - EVE's system containerd, at least, is in /eve/containerd, and every
 //     process there is allowed on CPUs 0-1. The apps' containerd is in
-//     /eve-user-apps/containerd and, on kvm, the app's shim in the helpers
-//     child of the app's cgroup; both are allowed on the apps' CPUs, the
-//     effective CPUs of /eve-user-apps. Nothing else matches containerd,
-//     except on eve-k, where the app is a k3s pod and the k3s containerd and
-//     its pods' shims (cgroups under /eve/services or kubepods) are skipped:
-//     they are not EVE's containerd.
+//     /eve-user-apps/containerd, allowed on kvm on the housekeeping CPUs, the
+//     effective CPUs of /housekeeping, where domainmgr keeps it off the CPUs
+//     the apps hold, and on eve-k on the apps' CPUs, the effective CPUs of
+//     /eve-user-apps. On kvm the app's shim is in the helpers child of the
+//     app's cgroup, allowed on the apps' CPUs. Nothing else matches
+//     containerd, except on eve-k, where the app is a k3s pod and the k3s
+//     containerd and its pods' shims (cgroups under /eve/services or
+//     kubepods) are skipped: they are not EVE's containerd.
 //   - zedbox is allowed on CPU 0 only.
 //
 // Test params
@@ -107,11 +112,16 @@ func TestContainerdCPUs(test *testing.T) {
 	evetest.Logger().Infof("containerd CPUs on the device: %v", f)
 	// EVE's system containerd and the shims of its services are in
 	// /eve/containerd, on ctrd_max_vcpus CPUs. The apps' containerd runs
-	// beside the apps in /eve-user-apps/containerd, and an app's shim in the
-	// helpers child of the app's own cgroup, both on the apps' CPUs. On eve-k
-	// the k3s containerd and its pods' shims are EVE services (cgroups under
-	// /eve/services, eve_max_vcpus CPUs) or kubepods, and that is not what is
-	// tested here.
+	// beside the apps in /eve-user-apps/containerd, on the housekeeping CPUs
+	// where EVE pins the apps, and an app's shim in the helpers child of the
+	// app's own cgroup, on the apps' CPUs. On eve-k the k3s containerd and its
+	// pods' shims are EVE services (cgroups under /eve/services,
+	// eve_max_vcpus CPUs) or kubepods, and that is not what is tested here.
+	appsContainerdCPUs := f["apps"]
+	if hypervisor == evetest.HypervisorKVM {
+		t.Expect(f["housekeeping"]).ToNot(BeEmpty(), "no /housekeeping cgroup; device facts: %v", f)
+		appsContainerdCPUs = f["housekeeping"]
+	}
 	containerds, appsContainerds, appShims := 0, 0, 0
 	for k, v := range f {
 		if !strings.HasPrefix(k, "containerd[") {
@@ -126,7 +136,7 @@ func TestContainerdCPUs(test *testing.T) {
 			t.Expect(cpus).To(Equal("0-1"), "%s CPUs; device facts: %v", k, f)
 		case cgroup == "/eve-user-apps/containerd":
 			appsContainerds++
-			t.Expect(cpus).To(Equal(f["apps"]), "%s CPUs; device facts: %v", k, f)
+			t.Expect(cpus).To(Equal(appsContainerdCPUs), "%s CPUs; device facts: %v", k, f)
 		case strings.HasPrefix(cgroup, "/eve-user-apps/") && strings.HasSuffix(cgroup, "/helpers"):
 			appShims++
 			t.Expect(cpus).To(Equal(f["apps"]), "%s CPUs; device facts: %v", k, f)
