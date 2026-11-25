@@ -645,9 +645,9 @@ zedmanager does not start the application while volumemgr works on one of its
 snapshots, as `qemu-img` needs the disk images to itself. The
 `snapshotOpInProgress` function tells this from what is published:
 
-- a `VolumesSnapshotConfig` without a `VolumesSnapshotStatus` is a creation
+* a `VolumesSnapshotConfig` without a `VolumesSnapshotStatus` is a creation
   that volumemgr has not answered yet;
-- a `VolumesSnapshotStatus` without a `VolumesSnapshotConfig` is a deletion
+* a `VolumesSnapshotStatus` without a `VolumesSnapshotConfig` is a deletion
   that volumemgr has not answered yet.
 
 In both cases `doUpdate` does not activate the application, and a purge does not
