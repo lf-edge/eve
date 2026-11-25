@@ -97,23 +97,28 @@ var (
 	writeProtectedMarker = func(statePath string) error {
 		return utils.WriteRename(filepath.Join(statePath, protectedStateMarker), []byte("Y"))
 	}
-	getEncryptionKey = func() ([]byte, error) {
-		sha256Bank, err := sha256PCRAvailable()
-		if err != nil {
-			return nil, err
-		}
-		if sha256Bank {
-			pcrSelection := etpm.GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
-			return etpm.UnsealDiskKeyWithRecovery(log, pcrSelection)
-		}
-
-		// call FetchLegacyVaultKey directly, we can just call FetchSealedVaultKey
-		// and be happy and not care about the SHA256 banks, but FetchSealedVaultKey
-		// creates the missing keys if not exist, and we don't want vTPM mess
-		// with the keys and TPM state even if the chance is close to zero.
-		return etpm.FetchLegacyVaultKey(log)
-	}
+	getEncryptionKey = fetchEncryptionKey
 )
+
+// fetchEncryptionKey returns the key that protects swtpm state: the sealed
+// disk key when the TPM has a SHA-256 PCR bank, else the legacy key. A failed
+// bank probe is returned as an error, never read as an absent bank.
+func fetchEncryptionKey() ([]byte, error) {
+	sha256Bank, err := sha256PCRAvailable()
+	if err != nil {
+		return nil, err
+	}
+	if sha256Bank {
+		pcrSelection := etpm.GetDiskKeyPolicyPcrOrDefault(types.PolicyPcrFile)
+		return etpm.UnsealDiskKeyWithRecovery(log, pcrSelection)
+	}
+
+	// call FetchLegacyVaultKey directly, we can just call FetchSealedVaultKey
+	// and be happy and not care about the SHA256 banks, but FetchSealedVaultKey
+	// creates the missing keys if not exist, and we don't want vTPM mess
+	// with the keys and TPM state even if the chance is close to zero.
+	return etpm.FetchLegacyVaultKey(log)
+}
 
 // isSwtpm reports whether pid is a live swtpm serving this id. A stale pid
 // file or in-memory record can name another process after pid reuse.

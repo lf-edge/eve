@@ -1257,6 +1257,8 @@ func TestLaunchAndPurgeWithoutStateEncryption(t *testing.T) {
 }
 
 func TestLaunchAndPurgeWithStateEncryption(t *testing.T) {
+	oldTPM, oldKey := isTPMAvailable, getEncryptionKey
+	t.Cleanup(func() { isTPMAvailable, getEncryptionKey = oldTPM, oldKey })
 	id := generateUUID()
 	defer func() { _ = cleanupFiles(id) }()
 	isTPMAvailable = func() bool {
@@ -1280,6 +1282,8 @@ func TestExhaustSwtpmInstancesWithoutStateEncryption(t *testing.T) {
 }
 
 func TestExhaustSwtpmInstancesWithStateEncryption(t *testing.T) {
+	oldTPM, oldKey := isTPMAvailable, getEncryptionKey
+	t.Cleanup(func() { isTPMAvailable, getEncryptionKey = oldTPM, oldKey })
 	isTPMAvailable = func() bool {
 		return true
 	}
@@ -1293,6 +1297,8 @@ func TestExhaustSwtpmInstancesWithStateEncryption(t *testing.T) {
 }
 
 func TestSwtpmStateChange(t *testing.T) {
+	oldTPM, oldKey := isTPMAvailable, getEncryptionKey
+	t.Cleanup(func() { isTPMAvailable, getEncryptionKey = oldTPM, oldKey })
 	id := generateUUID()
 	defer func() { _ = cleanupFiles(id) }()
 	isTPMAvailable = func() bool {
@@ -1346,6 +1352,8 @@ func TestSwtpmStateBackupWithStateEncryption(t *testing.T) {
 	oldPCR := sha256PCRAvailable
 	sha256PCRAvailable = func() (bool, error) { return false, nil }
 	t.Cleanup(func() { sha256PCRAvailable = oldPCR })
+	oldTPM, oldKey := isTPMAvailable, getEncryptionKey
+	t.Cleanup(func() { isTPMAvailable, getEncryptionKey = oldTPM, oldKey })
 	id := generateUUID()
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)
@@ -1823,15 +1831,16 @@ func TestLaunchFailsWhenPCRBankProbeFails(t *testing.T) {
 	}
 }
 
-// getEncryptionKey must return a failed SHA-256 bank probe as an error rather
-// than read it as an absent bank and take the legacy key.
+// fetchEncryptionKey must return a failed SHA-256 bank probe as an error rather
+// than read it as an absent bank and take the legacy key. It is called directly
+// because other tests replace getEncryptionKey.
 func TestEncryptionKeyFailsWhenPCRBankProbeFails(t *testing.T) {
 	oldPCR := sha256PCRAvailable
 	t.Cleanup(func() { sha256PCRAvailable = oldPCR })
 	injected := errors.New("injected PCR_Read failure")
 	sha256PCRAvailable = func() (bool, error) { return false, injected }
 
-	if _, err := getEncryptionKey(); !errors.Is(err, injected) {
-		t.Fatalf("getEncryptionKey returned %v, want the probe error", err)
+	if _, err := fetchEncryptionKey(); !errors.Is(err, injected) {
+		t.Fatalf("fetchEncryptionKey returned %v, want the probe error", err)
 	}
 }
