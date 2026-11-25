@@ -2,7 +2,7 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-FROM lfedge/eve-alpine:3a8c6b2742af0f1e40d16063fb5ccfb1a1aece6f AS build-base
+FROM lfedge/eve-alpine:2e8bb7ac88e47c8dd32369167d2fab3528e282a3 AS build-base
 
 FROM build-base AS build-amd64
 FROM build-base AS build-arm64
