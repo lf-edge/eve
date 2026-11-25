@@ -167,10 +167,11 @@ func doUpdate(ctx *zedmanagerContext,
 	// command from the controller, which is taken care of in the removeAIStatus function.
 	domainStatus := lookupDomainStatus(ctx, uuidStr)
 	// Is the VM already shutdown? An app that was not started since boot
-	// has no DomainStatus at all.
+	// has no DomainStatus at all. A domain that domainmgr is starting is
+	// BOOTING and not yet Activated, but QEMU may have the disks open.
 	domainDown := !status.Activated && !status.ActivateInprogress
 	if domainStatus != nil {
-		domainDown = !domainStatus.Activated
+		domainDown = !domainStatus.Activated && domainStatus.State != types.BOOTING
 	}
 	if domainDown && ctx.snapshotsRestored {
 		// Trigger snapshot removal

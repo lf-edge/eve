@@ -361,6 +361,17 @@ func TestRollbackWaitsForTheDomainToBeDown(t *testing.T) {
 		assert.Zero(t, snapshotConfig(ctx, rollbackTestSnapshot).RollbackCount)
 		assert.True(t, status.SnapStatus.HasRollbackRequest)
 	})
+	t.Run("domainmgr is starting the domain", func(t *testing.T) {
+		ctx, config := newRollbackTestContext(t)
+		status := lookupAppInstanceStatus(ctx, config.Key())
+		status.SnapStatus.HasRollbackRequest = true
+		useDomainStatus(t, ctx, types.DomainStatus{UUIDandVersion: status.UUIDandVersion, State: types.BOOTING})
+
+		doUpdate(ctx, config, status)
+
+		assert.Zero(t, snapshotConfig(ctx, rollbackTestSnapshot).RollbackCount)
+		assert.True(t, status.SnapStatus.HasRollbackRequest)
+	})
 }
 
 // The config saved with a snapshot is as old as the snapshot. A rollback must
