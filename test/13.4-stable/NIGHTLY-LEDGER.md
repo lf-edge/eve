@@ -2,6 +2,135 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-25 -- 0.0.0-13.4-stable-34c1bd8f (run #55)](https://github.com/lf-edge/eve/actions/runs/45550517810)
+
+[Full report](https://lf-edge.github.io/eve/test/13.4-stable/runs/55/)
+
+### TestDeviceConnectivitySuite: failure analysis
+
+#### TestIntermittentConnectivity
+
+##### Failure
+
+```
+
+Unexpected error:
+    <*fmt.wrapError | 0x27a8851aad00>: 
+    failed to execute script over SSH for app 5d33d838-97a3-48c9-80ae-e8941fde80d6: Process exited with status 141 (stderr: )
+    {
+        msg: "failed to execute script over SSH for app 5d33d838-97a3-48c9-80ae-e8941fde80d6: Process exited with status 141 (stderr: )",
+        err: <*ssh.ExitError | 0x27a884e9f680>{
+            Waitmsg: {status: 141, signal: "", msg: "", lang: ""},
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+This gives enough evidence already. I have sufficient live and log evidence to form the conclusion.
+
+###### Root cause
+
+`TestIntermittentConnectivity` (`evetest/tests/networking/failover_test.go:900-902`) ran `ping -c 50 -w 75 http-server.test` inside the app over SSH, with the SSH call itself bounded by an 80s context timeout (`80*time.Second` passed to `RunShellScriptInsideApp`). Timestamps in `gotest.json` show the ping started at `06:45:15` and the failure fired at `06:46:35` — exactly 80s later — meaning the SSH session's context deadline expired and `session.Close()` tore down the remote `sh -s` session (`evetest/ssh.go:128-137`) while `ping` was still running, which made the app's write to a now-closed stdout raise SIGPIPE (exit 141). Live inspection confirms the SDN still has `netem ... loss 20%` applied on `eth0` (matching Phase 2 of the test), so the ping was genuinely running under 20% loss when it should have self-terminated via its own `-w 75` deadline. The likely trigger is that `http-server.test` DNS resolution (also subject to the same 20% loss on the shared link) added extra delay before `ping`'s own 75s deadline timer even started counting, leaving only 5s of margin against the outer 80s SSH timeout — too thin under lossy conditions. All other subtests in this run (`TestDHCPIPv4Only`, `TestStaticIPv4Only`, `TestDNSFunctionality`, `TestPortFailover`, `TestNetworkConfigFallback`) passed, so this isn't a shared-root-cause issue within the run. I found no prior occurrence of this test or this "status 141" failure in `live-ledger.md`, so this appears to be a new/first-seen flake, likely a timing-margin bug (insufficient slack between the ping's own deadline and the SSH call's outer timeout) rather than a product regression.
+#### TestVLANSubinterfaces
+
+##### Failure
+
+```
+
+Timed out after 300.001s.
+Expected to satisfy: vlan10 IP in 172.22.10.0/24, vlan20 IP in 172.22.20.0/24, eth0 IP in 192.168.77.0/24
+machineArch:"x86_64"  cpuArch:"x86_64"  platform:"x86_64"  ncpu:4  memory:7816  powerCycleCounter:-1  minfo:{manufacturer:"QEMU"  productName:"Standard PC (Q35 + ICH9, 2009)"  version:"pc-q35-10.1"  serialNumber:"SFG7R78Y"  UUID:"Not Settable"  biosVendor:"EFI Development Kit II / OVMF"  biosVersion:"0.0.0"  biosReleaseDate:"02/06/2015"}  network:{macAddr:"da:39:78:d0:19:f2"  devName:"ethernet0"  dns:{}  ipv4_up:true  networkErr:{description:"interface eth0: no suitable IP address available"  timestamp:{seconds:1795590473  nanos:677169203}  severity:SEVERITY_ERROR}  localName:"eth0"  proxy:{}}  network:{macAddr:"da:39:78:d0:19:f2"  devName:"vlan10"  IPAddrs:"172.22.10.15"  defaultRouters:"172.22.10.1"  dns:{DNSservers:"10.16.16.25"  DNSdomain:"test."}  ipv4_up:true  uplink:true  networkErr:{timestamp:{seconds:1795590473  nanos:684145865}}  localName:"vlan10"  proxy:{}}  network:{macAddr:"da:39:78:d0:19:f2"  devName:"vlan20"  IPAddrs:"172.22.20.15"  defaultRouters:"172.22.20.1"  dns:{DNSservers:"10.16.16.25"  DNSdomain:"test."}  ipv4_up:true  networkErr:{timestamp:{seconds:1795590473  nanos:676975606}}  localName:"vlan20"  proxy:{}}  assignableAdapters:{type:PhyIoNetEth  name:"ethernet0"  members:"ethernet0"  usedByBaseOS:true  ioAddressList:{macAddress:"da:39:78:d0:19:f2"}  usage:PhyIoUsageShared}  dns:{DNSservers:"10.16.16.25:53"}  storageList:{device:"nbd0"}  storageList:{device:"nbd1"}  storageList:{device:"nbd2"}  storageList:{mountPath:"/hostfs"  total:266}  storageList:{device:"nbd12"}  storageList:{device:"vda3"  total:512  partitionLabel:"IMGB"  partitionTypeGuid:"5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30053"}  bootTime:{seconds:1795590330}  swList:{activated:true  partitionLabel:"IMGA"  partitionDevice:"/dev/vda2"  partitionState:"active"  status:INSTALLED  shortVersion:"0.0.0-13.4-stable-34c1bd8f-kvm-amd64"  downloadProgress:100  userStatus:UPDATED}  swList:{partitionLabel:"IMGB"  partitionDevice:"/dev/vda3"  partitionState:"unused"  status:INITIAL}  HostName:"e27a7459-cf47-42d3-ab52-553343077c9d"  lastRebootReason:"NORMAL: First boot of device - at 2026-11-25T07:06:12.452633121Z"  lastRebootTime:{seconds:1795590372  nanos:452633121}  systemAdapter:{status:{version:1  key:"zedagent"  timePriority:{seconds:1795590441  nanos:635276723}  lastSucceeded:{seconds:1795590473  nanos:684210589}  ports:{ifname:"eth0"  name:"ethernet0"  free:true  dhcpType:4  subnet:"<nil>"  proxy:{}  macAddr:"da:39:78:d0:19:f2"  dns:{}  up:true  err:{description:"interface eth0: no suitable IP address available"  timestamp:{seconds:1795590473  nanos:677169203}  severity:SEVERITY_ERROR}  usage:PhyIoUsageShared  networkUUID:"6b1fa8e2-143d-48cf-887d-b4f308be2a32"  mtu:1500}  ports:{ifname:"vlan10"  name:"vlan10"  isMgmt:true  free:true  dhcpType:4  subnet:"172.22.10.0/24"  domainname:"test."  proxy:{}  macAddr:"da:39:78:d0:19:f2"  IPAddrs:"172.22.10.15"  defaultRouters:"172.22.10.1"  dns:{DNSservers:"10.16.16.25"  DNSdomain:"test."}  up:true  err:{timestamp:{seconds:1795590473  nanos:684145865}}  networkUUID:"6b1fa8e2-143d-48cf-887d-b4f308be2a32"  mtu:1500}  ports:{ifname:"vlan20"  name:"vlan20"  free:true  dhcpType:4  subnet:"172.22.20.0/24"  domainname:"test."  proxy:{}  macAddr:"da:39:78:d0:19:f2"  IPAddrs:"172.22.20.15"  defaultRouters:"172.22.20.1"  dns:{DNSservers:"10.16.16.25"  DNSdomain:"test."}  up:true  err:{timestamp:{seconds:1795590473  nanos:676975606}}  networkUUID:"6b1fa8e2-143d-48cf-887d-b4f308be2a32"  mtu:1500}}}  HSMStatus:NOTFOUND  HSMInfo:"Not Available"  dataSecAtRestInfo:{status:DATASEC_AT_REST_DISABLED  info:"TPM is either absent or not in use"  vaultList:{name:"Application Data Store"  status:DATASEC_AT_REST_DISABLED  vaultErr:{description:"TPM is either absent or not in use"  timestamp:{seconds:1795590428  nanos:371592249}  severity:SEVERITY_ERROR}  pcrStatus:PCR_DISABLED  unlock_method:VAULT_UNLOCK_METHOD_NO_TPM}}  sec_info:{sha_root_ca:"X\xa4\xdd\x1c\x9f?\x9c\xb3\xb7V\xf0\xe5\x15\x91<\xfaL\xd24IM\x0f\x9b\"4QO\xb9\x15\xed\xa4."  sha_tls_root_ca:"X\xa4\xdd\x1c\x9f?\x9c\xb3\xb7V\xf0\xe5\x15\x91<\xfaL\xd24IM\x0f\x9b\"4QO\xb9\x15\xed\xa4."}  configItemStatus:{configItems:{key:"app.allow.vnc"  value:{value:"true"}}  configItems:{key:"debug.default.loglevel"  value:{value:"debug"}}  configItems:{key:"debug.default.remote.loglevel"  value:{value:"debug"}}  configItems:{key:"debug.enable.console"  value:{value:"true"}}  configItems:{key:"debug.enable.ssh"  value:{value:"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC+H1RQUqHjFBJgGpslC73XsLz8Fg5WpNPble9naKyWz1Um8D2bOtQK/yguCImPeBYcH7/73z8dtC6d+dT0UF26+o7Vh6RN/U2X/5nkaZr7oM5QwwZTsD7Nd2Szww9wrRhXvpV0aFgUBDM9BIF1qBQxLNd+Jp8uttrgF3zj/cm7+SXllG54sv8WFBMfTX7J8cQ1jxLyp/Sc6PXK0zBaVzZwhmCCmI6CIzJK6ahMRgXm2vSP6doYibkB3ETSskaCXSHxDiZoaQK2ZY+GqNZkUusbau43MXVPTiJknXqUcmXhQmwyMSltQ3G54jcgn4TDObSQnW7vGdLI7zIEAHnk5D1BmKzQUBh5aRLdhBtb6T3uvVtAqGgnXWKD+d2GjMiy4G31zfIlArvC3G8LxwsDoxQL0XKaFjnEmXIptVXC68zq+laIM8YGDDOCEc6RfczP7lA4p6rv0gQUfTNqy0P3a4ulvIDb4hET1Gkh+Azkuw1do9NIhXPxDBmPdkTnKwJv6XelpdCPCw1QT5o7WdOkUgorf/e03jGDnnn1QBWpSPB9gLB/oDmT/Gzm8tCYaq7ggwYUq1fSMBvnbFaclH1KVcC2Gwn8UPLt9HHa/mGywuISZYl3gy7ztlKyAjHEZH053U7I8OaMvv/CFo9aR4Teeb5848REZYAes+yJIz3lJV1K5Q=="}}  configItems:{key:"newlog.allow.fastupload"  value:{value:"true"}}  configItems:{key:"timer.config.interval"  value:{value:"5"}}  configItems:{key:"timer.download.retry"  value:{value:"60"}}  configItems:{key:"timer.location.app.interval"  value:{value:"20"}}  configItems:{key:"timer.location.cloud.interval"  value:{value:"300"}}  configItems:{key:"timer.metric.interval"  value:{value:"20"}}  configItems:{key:"timer.test.baseimage.update"  value:{value:"60"}}}  last_boot_reason:BOOT_REASON_FIRST  hardware_watchdog_present:true  capabilities:{HWAssistedVirtualization:true  IOVirtualization:true}  state:ZDEVICE_STATE_ONLINE  maintenance_mode_reasons:MAINTENANCE_MODE_REASON_NONE  storage_info:{pool_name:"/persist"  storage_type:STORAGE_TYPE_INFO_EXT4  storage_state:STORAGE_STATUS_ONLINE  disks:{disk_name:{name:"/dev/vda9"  serial:"unknown"}  status:STORAGE_STATUS_ONLINE  smart_status:"failed"}}  attestation_info:{state:ATTESTATION_STATE_COMPLETE}  api_capability:API_CAPABILITY_ADAPTER_USER_LABELS  optional_capabilities:{}
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live inspection confirms `eth0` currently has **no IPv4 address at all** (`ip -4 addr show eth0` returns nothing), even though its `dhcpcd` client process is still alive, 10+ minutes after boot. Device logs show why: `dhcpcd` released the old `172.20.20.123` lease at `07:07:30.939` and began soliciting a new lease at `07:07:35.115` (right as the test's `UpdateNetworkModel` switch to the VLAN model landed at `07:07:35.016`), but at `07:07:37.473` it got offered the **stale** `172.20.20.123` address from `172.20.20.1` — a leftover from the old network model — and then never logged another `probing`/`leased`/`soliciting` line for the rest of the run. On the SDN side, the new `network-untagged` dnsmasq instance (serving `192.168.77.0/24`) only started up at `07:07:37`, and its lease log (`/run/dnsmasq/dhcpsrv-network-untagged.leases` and `.log`) shows **zero** DHCP transactions from the device ever reaching it — only periodic housekeeping entries. So the device's DHCPDISCOVER raced the SDN's teardown/bring-up of the untagged-segment DHCP server, got answered by a stray stale offer instead, and `dhcpcd` on `eth0` then simply stalled; `nim` stopped polling `dhcpcd` status for `eth0` after `07:07:57` once the overall DevicePortConfig already reported `DPC_SUCCESS` via `vlan10`/`vlan20` (the mgmt-capable ports), leaving `eth0` permanently without an address for the rest of the 5-minute wait. `vlan10` and `vlan20` both got correct addresses, so Phase 1's failure is isolated to `eth0`.
+
+This does not share a root cause with the earlier `TestIntermittentConnectivity` failure in this run (an SSH-context-timeout/SIGPIPE issue during a lossy-network ping, unrelated to DHCP/SDN-switch races). I found no prior occurrence of `TestVLANSubinterfaces` or this stray-DHCP-offer-during-model-switch failure mode in `live-ledger.md`, so this appears to be a new/first-seen flake — a race between the SDN network-model switch and the device's DHCP client re-acquisition on the untagged port, compounded by `nim` not retrying DHCP on a non-mgmt port once the DPC as a whole already succeeded.
+
+### TestLocalNetworkInstanceSuite: failure analysis
+
+#### TestMoveAppBetweenNIs
+
+##### Failure
+
+```
+timed out after 5m0.000975177s (excluding download) waiting for app "9589ccd3-4050-410f-af3e-dacf07941089" (ping1) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+Confirmed — three volumes (ping1's `e5b4b5c8`, and two others, likely ping2/pong: `5e823eb9`, `a7ea00d7`) all finished unpacking within ~1.4s of each other around 06:02:00-06:02:01, all stuck in `CREATING_VOLUME` concurrently for ~5+ minutes due to CPU contention. No need to check further — this matches the documented pattern exactly.
+
+**Root cause:** `ping1`'s root volume (`e5b4b5c8-...`) entered `CREATING_VOLUME` at 05:56:53 and didn't complete (`createContainerVolume ... DONE`) until 06:02:00 — a ~5m07s unpack, overrunning the test's 5-minute budget by mere seconds. This unpack ran concurrently with two sibling volumes (`5e823eb9-...`, `a7ea00d7-...`, almost certainly `ping2`/`pong`) that finished within 1-1.4s of each other, confirming simultaneous image-unpack contention. Live `uptime`/`vmstat` on the device show the classic oversubscription signature: the guest reports `nproc=1` against a device configured for 4 vCPUs, load average 4.93, with `vmstat` showing a blocked-on-I/O process (`wa`≈21%). `ping1` did in fact reach `RUNNING` shortly after (bootTime 06:02:03), confirming this was a slow-but-completing unpack rather than a true hang. This is a known, heavily recurring issue: the ledger records this exact test (`TestMoveAppBetweenNIs`) failing with an essentially identical root-cause (three concurrent app unpacks stuck in `CREATING_VOLUME` past the 5-minute timeout due to host/device CPU oversubscription) as far back as 2026-11-20 (run #30), and the broader class has recurred in nearly every nightly run since then across many other suites/tests.
+#### TestLocalNetInstanceACLs
+
+##### Failure
+
+```
+timed out after 5m0.001057881s (excluding download) waiting for app "e69a0c11-4d86-4c2b-ab09-5fb57f43a62a" (acl-app-1) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+Confirmed — there's still one `Active` (uncommitted) containerd snapshot, consistent with an unpack that never completed.
+
+###### Root cause
+
+This is the same known issue already seen multiple times in this run and documented in `live-investigation.md`. Device logs show `acl-app-1`'s volume (`2aa2b98e-99d7-44eb-b9a5-fa7cd3c1893a#0#e69a0c11-...`) entered `CREATING_VOLUME` at 06:34:10 and `zedagent` was still logging `ActiveFileLocation is empty` every poll through my live check at 06:38:30+ — over 4.5 minutes later with no completion, and live `ctr snapshots ls` on the device confirms an `Active` (uncommitted) containerd snapshot still in progress. Live `uptime`/`nproc`/`vmstat` show the identical oversubscription signature seen throughout this run: the guest reports only `nproc=1` against a device configured for 4 vCPUs, load average 3.75, and `vmstat` shows a process blocked on I/O (`b=1`, `wa`≈15-27%).
+
+This is the identical root cause already recorded multiple times earlier in this same run (`TestMoveAppBetweenNIs`, and others per `live-investigation.md`), and it's a heavily recurring, known issue per `live-ledger.md` — this exact test (`TestLocalNetInstanceACLs`) with this exact app name (`acl-app-1`) failed with the same `CREATING_VOLUME`/unpack-stall signature in an earlier nightly run as well, and the broader class (unpack stalls due to host/device CPU oversubscription) has recurred in nearly every nightly run since at least 2026-11-20 (run #30).
+#### TestPortForwarding
+
+##### Failure
+
+```
+timed out after 5m0.000649862s (excluding download) waiting for app "aa2b6075-2621-4799-84de-b182cdc62f81" (app1) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+**Root cause:** App1 (`aa2b6075-...`) entered `CREATING_VOLUME` at 06:58:18, concurrently with app2 and app3's volumes also transitioning into `CREATING_VOLUME` within the same 1-2s window (06:58:17-06:58:19) — three simultaneous image unpacks competing for CPU. Live `app-info` shows app1 actually reached `RUNNING` at 07:02:55, just ~46s after the test's 07:02:09 timeout fired — a slow-but-completing unpack, not a true hang. Live `uptime`/`vmstat` confirm the same oversubscription signature: the guest reports `nproc=1` against a device configured for 4 vCPUs, load average 6.24, and `vmstat` shows ~23-29% I/O wait with a process blocked on I/O.
+
+This is the identical root cause already recorded for `TestMoveAppBetweenNIs` and `TestLocalNetInstanceACLs` earlier in this same run (per `live-investigation.md`): host/device CPU oversubscription causing concurrent containerd image unpacks to exceed the test's fixed 5-minute timeout. It's also a known, recurring issue for this exact test: the ledger shows `TestPortForwarding` failing with this exact same `CREATING_VOLUME` timeout signature as far back as the 2026-11-20 nightly run (run #30), and the broader class of unpack-contention timeouts has recurred in nearly every nightly run since then.
+
+### TestSwitchNetworkInstanceSuite: failure analysis
+
+#### TestAirGapSwitchNI
+
+##### Failure
+
+```
+timed out after 5m0.001505838s (excluding download) waiting for app "e80b571d-94a3-414d-89d3-a0c195297d95" (app1) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+This confirms the app did self-resolve past `CREATING_VOLUME` — it progressed to `INSTALLED` and is now `BOOTING`, just long after the test's 5-minute timeout window.
+
+###### Root cause
+
+**Known, recurring host/device CPU-oversubscription issue — not a code bug.** Live inspection shows the exact same signature documented in last night's run (2026-11-24, run #50) for this identical test: the guest reports `ncpu:4` but `nproc`/`/proc/loadavg` show only 1 usable CPU with load average ~4.3/4.0/2.4 and 9-23% iowait, and `ctr -n eve-user-apps snapshots ls` shows two `extract-*` snapshots stuck `Active` (uncommitted) for the app1 image sha — i.e., the container image unpack is stalling under oversubscribed CPU/IO, not stuck or failed outright. Consistent with that, `app-info` now shows app1 has since progressed past `CREATING_VOLUME` through `INSTALLED` to `BOOTING`, confirming it eventually unblocks — just well after the test's 5-minute timeout.
+
+This is a **known, recurring** issue per `live-ledger.md`: the identical `CREATING_VOLUME`/CPU-oversubscription timeout pattern for `TestAirGapSwitchNI` specifically appeared last night (2026-11-24, run #50), and the same root-cause class has recurred across multiple nights/suites going back to at least 2026-11-20 (run #30), 2026-11-21 (run #35), and 2026-11-23 (run #45). This is simply the same infrastructure-level stall recurring again tonight, not a new bug and not specific to switch-network-instance logic.
+#### TestSwitchNetInstanceACLs
+
+##### Failure
+
+```
+timed out after 5m0.000805938s (excluding download) waiting for app "0affbc58-dfc2-427e-b5b0-04137d48cf80" (acl-app-1) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+This confirms the stall: `ec8cda75-...` (acl-app-1's volume) still has an empty `ActiveFileLocation` as of 06:15:36, continuing well past the test's timeout — the same pattern as the other failures in this run.
+
+Root cause: this is the same host/device CPU-oversubscription stall already identified earlier in this run (and recurring across many prior nightly runs per the ledger, at least since 2026-11-20). Live `nproc` shows only 1 usable CPU against a device configured for 4 vCPUs, with `vmstat` showing load average ~4.67/3.59/1.80 and a process perpetually blocked on I/O (`b=1`, `wa`≈21–28%). `zedagent` logs confirm `acl-app-1`'s volume (`ec8cda75-...`) has had an empty `ActiveFileLocation`/`FileLocation` continuously since at least 06:13:10 through my live check at 06:15:36 — i.e. its volume unpack is still stalled under CPU/IO contention, just like `app-gw`, `app-client1/2`, and the other apps seen stuck in `CREATING_VOLUME` earlier tonight. This is the same root cause as the earlier failure(s) already investigated in this run, and it is a known, recurring infrastructure issue per `live-ledger.md` going back to at least 2026-11-20 (run #30) — not specific to `TestSwitchNetworkInstanceSuite` or switch-network-instance logic.
+
 ## [2026-11-24 -- 0.0.0-13.4-stable-34c1bd8f (run #50)](https://github.com/lf-edge/eve/actions/runs/45330205690)
 
 [Full report](https://lf-edge.github.io/eve/test/13.4-stable/runs/50/)
