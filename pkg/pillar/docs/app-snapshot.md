@@ -945,6 +945,13 @@ correct volume before proceeding with deletion. Once validated, the
 The deletion operation is also logged, providing a record of the action for
 auditing purposes.
 
+A deletion that a reboot cut off is tried again, see
+[Volumemgr Worker and Snapshot State](#volumemgr-worker-and-snapshot-state),
+and can then meet a snapshot that was destroyed already. If the dataset of the
+volume is there and the snapshot is not, the snapshot counts as deleted. If the
+dataset cannot be opened either, the deletion fails: ZFS not answering is no
+proof that the snapshot is gone.
+
 ## Copy-on-Write (CoW) Approach
 
 Both the qemu-img tool and ZFS utilize the Copy-on-Write (CoW) approach for

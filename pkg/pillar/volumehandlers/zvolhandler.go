@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/lf-edge/edge-containers/pkg/registry"
@@ -17,6 +18,12 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/tgt"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
+)
+
+// Variables so that tests can do without ZFS.
+var (
+	destroyZFSDataset = zfs.DestroyDataset
+	zfsDatasetExists  = zfs.DatasetExist
 )
 
 type volumeHandlerZVol struct {
@@ -306,6 +313,15 @@ func (handler *volumeHandlerZVol) RollbackToSnapshot(snapshotMeta interface{}) e
 	return nil
 }
 
+// snapshotIsGone tells if the dataset of the snapshot is there and the
+// snapshot is not. Without the dataset there is no telling: ZFS may just not
+// answer.
+func (handler *volumeHandlerZVol) snapshotIsGone(snapshotName string) bool {
+	dataset, _, isSnapshot := strings.Cut(snapshotName, "@")
+	return isSnapshot && zfsDatasetExists(handler.log, dataset) &&
+		!zfsDatasetExists(handler.log, snapshotName)
+}
+
 func (handler *volumeHandlerZVol) DeleteSnapshot(snapshotMeta interface{}) error {
 	snapshotName, ok := snapshotMeta.(string)
 	if !ok {
@@ -314,7 +330,12 @@ func (handler *volumeHandlerZVol) DeleteSnapshot(snapshotMeta interface{}) error
 		handler.log.Error(errStr)
 		return errors.New(errStr)
 	}
-	err := zfs.DestroyDataset(snapshotName)
+	err := destroyZFSDataset(snapshotName)
+	if err != nil && handler.snapshotIsGone(snapshotName) {
+		handler.log.Noticef("DeleteSnapshot for ZFS-based volume %s: snapshot %s is gone already",
+			handler.status.Key(), snapshotName)
+		return nil
+	}
 	if err != nil {
 		errStr := fmt.Sprintf("DeleteSnapshot failed for %s: %v",
 			handler.status.Key(), err)
