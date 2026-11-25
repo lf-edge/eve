@@ -99,8 +99,10 @@ func (c *fakeCAS) IngestOCILayoutAndCreateImage(reference, archivePath, archiveS
 }
 
 const (
-	archiveSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	configSha  = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	archiveSha  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	manifestSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	configSha   = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	layerSha    = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 
 	manifestMediaType = "application/vnd.oci.image.manifest.v1+json"
 	layerMediaType    = "application/vnd.oci.image.layer.v1.tar"
@@ -699,6 +701,25 @@ func TestRegistryTreeDownloadsArchiveRoot(t *testing.T) {
 	}
 }
 
+// loadedImage sets up what a boot finds after an archive was loaded earlier:
+// the labelled image in the CAS and a LOADED BlobStatus for each of its blobs.
+func loadedImage(ctx *volumemgrContext, fake *fakeCAS, reference string) {
+	fake.images[reference] = "sha256:" + manifestSha
+	fake.labels[reference] = map[string]string{
+		types.EVEOCIArchiveLabel:         archiveSha,
+		types.EVEOCIArchiveManifestLabel: "sha256:" + manifestSha,
+	}
+	fake.blobs["sha256:"+manifestSha] = []string{"sha256:" + configSha, "sha256:" + layerSha}
+	fake.content["sha256:"+manifestSha] = fmt.Sprintf(
+		`{"schemaVersion":2,"mediaType":%q,"config":{"mediaType":"application/vnd.oci.image.config.v1+json",`+
+			`"digest":"sha256:%s","size":2},"layers":[{"mediaType":"application/vnd.oci.image.layer.v1.tar",`+
+			`"digest":"sha256:%s","size":4}]}`, manifestMediaType, configSha, layerSha)
+	publishBlobStatus(ctx,
+		&types.BlobStatus{Sha256: manifestSha, State: types.LOADED, MediaType: manifestMediaType},
+		&types.BlobStatus{Sha256: configSha, State: types.LOADED},
+		&types.BlobStatus{Sha256: layerSha, State: types.LOADED})
+}
+
 // newCreateTestCtx adds what createContentTreeStatus needs on top of the
 // ingest test context.
 func newCreateTestCtx(t *testing.T) (*volumemgrContext, *fakeWorker, *fakeCAS) {
@@ -739,5 +760,141 @@ func archiveConfig() types.ContentTreeConfig {
 		RelativeURL:   "eve.tar",
 		ContentSha256: strings.ToUpper(archiveSha),
 		IsLocal:       true,
+	}
+}
+
+func configReference(config types.ContentTreeConfig) string {
+	status := types.ContentTreeStatus{ContentID: config.ContentID, RelativeURL: config.RelativeURL}
+	return status.ReferenceID()
+}
+
+// A content tree for an archive that is already loaded must start from the
+// image manifest, so that the archive is not downloaded a second time.
+func TestLoadedArchiveIsAdopted(t *testing.T) {
+	ctx, wk, fake := newCreateTestCtx(t)
+	config := archiveConfig()
+	loadedImage(ctx, fake, configReference(config))
+
+	status := createContentTreeStatus(ctx, config)
+
+	if len(status.Blobs) != 1 || status.Blobs[0] != manifestSha {
+		t.Fatalf("blobs = %v, want the image manifest", status.Blobs)
+	}
+	if ctx.LookupBlobStatus(archiveSha) != nil {
+		t.Error("a blob was created for the archive, which would download it again")
+	}
+	if blob := ctx.LookupBlobStatus(manifestSha); blob.RefCount != 1 {
+		t.Errorf("manifest has %d references, want 1", blob.RefCount)
+	}
+
+	// From the manifest the tree must find the rest of the image in the CAS
+	// and reach LOADED without asking for any download.
+	status.AllDatastoresResolved = true
+	doUpdateContentTree(ctx, status)
+	if strings.Join(status.Blobs, ",") != strings.Join([]string{manifestSha, configSha, layerSha}, ",") {
+		t.Fatalf("blobs = %v, want manifest, config, layer", status.Blobs)
+	}
+	if status.State != types.LOADING || len(wk.submitted) != 1 {
+		t.Fatalf("state = %s, submissions = %d; want LOADING with one ingest job",
+			status.State, len(wk.submitted))
+	}
+	d := wk.submitted[0].Description.(casIngestWorkDescription)
+	if len(d.claimedBlobs) != 0 {
+		t.Errorf("ingest job claims %v, want nothing left to load", d.claimedBlobs)
+	}
+	res := worker.WorkResult{Key: status.Key(), Description: d}
+	wk.results[status.Key()] = &res
+	if err := processCasIngestWorkResult(ctx, res); err != nil {
+		t.Fatal(err)
+	}
+	if got := ctx.LookupContentTreeStatus(status.Key()); got.State != types.LOADED {
+		t.Errorf("state = %s, want LOADED (error %q)", got.State, got.Error)
+	}
+	for _, sha := range status.Blobs {
+		if blob := ctx.LookupBlobStatus(sha); blob.HasDownloaderRef || blob.HasVerifierRef {
+			t.Errorf("blob %s was sent to the downloader or verifier", sha[:4])
+		}
+	}
+}
+
+// A content tree that pulls from a registry, or that names no sha256, cannot
+// be for an archive, whatever labels the image under its reference carries.
+func TestLoadedArchiveNeedsArchiveTree(t *testing.T) {
+	ctx, _, fake := newCreateTestCtx(t)
+	config := archiveConfig()
+	loadedImage(ctx, fake, configReference(config))
+	status := types.ContentTreeStatus{
+		ContentID:     config.ContentID,
+		RelativeURL:   config.RelativeURL,
+		ContentSha256: config.ContentSha256,
+	}
+	if got := loadedArchiveManifest(ctx, &status); got != manifestSha {
+		t.Fatalf("loadedArchiveManifest = %q, want the manifest", got)
+	}
+
+	registry := status
+	registry.IsOCIRegistry = true
+	if got := loadedArchiveManifest(ctx, &registry); got != "" {
+		t.Errorf("registry tree adopted %q", got)
+	}
+	noSha := status
+	noSha.ContentSha256 = ""
+	delete(fake.labels[configReference(config)], types.EVEOCIArchiveLabel)
+	if got := loadedArchiveManifest(ctx, &noSha); got != "" {
+		t.Errorf("tree without a sha256 adopted %q", got)
+	}
+}
+
+// Anything short of a complete image loaded from this very archive must fall
+// back to downloading the archive.
+func TestLoadedArchiveNotAdopted(t *testing.T) {
+	tests := map[string]func(ctx *volumemgrContext, fake *fakeCAS, reference string){
+		"no image": func(ctx *volumemgrContext, fake *fakeCAS, reference string) {
+			delete(fake.images, reference)
+		},
+		"image from another archive": func(ctx *volumemgrContext, fake *fakeCAS, reference string) {
+			fake.labels[reference][types.EVEOCIArchiveLabel] = layerSha
+		},
+		"target replaced by other content": func(ctx *volumemgrContext, fake *fakeCAS, reference string) {
+			fake.labels[reference][types.EVEOCIArchiveManifestLabel] = "sha256:" + configSha
+		},
+		"image without the label": func(ctx *volumemgrContext, fake *fakeCAS, reference string) {
+			fake.labels[reference] = nil
+		},
+		"manifest blob unknown": func(ctx *volumemgrContext, fake *fakeCAS, reference string) {
+			ctx.pubBlobStatus.Unpublish(manifestSha)
+		},
+		"layer missing": func(ctx *volumemgrContext, fake *fakeCAS, reference string) {
+			ctx.pubBlobStatus.Unpublish(layerSha)
+		},
+		"manifest not loaded": func(ctx *volumemgrContext, fake *fakeCAS, reference string) {
+			publishBlobStatus(ctx, &types.BlobStatus{Sha256: manifestSha, State: types.VERIFIED, MediaType: manifestMediaType})
+		},
+		"target is no manifest": func(ctx *volumemgrContext, fake *fakeCAS, reference string) {
+			publishBlobStatus(ctx, &types.BlobStatus{Sha256: manifestSha, State: types.LOADED})
+		},
+		"layer not loaded": func(ctx *volumemgrContext, fake *fakeCAS, reference string) {
+			publishBlobStatus(ctx, &types.BlobStatus{Sha256: layerSha, State: types.DOWNLOADING})
+		},
+		"manifest without children": func(ctx *volumemgrContext, fake *fakeCAS, reference string) {
+			fake.blobs["sha256:"+manifestSha] = nil
+		},
+	}
+	for name, breakIt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctx, _, fake := newCreateTestCtx(t)
+			config := archiveConfig()
+			loadedImage(ctx, fake, configReference(config))
+			breakIt(ctx, fake, configReference(config))
+
+			status := createContentTreeStatus(ctx, config)
+
+			if len(status.Blobs) != 1 || status.Blobs[0] != archiveSha {
+				t.Fatalf("blobs = %v, want the archive", status.Blobs)
+			}
+			if blob := ctx.LookupBlobStatus(archiveSha); blob == nil || blob.State != types.INITIAL {
+				t.Errorf("archive blob = %+v, want it created for download", blob)
+			}
+		})
 	}
 }
