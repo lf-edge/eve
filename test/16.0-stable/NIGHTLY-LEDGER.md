@@ -2,6 +2,57 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-25 -- 0.0.0-16.0-stable-be6386de (run #53)](https://github.com/lf-edge/eve/actions/runs/45536857253)
+
+[Full report](https://lf-edge.github.io/eve/test/16.0-stable/runs/53/)
+
+### TestAppRoutingSuite: failure analysis
+
+#### TestLocalNIWithMultiplePorts
+
+##### Failure
+
+```
+
+Told to stop trying after 0.694s.
+Stop waiting for: NI ONLINE with both static routes via ethernet0 and all connected routes present
+Network instance is in error state
+networkID:"3fbd9c67-45de-4e23-abbd-6bdaf55e561c"  networkVersion:"1"  instType:2  displayname:"multi-port-ni"  activated:true  CurrentUplinkIntf:"eth0"  ports:"eth0"  ports:"eth1"  ports:"eth2"  ports:"eth3"  bridgeNum:1  bridgeName:"bn1"  bridgeIPAddr:"10.50.0.1"  ipAssignments:{macAddress:"00:16:3e:06:00:01"  ipAddress:"10.50.0.1"}  networkErr:{description:"IP Route: {dst=0.0.0.0/0, gw=<nil>, port=internet, probe={enabledGwPing=true, gwPingMaxCost=5, userProbe=<none>}, preferLowerCost=true, preferStrongerWwanSignal=false} is not matching any port\nIP Route: {dst=10.88.88.0/24, gw=<nil>, port=httpserver, probe={enabledGwPing=true, gwPingMaxCost=0, userProbe=tcp://10.88.88.70:80}, preferLowerCost=true, preferStrongerWwanSignal=false} is not matching any port"  timestamp:{seconds:1795578667  nanos:420941029}  severity:SEVERITY_ERROR}  state:ZNETINST_STATE_ERROR  mtu:1500  ip_routes:{destination_network:"0.0.0.0/0"  gateway:"192.168.30.1"  port:"eth2"}  ip_routes:{destination_network:"0.0.0.0/0"  gateway:"172.22.10.1"  port:"eth0"}  ip_routes:{destination_network:"172.22.10.0/24"  port:"eth0"}  ip_routes:{destination_network:"192.168.30.0/24"  port:"eth2"}
+```
+
+##### Claude's conclusion
+
+This confirms the routes did properly converge (table 801 for the NI now has all the static/connected routes it needed). This matches the known race exactly.
+
+**Root cause:** This is a transient NI route-convergence race, not a real product bug, and it is a **known, recurring issue** — the identical failure signature (same test, same `multi-port-ni` display name, same "internet"/"httpserver" static-route "not matching any port" errors, same eth0/eth2 default-route ports) first appeared in the ledger on **2026-11-21** and is now recurring on **2026-11-25**. Live evidence: the harness paused at 03:51:07 after giving up after only 0.694s, but `gotest.json` shows the NI transitioned `ERROR -> ONLINE` at 03:51:17 (just ~10s later), and live `evetest eve ssh "ip route show table all"` now confirms table 801 holds all the expected static and connected routes (0.0.0.0/0 via eth0/eth2, 10.88.88.0/24, 172.22.10.0/24, 192.168.30.0/24) — i.e. the NI fully converged moments after the test aborted. As noted in the 2026-11-21 ledger entry, `TestLocalNIWithMultiplePorts` (`evetest/tests/networking/routing_test.go`) uses `.StopIf(niHasError)` on its NI-online wait without the same tolerance for transient `ERROR` states that the sibling `TestLocalNI` wait deliberately uses, making it susceptible to this exact race. This failure is unrelated to the other paused-at-start-of-run suite context (no other failure earlier in this run to share a cause with); it's purely this test's known sensitivity to a brief, self-resolving NIM/zedrouter convergence blip.
+
+### TestDatastoreSuite: failure analysis
+
+#### TestDownloadBurstWithDeadMgmtPorts
+
+##### Failure
+
+```
+
+Timed out after 300.000s.
+the downloader did not report a transport with 1 worker(s) after the reboot, so the downloader.transport.handlers property did not take effect
+Expected
+    <[]evetest.LogMsg | len:0, cap:0>: nil
+not to be empty
+```
+
+##### Claude's conclusion
+
+That's enough evidence already; I have a solid root cause without needing git history.
+
+###### Root cause
+
+The `downloader.transport.handlers=1` config change **did** take effect correctly: live SSH into the device confirms `ConfigItemValueMap` has `downloader.transport.handlers` = 1, and the post-reboot pillar process (pid 2882) logged `"zedUpload transport handlers: 1 (also the depth of its request queue)"` at `03:43:59.129`, just 1 second after the reboot completed (`REBOOTING -> ONLINE` at 03:43:58) — well inside the test's 5-minute `Eventually` window (03:43:58–03:48:58, derived from `RequestReboot(true)` blocking until the device came back online).
+
+The actual bug is in the controller-side log pipeline, not the device: inspecting Adam's per-device log store directly (`adam-db/device/<uuid>/logs/`) shows that log batch containing this exact message wasn't written until the file timestamped `03:50:15` — over 6 minutes after the device logged it, and about 1m17s *after* the test's `Eventually` had already given up at 03:48:58. The device continuously POSTed `/newlogs` to Adam every few seconds throughout the whole window (confirmed in `adam-stdout`), so the log line was present on the wire, but reached Adam's queryable store too late — likely because the reboot generates a large burst of debug-level logs from many concurrent pillar agents (nim, watcher, zedagent, etc.), and the newlog pipeline uploads/ingests in order, so this particular line got queued behind that backlog and missed the test's timeout window purely due to upload/processing latency, not any functional defect in `downloader.transport.handlers`.
+
+This is a brand-new failure signature — no prior entries for `TestDownloadBurstWithDeadMgmtPorts` or this newlog-delay pattern exist in the ledger — and it doesn't share a root cause with other failures in this run (e.g., the unrelated `TestBootstrapSuite`/Proxmox VM-creation entry from the previous night). Likely fix direction: increase the test's timeout/polling window for this specific check, or have it query the device directly rather than relying on controller log propagation, to absorb post-reboot log-upload backlog latency.
+
 ## [2026-11-24 -- 0.0.0-16.0-stable-be6386de (run #48)](https://github.com/lf-edge/eve/actions/runs/45316371575)
 
 [Full report](https://lf-edge.github.io/eve/test/16.0-stable/runs/48/)
