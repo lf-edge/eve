@@ -2,6 +2,46 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-26 -- 0.0.0-16.0-stable-57a75412 (run #58)](https://github.com/lf-edge/eve/actions/runs/45746054501)
+
+[Full report](https://lf-edge.github.io/eve/test/16.0-stable/runs/58/)
+
+### TestAppRoutingSuite: failure analysis
+
+#### TestLocalNIWithMultiplePorts
+
+##### Failure
+
+```
+
+Told to stop trying after 2.279s.
+Stop waiting for: NI ONLINE with both static routes via ethernet0 and all connected routes present
+Network instance is in error state
+networkID:"4e4c8237-214e-4757-9789-ead7f119595a" networkVersion:"1" instType:2 displayname:"multi-port-ni" activated:true CurrentUplinkIntf:"eth0" ports:"eth0" ports:"eth1" ports:"eth2" ports:"eth3" bridgeNum:1 bridgeName:"bn1" bridgeIPAddr:"10.50.0.1" ipAssignments:{macAddress:"00:16:3e:06:00:01" ipAddress:"10.50.0.1"} networkErr:{description:"IP Route: {dst=0.0.0.0/0, gw=<nil>, port=internet, probe={enabledGwPing=true, gwPingMaxCost=5, userProbe=<none>}, preferLowerCost=true, preferStrongerWwanSignal=false} is not matching any port\nIP Route: {dst=10.88.88.0/24, gw=<nil>, port=httpserver, probe={enabledGwPing=true, gwPingMaxCost=0, userProbe=tcp://10.88.88.70:80}, preferLowerCost=true, preferStrongerWwanSignal=false} is not matching any port" timestamp:{seconds:1795665586 nanos:220969040} severity:SEVERITY_ERROR} state:ZNETINST_STATE_ERROR mtu:1500 ip_routes:{destination_network:"0.0.0.0/0" gateway:"192.168.30.1" port:"eth2"} ip_routes:{destination_network:"0.0.0.0/0" gateway:"172.22.10.1" port:"eth0"} ip_routes:{destination_network:"172.22.10.0/24" port:"eth0"} ip_routes:{destination_network:"192.168.30.0/24" port:"eth2"}
+```
+
+##### Claude's conclusion
+
+Live evidence confirms table 801 now fully converged (0.0.0.0/0 via eth3/10.40.40.1, 10.88.88.0/24 via eth3, 172.22.10.0/24 and 192.168.30.0/24 connected routes), matching the "resolved moments after timeout" pattern from the ledger.
+
+**Root cause:** This is the same known, recurring transient NI route-convergence race documented in the ledger since **2026-11-21** and recurring on **2026-11-25** and now again on **2026-11-26**. `gotest.json` shows the test gave up after only 2.279s (03:59:44–03:59:46), and the network instance transitioned `ERROR -> ONLINE` at 03:59:54 — just ~8 seconds later — confirmed live by `ip route show table all` now holding all expected static/connected routes (default via eth3, 10.88.88.0/24 via eth3, plus the eth0/eth2 connected routes) in table 801. As previously diagnosed, `TestLocalNIWithMultiplePorts` (`evetest/tests/networking/routing_test.go`) lacks the same tolerance for a brief transient `ERROR` state during NI reconciliation that its sibling `TestLocalNI` has, making it prone to this exact race on devices with multiple uplink ports. No other failures occurred earlier in this run to share a root cause with — this is purely the test's known sensitivity to a short self-resolving NIM/zedrouter convergence blip, now having recurred three nights running.
+
+### TestSwitchNetworkInstanceSuite: failure analysis
+
+#### TestSwitchNIDeletedWithAppsAttached
+
+##### Failure
+
+```
+timed out after 5m0.001107964s (excluding download) waiting for app "2d025cfb-95bc-40af-bef6-678660ded973" (app-1) on device "edge-dev" to reach RUNNING state (last state: RESOLVING_TAG)
+```
+
+##### Claude's conclusion
+
+Confirmed: a fresh curl from the device to the registry succeeds instantly, while the two stuck resolve connections remain ESTABLISHED with unacked data and 11 retransmits each (identical `tx_queue=0x10F`/retransmit count to the earlier occurrence) — a TCP black-hole on that specific connection, not a registry or app problem.
+
+**Root cause:** `app-1`'s OCI tag resolve against the registry (`192.168.170.2:5000/lfedge/evetest-ubuntu-ctr:1.2`) started at `04:39:50.868` and then produced zero further log lines for the rest of the test; live inspection now shows the device's two resolve-related TCP connections to the registry still ESTABLISHED with data stuck unacknowledged in the send queue (`tx_queue=0x10F`, 11 retransmits each) — an on-path black-holed connection — while a brand-new `curl` to the same registry from the same device succeeds immediately. Because the OCI datastore resolve path sets no end-to-end timeout (only TCP-handshake/TLS timeouts), a single stalled connection hangs the resolve forever with no retry, leaving the app permanently stuck in `RESOLVING_TAG` until the test's 5-minute wait expires. This is a **known, recurring issue**: the ledger records the identical signature — same test (`TestSwitchNIDeletedWithAppsAttached`/`TestSwitchNetworkInstanceSuite`), same registry, same stuck-`RESOLVING_TAG` pattern with ESTABLISHED-but-black-holed connections, even the same `tx_queue=0x10F`/11-retransmit numbers — first observed on **2026-11-23** (run #43), alongside a sibling occurrence that same night in `TestFlowLog`. No other failure earlier in this run shares this cause, and it's purely an environment/network black-hole flake against the test registry, not a product or test-logic bug.
+
 ## [2026-11-25 -- 0.0.0-16.0-stable-be6386de (run #53)](https://github.com/lf-edge/eve/actions/runs/45536857253)
 
 [Full report](https://lf-edge.github.io/eve/test/16.0-stable/runs/53/)
