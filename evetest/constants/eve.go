@@ -105,3 +105,7 @@ const (
 	// outputs artifacts (device console output, qmp events, etc.).
 	QemuArtifactsDirname = "evetest-qemu-vms"
 )
+
+// ConsoleTrimmedLinesFormat is the first line of console output whose start
+// the broker trimmed to fit a gRPC message; %d is the number of lines trimmed.
+const ConsoleTrimmedLinesFormat = "[trimmed %d log lines]"

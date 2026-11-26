@@ -124,3 +124,29 @@ func TestReportedClusterMatches(t *testing.T) {
 		})
 	}
 }
+
+func TestConsoleLines(t *testing.T) {
+	cases := []struct {
+		name        string
+		out         string
+		wantTrimmed int
+		wantLines   []string
+		wantPartial string
+	}{
+		{"empty output", "", 0, []string{}, ""},
+		{"untrimmed output", "a\nb\nstill wri", 0, []string{"a", "b"}, "still wri"},
+		{"trimmed output", "[trimmed 7 log lines]\nx\ny\n", 7, []string{"x", "y"}, ""},
+		{"a first line like the marker is a console line", "[trimmed log lines]\nx\n", 0,
+			[]string{"[trimmed log lines]", "x"}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			trimmed, lines, partial := consoleLines(tc.out)
+			if trimmed != tc.wantTrimmed || strings.Join(lines, "|") != strings.Join(tc.wantLines, "|") ||
+				len(lines) != len(tc.wantLines) || partial != tc.wantPartial {
+				t.Errorf("consoleLines(%q) = %d, %q, %q; want %d, %q, %q", tc.out,
+					trimmed, lines, partial, tc.wantTrimmed, tc.wantLines, tc.wantPartial)
+			}
+		})
+	}
+}

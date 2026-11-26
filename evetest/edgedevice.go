@@ -987,7 +987,7 @@ type CrashWatch struct {
 	device       *EdgeDevice
 	fatals       <-chan LogMsg
 	stop         func()
-	consoleSeen  int       // bytes of console output already examined
+	consoleSeen  int       // console lines already examined, from the first one written
 	consoleCheck time.Time // when the console was last fetched
 	reason       string
 }
@@ -1003,11 +1003,12 @@ const consoleCheckInterval = 10 * time.Second
 // WatchForCrash starts a CrashWatch on the device. Call Stop when done.
 func (d *EdgeDevice) WatchForCrash() *CrashWatch {
 	fatals, stop := d.WatchLogs(LogMsgMatch{Severity: "fatal", NotBefore: time.Now()})
+	trimmed, lines, _ := consoleLines(d.consoleOutput())
 	return &CrashWatch{
 		device:      d,
 		fatals:      fatals,
 		stop:        stop,
-		consoleSeen: len(d.consoleOutput()),
+		consoleSeen: trimmed + len(lines),
 	}
 }
 
@@ -1047,14 +1048,15 @@ func (w *CrashWatch) consoleCrash() string {
 		return ""
 	}
 	w.consoleCheck = time.Now()
-	out := w.device.consoleOutput()
-	if len(out) < w.consoleSeen {
+	trimmed, lines, partial := consoleLines(w.device.consoleOutput())
+	if trimmed+len(lines) < w.consoleSeen {
 		// The broker started the console over, e.g. with a new VM.
 		w.consoleSeen = 0
 	}
-	fresh := out[w.consoleSeen:]
-	w.consoleSeen = len(out)
-	for _, line := range strings.Split(fresh, "\n") {
+	fresh := lines[min(max(w.consoleSeen-trimmed, 0), len(lines)):]
+	w.consoleSeen = trimmed + len(lines)
+	// The line still being written is examined until it is complete.
+	for _, line := range append(fresh, partial) {
 		for _, mark := range crashConsoleMarks {
 			if strings.Contains(line, mark) {
 				line = strings.TrimSpace(line)
@@ -1066,6 +1068,21 @@ func (w *CrashWatch) consoleCrash() string {
 		}
 	}
 	return ""
+}
+
+// consoleLines splits console output into the lines the device completed and
+// the line it is still writing, and returns with them how many lines the
+// broker trimmed from the start of the output.
+func consoleLines(out string) (trimmed int, lines []string, partial string) {
+	if first, rest, found := strings.Cut(out, "\n"); found {
+		if _, err := fmt.Sscanf(first, constants.ConsoleTrimmedLinesFormat, &trimmed); err == nil {
+			out = rest
+		} else {
+			trimmed = 0
+		}
+	}
+	lines = strings.Split(out, "\n")
+	return trimmed, lines[:len(lines)-1], lines[len(lines)-1]
 }
 
 // Stop ends the watch.

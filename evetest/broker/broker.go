@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/lf-edge/eve/evetest/broker/provider"
 	"github.com/lf-edge/eve/evetest/constants"
@@ -2284,8 +2285,35 @@ func (b *broker) GetDeviceConsoleOutput(
 	// menu in CP437 -- and a proto string field cannot hold them, so gRPC fails
 	// the whole response rather than the offending run of bytes.
 	return &api.ConsoleOutputResponse{
-		ConsoleOutput: strings.ToValidUTF8(output, ""),
+		ConsoleOutput: trimConsoleOutput(
+			strings.ToValidUTF8(output, ""), maxConsoleOutputBytes),
 	}, nil
+}
+
+// maxConsoleOutputBytes keeps a ConsoleOutputResponse within the 4 MiB that a
+// gRPC client accepts by default, with room for the message framing.
+const maxConsoleOutputBytes = 4<<20 - 1<<10
+
+// trimConsoleOutput drops whole lines from the start of output until it fits
+// in maxBytes, and puts a line saying how many were dropped in their place.
+func trimConsoleOutput(output string, maxBytes int) string {
+	if len(output) <= maxBytes {
+		return output
+	}
+	// Leave room for the line saying how many lines were trimmed.
+	cut := len(output) - (maxBytes - 64)
+	if nl := strings.IndexByte(output[cut:], '\n'); nl >= 0 {
+		cut += nl + 1
+	} else {
+		for cut < len(output) && !utf8.RuneStart(output[cut]) {
+			cut++
+		}
+	}
+	trimmed := strings.Count(output[:cut], "\n")
+	if !strings.HasSuffix(output[:cut], "\n") {
+		trimmed++
+	}
+	return fmt.Sprintf(constants.ConsoleTrimmedLinesFormat+"\n", trimmed) + output[cut:]
 }
 
 // ConnectConsoleToDevice establishes a bidirectional gRPC tunnel between
