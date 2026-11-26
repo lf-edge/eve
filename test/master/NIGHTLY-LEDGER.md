@@ -2,6 +2,172 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-26 -- 0.0.0-master-35b640fd (run #61)](https://github.com/lf-edge/eve/actions/runs/45827874328)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/61/)
+
+### TestAppRoutingSuite: failure analysis
+
+#### TestApplicationGateway
+
+##### Failure
+
+```
+
+Unexpected error:
+    <*fmt.wrapError | 0x1aba210dfc00>: 
+    failed to execute script over SSH for app 42069f21-affb-4b3d-8167-b77e629845b1: Process exited with status 7 (stderr: curl: (7) Failed to connect to http-server-2.test port 80 after 3147 ms: Couldn't connect to server
+    )
+    {
+        msg: "failed to execute script over SSH for app 42069f21-affb-4b3d-8167-b77e629845b1: Process exited with status 7 (stderr: curl: (7) Failed to connect to http-server-2.test port 80 after 3147 ms: Couldn't connect to server\n)",
+        err: <*ssh.ExitError | 0x1aba2180fa80>{
+            Waitmsg: {status: 7, signal: "", msg: "", lang: ""},
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+###### Summary
+
+**Live evidence:** The broker (`evetest broker status`) shows the Proxmox host (`farfalle`) is healthy — 2% CPU used, load 3.77 on 40 CPUs, 27.8 GiB RAM free, no swap pressure, plenty of storage — so this is **not** the host-iowait/resource-contention pattern that dominates most prior ledger entries. SDN status shows no config errors. On the live, still-paused `edge-dev`, I verified at the EVE/zedrouter level that everything needed for this "app-gw as NAT router" topology is correctly set up: `ni-eth1` (Switch NI, WAN) has its `ALLOW-L2-FORWARD` rule installed and hit (58 pkts); the `airgap1` Local NI (bn4) bridges `app-gw` (172.28.1.2) and `app-client1` (172.28.1.3) correctly — both are pingable from the EVE host and have resolved ARP entries; the per-VIF ACL chains (`PREROUTING-nbu2x1`/`nbu2x3`) show their generic "ALLOW ACL rule 1" already matched a few packets each, so some traffic had already traversed successfully. The preceding direct curl to `http-server-1.test` (bypassing app-gw) succeeded, confirming base SDN/DNS connectivity is fine.
+
+The failing curl is specifically the one routed through `app-gw`'s own in-guest NAT (`sysctl ip_forward=1` + `iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE`), which the test configured via SSH only ~3 seconds before the failing curl attempt (`err` on that config step was nil, so the SSH command itself didn't fail). I could not get guest-level visibility into `app-gw`/`app-client1` (no SSH credentials/path available to me beyond what the test harness itself used), so I can't directly confirm whether the in-guest forwarding/MASQUERADE had actually taken effect, or whether an ARP/first-packet race on `app-gw`'s freshly-up WAN link caused the initial SYN to be black-holed — the curl's own "3147 ms" partial delay before a definitive connection failure is consistent with such a race, but this is not confirmed, only plausible.
+
+This specific failure signature does not appear in `live-ledger.md` under any of `TestApplicationGateway`'s three prior occurrences (2026-11-21 infra/Proxmox-VM-create failure in a different subtest, 2026-11-15 "no port matching label" DPC race, 2026-11-04 Proxmox pre-boot onboarding stall) — all were different mechanisms, and none involved the app-gateway/NAT hop. So this is a **new failure signature**, not a known recurring issue, and — unlike most of this run's prior entries — the infrastructure (host load, SDN) is healthy, ruling out the dominant contention-based explanation. I can't pin down a definitive root cause beyond "likely a timing race in app-gw's just-applied NAT/forwarding setup, not yet confirmed at the guest level."
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestDNIDandBackupDNID
+
+##### Failure
+
+```
+timed out after 30m0.008045281s (excluding download) waiting for app "98a2818a-1e81-4490-a0ac-e52b1b308e06" (vm1) on device "edge-dev1" to reach RUNNING state (last state: BOOTING)
+```
+
+##### Claude's conclusion
+
+I have sufficient evidence. Summary of findings:
+
+**Root cause:** `TestDNIDandBackupDNID`'s VMIRS for app `vm1` (uuid `98a2818a-...`) only declares a soft/*preferred* node affinity (`preferredDuringSchedulingIgnoredDuringExecution`, weight 100) toward the DNID node `edge-dev1`, confirmed live in the VMIRS spec on the device. KubeVirt's scheduler was therefore free to place the VMI elsewhere, and `kubectl get vmi` confirms it landed `Running`/`Ready` on `edge-dev3` instead. `edge-dev1`'s own `/run/zedkube/ENClusterAppStatus/` shows `IsDNidNode:true, ScheduledOnThisNode:false, AppKubeStatus:4(RunningState)` — the guest is healthy, just on the wrong node from the DNID's perspective — so by the known `kubevirt.go` `Info()` design, `edge-dev1`'s `zedmanager` never sees `RUNNING` and `AppInstanceStatus` stays permanently wedged at `BOOTING`, exactly matching the 30-minute timeout evetest hit.
+
+This is not a new issue: per `live-ledger.md` this exact test/mechanism (VMIRS soft-affinity scheduling/status-reporting gap) has recurred in this same ledger file at least half a dozen times since it was first recorded, tracing back to the test's introduction around 2026-10-29/commit `6574dccd3`/`98acf1411`. No other test failed in this run (`TestVMIRSStrandedReplicasRecovery` passed), so there's no shared root cause to compare against within this run. Broker load/memory (104% RAM assigned to running VMs, load ~6.3 on 32 CPUs, minimal swap) is mildly elevated but not implicated by the live evidence, which points squarely at the known soft-affinity/status-propagation gap rather than resource contention. No PR diff was supplied for this investigation, so no relatedness verdict applies.
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.001s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+This is the same long-known, long-recurring `TestVMAppPurgeDuringFailover` designated-node/backup-DNID activation-gate deadlock documented extensively in `live-ledger.md` (first seen 2026-10-29, introduced by commit `98acf1411`, reproducing in the large majority of nightly runs since, including multiple times earlier tonight in this very run per the ledger entries at lines 100, 261, 507, 977, etc.).
+
+Live evidence confirms it: `edge-dev1` (the app's designated node) is currently `EVE_DEVICE_STATE_SUSPECT` (deliberately powered off by the test to simulate failover). On `edge-dev2`, `kubectl get vmirs,vmi,vm,pod -A` returns **zero VMIRS/VMI/VM anywhere in the cluster** — only infra pods (cdi, kube-system, kubevirt, longhorn-system) — exactly matching the test's `found []`. `edge-dev2`'s live `/run/zedkube/ENClusterAppStatus/*.json` for the app (`failover-purge-app`, uuid `73b6c1be-0fe4-4787-a256-5279835dc784`) shows `IsDNidNode:false, ScheduledOnThisNode:false, AppKubeStatus:2`, and `zedkube`'s `checkAppsFailover` log (15:39:24, current) is still reporting `newStatus:{...false false Unknown false 0}` for that same app — the unbroken "not designated, nothing re-requests a VMIRS after the purge" loop described throughout the ledger.
+
+This failure does **not** share a root cause with the earlier `TestDNIDandBackupDNID` failure already investigated in this run (`live-investigation.md`), which is a distinct soft-affinity VMIRS scheduling/status-propagation gap in a different test. This is instead a continuation of the separate, well-known `TestVMAppPurgeDuringFailover` deadlock that has recurred nightly since 2026-10-29 and has already reproduced at least four times in this same run per the ledger.
+
+No PR diff was supplied for this investigation, so no relatedness verdict applies.
+#### TestClusterPVCRedownload
+
+##### Failure
+
+```
+
+vm1's content tree is in state LOADED, not REMOTELOADED -- it was re-downloaded despite the PVC already being complete
+Expected
+    <types.SwState>: 108
+to equal
+    <types.SwState>: 125
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Confirmed live on `edge-dev1`: `vm1`'s ContentTreeStatus (`5742cfdd-4f34-445e-93c9-6b69b922bec3`, "vm1-image") is currently `State:108` (LOADED). The volumemgr log shows the exact mechanism at 16:16:07.247–251: `doUpdateContentTree` transitions straight from `LOADING` to completion by finding all three blobs already loaded/verified in the local CAS and logging `"image ... exists in CAS, Content Tree load is completely LOADED"` — it never goes through the PVC-adoption path that would land it on `REMOTELOADED` (125). The corresponding volume (`vm1-root`, PVC `577a2a94-...-pvc-0`) is still only at `CREATED_VOLUME` in the live `AppInstanceStatus` at that same timestamp, confirming the content tree raced ahead of PVC/volume publication exactly as described.
+
+This is not a new issue — it's the identical `contentTreeSatisfiedByPVCs`/`doUpdateContentTree` PVC-adoption-timing race in `pkg/pillar/cmd/volumemgr` already investigated multiple times in this very run (see `live-investigation.md`'s earlier `TestClusterPVCRedownload` entries) and extensively logged in `live-ledger.md` as a long-standing, well-known recurring issue specific to this test, first seen 2026-10-30 (run #2) and reproducing in the large majority of nightly runs since (20+ prior occurrences). It does not share a root cause with this run's other failures (`TestDNIDandBackupDNID`'s soft-affinity scheduling gap or `TestVMAppPurgeDuringFailover`'s designated-node deadlock) — it's a continuation of this same unbroken, still-unfixed streak.
+
+No PR diff was supplied for this investigation.
+
+### TestSecuritySuite: failure analysis
+
+#### TestControllerSigningCertChange
+
+##### Failure
+
+```
+
+Timed out after 306.739s.
+The function passed to Eventually failed at /evetest/tests/security/helpers_test.go:136 with:
+Unexpected error:
+    <*fmt.wrapError | 0x107ccd5a3c80>: 
+    unable to reach app "9cbc422c-69f4-4d0e-bce2-a496737f8242" SSH on device "edge-dev": no reachable endpoint among [172.20.20.123:2223]
+    {
+        msg: "unable to reach app \"9cbc422c-69f4-4d0e-bce2-a496737f8242\" SSH on device \"edge-dev\": no reachable endpoint among [172.20.20.123:2223]",
+        err: <*errors.errorString | 0x107ccd86e400>{
+            s: "no reachable endpoint among [172.20.20.123:2223]",
+        },
+    }
+occurred
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+After the test's second controller-signing-cert rotation and its `device.SoftReboot(true)` at 14:13:24, zedagent never recovers connectivity with the controller. From 14:14 onward it repeatedly fetches `/certs` successfully but then fails AuthContainer verification against *both* `controllercerts` and `controllercerts.bak` (`SenderStatusCertMiss … local server cert hash does not match in authen`), flip-flopping between two cert-set hashes on successive fetches rather than converging. Because verification never succeeds, the device can't complete TPM attestation (`attestation_info` is stuck in `ATTESTATION_STATE_NONCE_WAIT`), so it never obtains a fresh `IntegrityToken` after reboot — and Adam's log shows every subsequent `/config` poll rejected with "integrity token missmatch" continuously from 14:14 through the end of the capture (14:25+), vs. only a brief, self-resolving mismatch blip around 13:50-13:51 during the earlier (pre-reboot) rotation. With config fetch permanently stuck, zedmanager has no `AppInstanceConfig` for either app post-reboot and only app1's pre-existing `AppInstanceStatus`/domain survived; `signing-cert-app2`'s domain was never recreated (no DomainStatus, no listed `appInstances` entry), so the port-forward to 172.20.20.123:2223 has nothing behind it — exactly the SSH timeout reported.
+
+This matches the exact risk the test's own doc comment calls out for the second rotation ("the installed certificate no longer matches controllercerts.bak … a stale cached serverSigningCertHash shows up here"), now manifesting as a permanent deadlock once compounded with a reboot, rather than resolving at the `signing-cert-rotated-2` checkpoint as intended. This failure/signature (`TestControllerSigningCertChange`, SenderStatusCertMiss / integrity-token deadlock) does not appear anywhere in the prior nightly ledger, so this is a new occurrence, not a known recurring issue, and it is unrelated to any other failure earlier in this run (the adjacent VTPM suite failures are a different area).
+#### TestVaultWithoutControllerKeyOnExt4
+
+##### Failure
+
+```
+
+Timed out after 300.000s.
+with the key escrowed before, an empty key from the controller must not allow the vault to be wiped (no vaultmgr log record containing "Vault cleanup is not allowed" logged since 2026-11-26T15:08:57Z)
+Expected
+    <<-chan evetest.LogMsg | len:0, cap:100>: 0x107ccdc2c310
+to receive something.
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+vaultmgr behaved exactly as the test expects: after phase 2's reboot (PCR14 changed, controller's escrowed key cleared), I confirmed directly on the live device (`logread`) that it logged `"Vault cleanup is not allowed"` at 15:11:16.893, since `vault.IsVaultCleanupAllowed()` correctly returned false (no cleanup sentinel present). The test failed only because that record never reached the controller within the 5-minute `waitForVaultmgrLog` window — Adam's last received log batch for this device ends at 15:09:56.744 (pre-reboot shutdown messages), nothing since, even 10+ minutes after the post-reboot boot at 15:10:16. Live `logread -f` on the device shows Vector's `parse_json_keep` **and** `parse_json_upload` transforms both continuously emitting `vector_buffers::buffer_usage_data: Buffer counter overflowed. Clamping value to u64::MAX` every ~250ms since boot, and `/run/loguploader/NewlogMetrics/global.json` shows `"FailedToSend":true` with `FailSentStartTime: 2026-11-26T15:11:07Z` and no successful upload since — i.e. the newlog pipeline that ships `vaultmgr` records to the controller is stalled, not vaultmgr's logic. (Separately, `evetest eve logs`/non-follow log fetch appears to be a harness-side artifact returning stale pre-reboot output — live `ssh`+`logread` shows the device is fully up and otherwise healthy, including working controller connectivity.)
+
+This is a recurrence of the same Vector buffer-overflow bug already recorded today earlier in this same ledger, under run #56, for the sibling test `TestVaultKeyModeRecoveryOnExt4` in this same suite (same `parse_json_keep`/`buffer_usage_data` signature, same effect of stalling newlog delivery to the controller) — so this is a known, recurring issue as of today (2026-11-26), not a new one, now reproducing in a different test because any vault test that depends on a controller-delivered log record is vulnerable to it. It is unrelated to the other failure already investigated in this run (`TestControllerSigningCertChange`'s cert-verification/attestation deadlock) — different mechanism entirely. The broker host is currently overcommitted (102% of host RAM assigned to running VMs, swap in use), which plausibly aggravates Vector's CPU/buffer contention, though the earlier same-bug occurrence today happened under modest host load, suggesting this is an underlying Vector/newlog defect rather than purely an infra-overload artifact.
+
+### TestUpgradeSuite: failure analysis
+
+#### TestThreeNodesUpgrade
+
+##### Failure
+
+```
+EVE upgrade to 0.0.0-master-35b640fd-k-amd64 failed: no failure reason reported by the device
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence confirms a genuine vault-unlock timeout on `edge-dev1` during the upgrade's TESTING phase: `nodeagent` logs show `handleRebootOnVaultLocked` counting down for 5 minutes, then at 14:48:48 (just after boot time 14:42:42) logging `"Exceeded time for vault to be ready 300 by 10 seconds; possibly mismatching PCR indexes [4 8 9 13], rebooting"` and triggering a `BootReasonVaultFailure` reboot (restart counter 1→2, boot time 14:50:07). `baseosmgr`'s `BaseOsStatus` for the new image now carries that exact error, but `PartitionState` is still `inprogress` — i.e. the harness's `waitForUpgrade` gave up and reported "no failure reason reported by the device" moments before/while the device's own failure record was landing, the same harness-vs-device race documented in this ledger on 2026-11-20 (run #27, `TestKvmToKRepartitionGeometry`), there triggered by a different TPM symptom (`device is not a TPM 2.0`) but the identical mechanism (vault/TPM reseal failure during post-upgrade TESTING → forced reboot → harness message race). This is therefore a recurring, known issue class (vault/TPM reseal flakiness around baseos upgrades) since at least 2026-11-20, now manifesting with a new specific symptom (PCR mismatch) on `TestThreeNodesUpgrade` rather than a brand-new bug. No other test failed in this run, so it doesn't share a root cause with anything else tonight; the broker (`evetest broker status`: 104% of host RAM committed to VMs, load 7.6/32) is mildly overcommitted but not obviously the trigger, since the failure signature is a deterministic TPM/PCR-measurement issue rather than a pure timing/resource symptom.
+
 ## [2026-11-26 -- 0.0.0-master-88cc148b (run #56)](https://github.com/lf-edge/eve/actions/runs/45709372319)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/56/)
