@@ -4,7 +4,7 @@ go 1.26.8
 
 require (
 	github.com/godbus/dbus/v5 v5.1.0
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261105134359-c22104d6ca14
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261126002310-a0fb8252119a
 	github.com/miekg/dns v1.1.55
 	github.com/sirupsen/logrus v1.10.2
 	github.com/tatsushid/go-fastping v0.0.0-20160109021039-d7bb493dee3e
@@ -74,7 +74,6 @@ require (
 	github.com/opencontainers/selinux v1.15.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76 // indirect
-	github.com/spf13/pflag v1.1.0 // indirect
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect

@@ -360,6 +360,8 @@ type AppInstanceStatus struct {
 	NoUploadStatsToController bool
 	// Am I Cluster Designated Node Id for this app
 	IsDesignatedNodeID bool
+	// Placement mirrors DomainStatus.Placement, for zedagent to report.
+	Placement CPUPlacementState
 }
 
 // TruncateErrors cuts the status's own error, its runtime error and the error

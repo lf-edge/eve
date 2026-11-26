@@ -1,21 +1,19 @@
 module github.com/lf-edge/eve/pkg/vtpm
 
-go 1.25.0
-
-toolchain go1.25.11
+go 1.26.8
 
 require (
 	github.com/google/go-tpm v0.9.1
-	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261105134359-c22104d6ca14
+	github.com/lf-edge/eve/pkg/pillar v0.0.0-20261126002310-a0fb8252119a
 	github.com/satori/go.uuid v1.2.1-0.20180404165556-75cca531ea76
-	github.com/sirupsen/logrus v1.9.4
-	golang.org/x/sys v0.47.0
+	github.com/sirupsen/logrus v1.10.2
+	golang.org/x/sys v0.50.0
 )
 
 require (
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/eriknordmark/ipinfo v0.0.0-20230728132417-2d8f4da903d7 // indirect
-	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
+	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
@@ -34,10 +32,11 @@ require (
 	github.com/vishvananda/netlink v1.3.1 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/crypto v0.55.0 // indirect
-	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
+	go.yaml.in/yaml/v2 v2.4.4 // indirect
+	golang.org/x/crypto v0.59.0 // indirect
+	golang.org/x/net v0.63.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
+	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	k8s.io/api v0.33.5 // indirect
@@ -47,5 +46,5 @@ require (
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.7.0 // indirect
-	sigs.k8s.io/yaml v1.4.0 // indirect
+	sigs.k8s.io/yaml v1.6.0 // indirect
 )

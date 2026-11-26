@@ -138,6 +138,13 @@ const (
 	// CustomOVMFSettingsDir - directory for custom OVMF settings (for different resolutions)
 	CustomOVMFSettingsDir = "/hostfs/etc/ovmf"
 
+	// HostKernel - kernel of the running rootfs, which the VMs container
+	// apps run in boot with
+	HostKernel = "/hostfs/boot/kernel"
+	// RunxInitrd - initrd of the VMs container apps run in. It ships in
+	// pillar's rootfs, which services reach through their /:/hostfs bind.
+	RunxInitrd = "/hostfs/containers/services/pillar/rootfs/boot/runx-initrd"
+
 	// CoverageDir - directory where coverage-instrumented zedbox binaries
 	// write their binary coverage files (GOCOVERDIR).  Only used when EVE
 	// is built with COVER=y (go build -cover -covermode=atomic).

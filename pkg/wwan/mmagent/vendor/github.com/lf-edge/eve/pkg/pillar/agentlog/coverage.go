@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/lf-edge/eve/pkg/pillar/base"
+	covutils "github.com/lf-edge/eve/pkg/pillar/utils/coverage"
 )
 
 // This file is compiled only when the binary is built with -tags cover (i.e.
@@ -46,4 +47,16 @@ func FlushCoverage(log *base.LogObject) {
 		log.Errorf("FlushCoverage: WriteCountersDir(%s) failed: %v", dir, err)
 	}
 	syscall.Sync()
+}
+
+// FlushCoverageAndPeers flushes this process and asks kube-init (a separate
+// process, eve-k only) to flush too.
+func FlushCoverageAndPeers(log *base.LogObject) {
+	dir := os.Getenv("GOCOVERDIR")
+	if dir == "" {
+		FlushCoverage(log)
+		return
+	}
+	covutils.FlushWithPeers(dir, covutils.FindPidsByComm("kube-init"),
+		func() { FlushCoverage(log) }, log.Warnf)
 }

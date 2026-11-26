@@ -4,12 +4,15 @@
 package types
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
+	"github.com/lf-edge/eve/pkg/pillar/base"
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -52,6 +55,8 @@ type LBInterfaceConfig struct {
 }
 
 // EdgeNodeClusterConfig - Configuration for cluster multi-node from controller
+// Every field except the cipher blocks is logged by LogCreate and LogModify;
+// a new field holding a secret must be excluded there.
 type EdgeNodeClusterConfig struct {
 	Initialized bool // To tell a subscriber that publisher is done
 	Valid       bool // To tell a subscriber there is a cluster
@@ -191,6 +196,183 @@ func (enc ENClusterAppStatus) Equal(newEnc ENClusterAppStatus) bool {
 // Key - returns the key for the config of EdgeNodeClusterConfig
 func (config EdgeNodeClusterConfig) Key() string {
 	return config.ClusterID.UUID.String()
+}
+
+// LogCreate :
+func (config EdgeNodeClusterConfig) LogCreate(logBase *base.LogObject) {
+	logObject := base.NewLogObject(logBase, base.EdgeNodeClusterConfigLogType,
+		config.ClusterName, config.ClusterID.UUID, config.LogKey())
+	if !config.Valid {
+		logObject.Noticef("EdgeNodeClusterConfig create: no cluster")
+		return
+	}
+	logObject.Noticef("EdgeNodeClusterConfig create: %s", config.logSummary())
+}
+
+// LogModify logs the number of changed fields and each one's old and new
+// value. Cipher block content is never printed.
+func (config EdgeNodeClusterConfig) LogModify(logBase *base.LogObject, old interface{}) {
+	logObject := base.EnsureLogObject(logBase, base.EdgeNodeClusterConfigLogType,
+		config.ClusterName, config.ClusterID.UUID, config.LogKey())
+
+	oldConfig, ok := old.(EdgeNodeClusterConfig)
+	if !ok {
+		logObject.Errorf("EdgeNodeClusterConfig modify: old object is %T", old)
+		return
+	}
+	changes := config.changedFields(oldConfig)
+	if len(changes) == 0 {
+		logObject.Noticef("EdgeNodeClusterConfig modify other change")
+		return
+	}
+	logObject.CloneAndAddField("changed-count", len(changes)).
+		AddField("changes", changes).
+		Noticef("EdgeNodeClusterConfig modify: %d field(s) changed: %s",
+			len(changes), strings.Join(changes, ", "))
+}
+
+// LogDelete runs in zedagent on unpublish, and in each subscriber when the
+// item goes away, including when the subscriber closes its subscription.
+func (config EdgeNodeClusterConfig) LogDelete(logBase *base.LogObject) {
+	logObject := base.EnsureLogObject(logBase, base.EdgeNodeClusterConfigLogType,
+		config.ClusterName, config.ClusterID.UUID, config.LogKey())
+	logObject.Noticef("EdgeNodeClusterConfig delete")
+
+	base.DeleteLogObject(logBase, config.LogKey())
+}
+
+// LogKey is fixed, like the pubsub key, so that a ClusterID change keeps the
+// same log object.
+func (config EdgeNodeClusterConfig) LogKey() string {
+	return string(base.EdgeNodeClusterConfigLogType) + "-global"
+}
+
+// logSummary lists every exported field and its value, except cipher blocks.
+func (config EdgeNodeClusterConfig) logSummary() string {
+	var fields []string
+	val := reflect.ValueOf(config)
+	for i := 0; i < val.NumField(); i++ {
+		if !val.Field(i).CanInterface() {
+			continue
+		}
+		field := val.Field(i).Interface()
+		if _, isCipher := field.(CipherBlockStatus); isCipher {
+			continue
+		}
+		fields = append(fields, val.Type().Field(i).Name+": "+logFieldString(field))
+	}
+	return strings.Join(fields, ", ")
+}
+
+// changedFields returns one entry per exported field which differs between
+// oldConfig and config: "Field: old -> new". Cipher block content is secret,
+// so those are reported as "Field: changed"; fields carrying the same block
+// share one entry ("FieldA+FieldB: changed").
+func (config EdgeNodeClusterConfig) changedFields(oldConfig EdgeNodeClusterConfig) []string {
+	var changes []string
+	oldVal := reflect.ValueOf(oldConfig)
+	newVal := reflect.ValueOf(config)
+	for i := 0; i < newVal.NumField(); i++ {
+		if !newVal.Field(i).CanInterface() {
+			continue
+		}
+		name := newVal.Type().Field(i).Name
+		oldField := oldVal.Field(i).Interface()
+		newField := newVal.Field(i).Interface()
+
+		if _, isCipher := newField.(CipherBlockStatus); isCipher {
+			continue
+		}
+		if !logFieldEqual(oldField, newField) {
+			changes = append(changes, fmt.Sprintf("%s: %s -> %s", name,
+				logFieldString(oldField), logFieldString(newField)))
+		}
+	}
+	return append(changes, config.cipherChanges(oldConfig)...)
+}
+
+// cipherChanges names the cipher blocks which differ from oldConfig. The
+// token and the manifest normally carry the same block, reported as one change.
+func (config EdgeNodeClusterConfig) cipherChanges(oldConfig EdgeNodeClusterConfig) []string {
+	token := cipherBlockChanged(oldConfig.CipherToken, config.CipherToken)
+	manifest := cipherBlockChanged(oldConfig.CipherGzipRegistrationManifestYaml,
+		config.CipherGzipRegistrationManifestYaml)
+	sameBlock := !cipherBlockChanged(config.CipherToken,
+		config.CipherGzipRegistrationManifestYaml)
+
+	var changes []string
+	if token && manifest && sameBlock {
+		return []string{"CipherToken+CipherGzipRegistrationManifestYaml: changed"}
+	}
+	if token {
+		changes = append(changes, "CipherToken: changed")
+	}
+	if manifest {
+		changes = append(changes, "CipherGzipRegistrationManifestYaml: changed")
+	}
+	return changes
+}
+
+// logFieldEqual compares one field value. A nil and an empty slice, and the
+// 4 and 16 byte forms of an IP address, are equal.
+func logFieldEqual(oldField, newField interface{}) bool {
+	if oldIP, ok := oldField.(net.IP); ok {
+		return oldIP.Equal(newField.(net.IP))
+	}
+	oldVal := reflect.ValueOf(oldField)
+	newVal := reflect.ValueOf(newField)
+	if oldVal.Kind() == reflect.Slice && oldVal.Len() == 0 && newVal.Len() == 0 {
+		return true
+	}
+	return reflect.DeepEqual(oldField, newField)
+}
+
+// logFieldString formats one field value for logging.
+func logFieldString(val interface{}) string {
+	switch v := val.(type) {
+	case ClusterType:
+		return fmt.Sprintf("%s(%d)", clusterTypeName(v), v)
+	case UUIDandVersion:
+		return v.UUID.String()
+	case *net.IPNet:
+		if v == nil {
+			return "<nil>"
+		}
+		return v.String()
+	}
+	// Print what a pointer refers to, not its address
+	if rv := reflect.ValueOf(val); rv.Kind() == reflect.Ptr && !rv.IsNil() {
+		return fmt.Sprintf("%+v", rv.Elem().Interface())
+	}
+	return fmt.Sprintf("%v", val)
+}
+
+// clusterTypeName is used for logging only; ClusterType has no String method
+// so that its existing numeric output is unchanged.
+func clusterTypeName(ct ClusterType) string {
+	switch ct {
+	case ClusterTypeNone:
+		return "None"
+	case ClusterTypeK3sBase:
+		return "K3sBase"
+	case ClusterTypeReplicatedStorage:
+		return "ReplicatedStorage"
+	case ClusterTypeHA:
+		return "HA"
+	default:
+		return "Invalid"
+	}
+}
+
+// cipherBlockChanged reports whether the controller-supplied part of a cipher
+// block differs, ignoring the locally resolved CipherContext and error state.
+func cipherBlockChanged(oldBlock, newBlock CipherBlockStatus) bool {
+	return oldBlock.CipherBlockID != newBlock.CipherBlockID ||
+		oldBlock.CipherContextID != newBlock.CipherContextID ||
+		oldBlock.IsCipher != newBlock.IsCipher ||
+		!bytes.Equal(oldBlock.InitialValue, newBlock.InitialValue) ||
+		!bytes.Equal(oldBlock.CipherData, newBlock.CipherData) ||
+		!bytes.Equal(oldBlock.ClearTextHash, newBlock.ClearTextHash)
 }
 
 // NativeK8sOrchestrationEnabled reports whether native Kubernetes orchestration

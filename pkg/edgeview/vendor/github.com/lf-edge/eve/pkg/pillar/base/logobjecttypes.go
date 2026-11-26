@@ -179,6 +179,8 @@ const (
 	AppMACGeneratorLogType LogObjectType = "app_mac_generator"
 	// KubeAppFailover
 	KubeAppFailover LogObjectType = "kube_app_failover"
+	// EdgeNodeClusterConfigLogType:
+	EdgeNodeClusterConfigLogType LogObjectType = "edge_node_cluster_config"
 )
 
 // RelationObjectType :
