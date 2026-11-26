@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Not a rootfs service: published for virt-operator's VIRT_LAUNCHER_IMAGE
+# (pkg/kube/kubevirt-operator.yaml), which nodes pull on first use.
+org: lfedge
+image: eve-virt-launcher
+# dnf fetches the QEMU build dependencies during the build.
+network: true

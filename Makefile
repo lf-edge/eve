@@ -507,8 +507,9 @@ ifeq ($(HV),k)
         PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources$$$(PKGS_PLATFORM_EXCLUDE)")
         ROOTFS_MAXSIZE_MB=10240
 else
-        # kube and witness (built from kube) are not in non-k builds
-        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|witness$$$(PKGS_PLATFORM_EXCLUDE)")
+        # kube, virt-launcher (used only by kube) and witness (built from kube)
+        # are not in non-k builds
+        PKGS_$(ZARCH)=$(shell find pkg -maxdepth 1 -type d | grep -Ev "eve|alpine|sources|kube|witness|virt-launcher$$$(PKGS_PLATFORM_EXCLUDE)")
         # nvidia platform requires more space
         ifeq (, $(findstring nvidia,$(PLATFORM)))
             ROOTFS_MAXSIZE_MB=290
