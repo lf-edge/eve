@@ -62,9 +62,9 @@ const (
 //  7. Activate the 2 VMs -- VM1 (Node1) is waited on, since it's this
 //     test's subject; VM2 (the isolated Node2) is fire-and-forget.
 //  8. Verify VM1 comes online on Node1.
-//  9. Verify it still attempts to download its content tree despite being
-//     online -- asserted as the fixed behavior (REMOTELOADED), not the
-//     reported bug, so this passes on the fix and fails on master.
+//  9. Verify it does not attempt to download its content tree despite
+//     being online -- asserted as the fixed behavior (REMOTELOADED, and no
+//     download requested), not the reported bug.
 //
 // Network model
 // -------------
@@ -344,7 +344,11 @@ func TestClusterPVCRedownload(test *testing.T) {
 
 	// Step 9. The datastore has been unreachable since step 4, so vm1
 	// getting this far already rules out a real download; this asserts it
-	// explicitly, on the fixed-behavior side (REMOTELOADED).
+	// explicitly: REMOTELOADED, plus no DownloaderConfig from volumemgr and
+	// no DownloaderStatus from the downloader for vm1's image. LOADED would
+	// mean volumemgr ran the tree through the local pipeline before it saw
+	// vm1's VolumeConfig -- with the verified blob still on disk that is
+	// only a CAS re-ingest, but without it a download starts.
 	var contentTrees []types.ContentTreeStatus
 	t.Eventually(func() error {
 		var err error
@@ -368,8 +372,8 @@ func TestClusterPVCRedownload(test *testing.T) {
 	t.Expect(vm1Tree).NotTo(BeNil(),
 		"no local ContentTreeStatus on %s matches vm1's image SHA256 %s", devName[0], image.sha256)
 	t.Expect(vm1Tree.State).To(Equal(types.REMOTELOADED),
-		"vm1's content tree is in state %v, not REMOTELOADED -- "+
-			"it was re-downloaded despite the PVC already being complete", vm1Tree.State)
+		"vm1's content tree is in state %v, not REMOTELOADED -- it went through the "+
+			"local download/load pipeline despite the PVC already being complete", vm1Tree.State)
 
 	downloaderConfigs, err := evetest.ReadAllPublications[types.DownloaderConfig](
 		dev1, "volumemgr", false)
@@ -377,6 +381,13 @@ func TestClusterPVCRedownload(test *testing.T) {
 	for _, dc := range downloaderConfigs {
 		t.Expect(dc.ImageSha256).NotTo(Equal(image.sha256),
 			"volumemgr published a DownloaderConfig for vm1's image despite its PVC being complete")
+	}
+	downloaderStatuses, err := evetest.ReadAllPublications[types.DownloaderStatus](
+		dev1, "downloader", false)
+	t.Expect(err).NotTo(HaveOccurred())
+	for _, ds := range downloaderStatuses {
+		t.Expect(ds.ImageSha256).NotTo(Equal(image.sha256),
+			"downloader has a DownloaderStatus for vm1's image despite its PVC being complete")
 	}
 	evetest.Checkpoint("no-redownload-verified")
 }
