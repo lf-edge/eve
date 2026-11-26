@@ -2,6 +2,179 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-26 -- 0.0.0-master-88cc148b (run #56)](https://github.com/lf-edge/eve/actions/runs/45709372319)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/56/)
+
+### TestDeviceConnectivitySuite: failure analysis
+
+#### TestPNACWithoutProxy
+
+##### Failure
+
+```
+
+Timed out after 600.001s.
+Expected to satisfy: Device has enrolled NEW certificate for 802.1x AND deleted the obsolete certificate
+machineArch:"x86_64"  cpuArch:"x86_64"  platform:"x86_64"  ncpu:4  memory:7917  storage:40006  powerCycleCounter:-1  minfo:{manufacturer:"QEMU"  productName:"Standard PC (Q35 + ICH9, 2009)"  version:"pc-q35-11.0"  serialNumber:"VX0IWG7W"  UUID:"Not Settable"  biosVendor:"EDK II"  biosVersion:"unknown"  biosReleaseDate:"02/02/2022"}  assignableAdapters:{type:PhyIoNetEth  name:"ethernet0"  members:"ethernet0"  usedByBaseOS:true  ioAddressList:{macAddress:"da:39:78:d0:19:f2"}  usage:PhyIoUsageMgmtAndApps}  dns:{DNSservers:"127.0.0.1:53"  DNSsearch:"test."}  storageList:{mountPath:"/persist/log"}  storageList:{device:"vda3"  total:10240  partitionLabel:"IMGB"  partitionTypeGuid:"5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30053"}  storageList:{mountPath:"/"  total:3959}  storageList:{device:"nbd6"}  storageList:{mountPath:"/persist/vault/downloader"}  storageList:{mountPath:"/persist/checkpoint"}  storageList:{mountPath:"/persist/newlog"}  storageList:{device:"/persist/vector/data/buffer/v2/keep_sent_queue_socket/buffer-data-0.dat"}  storageList:{device:"vda"  total:65536}  storageList:{mountPath:"/hostfs"  total:245}  storageList:{device:"nbd15"}  storageList:{mountPath:"/config"  total:5}  storageList:{mountPath:"/persist/vault"}  storageList:{mountPath:"/persist/certs"}  storageList:{device:"nbd12"}  storageList:{device:"nbd7"}  storageList:{mountPath:"/persist/memory-monitor/output"}  storageList:{device:"nbd1"}  storageList:{device:"vda4"  total:5  partitionLabel:"CONFIG"  partitionTypeGuid:"13307e62-cd9c-4920-8f9b-91b45828b798"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30054"}  storageList:{device:"nbd0"}  storageList:{mountPath:"/persist/tmp"}  storageList:{device:"nbd2"}  storageList:{mountPath:"/persist/patchEnvelopesUsageCache"}  storageList:{device:"nbd8"}  storageList:{mountPath:"/persist/patchEnvelopesCache"}  storageList:{mountPath:"/persist/agentdebug"}  storageList:{mountPath:"/persist/clear/volumes"}  storageList:{mountPath:"/persist/clear"}  storageList:{mountPath:"/persist/lost+found"}  storageList:{device:"nbd5"}  storageList:{mountPath:"/persist/ingested"}  storageList:{device:"/persist/vector/data/buffer/v2/dev_upload_socket/buffer-data-0.dat"}  storageList:{device:"nbd14"}  storageList:{mountPath:"/persist/containerd-system-root"}  storageList:{device:"vda2"  total:10240  partitionLabel:"IMGA"  partitionTypeGuid:"5dfbf5f4-2848-4bac-aa5e-0d9a20b745a6"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30052"}  storageList:{mountPath:"/persist"  total:40006  storageLocation:true}  storageList:{mountPath:"/persist/nettrace"}  storageList:{device:"nbd13"}  storageList:{mountPath:"/persist/vault/volumes"}  storageList:{mountPath:"/persist/vault/verifier"}  storageList:{device:"nbd9"}  storageList:{device:"nbd10"}  storageList:{mountPath:"/persist/netdump"}  storageList:{device:"nbd4"}  storageList:{device:"vda9"  total:40953  partitionLabel:"P3"  partitionTypeGuid:"5f24425a-2dfa-11e8-a270-7b663faccc2c"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30059"}  storageList:{device:"vda7"  total:2048  partitionLabel:"EFI System"  partitionTypeGuid:"c12a7328-f81f-11d2-ba4b-00a0c93ec93b"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30056"}  storageList:{mountPath:"/persist/vault/containerd"}  storageList:{device:"nbd3"}  storageList:{mountPath:"/persist/status"}  storageList:{device:"nbd11"}  storageList:{device:"vda1"  total:2048  partitionLabel:"EFI System"  partitionTypeGuid:"c12a7328-f81f-11d2-ba4b-00a0c93ec93b"  partitionUuid:"ad6871ee-31f9-4cf3-9e09-6f7a25c30051"}  bootTime:{seconds:1795644316}  swList:{activated:true  partitionLabel:"IMGA"  partitionDevice:"/dev/vda2"  partitionState:"active"  status:INSTALLED  shortVersion:"0.0.0-master-88cc148b-kvm-amd64"  downloadProgress:100  userStatus:UPDATED}  swList:{partitionLabel:"IMGB"  partitionDevice:"/dev/vda3"  partitionState:"unused"  status:INITIAL}  HostName:"f1412b2f-63b6-4d79-a8ba-4a574eae62de"  lastRebootReason:"NORMAL: First boot of device - at 2026-11-25T22:05:51.571889038Z"  lastRebootTime:{seconds:1795644351  nanos:571889038}  systemAdapter:{status:{version:1  key:"zedagent"  timePriority:{seconds:1795644417  nanos:8188484}  lastSucceeded:{seconds:1795644435  nanos:963996076}  ports:{ifname:"eth0"  name:"ethernet0"  isMgmt:true  free:true  dhcpType:4  subnet:"172.20.20.0/24"  domainname:"test."  proxy:{}  macAddr:"da:39:78:d0:19:f2"  IPAddrs:"172.20.20.123"  defaultRouters:"172.20.20.1"  dns:{DNSservers:"10.16.16.25"  DNSdomain:"test."}  up:true  err:{timestamp:{seconds:1795644435  nanos:963933041}}  usage:PhyIoUsageMgmtAndApps  networkUUID:"601c0af3-4147-40cb-89b1-d29ab892c91d"  mtu:1500  config_source:{origin:NETWORK_CONFIG_ORIGIN_CONTROLLER  submitted_at:{seconds:1795644417  nanos:8188484}}  pnac_status:{enabled:true  state:SUPPLICANT_STATE_AUTHENTICATED  last_auth_timestamp:{seconds:1795644430}}}}}  HSMStatus:NOTFOUND  dataSecAtRestInfo:{status:DATASEC_AT_REST_DISABLED  info:"TPM is either absent or not in use"  vaultList:{name:"Application Data Store"  status:DATASEC_AT_REST_DISABLED  vaultErr:{description:"TPM is either absent or not in use"  timestamp:{seconds:1795644408  nanos:68172290}  severity:SEVERITY_ERROR}  pcrStatus:PCR_DISABLED  unlock_method:VAULT_UNLOCK_METHOD_NO_TPM}}  sec_info:{sha_root_ca:"6Mp\x83\xab\x86X6\xfb\x1b\x1a\xc6\xed\xed\xc8솂ր\xeau\x00}4yN'\x8dU\x10\xcf"}  configItemStatus:{configItems:{key:"app.allow.vnc"  value:{value:"true"}}  configItems:{key:"debug.default.loglevel"  value:{value:"debug"}}  configItems:{key:"debug.default.remote.loglevel"  value:{value:"debug"}}  configItems:{key:"debug.enable.console"  value:{value:"true"}}  configItems:{key:"debug.enable.ssh"  value:{value:"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC+H1RQUqHjFBJgGpslC73XsLz8Fg5WpNPble9naKyWz1Um8D2bOtQK/yguCImPeBYcH7/73z8dtC6d+dT0UF26+o7Vh6RN/U2X/5nkaZr7oM5QwwZTsD7Nd2Szww9wrRhXvpV0aFgUBDM9BIF1qBQxLNd+Jp8uttrgF3zj/cm7+SXllG54sv8WFBMfTX7J8cQ1jxLyp/Sc6PXK0zBaVzZwhmCCmI6CIzJK6ahMRgXm2vSP6doYibkB3ETSskaCXSHxDiZoaQK2ZY+GqNZkUusbau43MXVPTiJknXqUcmXhQmwyMSltQ3G54jcgn4TDObSQnW7vGdLI7zIEAHnk5D1BmKzQUBh5aRLdhBtb6T3uvVtAqGgnXWKD+d2GjMiy4G31zfIlArvC3G8LxwsDoxQL0XKaFjnEmXIptVXC68zq+laIM8YGDDOCEc6RfczP7lA4p6rv0gQUfTNqy0P3a4ulvIDb4hET1Gkh+Azkuw1do9NIhXPxDBmPdkTnKwJv6XelpdCPCw1QT5o7WdOkUgorf/e03jGDnnn1QBWpSPB9gLB/oDmT/Gzm8tCYaq7ggwYUq1fSMBvnbFaclH1KVcC2Gwn8UPLt9HHa/mGywuISZYl3gy7ztlKyAjHEZH053U7I8OaMvv/CFo9aR4Teeb5848REZYAes+yJIz3lJV1K5Q=="}}  configItems:{key:"newlog.allow.fastupload"  value:{value:"true"}}  configItems:{key:"scep.retry.interval"  value:{value:"300"  error:"***ParseItem: Error in parsing Item. Replacing it with existing Value. key: scep.retry.interval, value: 10, Existing Value: {Key:scep.retry.interval ItemType:1 IntValue:300 StrValue: BoolValue:false TriStateValue:0}. Err: value out of bounds. Parsed value: 10, Max: 3600, Min: 60"}}  configItems:{key:"timer.config.interval"  value:{value:"5"}}  configItems:{key:"timer.deviceinfo.interval"  value:{value:"30"}}  configItems:{key:"timer.download.retry"  value:{value:"60"}}  configItems:{key:"timer.location.app.interval"  value:{value:"20"}}  configItems:{key:"timer.location.cloud.interval"  value:{value:"300"}}  configItems:{key:"timer.metric.interval"  value:{value:"20"}}  configItems:{key:"timer.port.testbetterinterval"  value:{value:"60"}}  configItems:{key:"timer.test.baseimage.update"  value:{value:"60"}}}  last_boot_reason:BOOT_REASON_FIRST  hardware_watchdog_present:true  reboot_inprogress:true  capabilities:{HWAssistedVirtualization:true  IOVirtualization:true}  state:ZDEVICE_STATE_REBOOTING  storage_info:{pool_name:"/persist"  storage_type:STORAGE_TYPE_INFO_EXT4  storage_state:STORAGE_STATUS_ONLINE  disks:{disk_name:{name:"/dev/vda9"  serial:"unknown"}  status:STORAGE_STATUS_ONLINE  smart_status:"failed"}}  attestation_info:{state:ATTESTATION_STATE_COMPLETE  error:{description:"[ATTEST] No escrow data"  timestamp:{seconds:1795644417  nanos:959803332}  severity:SEVERITY_ERROR}}  api_capability:API_CAPABILITY_DEFERRED_QUEUE_METRICS  optional_capabilities:{hw_inventory_support:true  cpu_placement:true}  device_name:"edge-dev"  enrolled_certs:{cert_enrollment_profile_name:"scep-test"  subject:{common_name:"edge-dev"  organization:"lf-edge"  country:"US"}  issuer:{common_name:"SCEP CA"  organization:"Example"  organizational_unit:"Lab"  country:"US"}  san_uri:"urn:Name:edge-dev"  issue_timestamp:{seconds:1795643828}  expiration_timestamp:{seconds:1827180428}  renew_period_percent:50  sha256_fingerprint:"22ca5c8a72e56734f2bde6507cfda772ef0cd01b930c330f164213a68cca643e"  status:CERT_STATUS_AVAILABLE}  cpu_pools:{kind:CPU_POOL_KIND_HOUSEKEEPING  cpu_ids:0  cpu_ids:1  cpu_ids:2  cpu_ids:3  free_cpu_ids:3  total_threads:4  allocated_threads:3  free_threads:1  total_cores:4  free_whole_cores:1}  cpu_pools:{kind:CPU_POOL_KIND_DEDICATED}  cpu_pools:{kind:CPU_POOL_KIND_ISOLATED}
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence matches the well-documented 802.1X re-auth-stall signature exactly: the SDN's `/run/hostapd/bridge0.log` shows the device (`da:39:78:d0:19:f2`) completing a successful EAP-TLS handshake (`CTRL-EVENT-EAP-SUCCESS` → `AP-STA-CONNECTED`, port authorized) around 22:07:10, then immediately sending an `EAPOL-Logoff`, getting unauthorized, and the subsequent re-authentication attempt permanently stalling at `IEEE 802.1X: Scheduled disconnection of da:39:78:d0:19:f2 after EAP-Failure` — the hostapd log has been silent since 22:09:20 while the current time is 22:18+ (~9 minutes of inactivity). Consistent with this, `evetest status` shows `edge-dev` stuck in `EVE_DEVICE_STATE_SUSPECT`, reachable only on the pre-auth VLAN IP (172.20.20.123, not the post-auth 172.20.10.x), `evetest eve ssh` cannot reach the device at all, and the controller's own log stream for the device has received nothing past 22:09:20 (`populate(tpmmgr/EdgeNodeCert)`) — the device never regained connectivity to report the new SCEP-enrolled certificate the test is waiting for.
+
+This is the identical, long-known recurring issue already logged repeatedly against `TestPNACWithoutProxy`/`TestPNACWithProxy` in `live-ledger.md`, dating back to at least 2026-11-09 (run #12) and recurring on numerous nights since (2026-11-13, 2026-11-16, 2026-11-18, 2026-11-20, 2026-11-24) — tonight's failure is simply another instance of that same unresolved 802.1X re-auth-after-EAP-Failure bug in the SCEP/PNAC cert-rotation path, not a new regression. Broker host load (7% CPU, load avg 3.68/32, 92% of host memory assigned to VMs but no heavy swap pressure) doesn't point to infra overload as a contributing factor, consistent with this being a deterministic code-level bug rather than environment flakiness.
+#### TestPNACWithProxy
+
+##### Failure
+
+```
+
+Timed out after 600.001s.
+Expected to satisfy: Device has enrolled NEW certificate for 802.1x AND deleted the obsolete certificate
+machineArch:"x86_64"  cpuArch:"x86_64"  platform:"x86_64"  ncpu:4  memory:7917  powerCycleCounter:-1  minfo:{manufacturer:"QEMU"  productName:"Standard PC (Q35 + ICH9, 2009)"  version:"pc-q35-11.0"  serialNumber:"DOQY1ZLE"  UUID:"Not Settable"  biosVendor:"EDK II"  biosVersion:"unknown"  biosReleaseDate:"02/02/2022"}  assignableAdapters:{type:PhyIoNetEth  name:"ethernet0"  members:"ethernet0"  usedByBaseOS:true  ioAddressList:{macAddress:"da:39:78:d0:19:f2"}  usage:PhyIoUsageMgmtAndApps}  dns:{DNSservers:"127.0.0.1:53"  DNSsearch:"test."}  bootTime:{seconds:1795645472}  swList:{activated:true  partitionLabel:"IMGA"  partitionDevice:"/dev/vda2"  partitionState:"active"  status:INSTALLED  shortVersion:"0.0.0-master-88cc148b-kvm-amd64"  downloadProgress:100  userStatus:UPDATED}  swList:{partitionLabel:"IMGB"  partitionDevice:"/dev/vda3"  partitionState:"unused"  status:INITIAL}  HostName:"022c82a2-e65e-4dc7-ab50-417f01dcb38e"  lastRebootReason:"NORMAL: controller reboot at EVE version 0.0.0-master-88cc148b-kvm-amd64 at 2026-11-25T22:23:51.395949915Z\n"  lastRebootTime:{seconds:1795645431  nanos:387967222}  systemAdapter:{status:{version:1  key:"zedagent"  timePriority:{seconds:1795645337  nanos:448111411}  lastSucceeded:{seconds:1795645504  nanos:603405633}  ports:{ifname:"eth0"  name:"ethernet0"  isMgmt:true  free:true  dhcpType:4  subnet:"172.20.20.0/24"  domainname:"test."  proxy:{}  macAddr:"da:39:78:d0:19:f2"  IPAddrs:"172.20.20.123"  defaultRouters:"172.20.20.1"  dns:{DNSservers:"10.16.16.25"  DNSdomain:"test."}  up:true  err:{description:"No certificate enrollment status found for SCEP profile \"scep-test\""  timestamp:{seconds:1795645504  nanos:532333120}  severity:SEVERITY_ERROR}  usage:PhyIoUsageMgmtAndApps  networkUUID:"2e5f6d6b-fbb8-4318-895c-ee9ba7f8dacf"  mtu:1500  config_source:{origin:NETWORK_CONFIG_ORIGIN_CONTROLLER  submitted_at:{seconds:1795645337  nanos:448111411}}  pnac_status:{enabled:true  err:{description:"No certificate enrollment status found for SCEP profile \"scep-test\""  timestamp:{seconds:1795645504  nanos:532332933}  severity:SEVERITY_ERROR}}}}}  restartCounter:1  HSMStatus:NOTFOUND  dataSecAtRestInfo:{status:DATASEC_AT_REST_DISABLED  info:"TPM is either absent or not in use"  vaultList:{name:"Application Data Store"  status:DATASEC_AT_REST_DISABLED  vaultErr:{description:"TPM is either absent or not in use"  timestamp:{seconds:1795645502  nanos:923438925}  severity:SEVERITY_ERROR}  pcrStatus:PCR_DISABLED  unlock_method:VAULT_UNLOCK_METHOD_NO_TPM}}  sec_info:{sha_root_ca:"6Mp\x83\xab\x86X6\xfb\x1b\x1a\xc6\xed\xed\xc8솂ր\xeau\x00}4yN'\x8dU\x10\xcf"}  configItemStatus:{configItems:{key:"app.allow.vnc"  value:{value:"true"}}  configItems:{key:"debug.default.loglevel"  value:{value:"debug"}}  configItems:{key:"debug.default.remote.loglevel"  value:{value:"debug"}}  configItems:{key:"debug.enable.console"  value:{value:"true"}}  configItems:{key:"debug.enable.ssh"  value:{value:"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC+H1RQUqHjFBJgGpslC73XsLz8Fg5WpNPble9naKyWz1Um8D2bOtQK/yguCImPeBYcH7/73z8dtC6d+dT0UF26+o7Vh6RN/U2X/5nkaZr7oM5QwwZTsD7Nd2Szww9wrRhXvpV0aFgUBDM9BIF1qBQxLNd+Jp8uttrgF3zj/cm7+SXllG54sv8WFBMfTX7J8cQ1jxLyp/Sc6PXK0zBaVzZwhmCCmI6CIzJK6ahMRgXm2vSP6doYibkB3ETSskaCXSHxDiZoaQK2ZY+GqNZkUusbau43MXVPTiJknXqUcmXhQmwyMSltQ3G54jcgn4TDObSQnW7vGdLI7zIEAHnk5D1BmKzQUBh5aRLdhBtb6T3uvVtAqGgnXWKD+d2GjMiy4G31zfIlArvC3G8LxwsDoxQL0XKaFjnEmXIptVXC68zq+laIM8YGDDOCEc6RfczP7lA4p6rv0gQUfTNqy0P3a4ulvIDb4hET1Gkh+Azkuw1do9NIhXPxDBmPdkTnKwJv6XelpdCPCw1QT5o7WdOkUgorf/e03jGDnnn1QBWpSPB9gLB/oDmT/Gzm8tCYaq7ggwYUq1fSMBvnbFaclH1KVcC2Gwn8UPLt9HHa/mGywuISZYl3gy7ztlKyAjHEZH053U7I8OaMvv/CFo9aR4Teeb5848REZYAes+yJIz3lJV1K5Q=="}}  configItems:{key:"newlog.allow.fastupload"  value:{value:"true"}}  configItems:{key:"scep.retry.interval"  value:{value:"300"  error:"***ParseItem: Error in parsing Item. Replacing it with existing Value. key: scep.retry.interval, value: 10, Existing Value: {Key:scep.retry.interval ItemType:1 IntValue:300 StrValue: BoolValue:false TriStateValue:0}. Err: value out of bounds. Parsed value: 10, Max: 3600, Min: 60"}}  configItems:{key:"timer.config.interval"  value:{value:"5"}}  configItems:{key:"timer.deviceinfo.interval"  value:{value:"30"}}  configItems:{key:"timer.download.retry"  value:{value:"60"}}  configItems:{key:"timer.location.app.interval"  value:{value:"20"}}  configItems:{key:"timer.location.cloud.interval"  value:{value:"300"}}  configItems:{key:"timer.metric.interval"  value:{value:"20"}}  configItems:{key:"timer.port.testbetterinterval"  value:{value:"60"}}  configItems:{key:"timer.test.baseimage.update"  value:{value:"60"}}}  rebootConfigCounter:1  last_boot_reason:BOOT_REASON_REBOOT_CMD  hardware_watchdog_present:true  state:ZDEVICE_STATE_ONLINE  storage_info:{pool_name:"/persist"  storage_type:STORAGE_TYPE_INFO_EXT4  storage_state:STORAGE_STATUS_ONLINE  disks:{disk_name:{name:"/dev/vda9"  serial:"unknown"}  status:STORAGE_STATUS_ONLINE  smart_status:"failed"}}  attestation_info:{state:ATTESTATION_STATE_TPM_QUOTE_WAIT}  api_capability:API_CAPABILITY_DEFERRED_QUEUE_METRICS  optional_capabilities:{hw_inventory_support:true}  device_name:"edge-dev"  enrolled_certs:{cert_enrollment_profile_name:"scep-test"  subject:{common_name:"edge-dev"  organization:"lf-edge"  country:"US"}  issuer:{common_name:"SCEP CA"  organization:"Example"  organizational_unit:"Lab"  country:"US"}  san_uri:"urn:Name:edge-dev"  issue_timestamp:{seconds:1795644773}  expiration_timestamp:{seconds:1827181373}  renew_period_percent:50  sha256_fingerprint:"bf8b79e85527a80b0d0018a9447833411a2f3806d01c876d77f3889109377b4f"  status:CERT_STATUS_AVAILABLE}
+```
+
+##### Claude's conclusion
+
+Host load is modest (12% CPU, swap barely used), so this isn't infra overload — the live hostapd log timestamp-matches the hang and is the deterministic bug.
+
+**Root cause:** Live SDN hostapd log shows the identical 802.1X re-auth-stall pattern as the earlier `TestPNACWithoutProxy` failure in this same suite run: the device (`da:39:78:d0:19:f2`) completes a successful EAP-TLS handshake (`CTRL-EVENT-EAP-SUCCESS` → `AP-STA-CONNECTED`, port authorized), then immediately sends an `EAPOL-Logoff`, is unauthorized, and the subsequent re-authentication permanently stalls at `IEEE 802.1X: Scheduled disconnection of da:39:78:d0:19:f2 after EAP-Failure`. `evetest status` confirms the device is stuck in `EVE_DEVICE_STATE_SUSPECT`, reachable only on the pre-auth VLAN (172.20.20.123), with `pnac_status.err` reporting "No certificate enrollment status found for SCEP profile" — the device never regains connectivity to report the newly SCEP-enrolled cert the test waits for. This shares the exact same root cause as the `TestPNACWithoutProxy` failure already investigated earlier in this run. It's also a known, long-recurring issue per the ledger: `TestPNACWithProxy` has failed with this same signature repeatedly since at least 2026-11-03 (and on 2026-11-13, 2026-11-16, 2026-11-17, 2026-11-21, 2026-11-23, 2026-11-24). Broker host load (12% CPU, no significant swap) rules out infra overload as a contributing factor.
+
+### TestKonvertSuite: failure analysis
+
+#### TestFirstBootEVEKAppVolume
+
+##### Failure
+
+```
+Device "edge-dev": expected 0 reboot(s) but observed 1
+```
+
+##### Claude's conclusion
+
+This is a well-documented, recurring pillar bug, confirmed live. The device's `/persist`-recorded reboot-stack and my own log scrape of `gotest.json`/`evetest eve logs` show `zedbox` panicked with `panic: send on closed channel` at `pkg/pillar/cmd/downloader/download.go:473` inside the `objectMetadata` helper goroutine (`receiveChan <- nil`, spawned at line 468), while resolving the image tag `lfedge/evetest-ubuntu-ctr:1.0` for the deferred-volume app during `TestFirstBootEVEKAppVolume`'s "deferred volume must now be created" phase. The watchdog detected the crash and rebooted the device (restart counter 0→1 at 03:05:29), which is exactly the unexpected reboot `checkRebootCounts` flagged — the test's actual functional checkpoints (volume creation, app running) all completed successfully afterward.
+
+This is the identical, already-diagnosed `receiveChan` close-vs-send race in `downloadHandler.create()`/`delete()` (`pkg/pillar/cmd/downloader/handlers.go`): the per-download-object channel is closed in `delete()` with no synchronization against an in-flight `objectMetadata` goroutine still writing to it. Per `live-ledger.md`, this exact panic/stack trace is a known, recurring issue first seen 2026-11-05, recurring 2026-11-08 and 2026-11-20 (all three times hitting `TestManyAppInterfaces`'s concurrent-download burst) — tonight is the first time it's hit `TestFirstBootEVEKAppVolume` instead, triggered by the same race under a different concurrent-download workload (image resolve for the deferred-volume app), not a new bug. This does not share a root cause with any other failure already in tonight's run.
+#### TestKvmToKZFSVaultMigration
+
+##### Failure
+
+```
+Device "edge-dev": expected 0 reboot(s) but observed 1
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+The panic stack captured in this run (`/persist/newlog/panicStacks/pillar-panic-stack.1795662052`, written ~03:00) shows the exact same signature as the `TestFirstBootEVEKAppVolume` panic already diagnosed in `live-investigation.md` for this run:
+
+```
+panic: send on closed channel
+github.com/lf-edge/eve/pkg/pillar/cmd/downloader.objectMetadata.func1()
+        /pillar/cmd/downloader/download.go:473
+```
+
+— the known `downloadHandler.create()`/`delete()` race where a per-download-object channel is closed while an in-flight `objectMetadata` goroutine is still writing to it, crashing `zedbox` and triggering a watchdog reboot. The device's current uptime (6 min at the time I checked, i.e. boot ≈03:06) and SSH/`evetest status` both show `edge-dev` healthy and `EVE_DEVICE_STATE_ONLINE` right now — this is the *same* reboot event from that earlier panic, not a fresh crash during this test. `TestKvmToKZFSVaultMigration`'s own `Setup()` immediately skipped (`CAPABILITY_EDIT_DEVICE_DISK` unsupported, as expected for this device/provider combo) in well under a second, so there was no time for a new independent reboot to occur during this subtest's own run — `Close()`'s `checkRebootCounts` is simply re-surfacing the still-unconsumed reboot delta left over from the prior subtest's crash/watchdog-reboot cycle, the same "reboot count carries into the next subtest" propagation pattern already documented repeatedly in `live-ledger.md` for `TestKonvertSuite` cascades (just via a different root incident this time).
+
+This is not an independent new bug: it shares the exact root cause with the immediately-preceding `TestFirstBootEVEKAppVolume` failure in this same run (recorded in `live-investigation.md`), which itself is the known, recurring `downloader` channel-race panic first seen 2026-11-05 and recurring 2026-11-08 and 2026-11-20 (previously against `TestManyAppInterfaces`'s concurrent-download burst). Tonight it hit `TestFirstBootEVEKAppVolume` first, and this `TestKvmToKZFSVaultMigration` failure is simply that same single reboot bleeding into the next subtest's reboot-count baseline — not a new or separate regression.
+#### TestKvmToKZFSVaultPowerCutMidSwap
+
+##### Failure
+
+```
+Device "edge-dev": expected 0 reboot(s) but observed 1
+```
+
+##### Claude's conclusion
+
+This is sufficient confirmation — no new panic since the earlier one, and only a single reboot has occurred (uptime ~13 min, matching the 03:05:29 boot already tied to the earlier panic).
+
+**Root cause:** This is not an independent failure. `edge-dev` is healthy and `ONLINE` right now (`0.0.0-master-88cc148b`, `HV_KUBEVIRT`), with uptime ~13 minutes (boot ≈03:05:36) and only the one pre-existing panic stack `/persist/newlog/panicStacks/pillar-panic-stack.1795662052` (written 03:00, no newer one) — the same `zedbox` "send on closed channel" downloader-race panic already diagnosed for `TestFirstBootEVEKAppVolume` in this run. `gotest.json` shows `Setup()` skipped in well under a second (`CAPABILITY_EDIT_DEVICE_DISK` unsupported), leaving no window for a fresh reboot during this subtest, so `Close()`'s `checkRebootCounts` is simply re-surfacing the same still-uncounted reboot delta that already bled into the immediately-preceding `TestKvmToKZFSVaultMigration` failure (same message, same investigation file). This shares its root cause with both earlier failures tonight (`TestFirstBootEVEKAppVolume` → `TestKvmToKZFSVaultMigration` → this one), all stemming from the single known, recurring `downloadHandler.create()`/`delete()` channel-race panic (first seen 2026-11-05, recurring 2026-11-08 and 2026-11-20) — not a new bug. Separately, this exact test name also failed in the 2026-11-06 ledger entry, but that was a different message ("expected 4 reboot(s) but observed 3") from an unrelated SDN-tunnel-stuck-device cascade, so that's not the same incident as tonight's.
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.001s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+Host load is light (6% CPU, no meaningful swap pressure, plenty of memory free), ruling out infra overload. This is the same known designated-node/backup-DNID failover deadlock already documented in the ledger for this exact test.
+
+**Root cause:** Live `zedmanager`/`zedkube` logs on `edge-dev2` show the exact mechanism: `edge-dev1` (the app's designated node, `getKubeNodeInfo` status `3`) was put `EVE_DEVICE_STATE_SUSPECT` by the test at ~23:20, and `backupDNID` logs repeatedly confirm `node 47001678-...-5664fe6902d0 unhealthy for 23m56s, under threshold 2h0m0s` — the backup-DNID failover gate requires ~2 hours of node unhealthiness before promoting another node as designated, far beyond the test's 900s wait window. Consequently `getKubeAppActivateStatus` keeps returning `not designated, ... onTheDevice false, statusRunning false` and `publishAppInstanceStatus(...)` stays `suppressed: IsDNidNode=false ScheduledOnThisNode=false AppKubeStatus=NotInCluster` in an unbroken ~10s loop through the current moment. Live `kubectl get vmirs,vmi,vm,pod -A` on `edge-dev2` confirms zero VMIRS/VMI/VM anywhere in the cluster (only infra pods), matching the test's `found []`.
+
+This is the identical mechanism already documented in `live-ledger.md` for `TestVMAppPurgeDuringFailover` — the designated-node/backup-DNID activation-gate deadlock, long-known and recurring since first seen 2026-10-29 (introduced by commit `98acf1411`), reproducing repeatedly in nightly runs including explicitly earlier tonight in this same CI run (#51) per the ledger's own entry. This specific occurrence (test started 23:08:02, timed out 23:43:19) is in its own separate artifact-collection instance rather than the exact same process as the ledger's previously-logged attempts, but it is the same unresolved bug, not a new regression. Broker host load (6% CPU, 69% of host memory assigned to VMs, no swap pressure) rules out infra overload as a contributing factor.
+#### TestClusterPVCRedownload
+
+##### Failure
+
+```
+
+vm1's content tree is in state LOADED, not REMOTELOADED -- it was re-downloaded despite the PVC already being complete
+Expected
+    <types.SwState>: 108
+to equal
+    <types.SwState>: 125
+```
+
+##### Claude's conclusion
+
+This confirms the exact same race documented in the prior investigation from earlier tonight in this run: at 00:18:54, `handleContentTreeCreate` recreates the ContentTreeStatus for vm1 (contentID `be8cf9ab-...`) after volumemgr restarts post-reboot, and `contentTreeSatisfiedByPVCs` logs "no local volumes reference this content tree" because the matching VolumeConfig/PVC hadn't been republished yet. That forces `doUpdateContentTree` down the ordinary non-PVC path — `INITIAL → VERIFIED → LOADING` at 00:18:58.349, then "image ... exists in CAS, Content Tree load is completely LOADED" at 00:18:58.558 — landing on `LOADED` (108) instead of `REMOTELOADED` (125), exactly matching the live `/run/volumemgr/ContentTreeStatus/be8cf9ab-....json` (`"State":108`) still on disk and the failing assertion.
+
+This is the identical `contentTreeSatisfiedByPVCs`/`doUpdateContentTree` PVC-adoption race already investigated earlier tonight in this very run (see `live-investigation.md`), and per `live-ledger.md` it's a long-standing, well-known recurring issue specific to `TestClusterPVCRedownload`/`volumemgr`, first seen 2026-10-30 (run #2) and reproducing in the large majority of nightly runs since — this is simply the next instance of that unbroken streak, not a new bug. It does not share a root cause with the separate `TestVMAppPurgeDuringFailover` designated-node/backup-DNID deadlock also recorded tonight.
+
+### TestNodeClusterSuite: failure analysis
+
+#### TestMgmtProxy
+
+##### Failure
+
+```
+Device "edge-dev2" failed to confirm the latest config (version 1): timed out waiting for LastProcessedConfig >= 2026-11-25 23:27:51.102467102 +0000 UTC
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live evidence from Adam's request log for `edge-dev2` (UUID `91b00c9e-...`) shows a complete, ~3-minute gap in *all* controller traffic (config/metrics/info/attest) — its last request before the gap is the `/config` POST at `23:27:52.835Z` (matching the harness's "fetched config v1" checkpoint), and its next request of any kind isn't until `23:31:07.274Z`, well past the harness's 2-minute `LastProcessedConfig` wait window (which expired at `23:29:52`). Meanwhile `edge-dev1` and `edge-dev3` — same test, same host, same onboarding wave — confirmed config v1 normally by `23:28:13`/`23:28:18`. Live `zedagent` logs confirm the device itself only reached `DeviceState:online`/`AttestState:StateComplete` at `23:33:30`, and its `/config` URL metrics show `sentMsgCount:4, rejectedErrCount:4` (every subsequent config-fetch attempt rejected), while the mgmt interface (`eth0`, `172.20.20.166`) kept a stable IP throughout — ruling out a straightforward DPC/IP flip on the mgmt link as the trigger. The broker host itself is only moderately loaded (load 3.2–4.8/32 CPUs, 43 GiB free, 69% of RAM committed to VMs), so this looks device-specific rather than host-wide contention.
+
+This is the same general failure family already recorded repeatedly in `live-ledger.md` — a controller-request/metrics-POST stall around onboarding/DPC convergence causing `LastProcessedConfig` confirmation to miss the harness's wait window, seen under this exact error signature on `TestMgmtProxy` (2026-11-18) and other tests (2026-11-07, -09, -12) — but tonight's variant is notably more severe (a full ~3-minute total silence vs. the usual single ~120s HTTP-client-timeout stall), so while it's a recurring class of issue, this specific long-silence instance isn't confirmed to share the exact DPC-flip/stale-route mechanism documented for those prior occurrences. No PR diff was provided for this investigation, so no relatedness verdict is given.
+
+### TestUpgradeSuite: failure analysis
+
+#### TestEVEUpgradeKVMtoKVMWithOCIDatastore
+
+##### Failure
+
+```
+Timed out waiting for device "edge-dev" to upgrade to 0.0.0-master-88cc148b-kvm-amd64
+```
+
+##### Claude's conclusion
+
+No prior match for this exact hang pattern. I have sufficient evidence now.
+
+###### Root cause
+
+The upgrade config (base-os version `0.0.0-master-88cc148b-kvm-amd64`, content-tree `d7989a3f-...`) downloaded and verified cleanly — `ContentTreeStatus` shows `State:108 (LOADED)`, `Progress:100`, no error. `baseosmgr` then kicked off the async install worker at **23:26:40.538**: `installWorker to install ... to IMGB` → `WriteToPartition IMGB, /dev/vda3` → `installDownloadedObjects(...) done false` → `Waiting for image to be mounted`. That is the **last log line baseosmgr ever produced** — no `installWorker DONE install ... err ...` completion message ever arrived, for the full ~20 minutes until the harness's timeout fired at 23:46:04 (and it's still missing now, live). The device is otherwise healthy: `zedbox` (pid 2878) never crashed or restarted, its watchdog touch file is still being kicked, all 15 of its threads are idle (`futex_wait_queue`/`epoll_wait`, no CPU burn, no disk-I/O thread), there are zero open TCP connections to the OCI registry, and dmesg shows no hung-task warnings or disk errors on `vda3`. This points to a genuine in-process hang in the `WriteToPartition`/CAS image-pull-and-write path inside baseosmgr's install worker goroutine — the worker started the job but never returned a result, so `processInstallWorkResult` was never invoked and the state machine froze at LOADING forever.
+
+This does not match any prior ledger entry: a 2026-11-09-era entry shows the same code path completing successfully in ~1s (`installWorker DONE ... err <nil>`) and a separate failure mode where the write completes but produces a corrupt/unmountable squashfs image — both are different from tonight's case, where the write step itself never finishes or reports back at all. I found no other occurrence of "`Waiting for image to be mounted`" persisting indefinitely, nor of this exact test (`TestEVEUpgradeKVMtoKVMWithOCIDatastore`) failing this way, anywhere in `live-ledger.md`, so this looks like a **new, not-previously-recorded failure signature** rather than a known recurring issue. Broker host load (11% CPU, load 4.65/32 CPUs, 56% RAM committed, no swap pressure) is unremarkable and doesn't point to infra overload as the cause. The only other failure in tonight's run (`TestVaultKeyModeRecoveryOnExt4`'s Vector "keep" buffer stall) is an unrelated mechanism in a different suite, so there's no shared root cause between them.
+
 ## [2026-11-25 -- 0.0.0-master-3f582576 (run #51)](https://github.com/lf-edge/eve/actions/runs/45496622546)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/51/)
