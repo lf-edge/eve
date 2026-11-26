@@ -1,0 +1,302 @@
+diff --git a/arch/x86/configs/eve-core_defconfig b/arch/x86/configs/eve-core_defconfig
+index 2572ac1a549a..ddb8f5d06e3a 100644
+--- a/arch/x86/configs/eve-core_defconfig
++++ b/arch/x86/configs/eve-core_defconfig
+@@ -941,6 +941,18 @@ CONFIG_HARDENED_USERCOPY=y
+ CONFIG_SECURITY_APPARMOR=y
+ CONFIG_SECURITY_YAMA=y
+ CONFIG_LSM="lockdown,yama,loadpin,safesetid,integrity,apparmor"
++CONFIG_INTEGRITY=y
++# CONFIG_INTEGRITY_SIGNATURE is not set
++CONFIG_IMA=y
++CONFIG_IMA_KEXEC=y
++CONFIG_IMA_MEASURE_PCR_IDX=10
++CONFIG_IMA_NG_TEMPLATE=y
++CONFIG_IMA_DEFAULT_HASH_SHA256=y
++CONFIG_IMA_READ_POLICY=y
++# CONFIG_IMA_APPRAISE is not set
++# CONFIG_IMA_ARCH_POLICY is not set
++# CONFIG_EVM is not set
++CONFIG_CRYPTO_SHA256=y
+ CONFIG_CRYPTO_USER=y
+ CONFIG_CRYPTO_ANUBIS=y
+ CONFIG_CRYPTO_BLOWFISH=y
+diff --git a/arch/x86/configs/eve-hwe_defconfig b/arch/x86/configs/eve-hwe_defconfig
+index 8951204a9be8..6e0a15abda2b 100644
+--- a/arch/x86/configs/eve-hwe_defconfig
++++ b/arch/x86/configs/eve-hwe_defconfig
+@@ -938,6 +938,18 @@ CONFIG_HARDENED_USERCOPY=y
+ CONFIG_SECURITY_APPARMOR=y
+ CONFIG_SECURITY_YAMA=y
+ CONFIG_LSM="lockdown,yama,loadpin,safesetid,integrity,apparmor"
++CONFIG_INTEGRITY=y
++# CONFIG_INTEGRITY_SIGNATURE is not set
++CONFIG_IMA=y
++CONFIG_IMA_KEXEC=y
++CONFIG_IMA_MEASURE_PCR_IDX=10
++CONFIG_IMA_NG_TEMPLATE=y
++CONFIG_IMA_DEFAULT_HASH_SHA256=y
++CONFIG_IMA_READ_POLICY=y
++# CONFIG_IMA_APPRAISE is not set
++# CONFIG_IMA_ARCH_POLICY is not set
++# CONFIG_EVM is not set
++CONFIG_CRYPTO_SHA256=y
+ CONFIG_CRYPTO_USER=y
+ CONFIG_CRYPTO_ANUBIS=y
+ CONFIG_CRYPTO_BLOWFISH=y
+diff --git a/security/integrity/ima/ima.h b/security/integrity/ima/ima.h
+index 56bf2f55d938..4b72e6e314f7 100644
+--- a/security/integrity/ima/ima.h
++++ b/security/integrity/ima/ima.h
+@@ -45,6 +45,7 @@ enum tpm_pcrs { TPM_PCR0 = 0, TPM_PCR8 = 8, TPM_PCR10 = 10 };
+ 
+ /* current content of the policy */
+ extern int ima_policy_flag;
++extern bool ima_eve_code_policy;
+ 
+ /* bitset of digests algorithms allowed in the setxattr hook */
+ extern atomic_t ima_setxattr_allowed_hash_algorithms;
+@@ -183,6 +184,7 @@ struct ima_kexec_hdr {
+ #define IMA_DIGSIG		3
+ #define IMA_MAY_EMIT_TOMTOU	4
+ #define IMA_EMITTED_OPENWRITERS	5
++#define IMA_CHANGE_DATA		6
+ 
+ /* IMA integrity metadata associated with an inode */
+ struct ima_iint_cache {
+diff --git a/security/integrity/ima/ima_fs.c b/security/integrity/ima/ima_fs.c
+index 25970867f594..f2b5d1d7bb20 100644
+--- a/security/integrity/ima/ima_fs.c
++++ b/security/integrity/ima/ima_fs.c
+@@ -437,6 +437,10 @@ static int __init create_securityfs_measurement_lists(void)
+  */
+ static int ima_open_policy(struct inode *inode, struct file *filp)
+ {
++	/* EVE keeps its early measurement policy immutable without signatures. */
++	if (ima_eve_code_policy && (filp->f_mode & FMODE_WRITE))
++		return -EPERM;
++
+ 	if (!(filp->f_flags & O_WRONLY)) {
+ #ifndef	CONFIG_IMA_READ_POLICY
+ 		return -EACCES;
+diff --git a/security/integrity/ima/ima_main.c b/security/integrity/ima/ima_main.c
+index 2f3f267e7216..7e7c6815bc83 100644
+--- a/security/integrity/ima/ima_main.c
++++ b/security/integrity/ima/ima_main.c
+@@ -293,6 +293,7 @@ static int process_measurement(struct file *file, const struct cred *cred,
+ 	 * (Limited to privileged mounted filesystems.)
+ 	 */
+ 	if (test_and_clear_bit(IMA_CHANGE_XATTR, &iint->atomic_flags) ||
++	    test_and_clear_bit(IMA_CHANGE_DATA, &iint->atomic_flags) ||
+ 	    ((inode->i_sb->s_iflags & SB_I_IMA_UNVERIFIABLE_SIGNATURE) &&
+ 	     !(inode->i_sb->s_iflags & SB_I_UNTRUSTED_MOUNTER) &&
+ 	     !(action & IMA_FAIL_UNVERIFIABLE_SIGS))) {
+@@ -464,6 +465,19 @@ static int ima_file_mmap(struct file *file, unsigned long reqprot,
+ 
+ 	security_current_getsecid_subj(&secid);
+ 
++	if (ima_eve_code_policy && (prot & PROT_EXEC) &&
++	    ((prot & PROT_WRITE) || mapping_writably_mapped(file->f_mapping))) {
++		char filename[NAME_MAX];
++		char *pathbuf = NULL;
++		const char *pathname;
++
++		pathname = ima_d_path(&file->f_path, &pathbuf, filename);
++		ima_add_violation(file, pathname, NULL, "invalid_pcr",
++				  "file_mmap_writable_exec");
++		if (pathbuf)
++			__putname(pathbuf);
++	}
++
+ 	if (reqprot & PROT_EXEC) {
+ 		ret = process_measurement(file, current_cred(), secid, NULL,
+ 					  0, MAY_EXEC, MMAP_CHECK_REQPROT);
+@@ -471,9 +485,10 @@ static int ima_file_mmap(struct file *file, unsigned long reqprot,
+ 			return ret;
+ 	}
+ 
+-	if (prot & PROT_EXEC)
++	if ((prot & PROT_EXEC) || ima_eve_code_policy)
+ 		return process_measurement(file, current_cred(), secid, NULL,
+-					   0, MAY_EXEC, MMAP_CHECK);
++					   0, prot & PROT_EXEC ? MAY_EXEC : 0,
++					   MMAP_CHECK);
+ 
+ 	return 0;
+ }
+@@ -506,6 +521,22 @@ static int ima_file_mprotect(struct vm_area_struct *vma, unsigned long reqprot,
+ 	u32 secid;
+ 	int pcr;
+ 
++	/*
++	 * Hashing here would invert the mmap/inode lock order.  In measurement-
++	 * only mode, report the executable transition as unverifiable instead
++	 * of allowing it to disappear from attestation or denying execution.
++	 */
++	if (ima_eve_code_policy && vma->vm_file && (prot & PROT_EXEC) &&
++	    !(vma->vm_flags & VM_EXEC)) {
++		file = vma->vm_file;
++		pathname = ima_d_path(&file->f_path, &pathbuf, filename);
++		ima_add_violation(file, pathname, NULL, "invalid_pcr",
++				  "file_mprotect_exec");
++		if (pathbuf)
++			__putname(pathbuf);
++		pathbuf = NULL;
++	}
++
+ 	/* Is mprotect making an mmap'ed file executable? */
+ 	if (!(ima_policy_flag & IMA_APPRAISE) || !vma->vm_file ||
+ 	    !(prot & PROT_EXEC) || (vma->vm_flags & VM_EXEC))
+@@ -587,6 +618,48 @@ static int ima_file_check(struct file *file, int mask)
+ 					   MAY_APPEND), FILE_CHECK);
+ }
+ 
++/*
++ * memfd and inherited descriptors can be read without file_post_open.  Writes
++ * through a still-open descriptor must also invalidate its cached content.
++ * integrity_kernel_read() uses __kernel_read(), bypassing this hook, so the
++ * hash collection does not recursively measure its own reads.
++ */
++static int ima_eve_file_permission(struct file *file, int mask)
++{
++	struct inode *inode = file_inode(file);
++	struct ima_iint_cache *iint;
++
++	if (!ima_eve_code_policy || !S_ISREG(inode->i_mode))
++		return 0;
++
++	if ((mask & MAY_WRITE) ||
++	    ((mask & MAY_READ) && ((file->f_mode & FMODE_WRITE) ||
++	     inode_is_open_for_write(inode) ||
++	     mapping_writably_mapped(file->f_mapping)))) {
++		iint = ima_iint_find(inode);
++		if (iint)
++			set_bit(IMA_CHANGE_DATA, &iint->atomic_flags);
++	}
++	if (mask & MAY_READ)
++		return ima_file_check(file, mask);
++	return 0;
++}
++
++/* Attribute hooks may run with the inode locked: invalidate atomically. */
++static void ima_eve_inode_post_setattr(struct mnt_idmap *idmap,
++				      struct dentry *dentry, int ia_valid)
++{
++	struct ima_iint_cache *iint;
++	struct inode *inode = d_inode(dentry);
++
++	if (!ima_eve_code_policy || !(ia_valid & ATTR_SIZE) ||
++	    !S_ISREG(inode->i_mode))
++		return;
++	iint = ima_iint_find(inode);
++	if (iint)
++		set_bit(IMA_CHANGE_DATA, &iint->atomic_flags);
++}
++
+ static int __ima_inode_hash(struct inode *inode, struct file *file, char *buf,
+ 			    size_t buf_size)
+ {
+@@ -1191,6 +1264,8 @@ static int __init init_ima(void)
+ static struct security_hook_list ima_hooks[] __ro_after_init = {
+ 	LSM_HOOK_INIT(bprm_check_security, ima_bprm_check),
+ 	LSM_HOOK_INIT(file_post_open, ima_file_check),
++	LSM_HOOK_INIT(file_permission, ima_eve_file_permission),
++	LSM_HOOK_INIT(inode_post_setattr, ima_eve_inode_post_setattr),
+ 	LSM_HOOK_INIT(inode_post_create_tmpfile, ima_post_create_tmpfile),
+ 	LSM_HOOK_INIT(file_release, ima_file_free),
+ 	LSM_HOOK_INIT(mmap_file, ima_file_mmap),
+diff --git a/security/integrity/ima/ima_policy.c b/security/integrity/ima/ima_policy.c
+index 11b3ea1099ba..ffee2a786c52 100644
+--- a/security/integrity/ima/ima_policy.c
++++ b/security/integrity/ima/ima_policy.c
+@@ -52,6 +52,7 @@
+ 	(a) >= (sizeof_field(struct ima_iint_cache, measured_pcrs) * 8))
+ 
+ int ima_policy_flag;
++bool ima_eve_code_policy __ro_after_init;
+ static int temp_ima_appraise;
+ static int build_ima_appraise __ro_after_init;
+ 
+@@ -62,7 +63,7 @@ enum lsm_rule_types { LSM_OBJ_USER, LSM_OBJ_ROLE, LSM_OBJ_TYPE,
+ 	LSM_SUBJ_USER, LSM_SUBJ_ROLE, LSM_SUBJ_TYPE
+ };
+ 
+-enum policy_types { ORIGINAL_TCB = 1, DEFAULT_TCB };
++enum policy_types { ORIGINAL_TCB = 1, DEFAULT_TCB, EVE_CODE };
+ 
+ enum policy_rule_list { IMA_DEFAULT_POLICY = 1, IMA_CUSTOM_POLICY };
+ 
+@@ -190,6 +191,31 @@ static struct ima_rule_entry default_measurement_rules[] __ro_after_init = {
+ 	{.action = MEASURE, .func = POLICY_CHECK, .flags = IMA_FUNC},
+ };
+ 
++/*
++ * EVE code coverage starts before filesystem exclusions.  Interpreters do not
++ * identify scripts to the kernel, so ordinary file reads must cover every UID.
++ * Virtual kernel interfaces are excluded only from FILE_CHECK, never exec or
++ * mmap.  Stored files on tmpfs (including memfd) remain in the read policy.
++ */
++static struct ima_rule_entry eve_code_rules[] __ro_after_init = {
++	{.action = MEASURE, .func = BPRM_CHECK, .flags = IMA_FUNC},
++	{.action = MEASURE, .func = MMAP_CHECK, .flags = IMA_FUNC},
++	{.action = MEASURE, .func = MMAP_CHECK_REQPROT, .flags = IMA_FUNC},
++	{.action = MEASURE, .func = MODULE_CHECK, .flags = IMA_FUNC},
++	{.action = MEASURE, .func = FIRMWARE_CHECK, .flags = IMA_FUNC},
++	{.action = MEASURE, .func = KEXEC_KERNEL_CHECK, .flags = IMA_FUNC},
++	{.action = MEASURE, .func = KEXEC_INITRAMFS_CHECK, .flags = IMA_FUNC},
++	{.action = MEASURE, .func = POLICY_CHECK, .flags = IMA_FUNC},
++};
++
++static struct ima_rule_entry eve_read_exclusions[ARRAY_SIZE(dont_measure_rules)]
++	__ro_after_init;
++
++static struct ima_rule_entry eve_read_rule[] __ro_after_init = {
++	{.action = MEASURE, .func = FILE_CHECK, .mask = MAY_READ,
++	 .flags = IMA_FUNC | IMA_INMASK},
++};
++
+ static struct ima_rule_entry default_appraise_rules[] __ro_after_init = {
+ 	{.action = DONT_APPRAISE, .fsmagic = PROC_SUPER_MAGIC, .flags = IMA_FSMAGIC},
+ 	{.action = DONT_APPRAISE, .fsmagic = SYSFS_MAGIC, .flags = IMA_FSMAGIC},
+@@ -286,6 +312,8 @@ static int __init policy_setup(char *str)
+ 			continue;
+ 		if ((strcmp(p, "tcb") == 0) && !ima_policy)
+ 			ima_policy = DEFAULT_TCB;
++		else if ((strcmp(p, "eve_code") == 0) && !ima_policy)
++			ima_policy = EVE_CODE;
+ 		else if (strcmp(p, "appraise_tcb") == 0)
+ 			ima_use_appraise_tcb = true;
+ 		else if (strcmp(p, "secure_boot") == 0)
+@@ -942,12 +970,31 @@ static int __init ima_init_arch_policy(void)
+ void __init ima_init_policy(void)
+ {
+ 	int build_appraise_entries, arch_entries;
++	int i;
+ 
+ 	/* if !ima_policy, we load NO default rules */
+-	if (ima_policy)
++	if (ima_policy && ima_policy != EVE_CODE)
+ 		add_rules(dont_measure_rules, ARRAY_SIZE(dont_measure_rules),
+ 			  IMA_DEFAULT_POLICY);
+ 
++	if (ima_policy == EVE_CODE) {
++		ima_eve_code_policy = true;
++		add_rules(eve_code_rules, ARRAY_SIZE(eve_code_rules),
++			  IMA_DEFAULT_POLICY);
++		for (i = 0; i < ARRAY_SIZE(dont_measure_rules); i++) {
++			struct ima_rule_entry *rule = &eve_read_exclusions[i];
++
++			*rule = dont_measure_rules[i];
++			if (rule->fsmagic == TMPFS_MAGIC)
++				continue;
++			rule->func = FILE_CHECK;
++			rule->flags |= IMA_FUNC;
++			add_rules(rule, 1, IMA_DEFAULT_POLICY);
++		}
++		add_rules(eve_read_rule, ARRAY_SIZE(eve_read_rule),
++			  IMA_DEFAULT_POLICY);
++	}
++
+ 	switch (ima_policy) {
+ 	case ORIGINAL_TCB:
+ 		add_rules(original_measurement_rules,

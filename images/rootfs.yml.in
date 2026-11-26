@@ -1,6 +1,7 @@
 kernel:
   image: KERNEL_TAG
-  cmdline: "rootdelay=3"
+  # Enable runtime measurements without IMA appraisal or signature enforcement.
+  cmdline: "rootdelay=3 IMA_CMDLINE"
 init:
   - linuxkit/init:24f9f554ed98f452fd940f5cff7f2ae1887e9974
   - RUNC_TAG                   # runc v1.3.3 built from source, stripped
