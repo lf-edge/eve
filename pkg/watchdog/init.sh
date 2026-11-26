@@ -1,6 +1,8 @@
 #!/bin/sh
 
 USE_HW_WATCHDOG=1
+# Hardware watchdog timeout in seconds, watchdog(8)'s own default
+HW_WATCHDOG_TIMEOUT=60
 DEFAULT_WATCHDOG_CHANGE_TIME=300
 WATCHDOG_CHANGE_TIME=$(</proc/cmdline grep -o '\bchange=[^ ]*' | cut -d = -f 2)
 
@@ -73,6 +75,25 @@ record_hw_watchdog_bootstatus() {
     log "Recorded hardware watchdog boot status: $(tr '\n' ' ' < /persist/hw_watchdog_bootstatus)"
 }
 
+# hw_watchdog_timeout prints the timeout (in seconds) watchdog(8) must request
+# from /dev/watchdog: HW_WATCHDOG_TIMEOUT, capped to the maximum the device
+# supports (e.g. the Qualcomm APSS watchdog stops at 32s). Without it
+# watchdog(8) asks for its 60s default, which such drivers reject with EINVAL.
+# /dev/watchdog is the legacy node of watchdog0. The maximum is only exposed
+# with CONFIG_WATCHDOG_SYSFS, and 0 means the driver has no limit. Prints
+# nothing when the maximum is unknown.
+hw_watchdog_timeout() {
+    max=$(cat /sys/class/watchdog/watchdog0/max_timeout 2>/dev/null)
+    case "$max" in
+        ''|*[!0-9]*) return ;;
+    esac
+    if [ "$max" -eq 0 ] || [ "$max" -gt "$HW_WATCHDOG_TIMEOUT" ]; then
+        echo "$HW_WATCHDOG_TIMEOUT"
+    else
+        echo "$max"
+    fi
+}
+
 # Lets get this party started
 
 if [ -z "${WATCHDOG_CHANGE_TIME}" ]; then
@@ -98,6 +119,12 @@ adjust_parent_oom_score
 # XXX should we enable realtime in the kernel?
 if [ $USE_HW_WATCHDOG = 1 ]; then
    echo 'watchdog-device = /dev/watchdog' >> /etc/watchdog.conf.seed
+   HW_TIMEOUT=$(hw_watchdog_timeout)
+   if [ -n "$HW_TIMEOUT" ]; then
+      [ "$HW_TIMEOUT" -lt "$HW_WATCHDOG_TIMEOUT" ] && \
+         log "Hardware watchdog cannot do ${HW_WATCHDOG_TIMEOUT}s, using ${HW_TIMEOUT}s"
+      echo "watchdog-timeout = $HW_TIMEOUT" >> /etc/watchdog.conf.seed
+   fi
 fi
 
 # Create configuration end-points
