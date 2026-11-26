@@ -1,0 +1,169 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Fri, 20 Nov 2026 15:39:07 +0000
+Subject: [PATCH] edid: take the product code and serial number as numbers
+
+The EDID ID names a monitor by manufacturer, product code and 32-bit
+serial number. qemu_edid_generate() took the manufacturer, always wrote
+product code 0x1234, and made the serial number from the serial number
+text with atoi(): text that is not a number gave 0, and a number too
+large for an int gave undefined behaviour.
+
+Take the product code and the serial number as numbers, so that a
+display device can give the guest a monitor's own. The serial number
+text stays text, as a monitor has the two separately, and is renamed
+serial_string to tell the two apart. qemu-edid, the only user that sets
+it, takes the number from it itself when -s is a decimal number that
+fits in 32 bits; "-1" or "12abc" now give 0 there.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ hw/display/edid-generate.c |  9 ++++-----
+ include/hw/display/edid.h  |  4 +++-
+ qemu-edid.c                | 11 +++++++++--
+ tests/unit/test-edid.c     | 27 +++++++++++++++++++++++++--
+ 4 files changed, 41 insertions(+), 10 deletions(-)
+
+diff --git a/hw/display/edid-generate.c b/hw/display/edid-generate.c
+index 5f68147b67..237af72cc6 100644
+--- a/hw/display/edid-generate.c
++++ b/hw/display/edid-generate.c
+@@ -449,11 +449,10 @@ void qemu_edid_generate(uint8_t *edid, size_t size,
+     uint16_t vendor_id = ((((info->vendor[0] - '@') & 0x1f) << 10) |
+                           (((info->vendor[1] - '@') & 0x1f) <<  5) |
+                           (((info->vendor[2] - '@') & 0x1f) <<  0));
+-    uint16_t model_nr = 0x1234;
+-    uint32_t serial_nr = info->serial ? atoi(info->serial) : 0;
++    uint16_t model_nr = info->product ? info->product : 0x1234;
+     stw_be_p(edid +  8, vendor_id);
+     stw_le_p(edid + 10, model_nr);
+-    stl_le_p(edid + 12, serial_nr);
++    stl_le_p(edid + 12, info->serial_number);
+ 
+     /* manufacture week and year */
+     edid[16] = 42;
+@@ -519,8 +518,8 @@ void qemu_edid_generate(uint8_t *edid, size_t size,
+         desc = edid_desc_next(edid, dta, desc);
+     }
+ 
+-    if (desc && info->serial) {
+-        edid_desc_text(desc, 0xff, info->serial);
++    if (desc && info->serial_string) {
++        edid_desc_text(desc, 0xff, info->serial_string);
+         desc = edid_desc_next(edid, dta, desc);
+     }
+ 
+diff --git a/include/hw/display/edid.h b/include/hw/display/edid.h
+index 71b8575139..0e99b89c9b 100644
+--- a/include/hw/display/edid.h
++++ b/include/hw/display/edid.h
+@@ -10,7 +10,9 @@
+ typedef struct qemu_edid_info {
+     const char *vendor; /* http://www.uefi.org/pnp_id_list */
+     const char *name;
+-    const char *serial;
++    const char *serial_string;  /* the serial number as text */
++    uint16_t    product;        /* the product code; 0 for QEMU's own */
++    uint32_t    serial_number;  /* the 32-bit serial number; 0 for none */
+     uint16_t    width_mm;
+     uint16_t    height_mm;
+     uint32_t    prefx;
+diff --git a/qemu-edid.c b/qemu-edid.c
+index 92e1a660a7..f28b7aaa34 100644
+--- a/qemu-edid.c
++++ b/qemu-edid.c
+@@ -29,7 +29,8 @@ static void usage(FILE *out)
+             "    -o <file>      set output file (stdout by default)\n"
+             "    -v <vendor>    set monitor vendor (three letters)\n"
+             "    -n <name>      set monitor name\n"
+-            "    -s <serial>    set monitor serial\n"
++            "    -s <serial>    set monitor serial, and the ID's if a decimal\n"
++            "                   number of 32 bits\n"
+             "    -d <dpi>       set display resolution\n"
+             "    -x <prefx>     set preferred width\n"
+             "    -y <prefy>     set preferred height\n"
+@@ -44,6 +45,7 @@ int main(int argc, char *argv[])
+     uint8_t blob[512];
+     size_t size;
+     uint32_t dpi = 100;
++    unsigned int serial_number;
+     int rc;
+ 
+     for (;;) {
+@@ -104,7 +106,12 @@ int main(int argc, char *argv[])
+             info.name = optarg;
+             break;
+         case 's':
+-            info.serial = optarg;
++            info.serial_string = optarg;
++            /* A serial number that is a decimal number goes in the ID too. */
++            if (g_ascii_isdigit(optarg[0]) &&
++                qemu_strtoui(optarg, NULL, 10, &serial_number) == 0) {
++                info.serial_number = serial_number;
++            }
+             break;
+         case 'h':
+             usage(stdout);
+diff --git a/tests/unit/test-edid.c b/tests/unit/test-edid.c
+index 0c4df412ec..182fb2e673 100644
+--- a/tests/unit/test-edid.c
++++ b/tests/unit/test-edid.c
+@@ -5,6 +5,7 @@
+  */
+ 
+ #include "qemu/osdep.h"
++#include "qemu/bswap.h"
+ #include "hw/display/edid.h"
+ 
+ #define EDID_SIZE 256
+@@ -132,11 +133,11 @@ static void test_edid_placement(void)
+     uint8_t edid[384], f7[18];
+     const uint8_t *ext_f7;
+     qemu_edid_info fhd_serial = {
+-        .name = "Monitor", .serial = "SN1", .prefx = 1920, .prefy = 1080,
++        .name = "Monitor", .serial_string = "SN1", .prefx = 1920, .prefy = 1080,
+     };
+     qemu_edid_info fhd = { .name = "Monitor", .prefx = 1920, .prefy = 1080 };
+     qemu_edid_info uhd_serial = {
+-        .name = "Monitor", .serial = "SN1", .prefx = 3840, .prefy = 2160,
++        .name = "Monitor", .serial_string = "SN1", .prefx = 3840, .prefy = 2160,
+     };
+ 
+     /* No serial number: everything fits, the timings III last. */
+@@ -168,6 +169,27 @@ static void test_edid_placement(void)
+     check_base_tags(edid, (const uint8_t[]){ 0xfd, 0xfc, 0xff, 0xf7 });
+ }
+ 
++/* Manufacturer, product code and serial number, as given or QEMU's own. */
++static void test_edid_id(void)
++{
++    uint8_t edid[EDID_SIZE];
++    qemu_edid_info given = {
++        .vendor = "LNX", .product = 0x7773, .serial_number = 0xcafebabe,
++    };
++    qemu_edid_info own = { .serial_string = "12345" };
++
++    generate(edid, sizeof(edid), &given);
++    g_assert_cmphex(lduw_be_p(edid + 8), ==, 0x31d8);          /* LNX */
++    g_assert_cmphex(lduw_le_p(edid + 10), ==, 0x7773);
++    g_assert_cmphex((uint32_t)ldl_le_p(edid + 12), ==, 0xcafebabe);
++
++    /* The serial number text is not the 32-bit serial number. */
++    generate(edid, sizeof(edid), &own);
++    g_assert_cmphex(lduw_be_p(edid + 8), ==, 0x4914);          /* RHT */
++    g_assert_cmphex(lduw_le_p(edid + 10), ==, 0x1234);
++    g_assert_cmphex(ldl_le_p(edid + 12), ==, 0);
++}
++
+ int main(int argc, char **argv)
+ {
+     g_test_init(&argc, &argv, NULL);
+@@ -175,6 +197,7 @@ int main(int argc, char **argv)
+     g_test_add_func("/edid/text", test_edid_text);
+     g_test_add_func("/edid/max", test_edid_max);
+     g_test_add_func("/edid/placement", test_edid_placement);
++    g_test_add_func("/edid/id", test_edid_id);
+ 
+     return g_test_run();
+ }

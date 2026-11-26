@@ -1,0 +1,139 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Mon, 23 Nov 2026 12:20:48 +0000
+Subject: [PATCH] ui/dbus: let Console.SetUIInfo keep what it does not set
+
+Console.SetUIInfo takes the console's size, offset and physical size,
+and built the UI info from those alone, so it also set everything else
+back to zero: a refresh rate given through UIInfo.Apply, which has
+more fields, was lost on the next SetUIInfo.
+
+Start from the console's UI info, as UIInfo.Apply does, and say so in
+the method's documentation, along with what a zero size means.
+
+Fixes: 378eb3d0db28 ("ui/dbus: add org.qemu.Display1.UIInfo interface")
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ tests/qtest/dbus-display-test.c | 44 +++++++++++++++++++++++++++++++++
+ ui/dbus-console.c               | 22 +++++++++--------
+ ui/dbus-display1.xml            |  4 ++-
+ 3 files changed, 59 insertions(+), 11 deletions(-)
+
+diff --git a/tests/qtest/dbus-display-test.c b/tests/qtest/dbus-display-test.c
+index 390e9e1508..08d262f4d8 100644
+--- a/tests/qtest/dbus-display-test.c
++++ b/tests/qtest/dbus-display-test.c
+@@ -565,6 +565,48 @@ test_dbus_display_uiinfo_vnc(void)
+ }
+ #endif
+ 
++static void
++test_console_set_ui_info(QemuDBusDisplay1Console *console,
++                         guint width, guint height)
++{
++    g_autoptr(GError) err = NULL;
++
++    qemu_dbus_display1_console_call_set_uiinfo_sync(
++        console, 300, 170, 0, 0, width, height,
++        G_DBUS_CALL_FLAGS_NONE, -1, NULL, &err);
++    g_assert_no_error(err);
++}
++
++/* Console.SetUIInfo leaves what it does not take as UIInfo.Apply set it. */
++static void
++test_dbus_display_uiinfo_legacy(void)
++{
++    g_autoptr(GError) err = NULL;
++    g_autoptr(GDBusConnection) conn = NULL;
++    QemuDBusDisplay1UIInfo *ui_info;
++    QemuDBusDisplay1Console *console;
++    QTestState *qts = NULL;
++
++    test_setup_device(&qts, &conn, "virtio-gpu-pci");
++    ui_info = test_uiinfo_proxy(conn, 0);
++    console = QEMU_DBUS_DISPLAY1_CONSOLE(
++        qemu_dbus_display1_console_proxy_new_sync(
++            conn, G_DBUS_PROXY_FLAGS_NONE, NULL,
++            DBUS_DISPLAY1_ROOT "/Console_0", NULL, &err));
++    g_assert_no_error(err);
++
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'refresh_rate': <uint32 60000>}"));
++    test_console_set_ui_info(console, 1600, 900);
++    g_assert_cmpuint(test_uiinfo_get_u(ui_info, "width"), ==, 1600);
++    g_assert_cmpuint(test_uiinfo_get_u(ui_info, "refresh_rate"), ==, 60000);
++
++    g_clear_object(&ui_info);
++    g_clear_object(&console);
++    g_clear_object(&conn);
++    qtest_quit(qts);
++}
++
+ /*
+  * A virtio-gpu driven from the test, as a guest would: what it reports for
+  * its outputs, and when, after a UI changes a monitor through D-Bus.
+@@ -1290,6 +1332,8 @@ main(int argc, char **argv)
+         qtest_add_func("/dbus-display/uiinfo/vnc",
+                        test_dbus_display_uiinfo_vnc);
+ #endif
++        qtest_add_func("/dbus-display/uiinfo/legacy",
++                       test_dbus_display_uiinfo_legacy);
+         qtest_add_func("/dbus-display/gpu/no-size",
+                        test_dbus_display_gpu_no_size);
+         qtest_add_func("/dbus-display/gpu/first-off",
+diff --git a/ui/dbus-console.c b/ui/dbus-console.c
+index 89f8c144b9..5c2cab96e1 100644
+--- a/ui/dbus-console.c
++++ b/ui/dbus-console.c
+@@ -198,16 +198,7 @@ dbus_console_set_ui_info(DBusDisplayConsole *ddc,
+                          guint arg_width,
+                          guint arg_height)
+ {
+-    QemuUIInfo info = {
+-        .width_mm = arg_width_mm,
+-        .height_mm = arg_height_mm,
+-        .xoff = arg_xoff,
+-        .yoff = arg_yoff,
+-        .width = arg_width,
+-        .height = arg_height,
+-        /* The interface has no other way to say there is no monitor. */
+-        .connected = arg_width && arg_height,
+-    };
++    QemuUIInfo info;
+ 
+     if (!qemu_console_ui_info_supported(ddc->dcl.con)) {
+         g_dbus_method_invocation_return_error(invocation,
+@@ -217,6 +208,17 @@ dbus_console_set_ui_info(DBusDisplayConsole *ddc,
+         return DBUS_METHOD_INVOCATION_HANDLED;
+     }
+ 
++    /* The refresh rate stays as UIInfo.Apply set it. */
++    info = *qemu_console_get_ui_info(ddc->dcl.con);
++    info.width_mm = arg_width_mm;
++    info.height_mm = arg_height_mm;
++    info.xoff = arg_xoff;
++    info.yoff = arg_yoff;
++    info.width = arg_width;
++    info.height = arg_height;
++    /* The interface has no other way to say there is no monitor. */
++    info.connected = arg_width && arg_height;
++
+     qemu_console_set_ui_info(ddc->dcl.con, &info, false);
+     qemu_dbus_display1_console_complete_set_uiinfo(ddc->iface, invocation);
+     return DBUS_METHOD_INVOCATION_HANDLED;
+diff --git a/ui/dbus-display1.xml b/ui/dbus-display1.xml
+index a23ca0b8b1..501577916d 100644
+--- a/ui/dbus-display1.xml
++++ b/ui/dbus-display1.xml
+@@ -89,7 +89,9 @@
+         @width: console width, in pixels.
+         @height: console height, in pixels.
+ 
+-        Modify the dimensions and display settings.
++        Modify the dimensions and display settings. A zero @width or @height
++        means that no monitor shows the console. The refresh rate, which
++        :dbus:meth:`org.qemu.Display1.UIInfo.Apply` sets, stays as it is.
+ 
+         .. seealso::
+ 

@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Marc-Andr=C3=A9=20Lureau?= <marcandre.lureau@redhat.com>
+Date: Fri, 4 Sep 2026 16:30:20 +0400
+Subject: [PATCH] ui/dbus: fix cursor race, copy cursor data
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Eliminates the undefined behavior where virtio-gpu's memcpy() overwrites
+the buffer that an in-flight gvariant still references. Fixes the data
+race where the GDBus worker thread calls cursor_unref() concurrently
+with main thread.
+
+Fixes: 142ca628a733 ("ui: add a D-Bus display backend")
+Reviewed-by: Akihiko Odaki <odaki@rsg.ci.i.u-tokyo.ac.jp>
+Signed-off-by: Marc-André Lureau <marcandre.lureau@redhat.com>
+Message-ID: <20260904123020.3108205-1-marcandre.lureau@redhat.com>
+Upstream-Status: Backport [7275e5d1ba9104799b194e25825b4ff189a61071]
+(cherry picked from commit 7275e5d1ba9104799b194e25825b4ff189a61071)
+---
+ ui/dbus-listener.c | 8 +++-----
+ 1 file changed, 3 insertions(+), 5 deletions(-)
+
+diff --git a/ui/dbus-listener.c b/ui/dbus-listener.c
+index 5a72c7eeae..7143c3e6ea 100644
+--- a/ui/dbus-listener.c
++++ b/ui/dbus-listener.c
+@@ -927,13 +927,11 @@ static void dbus_cursor_define(DisplayChangeListener *dcl,
+ 
+     ddl_discard_cursor_messages(ddl);
+ 
+-    v_data = g_variant_new_from_data(
+-        G_VARIANT_TYPE("ay"),
++    v_data = g_variant_new_fixed_array(
++        G_VARIANT_TYPE_BYTE,
+         c->data,
+         c->width * c->height * 4,
+-        TRUE,
+-        (GDestroyNotify)cursor_unref,
+-        cursor_ref(c));
++        1);
+ 
+     qemu_dbus_display1_listener_call_cursor_define(
+         ddl->proxy,

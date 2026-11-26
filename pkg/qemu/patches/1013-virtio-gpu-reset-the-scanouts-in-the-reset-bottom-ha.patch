@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Fri, 20 Nov 2026 15:28:16 +0000
+Subject: [PATCH] virtio-gpu: reset the scanouts in the reset bottom half
+
+A guest resets the device from a vCPU thread. Since commit a41e2d97f92b
+("virtio-gpu: reset gfx resources in main thread"), virtio_gpu_reset()
+does the display side of the reset in a bottom half on the main loop,
+where GL calls can be made, and waits for it; the bottom half replaced
+each console's surface with a placeholder. virtio-gpu-gl then disabled every
+scanout from the vCPU thread too, which replaced the placeholders again
+with no GL context current: the new placeholder got no texture, and the
+old one's texture was never deleted.
+
+With the D-Bus display that is one framebuffer-sized texture per scanout
+per reset. A Windows guest restarts its display driver often - an
+update, a PnP stop, a TDR - and the HLK WDDM PnP tests do it hundreds of
+times; at 3840x2160 the memory cgroup QEMU ran in filled with lost
+textures, and QEMU was killed after about 25 resets.
+
+Disable the scanouts in the bottom half, for every virtio-gpu, instead
+of only replacing their surfaces. Disabling a scanout also releases its
+dmabuf and the display's GL scanout, which is what virtio-gpu-gl
+disabled them for. Every surface is then replaced on the main loop
+only.
+
+Fixes: 8a13b9bc0f28 ("hw/display: fix virgl reset regression")
+Cc: qemu-stable@nongnu.org
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+[11.1.3: virtio_gpu_disable_scanout() skips an output with no resource
+ and leaves the GL scanout alone, so the bottom half calls
+ qemu_console_gl_scanout_disable() itself]
+---
+ hw/display/virtio-gpu-gl.c     |  2 --
+ hw/display/virtio-gpu-virgl.c  | 10 ----------
+ hw/display/virtio-gpu.c        |  1 +
+ include/hw/virtio/virtio-gpu.h |  1 -
+ 4 files changed, 1 insertion(+), 13 deletions(-)
+
+diff --git a/hw/display/virtio-gpu-gl.c b/hw/display/virtio-gpu-gl.c
+index 2b7a41c466..1a2dce7f8d 100644
+--- a/hw/display/virtio-gpu-gl.c
++++ b/hw/display/virtio-gpu-gl.c
+@@ -89,7 +89,6 @@ static void virtio_gpu_gl_handle_ctrl(VirtIODevice *vdev, VirtQueue *vq)
+ 
+ static void virtio_gpu_gl_reset(VirtIODevice *vdev)
+ {
+-    VirtIOGPU *g = VIRTIO_GPU(vdev);
+     VirtIOGPUGL *gl = VIRTIO_GPU_GL(vdev);
+ 
+     virtio_gpu_reset(vdev);
+@@ -99,7 +98,6 @@ static void virtio_gpu_gl_reset(VirtIODevice *vdev)
+      * thread, and when the renderer is unblocked.
+      */
+     if (gl->renderer_state == RS_INITED) {
+-        virtio_gpu_virgl_reset_scanout(g);
+         gl->renderer_state = RS_RESET;
+     }
+ }
+diff --git a/hw/display/virtio-gpu-virgl.c b/hw/display/virtio-gpu-virgl.c
+index 658df247d5..dd9c27e3c2 100644
+--- a/hw/display/virtio-gpu-virgl.c
++++ b/hw/display/virtio-gpu-virgl.c
+@@ -1409,16 +1409,6 @@ void virtio_gpu_virgl_fence_poll(VirtIOGPU *g)
+     virtio_gpu_fence_poll(g);
+ }
+ 
+-void virtio_gpu_virgl_reset_scanout(VirtIOGPU *g)
+-{
+-    int i;
+-
+-    for (i = 0; i < g->parent_obj.conf.max_outputs; i++) {
+-        qemu_console_set_surface(g->parent_obj.scanout[i].con, NULL);
+-        qemu_console_gl_scanout_disable(g->parent_obj.scanout[i].con);
+-    }
+-}
+-
+ static bool virtio_gpu_virgl_reset(VirtIOGPU *g)
+ {
+     struct virtio_gpu_simple_resource *res, *tmp;
+diff --git a/hw/display/virtio-gpu.c b/hw/display/virtio-gpu.c
+index 724780fde1..3abd464cfe 100644
+--- a/hw/display/virtio-gpu.c
++++ b/hw/display/virtio-gpu.c
+@@ -1739,6 +1739,7 @@ static void virtio_gpu_reset_bh(void *opaque)
+ 
+     for (i = 0; i < g->parent_obj.conf.max_outputs; i++) {
+         qemu_console_set_surface(g->parent_obj.scanout[i].con, NULL);
++        qemu_console_gl_scanout_disable(g->parent_obj.scanout[i].con);
+     }
+ 
+     g->reset_finished = true;
+diff --git a/include/hw/virtio/virtio-gpu.h b/include/hw/virtio/virtio-gpu.h
+index 28889381ca..277e3874ee 100644
+--- a/include/hw/virtio/virtio-gpu.h
++++ b/include/hw/virtio/virtio-gpu.h
+@@ -425,7 +425,6 @@ void virtio_gpu_disable_scanout(VirtIOGPU *g, int scanout_id);
+ void virtio_gpu_virgl_process_cmd(VirtIOGPU *g,
+                                   struct virtio_gpu_ctrl_command *cmd);
+ void virtio_gpu_virgl_fence_poll(VirtIOGPU *g);
+-void virtio_gpu_virgl_reset_scanout(VirtIOGPU *g);
+ GArray *virtio_gpu_virgl_get_capsets(VirtIOGPU *g);
+ void virtio_gpu_virgl_reset_async_fences(VirtIOGPU *g);
+ void virtio_gpu_virgl_resource_destroy(VirtIOGPU *g,

@@ -1,0 +1,214 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Mon, 23 Nov 2026 13:08:35 +0000
+Subject: [PATCH] ui: say whether a monitor shows the console
+
+QemuUIInfo had no way to say that no monitor shows a console. Devices
+took a zero size for it: virtio-gpu disables its output and a vfio
+display takes its link down. "No monitor" and "no size known" were the
+same, and gtk, for a tab that is not shown, whose widget is on no
+monitor, reports a refresh rate of 0 on top of the cached UI info, which
+takes back from the guest the refresh rate it was given.
+
+Add a connected flag. A device follows it rather than the size, and a
+UI sets it from what it knows:
+- qemu_console_set_ui_size(), and so gtk, sdl2 and vnc, and cocoa and
+  spice report a monitor of the size they have, and none for a zero
+  size, as the device took it before;
+- gtk no longer reports a refresh rate for a widget that is on no
+  monitor;
+- the D-Bus Console.SetUIInfo and UIInfo.Apply have no other way to say
+  it than a zero size, so that stays their meaning.
+
+A connected monitor has a size. The console asserts it, of a request and
+of the state a device starts its console in; virtio-gpu and the vfio
+display start their outputs connected at a size that is not zero.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ hw/display/virtio-gpu-base.c |  3 ++-
+ hw/vfio/display.c            |  3 ++-
+ include/ui/console.h         |  8 ++++++++
+ ui/cocoa.m                   |  1 +
+ ui/console.c                 | 10 +++++++---
+ ui/dbus-console.c            |  4 ++++
+ ui/gtk.c                     |  4 ++--
+ ui/spice-display.c           |  1 +
+ 8 files changed, 27 insertions(+), 7 deletions(-)
+
+diff --git a/hw/display/virtio-gpu-base.c b/hw/display/virtio-gpu-base.c
+index 89359182d1..18f6d0af4e 100644
+--- a/hw/display/virtio-gpu-base.c
++++ b/hw/display/virtio-gpu-base.c
+@@ -114,7 +114,7 @@ static void virtio_gpu_ui_info(void *opaque, uint32_t idx, QemuUIInfo *info)
+     g->req_state[idx].width_mm = info->width_mm;
+     g->req_state[idx].height_mm = info->height_mm;
+ 
+-    if (info->width && info->height) {
++    if (info->connected) {
+         g->enabled_output_bitmask |= (1 << idx);
+     } else {
+         g->enabled_output_bitmask &= ~(1 << idx);
+@@ -262,6 +262,7 @@ virtio_gpu_base_device_realize(DeviceState *qdev,
+         if (g->enabled_output_bitmask & (1 << i)) {
+             info.width = g->req_state[i].width;
+             info.height = g->req_state[i].height;
++            info.connected = true;
+         }
+         qemu_console_init_ui_info(g->scanout[i].con, &info);
+     }
+diff --git a/hw/vfio/display.c b/hw/vfio/display.c
+index 50346c750f..1913aec29f 100644
+--- a/hw/vfio/display.c
++++ b/hw/vfio/display.c
+@@ -117,7 +117,7 @@ static void vfio_display_edid_ui_info(void *opaque, uint32_t idx,
+         return;
+     }
+ 
+-    if (info->width && info->height) {
++    if (info->connected) {
+         vfio_display_edid_update(vdev, true, info->width, info->height);
+     } else {
+         vfio_display_edid_update(vdev, false, 0, 0);
+@@ -182,6 +182,7 @@ static bool vfio_display_edid_init(VFIOPCIDevice *vdev, Error **errp)
+         qemu_console_init_ui_info(dpy->con, &(QemuUIInfo) {
+             .width = vdev->display_xres,
+             .height = vdev->display_yres,
++            .connected = true,
+         });
+     }
+     return true;
+diff --git a/include/ui/console.h b/include/ui/console.h
+index 48211fe471..e9dc8bf11b 100644
+--- a/include/ui/console.h
++++ b/include/ui/console.h
+@@ -116,6 +116,14 @@ typedef struct QemuUIInfo {
+     uint32_t  width;
+     uint32_t  height;
+     uint32_t  refresh_rate;
++    /*
++     * Whether a monitor shows the console. When true, width and height are
++     * its size and not zero. When false, a device that follows it takes its
++     * output away - virtio-gpu disables it, a vfio display with an EDID
++     * takes its link down - and width and height may keep the size it comes
++     * back at.
++     */
++    bool      connected;
+ } QemuUIInfo;
+ 
+ /* cursor data format is 32bit RGBA */
+diff --git a/ui/cocoa.m b/ui/cocoa.m
+index 07f74d0f07..6eca660b11 100644
+--- a/ui/cocoa.m
++++ b/ui/cocoa.m
+@@ -567,6 +567,7 @@ - (void) updateUIInfoLocked
+     info.yoff = 0;
+     info.width = frameSize.width * [[self window] backingScaleFactor];
+     info.height = frameSize.height * [[self window] backingScaleFactor];
++    info.connected = info.width && info.height;
+ 
+     qemu_console_set_ui_info(dcl.con, &info, TRUE);
+ }
+diff --git a/ui/console.c b/ui/console.c
+index 087d50ce24..e8416738fd 100644
+--- a/ui/console.c
++++ b/ui/console.c
+@@ -714,7 +714,8 @@ static bool qemu_ui_info_equal(const QemuUIInfo *a, const QemuUIInfo *b)
+            a->yoff == b->yoff &&
+            a->width == b->width &&
+            a->height == b->height &&
+-           a->refresh_rate == b->refresh_rate;
++           a->refresh_rate == b->refresh_rate &&
++           a->connected == b->connected;
+ }
+ 
+ int qemu_console_set_ui_info(QemuConsole *con, QemuUIInfo *info, bool delay)
+@@ -722,6 +723,7 @@ int qemu_console_set_ui_info(QemuConsole *con, QemuUIInfo *info, bool delay)
+     if (!qemu_console_ui_info_supported(con)) {
+         return -1;
+     }
++    assert(!info->connected || (info->width && info->height));
+     if (qemu_ui_info_equal(&con->ui_info, info)) {
+         /* nothing changed -- ignore */
+         return 0;
+@@ -739,8 +741,8 @@ int qemu_console_set_ui_info(QemuConsole *con, QemuUIInfo *info, bool delay)
+ }
+ 
+ /*
+- * For a UI that knows only the size it shows the console at: the rest of
+- * the UI info stays as it is.
++ * For a UI that knows only the size it shows the console at, zero for no
++ * monitor: the rest of the UI info stays as it is.
+  */
+ int qemu_console_set_ui_size(QemuConsole *con, uint32_t width,
+                              uint32_t height, bool delay)
+@@ -754,6 +756,7 @@ int qemu_console_set_ui_size(QemuConsole *con, uint32_t width,
+     info = con->ui_info;
+     info.width = width;
+     info.height = height;
++    info.connected = width && height;
+     return qemu_console_set_ui_info(con, &info, delay);
+ }
+ 
+@@ -764,6 +767,7 @@ int qemu_console_set_ui_size(QemuConsole *con, uint32_t width,
+  */
+ void qemu_console_init_ui_info(QemuConsole *con, const QemuUIInfo *info)
+ {
++    assert(!info->connected || (info->width && info->height));
+     con->ui_info = *info;
+ }
+ 
+diff --git a/ui/dbus-console.c b/ui/dbus-console.c
+index 947c3b3a54..89f8c144b9 100644
+--- a/ui/dbus-console.c
++++ b/ui/dbus-console.c
+@@ -205,6 +205,8 @@ dbus_console_set_ui_info(DBusDisplayConsole *ddc,
+         .yoff = arg_yoff,
+         .width = arg_width,
+         .height = arg_height,
++        /* The interface has no other way to say there is no monitor. */
++        .connected = arg_width && arg_height,
+     };
+ 
+     if (!qemu_console_ui_info_supported(ddc->dcl.con)) {
+@@ -616,6 +618,8 @@ dbus_ui_info_apply(DBusDisplayConsole *ddc,
+                                    &ui_info.refresh_rate)) {
+         return DBUS_METHOD_INVOCATION_HANDLED;
+     }
++    /* The interface has no other way to say there is no monitor. */
++    ui_info.connected = ui_info.width && ui_info.height;
+ 
+     qemu_console_set_ui_info(ddc->dcl.con, &ui_info, false);
+     qemu_dbus_display1_uiinfo_complete_apply(ddc->iface_ui_info, invocation);
+diff --git a/ui/gtk.c b/ui/gtk.c
+index 4783ce7689..d434455c61 100644
+--- a/ui/gtk.c
++++ b/ui/gtk.c
+@@ -795,12 +795,12 @@ void gd_update_monitor_refresh_rate(VirtualConsole *vc, GtkWidget *widget)
+         GdkDisplay *dpy = gtk_widget_get_display(widget);
+         GdkMonitor *monitor = gdk_display_get_monitor_at_window(dpy, win);
+         refresh_rate = gdk_monitor_get_refresh_rate(monitor); /* [mHz] */
++        gd_set_ui_refresh_rate(vc, refresh_rate);
+     } else {
++        /* Not on a monitor (a tab not shown): nothing to tell the device. */
+         refresh_rate = 0;
+     }
+ 
+-    gd_set_ui_refresh_rate(vc, refresh_rate);
+-
+     /* T = 1 / f = 1 [s*Hz] / f = 1000*1000 [ms*mHz] / f */
+     vc->gfx.dcl.update_interval = refresh_rate ?
+         MIN(1000 * 1000 / refresh_rate, GUI_REFRESH_INTERVAL_DEFAULT) :
+diff --git a/ui/spice-display.c b/ui/spice-display.c
+index 75c7df7bb5..42001cba0e 100644
+--- a/ui/spice-display.c
++++ b/ui/spice-display.c
+@@ -684,6 +684,7 @@ static int interface_client_monitors_config(QXLInstance *sin,
+     if (mc->num_of_monitors > head) {
+         info.width  = mc->monitors[head].width;
+         info.height = mc->monitors[head].height;
++        info.connected = info.width && info.height;
+         if (mc->flags & VD_AGENT_CONFIG_MONITORS_FLAG_PHYSICAL_SIZE) {
+             VDAgentMonitorMM *mm = (void *)&mc->monitors[mc->num_of_monitors];
+             info.width_mm = mm[head].width;

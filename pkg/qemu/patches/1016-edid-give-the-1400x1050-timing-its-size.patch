@@ -1,0 +1,81 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Mon, 23 Nov 2026 11:59:32 +0000
+Subject: [PATCH] edid: give the 1400x1050 timing its size
+
+The generator's mode table gives the established timing III of byte 8,
+bit 1, the size 1440x1050, a mode no standard has; that bit is
+1400x1050 at 60 Hz. The table's size decides whether a mode fits the
+maximum and how it is offered. While a standard timing is free, a mode
+that fits goes there or nowhere, and no standard timing has the aspect
+ratio of 1440x1050: with a maximum that leaves one free when the table
+reaches the entry - 1920x1200, 1920x1080, a width from 1400 to 1439 -
+the mode was left out.
+
+Give it its size. With such a maximum, 1400x1050 now takes a standard
+timing. Where it takes the last one, as with 1920x1200, the timings III
+now get 1360x768, which no standard timing can give and which was left
+out too. Without a maximum, as for virtio-gpu, the standard timings are
+full before the table reaches the entry, and the EDID is the same.
+
+Fixes: 72d277a70e8b ("display/edid: add edid generator to qemu.")
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ hw/display/edid-generate.c |  2 +-
+ tests/unit/test-edid.c     | 24 ++++++++++++++++++++++++
+ 2 files changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/hw/display/edid-generate.c b/hw/display/edid-generate.c
+index af49e457be..0824580071 100644
+--- a/hw/display/edid-generate.c
++++ b/hw/display/edid-generate.c
+@@ -39,7 +39,7 @@ static const struct edid_mode {
+     { .xres = 1920,   .yres = 1440,   .xtra3 = 11,   .bit = 5 },
+     { .xres = 1856,   .yres = 1392,   .xtra3 = 10,   .bit = 3 },
+     { .xres = 1792,   .yres = 1344,   .xtra3 = 10,   .bit = 5 },
+-    { .xres = 1440,   .yres = 1050,   .xtra3 =  8,   .bit = 1 },
++    { .xres = 1400,   .yres = 1050,   .xtra3 =  8,   .bit = 1 },
+     { .xres = 1360,   .yres =  768,   .xtra3 =  8,   .bit = 7 },
+ 
+     /* established timings (all @ 60Hz) */
+diff --git a/tests/unit/test-edid.c b/tests/unit/test-edid.c
+index 82ea2f0c8d..8a81726e57 100644
+--- a/tests/unit/test-edid.c
++++ b/tests/unit/test-edid.c
+@@ -80,11 +80,35 @@ static void test_edid_text(void)
+     g_assert_cmpstr(text, ==, "ABCDEFGHIJKLM");
+ }
+ 
++/* Whether a standard timing of the base block is @xres at 60 Hz, 4:3. */
++static bool has_std_4_3(const uint8_t *edid, uint32_t xres)
++{
++    for (int i = 38; i < 54; i += 2) {
++        if (edid[i] == xres / 8 - 31 && edid[i + 1] == 0x40) {
++            return true;
++        }
++    }
++    return false;
++}
++
++/* A mode is offered when it fits the maximum, and one that does not, not. */
++static void test_edid_max(void)
++{
++    uint8_t edid[EDID_SIZE];
++    qemu_edid_info info = { .maxx = 1400, .maxy = 1050 };
++
++    generate(edid, sizeof(edid), &info);
++    g_assert_true(has_std_4_3(edid, 1400));
++    g_assert_true(has_std_4_3(edid, 1280));
++    g_assert_false(has_std_4_3(edid, 1600));
++}
++
+ int main(int argc, char **argv)
+ {
+     g_test_init(&argc, &argv, NULL);
+ 
+     g_test_add_func("/edid/text", test_edid_text);
++    g_test_add_func("/edid/max", test_edid_max);
+ 
+     return g_test_run();
+ }

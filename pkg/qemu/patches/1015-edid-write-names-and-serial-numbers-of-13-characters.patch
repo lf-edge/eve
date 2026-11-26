@@ -1,0 +1,250 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Fri, 20 Nov 2026 15:37:03 +0000
+Subject: [PATCH] edid: write names and serial numbers of 13 characters
+
+An EDID text descriptor holds 13 characters; a shorter text ends with a
+line feed and is padded with spaces. edid_desc_text() wrote 12 at most,
+always followed by a line feed, so a monitor name of 13 characters lost
+its last one, and EDID_NAME_MAX_LENGTH kept virtio-gpu output names to
+12.
+
+Write up to 13, with the line feed only after a shorter text, and allow
+output names of 13.
+
+Add a unit test for the EDID generator, which builds it the way
+qemu-edid does, and check that virtio-gpu takes an output name of 13
+characters whole and refuses a longer one.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ MAINTAINERS                     |  1 +
+ hw/display/edid-generate.c      | 10 ++--
+ include/hw/display/edid.h       |  2 +-
+ tests/qtest/dbus-display-test.c | 47 +++++++++++++++++
+ tests/unit/meson.build          |  1 +
+ tests/unit/test-edid.c          | 90 +++++++++++++++++++++++++++++++++
+ 6 files changed, 145 insertions(+), 6 deletions(-)
+ create mode 100644 tests/unit/test-edid.c
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 902db77218..eecc166f86 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -2920,6 +2920,7 @@ S: Maintained
+ F: hw/display/edid*
+ F: include/hw/display/edid.h
+ F: qemu-edid.c
++F: tests/unit/test-edid.c
+ 
+ macOS PV Graphics (apple-gfx)
+ M: Phil Dennis-Jordan <phil@philjordan.eu>
+diff --git a/hw/display/edid-generate.c b/hw/display/edid-generate.c
+index 5f631c3507..af49e457be 100644
+--- a/hw/display/edid-generate.c
++++ b/hw/display/edid-generate.c
+@@ -212,12 +212,12 @@ static void edid_desc_text(uint8_t *desc, uint8_t type,
+     edid_desc_type(desc, type);
+     memset(desc + 5, ' ', 13);
+ 
+-    len = strlen(text);
+-    if (len > 12) {
+-        len = 12;
+-    }
++    /* 13 characters fit; a shorter text ends with a line feed. */
++    len = strnlen(text, 13);
+     memcpy(desc + 5, text, len);
+-    desc[5 + len] = '\n';
++    if (len < 13) {
++        desc[5 + len] = '\n';
++    }
+ }
+ 
+ static void edid_desc_ranges(uint8_t *desc)
+diff --git a/include/hw/display/edid.h b/include/hw/display/edid.h
+index 9c4967d60f..71b8575139 100644
+--- a/include/hw/display/edid.h
++++ b/include/hw/display/edid.h
+@@ -1,7 +1,7 @@
+ #ifndef EDID_H
+ #define EDID_H
+ 
+-#define EDID_NAME_MAX_LENGTH 12
++#define EDID_NAME_MAX_LENGTH 13
+ 
+ /* The preferred mode of an EDID whose qemu_edid_info gives none */
+ #define EDID_DEFAULT_PREFX 1280
+diff --git a/tests/qtest/dbus-display-test.c b/tests/qtest/dbus-display-test.c
+index 08d262f4d8..bf073c69c8 100644
+--- a/tests/qtest/dbus-display-test.c
++++ b/tests/qtest/dbus-display-test.c
+@@ -1230,6 +1230,51 @@ test_dbus_display_gpu_unchanged(void)
+     test_gpu_stop(&t);
+ }
+ 
++/* The 13 characters of the base-block text descriptor with @tag, or "". */
++static void
++test_edid_text(const uint8_t *edid, uint8_t tag, char text[14])
++{
++    text[0] = 0;
++    for (int i = 0; i < 4; i++) {
++        const uint8_t *desc = edid + 54 + 18 * i;
++
++        if (!desc[0] && !desc[1] && desc[3] == tag) {
++            memcpy(text, desc + 5, 13);
++            text[13] = 0;
++            return;
++        }
++    }
++}
++
++/* An output name of 13 characters is taken whole, and a longer one refused. */
++static void
++test_dbus_display_gpu_output_name(void)
++{
++    struct virtio_gpu_resp_edid resp = {};
++    TestGPU t = {};
++    char text[14];
++
++    if (g_test_subprocess()) {
++        qtest_quit(qtest_init("-vga none -device '{\"driver\":"
++                              " \"virtio-gpu-pci\", \"outputs\":"
++                              " [{\"name\": \"ABCDEFGHIJKLMN\"}]}'"));
++        return;
++    }
++    g_test_trap_subprocess(NULL, 0, 0);
++    g_test_trap_assert_failed();
++    g_test_trap_assert_stderr("*invalid output name*");
++
++    test_gpu_start_device(&t, "'{\"driver\": \"virtio-gpu-pci\","
++                              " \"addr\": \"04.0\","
++                              " \"outputs\": [{\"name\": \"ABCDEFGHIJKLM\"}]}'",
++                          1);
++    test_gpu_edid(&t, 0, &resp);
++    test_edid_text(resp.edid, 0xfc, text);
++    g_assert_cmpstr(text, ==, "ABCDEFGHIJKLM");
++
++    test_gpu_stop(&t);
++}
++
+ static gsize
+ get_console_ids_count(GDBusConnection *conn)
+ {
+@@ -1360,6 +1405,8 @@ main(int argc, char **argv)
+                        test_dbus_display_gpu_outputs_configured);
+         qtest_add_func("/dbus-display/gpu/unchanged",
+                        test_dbus_display_gpu_unchanged);
++        qtest_add_func("/dbus-display/gpu/output-name",
++                       test_dbus_display_gpu_output_name);
+     }
+     if (qtest_has_machine("q35") && qtest_has_device("bochs-display")) {
+         qtest_add_func("/dbus-display/hotplug", test_dbus_display_hotplug);
+diff --git a/tests/unit/meson.build b/tests/unit/meson.build
+index 885df4c0d6..181e4f9161 100644
+--- a/tests/unit/meson.build
++++ b/tests/unit/meson.build
+@@ -41,6 +41,7 @@ tests = {
+   'test-bitops': [],
+   'test-bitcnt': [],
+   'test-qgraph': ['../qtest/libqos/qgraph.c'],
++  'test-edid': ['../../hw/display/edid-generate.c'],
+   'check-qom-interface': [qom],
+   'check-qom-proplist': [qom],
+   'test-qemu-opts': [],
+diff --git a/tests/unit/test-edid.c b/tests/unit/test-edid.c
+new file mode 100644
+index 0000000000..82ea2f0c8d
+--- /dev/null
++++ b/tests/unit/test-edid.c
+@@ -0,0 +1,90 @@
++/*
++ * EDID generator tests
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#include "qemu/osdep.h"
++#include "hw/display/edid.h"
++
++#define EDID_SIZE 256
++
++/* The tag of an 18-byte descriptor, or 0 for a detailed timing. */
++static uint8_t desc_tag(const uint8_t *desc)
++{
++    return desc[0] || desc[1] ? 0 : desc[3];
++}
++
++static const uint8_t *base_desc(const uint8_t *edid, int i)
++{
++    return edid + 54 + 18 * i;
++}
++
++/* A descriptor with @tag in the base block, or NULL. */
++static const uint8_t *find_base_desc(const uint8_t *edid, uint8_t tag)
++{
++    for (int i = 0; i < 4; i++) {
++        if (desc_tag(base_desc(edid, i)) == tag) {
++            return base_desc(edid, i);
++        }
++    }
++    return NULL;
++}
++
++static void check_checksums(const uint8_t *edid, size_t size)
++{
++    for (size_t b = 0; b < size / 128 && b <= edid[126]; b++) {
++        uint8_t sum = 0;
++
++        for (int i = 0; i < 128; i++) {
++            sum += edid[b * 128 + i];
++        }
++        g_assert_cmpuint(sum, ==, 0);
++    }
++}
++
++static void generate(uint8_t *edid, size_t size, qemu_edid_info *info)
++{
++    memset(edid, 0, size);
++    qemu_edid_generate(edid, size, info);
++    check_checksums(edid, size);
++}
++
++/* The 13 data bytes of a text descriptor. */
++static void desc_text(const uint8_t *desc, char *text)
++{
++    g_assert_nonnull(desc);
++    memcpy(text, desc + 5, 13);
++    text[13] = 0;
++}
++
++/* A text descriptor holds 13 characters, a shorter one ends in a line feed. */
++static void test_edid_text(void)
++{
++    uint8_t edid[EDID_SIZE];
++    char text[14];
++    qemu_edid_info full = { .name = "PiKVM V4 Plus" };
++    qemu_edid_info shorter = { .name = "QEMU Monitor" };
++    qemu_edid_info longer = { .name = "ABCDEFGHIJKLMN" };
++
++    generate(edid, sizeof(edid), &full);
++    desc_text(find_base_desc(edid, 0xfc), text);
++    g_assert_cmpstr(text, ==, "PiKVM V4 Plus");
++
++    generate(edid, sizeof(edid), &shorter);
++    desc_text(find_base_desc(edid, 0xfc), text);
++    g_assert_cmpstr(text, ==, "QEMU Monitor\n");
++
++    generate(edid, sizeof(edid), &longer);
++    desc_text(find_base_desc(edid, 0xfc), text);
++    g_assert_cmpstr(text, ==, "ABCDEFGHIJKLM");
++}
++
++int main(int argc, char **argv)
++{
++    g_test_init(&argc, &argv, NULL);
++
++    g_test_add_func("/edid/text", test_edid_text);
++
++    return g_test_run();
++}

@@ -1,0 +1,306 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Mon, 23 Nov 2026 11:51:07 +0000
+Subject: [PATCH] ui: let a UI that changes the size keep the rest of the UI
+ info
+
+vnc, sdl2 and cocoa build the UI info they pass from nothing, so a
+resize there also resets what another UI asked for: the refresh rate,
+the physical size and the offsets. With a D-Bus client and a VNC client
+on one console, a resize from the VNC client takes away the refresh rate
+the D-Bus client gave, and the guest's EDID falls back to 75 Hz. gtk
+and spice already start from the console's UI info.
+
+Add qemu_console_set_ui_size() for a UI that knows only the size it
+shows the console at, and use it in vnc, sdl2 and gtk. cocoa, which also
+sets the physical size, the offsets and the refresh rate, starts from
+the console's UI info instead; it started from an uninitialized one, and
+passed whatever was on the stack as the refresh rate when it could not
+read the screen's.
+
+The test resizes the console from a VNC client, after a D-Bus client
+gave a refresh rate.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ include/ui/console.h            |   2 +
+ tests/qtest/dbus-display-test.c | 126 ++++++++++++++++++++++++++++++++
+ ui/cocoa.m                      |   6 +-
+ ui/console.c                    |  19 +++++
+ ui/gtk.c                        |  11 +--
+ ui/sdl2.c                       |   9 +--
+ ui/vnc.c                        |   3 +-
+ 7 files changed, 156 insertions(+), 20 deletions(-)
+
+diff --git a/include/ui/console.h b/include/ui/console.h
+index f0a7cd8d58..48211fe471 100644
+--- a/include/ui/console.h
++++ b/include/ui/console.h
+@@ -285,6 +285,8 @@ void qemu_console_unregister_listener(DisplayChangeListener *dcl);
+ bool qemu_console_ui_info_supported(const QemuConsole *con);
+ const QemuUIInfo *qemu_console_get_ui_info(const QemuConsole *con);
+ int qemu_console_set_ui_info(QemuConsole *con, QemuUIInfo *info, bool delay);
++int qemu_console_set_ui_size(QemuConsole *con, uint32_t width,
++                             uint32_t height, bool delay);
+ void qemu_console_init_ui_info(QemuConsole *con, const QemuUIInfo *info);
+ 
+ void qemu_console_update(QemuConsole *con, int x, int y, int w, int h);
+diff --git a/tests/qtest/dbus-display-test.c b/tests/qtest/dbus-display-test.c
+index a58713a7a3..86c4be6eac 100644
+--- a/tests/qtest/dbus-display-test.c
++++ b/tests/qtest/dbus-display-test.c
+@@ -7,6 +7,7 @@
+ #include <gio/gio.h>
+ #include <gio/gunixfdlist.h>
+ #include "libqtest.h"
++#include "qemu/bswap.h"
+ #include "qobject/qdict.h"
+ #include "qobject/qstring.h"
+ #include "ui/dbus-display1.h"
+@@ -438,6 +439,127 @@ test_dbus_display_uiinfo_initial(void)
+     qtest_quit(qts);
+ }
+ 
++#if defined(CONFIG_VNC) && !defined(WIN32)
++/* UIInfo.Apply: NULL, or the name of the D-Bus error it failed with. */
++static char *
++test_uiinfo_apply(QemuDBusDisplay1UIInfo *ui_info, GVariant *dict)
++{
++    g_autoptr(GError) err = NULL;
++
++    qemu_dbus_display1_uiinfo_call_apply_sync(ui_info, dict,
++                                              G_DBUS_CALL_FLAGS_NONE, -1,
++                                              NULL, &err);
++    return err ? g_dbus_error_get_remote_error(err) : NULL;
++}
++
++static void
++test_uiinfo_apply_ok(QemuDBusDisplay1UIInfo *ui_info, GVariant *dict)
++{
++    g_autofree char *error = test_uiinfo_apply(ui_info, dict);
++
++    g_assert_cmpstr(error, ==, NULL);
++}
++
++static void
++test_vnc_read(int fd, void *buf, size_t len)
++{
++    while (len) {
++        ssize_t n = read(fd, buf, len);
++
++        g_assert_cmpint(n, >, 0);
++        buf = (char *)buf + n;
++        len -= n;
++    }
++}
++
++static void
++test_vnc_write(int fd, const void *buf, size_t len)
++{
++    g_assert_cmpint(qemu_write_full(fd, buf, len), ==, len);
++}
++
++/* A VNC client of @qts, past the handshake, without authentication. */
++static int
++test_vnc_connect(QTestState *qts)
++{
++    char version[12];
++    uint8_t types[256], n, shared = 1, server_init[24];
++    uint32_t result;
++    g_autofree char *name = NULL;
++    int pair[2];
++
++    g_assert_cmpint(qemu_socketpair(AF_UNIX, SOCK_STREAM, 0, pair), ==, 0);
++    g_assert_cmpint(setsockopt(pair[0], SOL_SOCKET, SO_RCVTIMEO,
++                               &(struct timeval) { .tv_sec = 10 },
++                               sizeof(struct timeval)), ==, 0);
++    qtest_qmp_add_client(qts, "vnc", pair[1]);
++    close(pair[1]);
++
++    test_vnc_read(pair[0], version, sizeof(version));
++    g_assert_cmpmem(version, sizeof(version), "RFB 003.008\n", 12);
++    test_vnc_write(pair[0], version, sizeof(version));
++    test_vnc_read(pair[0], &n, 1);
++    test_vnc_read(pair[0], types, n);
++    g_assert_nonnull(memchr(types, 1, n));          /* None */
++    test_vnc_write(pair[0], (uint8_t[]){ 1 }, 1);
++    test_vnc_read(pair[0], &result, sizeof(result));
++    g_assert_cmpuint(result, ==, 0);
++    test_vnc_write(pair[0], &shared, 1);
++    test_vnc_read(pair[0], server_init, sizeof(server_init));
++    name = g_malloc(ldl_be_p(server_init + 20));
++    test_vnc_read(pair[0], name, ldl_be_p(server_init + 20));
++    return pair[0];
++}
++
++/* SetDesktopSize: one screen of @width x @height. */
++static void
++test_vnc_set_desktop_size(int fd, uint16_t width, uint16_t height)
++{
++    uint8_t msg[24] = { 251 };
++
++    stw_be_p(msg + 2, width);
++    stw_be_p(msg + 4, height);
++    msg[6] = 1;                     /* one screen, at 0,0 */
++    stw_be_p(msg + 8 + 8, width);
++    stw_be_p(msg + 8 + 10, height);
++    test_vnc_write(fd, msg, sizeof(msg));
++}
++
++/*
++ * A VNC client that resizes the console changes the size, and leaves what
++ * the D-Bus client gave as it was.
++ */
++static void
++test_dbus_display_uiinfo_vnc(void)
++{
++    g_autoptr(GDBusConnection) conn = NULL;
++    QemuDBusDisplay1UIInfo *ui_info;
++    QTestState *qts = NULL;
++    gint64 end;
++    int fd;
++
++    test_setup_args(&qts, &conn, "-vga none -device virtio-gpu-pci -vnc none"
++                    " -display dbus,p2p=yes -name dbus-test");
++    ui_info = test_uiinfo_proxy(conn, 0);
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'refresh_rate': <uint32 60000>}"));
++
++    fd = test_vnc_connect(qts);
++    test_vnc_set_desktop_size(fd, 1600, 900);
++    end = g_get_monotonic_time() + 10 * G_TIME_SPAN_SECOND;
++    while (test_uiinfo_get_u(ui_info, "width") != 1600) {
++        g_assert_cmpint(g_get_monotonic_time(), <, end);
++        g_usleep(1000);
++    }
++    g_assert_cmpuint(test_uiinfo_get_u(ui_info, "height"), ==, 900);
++    g_assert_cmpuint(test_uiinfo_get_u(ui_info, "refresh_rate"), ==, 60000);
++
++    close(fd);
++    g_clear_object(&ui_info);
++    g_clear_object(&conn);
++    qtest_quit(qts);
++}
++#endif
+ 
+ static gsize
+ get_console_ids_count(GDBusConnection *conn)
+@@ -537,6 +659,10 @@ main(int argc, char **argv)
+     if (qtest_has_device("virtio-gpu-pci")) {
+         qtest_add_func("/dbus-display/uiinfo/initial",
+                        test_dbus_display_uiinfo_initial);
++#if defined(CONFIG_VNC) && !defined(WIN32)
++        qtest_add_func("/dbus-display/uiinfo/vnc",
++                       test_dbus_display_uiinfo_vnc);
++#endif
+     }
+     if (qtest_has_machine("q35") && qtest_has_device("bochs-display")) {
+         qtest_add_func("/dbus-display/hotplug", test_dbus_display_hotplug);
+diff --git a/ui/cocoa.m b/ui/cocoa.m
+index 3751be3792..07f74d0f07 100644
+--- a/ui/cocoa.m
++++ b/ui/cocoa.m
+@@ -525,11 +525,15 @@ - (void) updateUIInfoLocked
+ {
+     /* Must be called with the BQL, i.e. via updateUIInfo */
+     NSSize frameSize;
+-    QemuUIInfo info;
++    QemuUIInfo info = {};
+ 
+     if (!qemu_console_is_graphic(dcl.con)) {
+         return;
+     }
++    if (qemu_console_ui_info_supported(dcl.con)) {
++        /* What this UI does not set stays as it was asked for. */
++        info = *qemu_console_get_ui_info(dcl.con);
++    }
+ 
+     if ([self window]) {
+         NSDictionary *description = [[[self window] screen] deviceDescription];
+diff --git a/ui/console.c b/ui/console.c
+index caaf650a6b..087d50ce24 100644
+--- a/ui/console.c
++++ b/ui/console.c
+@@ -738,6 +738,25 @@ int qemu_console_set_ui_info(QemuConsole *con, QemuUIInfo *info, bool delay)
+     return 0;
+ }
+ 
++/*
++ * For a UI that knows only the size it shows the console at: the rest of
++ * the UI info stays as it is.
++ */
++int qemu_console_set_ui_size(QemuConsole *con, uint32_t width,
++                             uint32_t height, bool delay)
++{
++    QemuUIInfo info;
++
++    if (!qemu_console_ui_info_supported(con)) {
++        return -1;
++    }
++
++    info = con->ui_info;
++    info.width = width;
++    info.height = height;
++    return qemu_console_set_ui_info(con, &info, delay);
++}
++
+ /*
+  * For the device, when it creates the console: the state its output starts
+  * in. qemu_console_set_ui_info() compares requests with it, and UIs that
+diff --git a/ui/gtk.c b/ui/gtk.c
+index 7078d89d67..4783ce7689 100644
+--- a/ui/gtk.c
++++ b/ui/gtk.c
+@@ -746,16 +746,7 @@ static void gd_set_ui_refresh_rate(VirtualConsole *vc, int refresh_rate)
+ 
+ static void gd_set_ui_size(VirtualConsole *vc, gint width, gint height)
+ {
+-    QemuUIInfo info;
+-
+-    if (!qemu_console_ui_info_supported(vc->gfx.dcl.con)) {
+-        return;
+-    }
+-
+-    info = *qemu_console_get_ui_info(vc->gfx.dcl.con);
+-    info.width = width;
+-    info.height = height;
+-    qemu_console_set_ui_info(vc->gfx.dcl.con, &info, true);
++    qemu_console_set_ui_size(vc->gfx.dcl.con, width, height, true);
+ }
+ 
+ #if defined(CONFIG_OPENGL)
+diff --git a/ui/sdl2.c b/ui/sdl2.c
+index 1c97d23a47..c24e0106d4 100644
+--- a/ui/sdl2.c
++++ b/ui/sdl2.c
+@@ -601,13 +601,8 @@ static void handle_windowevent(SDL_Event *ev)
+ 
+     switch (ev->window.event) {
+     case SDL_WINDOWEVENT_RESIZED:
+-        {
+-            QemuUIInfo info = {
+-                .width = ev->window.data1,
+-                .height = ev->window.data2,
+-            };
+-            qemu_console_set_ui_info(scon->dcl.con, &info, true);
+-        }
++        qemu_console_set_ui_size(scon->dcl.con, ev->window.data1,
++                                 ev->window.data2, true);
+         sdl2_redraw(scon);
+         break;
+     case SDL_WINDOWEVENT_EXPOSED:
+diff --git a/ui/vnc.c b/ui/vnc.c
+index 656768f9c9..c361682a42 100644
+--- a/ui/vnc.c
++++ b/ui/vnc.c
+@@ -2638,8 +2638,7 @@ static int protocol_client_msg(VncState *vs, uint8_t *data, size_t len)
+ 
+         trace_vnc_msg_client_set_desktop_size(vs, vs->ioc, w, h, screens);
+         if (qemu_console_ui_info_supported(vs->vd->dcl.con)) {
+-            QemuUIInfo info = { .width = w, .height = h };
+-            qemu_console_set_ui_info(vs->vd->dcl.con, &info, false);
++            qemu_console_set_ui_size(vs->vd->dcl.con, w, h, false);
+             vnc_desktop_resize_ext(vs, 4 /* Request forwarded */);
+         } else {
+             vnc_desktop_resize_ext(vs, 3 /* Invalid screen layout */);

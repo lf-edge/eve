@@ -1,0 +1,582 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Mon, 23 Nov 2026 13:14:41 +0000
+Subject: [PATCH] ui/dbus: let the client give the identity of the monitor
+
+A D-Bus display client is a UI that knows the monitor showing a console,
+EDID included. Let it give that monitor's identity in UIInfo.Apply -
+"vendor", "product", "serial_number", "name" and "serial_string", as the
+monitor's EDID names it - and read it back with UIInfo.Get. A value
+the guest's EDID cannot carry is refused, as a value of the wrong type
+already is: a vendor that is not three upper-case letters, and a name
+or serial number text longer than 13 characters or with anything but
+printable ASCII in it. An empty string clears a text.
+
+Document the keys, which devices use them, that changing them shows to
+the guest as another monitor, and that a zero size means no monitor;
+Console.SetUIInfo leaves them as they were.
+
+The tests check the identity read back, each kind of value refused,
+13 characters taken and a key of no use ignored; that Console.SetUIInfo
+and a VNC client's resize leave it as it was; the EDID a virtio-gpu
+guest reads, with QEMU's own name for an empty one and an output name
+from the device's configuration winning; and another monitor of the
+same size - differing in any one field, or given only after the guest
+has seen QEMU's own - showing to the guest as the first one going and
+the other coming, except to a guest that reads no EDID, and two
+identities given at once reaching the device as the last one.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ tests/qtest/dbus-display-test.c | 291 +++++++++++++++++++++++++++++++-
+ ui/dbus-console.c               |  90 +++++++++-
+ ui/dbus-display1.xml            |  38 ++++-
+ 3 files changed, 411 insertions(+), 8 deletions(-)
+
+diff --git a/tests/qtest/dbus-display-test.c b/tests/qtest/dbus-display-test.c
+index 23b286a42d..2b4fea51e9 100644
+--- a/tests/qtest/dbus-display-test.c
++++ b/tests/qtest/dbus-display-test.c
+@@ -463,6 +463,25 @@ test_uiinfo_apply_ok(QemuDBusDisplay1UIInfo *ui_info, GVariant *dict)
+ 
+     g_assert_cmpstr(error, ==, NULL);
+ }
++
++static void
++test_uiinfo_apply_invalid(QemuDBusDisplay1UIInfo *ui_info, GVariant *dict)
++{
++    g_autofree char *error = test_uiinfo_apply(ui_info, dict);
++
++    g_assert_cmpstr(error, ==, "org.qemu.Display1.Error.Invalid");
++}
++
++static void
++test_uiinfo_assert_s(QemuDBusDisplay1UIInfo *ui_info, const char *key,
++                     const char *expected)
++{
++    g_autoptr(GVariant) info = test_uiinfo_get(ui_info);
++    const char *s = NULL;
++
++    g_assert_true(g_variant_lookup(info, key, "&s", &s));
++    g_assert_cmpstr(s, ==, expected);
++}
+ #if defined(CONFIG_VNC) && !defined(WIN32)
+ static void
+ test_vnc_read(int fd, void *buf, size_t len)
+@@ -546,7 +565,7 @@ test_dbus_display_uiinfo_vnc(void)
+                     " -display dbus,p2p=yes -name dbus-test");
+     ui_info = test_uiinfo_proxy(conn, 0);
+     test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
+-        "{'refresh_rate': <uint32 60000>}"));
++        "{'refresh_rate': <uint32 60000>, 'name': <'Name'>}"));
+ 
+     fd = test_vnc_connect(qts);
+     test_vnc_set_desktop_size(fd, 1600, 900);
+@@ -557,6 +576,7 @@ test_dbus_display_uiinfo_vnc(void)
+     }
+     g_assert_cmpuint(test_uiinfo_get_u(ui_info, "height"), ==, 900);
+     g_assert_cmpuint(test_uiinfo_get_u(ui_info, "refresh_rate"), ==, 60000);
++    test_uiinfo_assert_s(ui_info, "name", "Name");
+ 
+     close(fd);
+     g_clear_object(&ui_info);
+@@ -596,10 +616,13 @@ test_dbus_display_uiinfo_legacy(void)
+     g_assert_no_error(err);
+ 
+     test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
+-        "{'refresh_rate': <uint32 60000>}"));
++        "{'refresh_rate': <uint32 60000>, 'name': <'Name'>,"
++        " 'serial_number': <uint32 7>}"));
+     test_console_set_ui_info(console, 1600, 900);
+     g_assert_cmpuint(test_uiinfo_get_u(ui_info, "width"), ==, 1600);
+     g_assert_cmpuint(test_uiinfo_get_u(ui_info, "refresh_rate"), ==, 60000);
++    test_uiinfo_assert_s(ui_info, "name", "Name");
++    g_assert_cmpuint(test_uiinfo_get_u(ui_info, "serial_number"), ==, 7);
+ 
+     g_clear_object(&ui_info);
+     g_clear_object(&console);
+@@ -607,6 +630,77 @@ test_dbus_display_uiinfo_legacy(void)
+     qtest_quit(qts);
+ }
+ 
++/* @key set to @value, with a new size, is refused, and changes nothing. */
++static void
++test_uiinfo_refused(QemuDBusDisplay1UIInfo *ui_info,
++                    const char *key, GVariant *value)
++{
++    g_autoptr(GVariant) before = test_uiinfo_get(ui_info);
++    g_autoptr(GVariant) after = NULL;
++
++    test_uiinfo_apply_invalid(ui_info, g_variant_new_parsed(
++        "{'width': <uint32 640>, 'height': <uint32 480>, %s: %v}",
++        key, value));
++    after = test_uiinfo_get(ui_info);
++    g_assert_true(g_variant_equal(before, after));
++}
++
++/* The monitor's identity: given, read back, checked, and cleared. */
++static void
++test_dbus_display_uiinfo_identity(void)
++{
++    g_autoptr(GDBusConnection) conn = NULL;
++    g_autoptr(GVariant) info = NULL;
++    QemuDBusDisplay1UIInfo *ui_info;
++    QTestState *qts = NULL;
++    guint16 product = 0;
++
++    test_setup_device(&qts, &conn, "virtio-gpu-pci");
++    ui_info = test_uiinfo_proxy(conn, 0);
++
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'vendor': <'LNX'>, 'product': <%q>, 'serial_number': <%u>,"
++        " 'name': <'PiKVM V4 Plus'>, 'serial_string': <'CAFEBABE'>}",
++        0x7773, 0xcafebabe));
++    info = test_uiinfo_get(ui_info);
++    g_assert_true(g_variant_lookup(info, "product", "q", &product));
++    g_assert_cmphex(product, ==, 0x7773);
++    g_assert_cmphex(test_uiinfo_get_u(ui_info, "serial_number"), ==,
++                    0xcafebabe);
++    test_uiinfo_assert_s(ui_info, "vendor", "LNX");
++    test_uiinfo_assert_s(ui_info, "name", "PiKVM V4 Plus");
++    test_uiinfo_assert_s(ui_info, "serial_string", "CAFEBABE");
++
++    test_uiinfo_refused(ui_info, "vendor", g_variant_new_string("lnx"));
++    test_uiinfo_refused(ui_info, "vendor", g_variant_new_string("LN"));
++    test_uiinfo_refused(ui_info, "vendor", g_variant_new_string("LNXX"));
++    test_uiinfo_refused(ui_info, "vendor", g_variant_new_string("L1X"));
++    test_uiinfo_refused(ui_info, "name",
++                        g_variant_new_string("ABCDEFGHIJKLMN"));
++    test_uiinfo_refused(ui_info, "name", g_variant_new_string("Tab\there"));
++    test_uiinfo_refused(ui_info, "name",
++                        g_variant_new_string("M\xc3\xb6nitor"));
++    test_uiinfo_refused(ui_info, "serial_string",
++                        g_variant_new_string("12345678901234"));
++    test_uiinfo_refused(ui_info, "name", g_variant_new_uint32(1));
++    test_uiinfo_refused(ui_info, "product", g_variant_new_string("1"));
++
++    /* 13 characters fit. */
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'serial_string': <'1234567890123'>}"));
++    test_uiinfo_assert_s(ui_info, "serial_string", "1234567890123");
++
++    /* An empty string clears a text, and a key of no use is ignored. */
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'name': <''>, 'vendor': <''>, 'no-such-key': <uint32 1>}"));
++    test_uiinfo_assert_s(ui_info, "name", "");
++    test_uiinfo_assert_s(ui_info, "vendor", "");
++
++    g_clear_object(&ui_info);
++    g_clear_object(&conn);
++    qtest_quit(qts);
++}
++
+ /*
+  * A virtio-gpu driven from the test, as a guest would: what it reports for
+  * its outputs, and when, after a UI changes a monitor through D-Bus.
+@@ -1333,6 +1427,172 @@ test_dbus_display_gpu_identity_default(void)
+     test_gpu_stop(&t);
+ }
+ 
++static const TestMonitor test_monitor = {
++    "LNX", 0x7773, 0xcafebabe, "PiKVM V4 Plus", "CAFEBABE",
++};
++
++/* UIInfo.Apply of @m at 1920x1080 on output 0. */
++static void
++test_gpu_apply_monitor(TestGPU *t, const TestMonitor *m)
++{
++    test_uiinfo_apply_ok(t->ui_info[0], g_variant_new_parsed(
++        "{'width': <uint32 1920>, 'height': <uint32 1080>, 'vendor': <%s>,"
++        " 'product': <%q>, 'serial_number': <%u>, 'name': <%s>,"
++        " 'serial_string': <%s>}", m->vendor, m->product, m->serial_number,
++        m->name, m->serial_string));
++}
++
++static void
++test_gpu_wait_edid_names(TestGPU *t, const TestMonitor *m)
++{
++    gint64 end = g_get_monotonic_time() + GPU_TIMEOUT_US;
++
++    while (!test_gpu_edid_names(t, m)) {
++        g_assert_cmpint(g_get_monotonic_time(), <, end);
++        g_usleep(1000);
++    }
++}
++
++/* The EDID the guest reads names the monitor the client gave. */
++static void
++test_dbus_display_gpu_identity(void)
++{
++    TestGPU t = {};
++    TestMonitor m = test_monitor;
++
++    test_gpu_start(&t);
++    test_gpu_apply_monitor(&t, &m);
++    test_gpu_wait_edid_names(&t, &m);
++
++    /* No name, no serial number text: QEMU's own name, and no text. */
++    m.name = "";
++    m.serial_string = "";
++    test_gpu_apply_monitor(&t, &m);
++    m.name = "QEMU Monitor";
++    test_gpu_wait_edid_names(&t, &m);
++    test_gpu_stop(&t);
++
++    /* An output named in the configuration keeps that name. */
++    test_gpu_start_device(&t, "'{\"driver\": \"virtio-gpu-pci\","
++                              " \"addr\": \"04.0\","
++                              " \"outputs\": [{\"name\": \"CFG\"}]}'", 1);
++    m = test_monitor;
++    test_gpu_apply_monitor(&t, &m);
++    m.name = "CFG";
++    test_gpu_wait_edid_names(&t, &m);
++    test_gpu_stop(&t);
++}
++
++static const TestMonitor test_monitor_name = {
++    "LNX", 0x7773, 0xcafebabe, "Second", "CAFEBABE",
++};
++static const TestMonitor test_monitor_serial_number = {
++    "LNX", 0x7773, 0xcafebabf, "PiKVM V4 Plus", "CAFEBABE",
++};
++static const TestMonitor test_monitor_serial_string = {
++    "LNX", 0x7773, 0xcafebabe, "PiKVM V4 Plus", "CAFEBABF",
++};
++static const TestMonitor test_monitor_product = {
++    "LNX", 0x7774, 0xcafebabe, "PiKVM V4 Plus", "CAFEBABE",
++};
++static const TestMonitor test_monitor_vendor = {
++    "SAM", 0x7773, 0xcafebabe, "PiKVM V4 Plus", "CAFEBABE",
++};
++
++/*
++ * Another monitor of the same size, @data, on an output the guest has
++ * seen: the guest sees the first one go and the other come.
++ */
++static void
++test_dbus_display_gpu_identity_swap(const void *data)
++{
++    const TestMonitor *other = data;
++    TestGPU t = {};
++
++    test_gpu_start(&t);
++    test_gpu_apply_monitor(&t, &test_monitor);
++    test_gpu_wait_display_event(&t);
++    g_assert_cmpuint(test_gpu_width(&t), ==, 1920);
++    test_gpu_clear_display_event(&t);
++
++    test_gpu_apply_monitor(&t, other);
++    test_gpu_wait_edid_names(&t, other);
++    test_gpu_assert_raised(&t);
++    g_assert_cmpuint(test_gpu_width(&t), ==, 0);
++    test_gpu_clear_display_event(&t);
++    test_gpu_assert_raised(&t);
++    g_assert_cmpuint(test_gpu_width(&t), ==, 1920);
++    test_gpu_clear_display_event(&t);
++    test_gpu_assert_quiet(&t);
++
++    test_gpu_stop(&t);
++}
++
++/*
++ * A monitor's identity given only after the guest has seen the output
++ * with QEMU's own: that one goes, and this one comes.
++ */
++static void
++test_dbus_display_gpu_identity_first(void)
++{
++    TestGPU t = {};
++
++    test_gpu_start(&t);
++    g_assert_cmpuint(test_gpu_width(&t), ==, 1280);
++    test_gpu_apply_monitor(&t, &test_monitor);
++    test_gpu_wait_edid_names(&t, &test_monitor);
++    test_gpu_assert_raised(&t);
++    g_assert_cmpuint(test_gpu_width(&t), ==, 0);
++    test_gpu_clear_display_event(&t);
++    test_gpu_assert_raised(&t);
++    g_assert_cmpuint(test_gpu_width(&t), ==, 1920);
++    test_gpu_clear_display_event(&t);
++    test_gpu_assert_quiet(&t);
++
++    test_gpu_stop(&t);
++}
++
++/* A guest that reads no EDID sees another identity as the same monitor. */
++static void
++test_dbus_display_gpu_identity_no_edid(void)
++{
++    TestGPU t = {};
++
++    test_gpu_start_device(&t, "virtio-gpu-pci,addr=04.0,edid=off", 1);
++    test_gpu_apply_monitor(&t, &test_monitor);
++    test_gpu_wait_display_event(&t);
++    g_assert_cmpuint(test_gpu_width(&t), ==, 1920);
++    test_gpu_clear_display_event(&t);
++
++    test_gpu_apply_monitor(&t, &test_monitor_name);
++    test_gpu_wait_display_event(&t);
++    g_assert_cmpuint(test_gpu_width(&t), ==, 1920);
++
++    test_gpu_stop(&t);
++}
++
++#ifndef WIN32
++/*
++ * Two requests that reach the console at once reach the device as one:
++ * another monitor's identity, given and taken back together, is no other
++ * monitor to the guest. Passed on one at a time, they would take the
++ * output away.
++ */
++static void
++test_dbus_display_gpu_identity_merged(void)
++{
++    TestGPU t = {};
++
++    test_gpu_start(&t);
++    g_assert_cmpuint(test_gpu_width(&t), ==, 1280);
++    test_gpu_apply_merged(&t, g_variant_new_parsed("{'name': <'Other'>}"),
++                          g_variant_new_parsed("{'name': <''>}"));
++    g_assert_cmpuint(test_gpu_width(&t), ==, 1280);
++
++    test_gpu_stop(&t);
++}
++#endif
++
+ static gsize
+ get_console_ids_count(GDBusConnection *conn)
+ {
+@@ -1437,6 +1697,8 @@ main(int argc, char **argv)
+ #endif
+         qtest_add_func("/dbus-display/uiinfo/legacy",
+                        test_dbus_display_uiinfo_legacy);
++        qtest_add_func("/dbus-display/uiinfo/identity",
++                       test_dbus_display_uiinfo_identity);
+         qtest_add_func("/dbus-display/gpu/no-size",
+                        test_dbus_display_gpu_no_size);
+         qtest_add_func("/dbus-display/gpu/first-off",
+@@ -1467,6 +1729,31 @@ main(int argc, char **argv)
+                        test_dbus_display_gpu_output_name);
+         qtest_add_func("/dbus-display/gpu/identity/default",
+                        test_dbus_display_gpu_identity_default);
++        qtest_add_func("/dbus-display/gpu/identity",
++                       test_dbus_display_gpu_identity);
++        qtest_add_func("/dbus-display/gpu/identity/first",
++                       test_dbus_display_gpu_identity_first);
++        qtest_add_func("/dbus-display/gpu/identity/no-edid",
++                       test_dbus_display_gpu_identity_no_edid);
++#ifndef WIN32
++        qtest_add_func("/dbus-display/gpu/identity/merged",
++                       test_dbus_display_gpu_identity_merged);
++#endif
++        qtest_add_data_func("/dbus-display/gpu/identity/swap/name",
++                            &test_monitor_name,
++                            test_dbus_display_gpu_identity_swap);
++        qtest_add_data_func("/dbus-display/gpu/identity/swap/serial-number",
++                            &test_monitor_serial_number,
++                            test_dbus_display_gpu_identity_swap);
++        qtest_add_data_func("/dbus-display/gpu/identity/swap/serial-string",
++                            &test_monitor_serial_string,
++                            test_dbus_display_gpu_identity_swap);
++        qtest_add_data_func("/dbus-display/gpu/identity/swap/product",
++                            &test_monitor_product,
++                            test_dbus_display_gpu_identity_swap);
++        qtest_add_data_func("/dbus-display/gpu/identity/swap/vendor",
++                            &test_monitor_vendor,
++                            test_dbus_display_gpu_identity_swap);
+     }
+     if (qtest_has_machine("q35") && qtest_has_device("bochs-display")) {
+         qtest_add_func("/dbus-display/hotplug", test_dbus_display_hotplug);
+diff --git a/ui/dbus-console.c b/ui/dbus-console.c
+index 5c2cab96e1..0fa40bfa20 100644
+--- a/ui/dbus-console.c
++++ b/ui/dbus-console.c
+@@ -22,6 +22,7 @@
+  * THE SOFTWARE.
+  */
+ #include "qemu/osdep.h"
++#include "qemu/cutils.h"
+ #include "qemu/error-report.h"
+ #include "qapi/error.h"
+ #include "ui/input.h"
+@@ -208,7 +209,7 @@ dbus_console_set_ui_info(DBusDisplayConsole *ddc,
+         return DBUS_METHOD_INVOCATION_HANDLED;
+     }
+ 
+-    /* The refresh rate stays as UIInfo.Apply set it. */
++    /* The refresh rate and the identity stay as UIInfo.Apply set them. */
+     info = *qemu_console_get_ui_info(ddc->dcl.con);
+     info.width_mm = arg_width_mm;
+     info.height_mm = arg_height_mm;
+@@ -560,6 +561,13 @@ dbus_ui_info_get(DBusDisplayConsole *ddc,
+     g_variant_dict_insert(&dict, "width", "u", ui_info.width);
+     g_variant_dict_insert(&dict, "height", "u", ui_info.height);
+     g_variant_dict_insert(&dict, "refresh_rate", "u", ui_info.refresh_rate);
++    g_variant_dict_insert(&dict, "vendor", "s", ui_info.identity.vendor);
++    g_variant_dict_insert(&dict, "product", "q", ui_info.identity.product);
++    g_variant_dict_insert(&dict, "serial_number", "u",
++                          ui_info.identity.serial_number);
++    g_variant_dict_insert(&dict, "name", "s", ui_info.identity.name);
++    g_variant_dict_insert(&dict, "serial_string", "s",
++                          ui_info.identity.serial_string);
+ 
+     qemu_dbus_display1_uiinfo_complete_get(ddc->iface_ui_info, invocation,
+                                            g_variant_dict_end(&dict));
+@@ -586,6 +594,73 @@ dbus_ui_info_apply_lookup(GDBusMethodInvocation *invocation,
+     return true;
+ }
+ 
++/* "vendor": the three upper-case letters of a PNP ID, or "" to clear it. */
++static bool
++dbus_ui_info_apply_vendor(GDBusMethodInvocation *invocation,
++                          GVariantDict *dict,
++                          QemuUIIdentity *id)
++{
++    g_autofree gchar *s = NULL;
++
++    if (!dbus_ui_info_apply_lookup(invocation, dict, "vendor", "s", &s)) {
++        return false;
++    }
++    if (!s) {
++        return true;
++    }
++    if (*s && (strlen(s) != 3 ||
++               strspn(s, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") != 3)) {
++        g_dbus_method_invocation_return_error(invocation,
++                                              DBUS_DISPLAY_ERROR,
++                                              DBUS_DISPLAY_ERROR_INVALID,
++                                              "vendor must be three "
++                                              "upper-case letters, or empty");
++        return false;
++    }
++
++    pstrcpy(id->vendor, sizeof(id->vendor), s);
++    return true;
++}
++
++/*
++ * A text key of the monitor's identity, into @res of @size bytes: up to
++ * @size - 1 printable ASCII characters, or "" to clear it.
++ */
++static bool
++dbus_ui_info_apply_text(GDBusMethodInvocation *invocation,
++                        GVariantDict *dict,
++                        const gchar *key,
++                        char *res,
++                        size_t size)
++{
++    g_autofree gchar *s = NULL;
++    const gchar *p;
++
++    if (!dbus_ui_info_apply_lookup(invocation, dict, key, "s", &s)) {
++        return false;
++    }
++    if (!s) {
++        return true;
++    }
++
++    p = s;
++    while (g_ascii_isprint(*p)) {
++        p++;
++    }
++    if (*p || p - s >= size) {
++        g_dbus_method_invocation_return_error(invocation,
++                                              DBUS_DISPLAY_ERROR,
++                                              DBUS_DISPLAY_ERROR_INVALID,
++                                              "%s must be at most %zu "
++                                              "printable ASCII characters",
++                                              key, size - 1);
++        return false;
++    }
++
++    pstrcpy(res, size, s);
++    return true;
++}
++
+ static gboolean
+ dbus_ui_info_apply(DBusDisplayConsole *ddc,
+                    GDBusMethodInvocation *invocation,
+@@ -617,7 +692,18 @@ dbus_ui_info_apply(DBusDisplayConsole *ddc,
+         !dbus_ui_info_apply_lookup(invocation, &dict, "height", "u",
+                                    &ui_info.height) ||
+         !dbus_ui_info_apply_lookup(invocation, &dict, "refresh_rate", "u",
+-                                   &ui_info.refresh_rate)) {
++                                   &ui_info.refresh_rate) ||
++        !dbus_ui_info_apply_vendor(invocation, &dict, &ui_info.identity) ||
++        !dbus_ui_info_apply_lookup(invocation, &dict, "product", "q",
++                                   &ui_info.identity.product) ||
++        !dbus_ui_info_apply_lookup(invocation, &dict, "serial_number", "u",
++                                   &ui_info.identity.serial_number) ||
++        !dbus_ui_info_apply_text(invocation, &dict, "name",
++                                 ui_info.identity.name,
++                                 sizeof(ui_info.identity.name)) ||
++        !dbus_ui_info_apply_text(invocation, &dict, "serial_string",
++                                 ui_info.identity.serial_string,
++                                 sizeof(ui_info.identity.serial_string))) {
+         return DBUS_METHOD_INVOCATION_HANDLED;
+     }
+     /* The interface has no other way to say there is no monitor. */
+diff --git a/ui/dbus-display1.xml b/ui/dbus-display1.xml
+index 501577916d..412e750dff 100644
+--- a/ui/dbus-display1.xml
++++ b/ui/dbus-display1.xml
+@@ -90,8 +90,9 @@
+         @height: console height, in pixels.
+ 
+         Modify the dimensions and display settings. A zero @width or @height
+-        means that no monitor shows the console. The refresh rate, which
+-        :dbus:meth:`org.qemu.Display1.UIInfo.Apply` sets, stays as it is.
++        means that no monitor shows the console. The refresh rate and the
++        monitor's identity, which :dbus:meth:`org.qemu.Display1.UIInfo.Apply`
++        sets, stay as they are.
+ 
+         .. seealso::
+ 
+@@ -1195,6 +1196,34 @@
+         - ``width`` (u): the console width in pixels.
+         - ``height`` (u): the console height in pixels.
+         - ``refresh_rate`` (u): the display refresh rate in millihertz.
++        - ``vendor`` (s): the monitor's manufacturer, the three upper-case
++          letters of its PNP ID.
++        - ``product`` (q): the monitor's product code.
++        - ``serial_number`` (u): the monitor's 32-bit serial number.
++        - ``name`` (s): the monitor's name, up to 13 printable ASCII
++          characters.
++        - ``serial_string`` (s): the monitor's serial number as text, up to
++          13 printable ASCII characters.
++
++        A zero ``width`` or ``height`` means that no monitor shows the
++        console.
++
++        ``vendor``, ``product``, ``serial_number``, ``name`` and
++        ``serial_string`` name the monitor that shows the console, as its
++        own EDID does; ``name`` and ``serial_string`` are the text without
++        the line feed and spaces that pad it there. Zero or an empty string,
++        as they read when not given, leaves the device's own value, and an
++        output named in the device's configuration keeps that name.
++
++        virtio-gpu devices (virtio-gpu, virtio-vga, vhost-user-gpu) put them
++        in the EDID they give the guest. Changing them on an output the guest
++        has seen, giving them for the first time included, shows to a guest
++        that reads EDIDs as the monitor unplugged and another plugged in:
++        give them in the same call as the size. Other devices ignore them, a
++        vfio display included, whose EDID keeps QEMU's identity, but take a
++        change of them as any change of the UI info: a vfio display takes
++        its link down and brings it up again, which its guest sees as the
++        monitor unplugged and plugged in again.
+     -->
+     <method name="Get">
+       <arg name="ui_info" type="a{sv}" direction="out"/>
+@@ -1209,8 +1238,9 @@
+ 
+         The properties will be merged with existing values.
+         Extra keys will be ignored.
+-        The invocation will fail if any key has the wrong type,
+-        leaving the UI info unchanged.
++        The invocation will fail if any key has the wrong type, or an
++        identity value is not one an EDID can carry, leaving the UI info
++        unchanged.
+     -->
+     <method name="Apply">
+       <arg name="ui_info" type="a{sv}" direction="in"/>

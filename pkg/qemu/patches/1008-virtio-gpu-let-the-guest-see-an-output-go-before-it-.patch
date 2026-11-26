@@ -1,0 +1,204 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Mon, 23 Nov 2026 11:54:22 +0000
+Subject: [PATCH] virtio-gpu: let the guest see an output go before it comes
+ back
+
+A display backend that swaps the monitor behind an output disconnects
+the output and connects it again with the new monitor's size. When both
+happen before the guest has read the display info in between, the guest
+sees the output enabled all along and keeps the monitor it knew; a guest
+that reads EDIDs only for an output that appears, as viogpudo does,
+never asks for the new one's. Windows then keeps the old monitor's size
+and settings for the new one.
+
+Two places dropped the departure. The console layer delivers UI info
+from a timer, so a disconnect followed by a connect before the timer
+fired was replaced by the connect; a pending disconnect is now delivered
+before a connect is stored.
+
+And the device enabled the output again at once. It now records which
+outputs a monitor shows, as the UI said, apart from the outputs it
+shows the guest enabled, and which of those the guest saw in its last
+read of the display info. An output the guest last saw enabled, which
+went away and comes back before the guest has read the display info
+again, stays connected but not enabled, with a display event for the
+guest to read that it is gone. That read gives it back, with an event of
+its own. A guest that clears that event before reading the display info
+for it gets it again, as for any other display change.
+
+A device reset forgets what the guest saw and enables every connected
+output, so nothing is held back for a guest that has not read the
+display info since; firmware that reads it once leaves nothing held for
+the driver that follows.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ hw/display/virtio-gpu-base.c   | 55 ++++++++++++++++++++++++++--------
+ include/hw/virtio/virtio-gpu.h | 10 +++++++
+ ui/console.c                   | 10 +++++++
+ 3 files changed, 63 insertions(+), 12 deletions(-)
+
+diff --git a/hw/display/virtio-gpu-base.c b/hw/display/virtio-gpu-base.c
+index e8f86eaa7a..ca70639252 100644
+--- a/hw/display/virtio-gpu-base.c
++++ b/hw/display/virtio-gpu-base.c
+@@ -21,6 +21,15 @@
+ #include "trace.h"
+ #include "qapi/qapi-types-virtio.h"
+ 
++static void virtio_gpu_notify_event(VirtIOGPUBase *g, uint32_t event_type)
++{
++    g->virtio_config.events_read |= event_type;
++    if (event_type & VIRTIO_GPU_EVENT_DISPLAY) {
++        g->repeat_display_event = true;
++    }
++    virtio_notify_config(&g->parent_obj);
++}
++
+ void
+ virtio_gpu_base_reset(VirtIOGPUBase *g)
+ {
+@@ -29,6 +38,10 @@ virtio_gpu_base_reset(VirtIOGPUBase *g)
+     g->enable = 0;
+     g->repeat_display_event = false;
+ 
++    /* A reset guest has seen no output, so none is held back. */
++    g->enabled_output_bitmask = g->connected_outputs;
++    g->guest_seen_outputs = 0;
++
+     for (i = 0; i < g->conf.max_outputs; i++) {
+         g->scanout[i].resource_id = 0;
+         g->scanout[i].width = 0;
+@@ -43,6 +56,7 @@ void
+ virtio_gpu_base_fill_display_info(VirtIOGPUBase *g,
+                                   struct virtio_gpu_resp_display_info *dpy_info)
+ {
++    uint32_t held;
+     int i;
+ 
+     for (i = 0; i < g->conf.max_outputs; i++) {
+@@ -53,6 +67,18 @@ virtio_gpu_base_fill_display_info(VirtIOGPUBase *g,
+         }
+     }
+     g->repeat_display_event = false;
++
++    /*
++     * The guest has now seen every output that went away go. Those held
++     * back meanwhile come back now, with an event of their own, so that the
++     * guest sees a monitor plugged in rather than the old one still there.
++     */
++    g->guest_seen_outputs = g->enabled_output_bitmask;
++    held = g->connected_outputs & ~g->enabled_output_bitmask;
++    if (held) {
++        g->enabled_output_bitmask |= held;
++        virtio_gpu_notify_event(g, VIRTIO_GPU_EVENT_DISPLAY);
++    }
+ }
+ 
+ /*
+@@ -114,18 +140,10 @@ static void virtio_gpu_text_update(void *opaque, uint32_t *chardata)
+ {
+ }
+ 
+-static void virtio_gpu_notify_event(VirtIOGPUBase *g, uint32_t event_type)
+-{
+-    g->virtio_config.events_read |= event_type;
+-    if (event_type & VIRTIO_GPU_EVENT_DISPLAY) {
+-        g->repeat_display_event = true;
+-    }
+-    virtio_notify_config(&g->parent_obj);
+-}
+-
+ static void virtio_gpu_ui_info(void *opaque, uint32_t idx, QemuUIInfo *info)
+ {
+     VirtIOGPUBase *g = opaque;
++    uint32_t bit = 1u << idx;
+ 
+     if (idx >= g->conf.max_outputs) {
+         return;
+@@ -139,10 +157,22 @@ static void virtio_gpu_ui_info(void *opaque, uint32_t idx, QemuUIInfo *info)
+     g->req_state[idx].width_mm = info->width_mm;
+     g->req_state[idx].height_mm = info->height_mm;
+ 
+-    if (info->connected) {
+-        g->enabled_output_bitmask |= (1 << idx);
++    if (!info->connected) {
++        g->connected_outputs &= ~bit;
++        g->enabled_output_bitmask &= ~bit;
++    } else if ((g->guest_seen_outputs & bit) &&
++               !(g->enabled_output_bitmask & bit)) {
++        /*
++         * The output went away and comes back before the guest has read the
++         * display info without it: the guest would see no change in the
++         * display info, and could keep the monitor it knew. Hold it back,
++         * connected but not enabled: the guest's next read of the display
++         * info shows it gone and gives it back.
++         */
++        g->connected_outputs |= bit;
+     } else {
+-        g->enabled_output_bitmask &= ~(1 << idx);
++        g->connected_outputs |= bit;
++        g->enabled_output_bitmask |= bit;
+     }
+ 
+     /* send event to guest */
+@@ -257,6 +287,7 @@ virtio_gpu_base_device_realize(DeviceState *qdev,
+             return false;
+         }
+     }
++    g->connected_outputs = g->enabled_output_bitmask;
+ 
+     if (virtio_gpu_virgl_enabled(g->conf)) {
+         error_setg(&g->migration_blocker, "virgl is not yet migratable");
+diff --git a/include/hw/virtio/virtio-gpu.h b/include/hw/virtio/virtio-gpu.h
+index 26c33ae413..28889381ca 100644
+--- a/include/hw/virtio/virtio-gpu.h
++++ b/include/hw/virtio/virtio-gpu.h
+@@ -160,7 +160,16 @@ struct VirtIOGPUBase {
+ 
+     struct virtio_gpu_scanout scanout[VIRTIO_GPU_MAX_SCANOUTS];
+ 
++    /* The outputs the guest is shown enabled */
+     int enabled_output_bitmask;
++    /*
++     * The outputs a monitor shows, as the UI last said. One that is not
++     * enabled is held back until the guest has read the display info
++     * without it.
++     */
++    uint32_t connected_outputs;
++    /* The outputs enabled in the display info the guest read last */
++    uint32_t guest_seen_outputs;
+     /*
+      * Whether clearing the display event raises it again: set when one is
+      * raised, cleared when the guest reads the display info, when the event
+@@ -335,6 +344,7 @@ bool virtio_gpu_base_device_realize(DeviceState *qdev,
+                                     Error **errp);
+ void virtio_gpu_base_device_unrealize(DeviceState *qdev);
+ void virtio_gpu_base_reset(VirtIOGPUBase *g);
++/* The answer to the guest's GET_DISPLAY_INFO, which it has now seen */
+ void virtio_gpu_base_fill_display_info(VirtIOGPUBase *g,
+                         struct virtio_gpu_resp_display_info *dpy_info);
+ void virtio_gpu_base_events_clear(VirtIOGPUBase *g, uint32_t events_clear);
+diff --git a/ui/console.c b/ui/console.c
+index e8416738fd..995bc1d0e2 100644
+--- a/ui/console.c
++++ b/ui/console.c
+@@ -729,6 +729,16 @@ int qemu_console_set_ui_info(QemuConsole *con, QemuUIInfo *info, bool delay)
+         return 0;
+     }
+ 
++    /*
++     * A monitor taken away must reach the device even when another is given
++     * back before the timer fires: the guest has to see the first one go.
++     */
++    if (timer_pending(con->ui_timer) && !con->ui_info.connected &&
++        info->connected) {
++        timer_del(con->ui_timer);
++        dpy_set_ui_info_timer(con);
++    }
++
+     /*
+      * Typically we get a flood of these as the user resizes the window.
+      * Wait until the dust has settled (one second without updates), then

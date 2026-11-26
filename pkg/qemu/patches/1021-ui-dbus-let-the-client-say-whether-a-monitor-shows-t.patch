@@ -1,0 +1,397 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Mikhail Malyshev <mike.malyshev@gmail.com>
+Date: Mon, 23 Nov 2026 13:15:31 +0000
+Subject: [PATCH] ui/dbus: let the client say whether a monitor shows the
+ console
+
+A D-Bus client says that no monitor shows a console by giving it a zero
+size, as UIInfo.Apply has no other way to say it. That loses the size
+the monitor had, and makes "no monitor" and "no size yet" the same.
+
+Add a "connected" key to UIInfo.Apply. Disconnected, the console keeps
+its size, and the output comes back with it when the key is set again;
+a connected monitor needs a size, given then or before. A client that
+does not send the key is served as before: a new zero size means no
+monitor, and a call without a size leaves it as it was.
+
+UIInfo.Get returns the key only where the size does not say it: false,
+with the size the monitor comes back at. Otherwise a monitor shows the
+console when the size is not zero, as for a client that does not send
+the key. So a client that reads the UI info, changes some of it and
+applies all of it, as Apply's merge allows, changes what it meant to:
+had Get returned "connected" every time, its old value would override
+the size such a client gives, refusing a zero size to take the monitor
+away and keeping it away when a size is given. That still holds after a
+client took the monitor away with the key: Get returns it false, and the
+dictionary given back with a new size keeps the monitor away, as the
+documentation says.
+
+The tests check the key taking the monitor away and bringing it back,
+for the client and for a virtio-gpu guest; a size without the key
+meaning what it did, one size key alone included; a connected monitor
+without a size and a key of the wrong type refused; what Get returns,
+given back to Apply as it is or with a new size; and Console.SetUIInfo
+taking the monitor away with a zero size and bringing it back with a
+size.
+
+Signed-off-by: Mikhail Malyshev <mike.malyshev@gmail.com>
+Upstream-Status: Pending
+---
+ tests/qtest/dbus-display-test.c | 178 ++++++++++++++++++++++++++++++++
+ ui/dbus-console.c               |  30 +++++-
+ ui/dbus-display1.xml            |  33 ++++--
+ 3 files changed, 229 insertions(+), 12 deletions(-)
+
+diff --git a/tests/qtest/dbus-display-test.c b/tests/qtest/dbus-display-test.c
+index 2b4fea51e9..498276dacf 100644
+--- a/tests/qtest/dbus-display-test.c
++++ b/tests/qtest/dbus-display-test.c
+@@ -482,6 +482,24 @@ test_uiinfo_assert_s(QemuDBusDisplay1UIInfo *ui_info, const char *key,
+     g_assert_true(g_variant_lookup(info, key, "&s", &s));
+     g_assert_cmpstr(s, ==, expected);
+ }
++
++/* Whether a monitor shows the console, as a client tells from UIInfo.Get. */
++static gboolean
++test_uiinfo_get_connected(QemuDBusDisplay1UIInfo *ui_info)
++{
++    g_autoptr(GVariant) info = test_uiinfo_get(ui_info);
++    guint32 width = 0, height = 0;
++    gboolean connected;
++
++    if (g_variant_lookup(info, "connected", "b", &connected)) {
++        /* Given only where the size does not say it */
++        g_assert_false(connected);
++        return false;
++    }
++    g_assert_true(g_variant_lookup(info, "width", "u", &width));
++    g_assert_true(g_variant_lookup(info, "height", "u", &height));
++    return width && height;
++}
+ #if defined(CONFIG_VNC) && !defined(WIN32)
+ static void
+ test_vnc_read(int fd, void *buf, size_t len)
+@@ -624,6 +642,19 @@ test_dbus_display_uiinfo_legacy(void)
+     test_uiinfo_assert_s(ui_info, "name", "Name");
+     g_assert_cmpuint(test_uiinfo_get_u(ui_info, "serial_number"), ==, 7);
+ 
++    /*
++     * A zero size takes the monitor away, and a size brings it back, also
++     * after UIInfo.Apply took it away.
++     */
++    test_console_set_ui_info(console, 0, 0);
++    g_assert_false(test_uiinfo_get_connected(ui_info));
++    test_console_set_ui_info(console, 1600, 900);
++    g_assert_true(test_uiinfo_get_connected(ui_info));
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'connected': <false>}"));
++    test_console_set_ui_info(console, 1280, 720);
++    g_assert_true(test_uiinfo_get_connected(ui_info));
++
+     g_clear_object(&ui_info);
+     g_clear_object(&console);
+     g_clear_object(&conn);
+@@ -701,6 +732,118 @@ test_dbus_display_uiinfo_identity(void)
+     qtest_quit(qts);
+ }
+ 
++/* Whether a monitor shows the console, said or taken from the size. */
++static void
++test_dbus_display_uiinfo_connected(void)
++{
++    g_autoptr(GDBusConnection) conn = NULL;
++    g_autoptr(GVariant) info = NULL;
++    g_autoptr(GVariant) after = NULL;
++    QemuDBusDisplay1UIInfo *ui_info;
++    QTestState *qts = NULL;
++    GVariantDict dict;
++
++    test_setup_device(&qts, &conn, "virtio-gpu-pci,xres=1024,yres=768");
++    ui_info = test_uiinfo_proxy(conn, 0);
++    g_assert_true(test_uiinfo_get_connected(ui_info));
++
++    /* Disconnected, the size stays for the monitor to come back with. */
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'connected': <false>}"));
++    g_assert_false(test_uiinfo_get_connected(ui_info));
++    g_assert_cmpuint(test_uiinfo_get_u(ui_info, "width"), ==, 1024);
++
++    /* Neither the key nor a size: still disconnected. */
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'name': <'Name'>}"));
++    g_assert_false(test_uiinfo_get_connected(ui_info));
++
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'connected': <true>}"));
++    g_assert_true(test_uiinfo_get_connected(ui_info));
++    g_assert_cmpuint(test_uiinfo_get_u(ui_info, "width"), ==, 1024);
++
++    /* No key: a zero size is no monitor, as for older clients. */
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'width': <uint32 0>, 'height': <uint32 1>}"));
++    g_assert_false(test_uiinfo_get_connected(ui_info));
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'width': <uint32 800>, 'height': <uint32 600>}"));
++    g_assert_true(test_uiinfo_get_connected(ui_info));
++
++    /* One size key alone: the other keeps its value. */
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'width': <uint32 0>}"));
++    g_assert_false(test_uiinfo_get_connected(ui_info));
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'width': <uint32 640>}"));
++    g_assert_true(test_uiinfo_get_connected(ui_info));
++    g_assert_cmpuint(test_uiinfo_get_u(ui_info, "height"), ==, 600);
++
++    /* A connected monitor has a size, and "connected" is a boolean. */
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'width': <uint32 0>}"));
++    test_uiinfo_apply_invalid(ui_info, g_variant_new_parsed(
++        "{'connected': <true>}"));
++    test_uiinfo_apply_invalid(ui_info, g_variant_new_parsed(
++        "{'connected': <true>, 'width': <uint32 0>, 'height': <uint32 1>}"));
++    test_uiinfo_apply_invalid(ui_info, g_variant_new_parsed(
++        "{'connected': <uint32 1>, 'width': <uint32 800>}"));
++    g_assert_false(test_uiinfo_get_connected(ui_info));
++    g_assert_cmpuint(test_uiinfo_get_u(ui_info, "width"), ==, 0);
++
++    /*
++     * What UIInfo.Get returns, given back to UIInfo.Apply, changes nothing,
++     * and with a new size means what that size means, unless a client took
++     * the monitor away with "connected".
++     */
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'width': <uint32 1024>, 'height': <uint32 768>}"));
++    info = test_uiinfo_get(ui_info);
++    test_uiinfo_apply_ok(ui_info, info);
++    after = test_uiinfo_get(ui_info);
++    g_assert_true(g_variant_equal(info, after));
++    g_assert_true(test_uiinfo_get_connected(ui_info));
++
++    g_variant_dict_init(&dict, info);
++    g_variant_dict_insert(&dict, "width", "u", 0);
++    g_variant_dict_insert(&dict, "height", "u", 0);
++    test_uiinfo_apply_ok(ui_info, g_variant_dict_end(&dict));
++    g_assert_false(test_uiinfo_get_connected(ui_info));
++
++    g_clear_pointer(&info, g_variant_unref);
++    info = test_uiinfo_get(ui_info);
++    g_variant_dict_init(&dict, info);
++    g_variant_dict_insert(&dict, "width", "u", 800);
++    g_variant_dict_insert(&dict, "height", "u", 600);
++    test_uiinfo_apply_ok(ui_info, g_variant_dict_end(&dict));
++    g_assert_true(test_uiinfo_get_connected(ui_info));
++
++    test_uiinfo_apply_ok(ui_info, g_variant_new_parsed(
++        "{'connected': <false>}"));
++    g_clear_pointer(&info, g_variant_unref);
++    info = test_uiinfo_get(ui_info);
++    test_uiinfo_apply_ok(ui_info, info);
++    g_clear_pointer(&after, g_variant_unref);
++    after = test_uiinfo_get(ui_info);
++    g_assert_true(g_variant_equal(info, after));
++    g_assert_false(test_uiinfo_get_connected(ui_info));
++
++    /*
++     * Such a dictionary, given back with a new size, keeps the monitor
++     * away: "connected" in it says so.
++     */
++    g_variant_dict_init(&dict, info);
++    g_variant_dict_insert(&dict, "width", "u", 640);
++    test_uiinfo_apply_ok(ui_info, g_variant_dict_end(&dict));
++    g_assert_false(test_uiinfo_get_connected(ui_info));
++    g_assert_cmpuint(test_uiinfo_get_u(ui_info, "width"), ==, 640);
++
++    g_clear_object(&ui_info);
++    g_clear_object(&conn);
++    qtest_quit(qts);
++}
++
+ /*
+  * A virtio-gpu driven from the test, as a guest would: what it reports for
+  * its outputs, and when, after a UI changes a monitor through D-Bus.
+@@ -1593,6 +1736,37 @@ test_dbus_display_gpu_identity_merged(void)
+ }
+ #endif
+ 
++/* "connected" takes the output away and gives it back, at the size it had. */
++static void
++test_dbus_display_gpu_connected(void)
++{
++    TestGPU t = {};
++    TestGPUOutput out[GPU_OUTPUTS];
++
++    test_gpu_start(&t);
++    test_gpu_apply(&t, 0, 1600, 900);
++    test_gpu_wait_display_event(&t);
++    g_assert_cmpuint(test_gpu_width(&t), ==, 1600);
++    test_gpu_clear_display_event(&t);
++
++    test_uiinfo_apply_ok(t.ui_info[0], g_variant_new_parsed(
++        "{'connected': <false>}"));
++    test_gpu_wait_display_event(&t);
++    g_assert_cmpuint(test_gpu_width(&t), ==, 0);
++    test_gpu_clear_display_event(&t);
++
++    test_uiinfo_apply_ok(t.ui_info[0], g_variant_new_parsed(
++        "{'connected': <true>}"));
++    test_gpu_wait_display_event(&t);
++    test_gpu_display_info(&t, out);
++    g_assert_cmpuint(out[0].width, ==, 1600);
++    g_assert_cmpuint(out[0].height, ==, 900);
++    test_gpu_clear_display_event(&t);
++    test_gpu_assert_quiet(&t);
++
++    test_gpu_stop(&t);
++}
++
+ static gsize
+ get_console_ids_count(GDBusConnection *conn)
+ {
+@@ -1699,6 +1873,8 @@ main(int argc, char **argv)
+                        test_dbus_display_uiinfo_legacy);
+         qtest_add_func("/dbus-display/uiinfo/identity",
+                        test_dbus_display_uiinfo_identity);
++        qtest_add_func("/dbus-display/uiinfo/connected",
++                       test_dbus_display_uiinfo_connected);
+         qtest_add_func("/dbus-display/gpu/no-size",
+                        test_dbus_display_gpu_no_size);
+         qtest_add_func("/dbus-display/gpu/first-off",
+@@ -1754,6 +1930,8 @@ main(int argc, char **argv)
+         qtest_add_data_func("/dbus-display/gpu/identity/swap/vendor",
+                             &test_monitor_vendor,
+                             test_dbus_display_gpu_identity_swap);
++        qtest_add_func("/dbus-display/gpu/connected",
++                       test_dbus_display_gpu_connected);
+     }
+     if (qtest_has_machine("q35") && qtest_has_device("bochs-display")) {
+         qtest_add_func("/dbus-display/hotplug", test_dbus_display_hotplug);
+diff --git a/ui/dbus-console.c b/ui/dbus-console.c
+index 0fa40bfa20..8f17b36e13 100644
+--- a/ui/dbus-console.c
++++ b/ui/dbus-console.c
+@@ -561,6 +561,14 @@ dbus_ui_info_get(DBusDisplayConsole *ddc,
+     g_variant_dict_insert(&dict, "width", "u", ui_info.width);
+     g_variant_dict_insert(&dict, "height", "u", ui_info.height);
+     g_variant_dict_insert(&dict, "refresh_rate", "u", ui_info.refresh_rate);
++    /*
++     * Given only when false with a size kept, where Apply(Get()) must not
++     * bring the monitor back. Left out elsewhere, so that a client that
++     * changes the size in what Get returns gets what that size means.
++     */
++    if (!ui_info.connected && ui_info.width && ui_info.height) {
++        g_variant_dict_insert(&dict, "connected", "b", false);
++    }
+     g_variant_dict_insert(&dict, "vendor", "s", ui_info.identity.vendor);
+     g_variant_dict_insert(&dict, "product", "q", ui_info.identity.product);
+     g_variant_dict_insert(&dict, "serial_number", "u",
+@@ -667,6 +675,7 @@ dbus_ui_info_apply(DBusDisplayConsole *ddc,
+                    GVariant *arg_ui_info)
+ {
+     QemuUIInfo ui_info;
++    gboolean connected = FALSE;
+     g_auto(GVariantDict) dict = G_VARIANT_DICT_INIT(arg_ui_info);
+ 
+     if (!qemu_console_ui_info_supported(ddc->dcl.con)) {
+@@ -703,11 +712,26 @@ dbus_ui_info_apply(DBusDisplayConsole *ddc,
+                                  sizeof(ui_info.identity.name)) ||
+         !dbus_ui_info_apply_text(invocation, &dict, "serial_string",
+                                  ui_info.identity.serial_string,
+-                                 sizeof(ui_info.identity.serial_string))) {
++                                 sizeof(ui_info.identity.serial_string)) ||
++        !dbus_ui_info_apply_lookup(invocation, &dict, "connected", "b",
++                                   &connected)) {
+         return DBUS_METHOD_INVOCATION_HANDLED;
+     }
+-    /* The interface has no other way to say there is no monitor. */
+-    ui_info.connected = ui_info.width && ui_info.height;
++    if (g_variant_dict_contains(&dict, "connected")) {
++        if (connected && (!ui_info.width || !ui_info.height)) {
++            g_dbus_method_invocation_return_error(invocation,
++                                                  DBUS_DISPLAY_ERROR,
++                                                  DBUS_DISPLAY_ERROR_INVALID,
++                                                  "a connected monitor needs "
++                                                  "a width and a height");
++            return DBUS_METHOD_INVOCATION_HANDLED;
++        }
++        ui_info.connected = connected;
++    } else if (g_variant_dict_contains(&dict, "width") ||
++               g_variant_dict_contains(&dict, "height")) {
++        /* Without "connected", a zero size means no monitor. */
++        ui_info.connected = ui_info.width && ui_info.height;
++    }
+ 
+     qemu_console_set_ui_info(ddc->dcl.con, &ui_info, false);
+     qemu_dbus_display1_uiinfo_complete_apply(ddc->iface_ui_info, invocation);
+diff --git a/ui/dbus-display1.xml b/ui/dbus-display1.xml
+index 412e750dff..360f963fcd 100644
+--- a/ui/dbus-display1.xml
++++ b/ui/dbus-display1.xml
+@@ -90,9 +90,9 @@
+         @height: console height, in pixels.
+ 
+         Modify the dimensions and display settings. A zero @width or @height
+-        means that no monitor shows the console. The refresh rate and the
+-        monitor's identity, which :dbus:meth:`org.qemu.Display1.UIInfo.Apply`
+-        sets, stay as they are.
++        means that no monitor shows the console, and a non-zero size that
++        one does. The refresh rate and the monitor's identity, which
++        :dbus:meth:`org.qemu.Display1.UIInfo.Apply` sets, stay as they are.
+ 
+         .. seealso::
+ 
+@@ -1186,7 +1186,8 @@
+         Get:
+         @ui_info: a dictionary of UI info properties.
+ 
+-        Return the currently requested properties for the console.
++        Return the console's UI info: what UIs last asked for or, before any
++        did, the state the device's output started in.
+         The list of returned properties may vary and be extended in the future.
+ 
+         - ``width_mm`` (q): the physical display width in millimeters.
+@@ -1196,6 +1197,10 @@
+         - ``width`` (u): the console width in pixels.
+         - ``height`` (u): the console height in pixels.
+         - ``refresh_rate`` (u): the display refresh rate in millihertz.
++        - ``connected`` (b): false when no monitor shows the console while
++          ``width`` and ``height`` keep the size it comes back at; left out
++          where the size says it, a monitor showing the console when
++          neither ``width`` nor ``height`` is zero.
+         - ``vendor`` (s): the monitor's manufacturer, the three upper-case
+           letters of its PNP ID.
+         - ``product`` (q): the monitor's product code.
+@@ -1205,8 +1210,8 @@
+         - ``serial_string`` (s): the monitor's serial number as text, up to
+           13 printable ASCII characters.
+ 
+-        A zero ``width`` or ``height`` means that no monitor shows the
+-        console.
++        When no monitor shows the console, the device takes its output
++        away. Given back to ``Apply``, what ``Get`` returns changes nothing.
+ 
+         ``vendor``, ``product``, ``serial_number``, ``name`` and
+         ``serial_string`` name the monitor that shows the console, as its
+@@ -1238,9 +1243,19 @@
+ 
+         The properties will be merged with existing values.
+         Extra keys will be ignored.
+-        The invocation will fail if any key has the wrong type, or an
+-        identity value is not one an EDID can carry, leaving the UI info
+-        unchanged.
++        The invocation will fail if any key has the wrong type, an identity
++        value is not one an EDID can carry, or ``connected`` is true without
++        a size, leaving the UI info unchanged.
++
++        ``connected`` false takes the monitor away, keeping its size unless
++        one is given with it, and ``connected`` true brings it back, at the
++        size given with it or kept. Without ``connected``, a call with
++        ``width`` or ``height`` means no monitor if either is then zero and
++        a monitor if neither is, as for clients that do not know the key; a
++        call with neither leaves the monitor connected or not. So when
++        ``Get`` returns ``connected`` false, a dictionary it returned, given
++        back with a new size, keeps the monitor away: leave ``connected``
++        out of it, or set it true, to bring the monitor back.
+     -->
+     <method name="Apply">
+       <arg name="ui_info" type="a{sv}" direction="in"/>
