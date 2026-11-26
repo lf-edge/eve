@@ -160,7 +160,7 @@ func assertPurgeCompleted(g Gomega, dev *evetest.EdgeDevice, appUUID uuid.UUID,
 	newCounter, found := purgeCounter(dev, appUUID)
 	g.Expect(found).To(BeTrue(), "expected the purge counter file to exist")
 	g.Expect(newCounter).To(Equal(wantCounter),
-		"persisted purge counter must advance by exactly one")
+		"persisted purge counter must reach the last purge issued")
 
 	state, purge, found := appPurgePhase(dev, appUUID)
 	g.Expect(found).To(BeTrue(), "expected a published AppInstanceStatus for the app")
