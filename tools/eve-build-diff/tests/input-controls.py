@@ -144,6 +144,28 @@ check("keys: a second key the glob names: exit 0 (negative control)", rc == 0)
 rc, _ = run(key_a, key_b, rules=("--rules", key_rules))
 check("keys: a key one directory below the glob: exit 1", rc == 1)
 
+IQN_PATH = "containers/services/kube/lower/etc/iscsi/initiatorname.iscsi"
+IQN_HEAD = "## Default iSCSI Initiatorname.\n## DO NOT EDIT OR REMOVE THIS FILE!\n"
+
+
+def iqn_tree(dirname, head=IQN_HEAD, iqn="iqn.1996-04.org.alpinelinux:01:6a3474f85c5"):
+    """A tree holding only an initiatorname.iscsi file."""
+    return tree(dirname, {IQN_PATH: (0o600, f"{head}InitiatorName={iqn}\n")})
+
+
+iqn_a = iqn_tree("iqn-a")
+rc, _ = run(iqn_a, iqn_tree("iqn-same"))
+check("initiatorname: identical files: exit 0 (negative control)", rc == 0)
+rc, _ = run(iqn_a, iqn_tree("iqn-b", iqn="iqn.1996-04.org.alpinelinux:01:4b554ef9101b"))
+check("initiatorname: another random suffix, one digit longer: exit 0 (negative control)",
+      rc == 0)
+rc, _ = run(iqn_a, iqn_tree("iqn-prefix", iqn="iqn.1996-04.org.example:01:4b554ef9101b"))
+check("initiatorname: another IQN prefix: exit 1", rc == 1)
+rc, _ = run(iqn_a, iqn_tree("iqn-text", iqn="iqn.1996-04.org.alpinelinux:01:4b554ef9101z"))
+check("initiatorname: a non-hex suffix: exit 1", rc == 1)
+rc, _ = run(iqn_a, iqn_tree("iqn-head", head=IQN_HEAD + "## extra\n"))
+check("initiatorname: an added comment line: exit 1", rc == 1)
+
 date_rules = os.path.join(WORK, "dates.toml")
 with open(date_rules, "w", encoding="utf-8") as rules_fh:
     rules_fh.write('[[rule]]\nname = "date"\nkind = "volatile-strings"\n'

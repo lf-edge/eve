@@ -130,6 +130,15 @@ patterns = ['^[0-9a-f]{32}$']
 what = "the random machine ID"
 
 [[rule]]
+name = "iscsi-initiatorname"
+kind = "line-subst"
+paths = ["containers/*/*/lower/etc/iscsi/initiatorname.iscsi"]
+# open-iscsi's post-install runs iscsi-iname, which draws the suffix from
+# /dev/urandom, so every build gets a different one (and a different length).
+patterns = ['^(InitiatorName=iqn\.1996-04\.org\.alpinelinux:01:)[0-9a-f]+$']
+what = "the random InitiatorName suffix"
+
+[[rule]]
 name = "zfs-files-order"
 kind = "line-set"
 paths = ["etc/zfs-files"]

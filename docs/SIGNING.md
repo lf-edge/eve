@@ -89,7 +89,11 @@ rebuild with the release images:
    draft names the `eve` and `eve-sources` digests that `release-sign.yml`
    signs, `eve` first. The run's `sign-images-*` and `sign-blobs-*`
    artifacts, under "Artifacts" on the run's Summary page, hold the same
-   lists and the `sha256sums` files.
+   lists and the `sha256sums` files. The draft has an `images.txt` only for
+   the variants `assets.yml` builds; `publish.yml` can sign more `eve` images,
+   such as `ai-generic` and `riscv64`, and the run's
+   `sign-images-eve-<arch>-<hv>-<platform>` artifact for each holds its
+   `images.txt`. Steps 3 and 4 apply to every variant.
 
 3. **Rebuild the tag** on a machine that shares nothing with the release
    runners and holds no registry or GitHub credentials, such as a disposable
@@ -113,6 +117,10 @@ rebuild with the release images:
    the commit, which differs once a later tag points at the same commit. The
    rebuilt image is `dist/amd64/<tag>/installer/rootfs.img`.
 
+   Rebuild every variant that step 2 lists, each with its own `HV`, `ZARCH`
+   and `PLATFORM`; an arm64 variant needs an arm64 machine. The release is
+   verified only when every variant has been compared.
+
 4. **Compare** the release image, by the `eve` digest in `images.txt`, with
    the rebuild, using `tools/eve-build-diff` from a reviewed `master`
    commit, never from the tag under test:
@@ -124,7 +132,19 @@ rebuild with the release images:
 
    Exit status 0 means a rule in `known-diffs.toml` explains every
    difference. Do not approve while an ERROR remains unexplained; see
-   `tools/eve-build-diff/README.md`.
+   `tools/eve-build-diff/README.md`. Compare every variant.
+
+   The rebuild covers the `rootfs.img` inside the `eve` image. `assets.yml`
+   builds the release's other files (installer, live image, ISO, network
+   installer) from that image, and this procedure does not rebuild them.
+   Check that each target's `<target>.rootfs.img` asset is the image's own
+   file:
+
+   ```sh
+   cid=$(docker create docker.io/lfedge/eve@sha256:<digest> /none)
+   docker cp "$cid:/bits/rootfs.img" image-rootfs.img && docker rm "$cid"
+   cmp image-rootfs.img <target>.rootfs.img
+   ```
 
 5. **Approve.** On the run page, open "Review deployments", select `release`
    and choose "Approve and deploy".

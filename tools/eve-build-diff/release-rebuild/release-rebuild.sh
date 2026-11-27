@@ -2,9 +2,9 @@
 # Copyright (c) 2026 Zededa, Inc.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Rebuilds a draft EVE release from its tag in a fresh Multipass VM and compares
-# the rebuild with the release images using eve-build-diff: docs/SIGNING.md
-# "Approving a release", steps 1-4.
+# Rebuilds a draft EVE release (or, with PUBLISHED=1, a published one) from its
+# tag in a fresh Multipass VM and compares the rebuild with the release images
+# using eve-build-diff: docs/SIGNING.md "Approving a release", steps 1-4.
 #
 #   release-rebuild.sh [run|resolve|start|wait|compare|finish|status] <tag> <release-id> <release-url>
 #
@@ -24,8 +24,12 @@
 # Environment:
 #   EVE_BUILD_DIFF  eve-build-diff.py to use (default: the one in the parent
 #                   directory; run both from a reviewed master checkout)
+#   PUBLISHED=1     audit a published release instead of a draft. The release
+#                   must not be a draft; its URL is releases/tag/<tag>.
 #   TARGETS         arch.hv.platform list (default: amd64.kvm.generic if the
-#                   draft has it, else every target of the host's arch)
+#                   draft has it, else every target of the host's arch). A run
+#                   covers only these; every target of the release needs its
+#                   own comparison, and the RESULT line names those left out.
 #   REBUILD         compare this rootfs.img instead of the VM's (tests only;
 #                   one target)
 #   FAKE_BUILD=1    plumbing test: the VM copies the release's own rootfs out of
@@ -65,12 +69,17 @@ host_arch() { case $(uname -m) in x86_64) echo amd64 ;; aarch64) echo arm64 ;; *
 # Checks the draft against the arguments and fetches what it will sign. Run by
 # every command, so a draft that changed since the build started is caught.
 resolve() {
-  local rel tag draft url commit n d
+  local rel tag draft url commit n d kind=draft
   rel=$(gh api "repos/$REPO/releases/$ID") || die "no release $ID in $REPO"
   tag=$(jq -r .tag_name <<< "$rel") draft=$(jq -r .draft <<< "$rel") url=$(jq -r .html_url <<< "$rel")
   [ "$tag" = "$TAG" ] || die "release $ID is $tag, not $TAG"
   [ "$url" = "$URL" ] || die "release $ID is at $url, not $URL"
-  [ "$draft" = true ] || die "release $ID is not a draft"
+  if [ -n "${PUBLISHED:-}" ]; then
+    kind=published
+    [ "$draft" = false ] || die "release $ID is a draft; unset PUBLISHED"
+  else
+    [ "$draft" = true ] || die "release $ID is not a draft; set PUBLISHED=1 to audit a published release"
+  fi
   commit=$(gh api "repos/$REPO/commits/$TAG" --jq .sha) || die "no tag $TAG in $REPO"
   if [ -f "$S/commit" ]; then
     [ "$(cat "$S/commit")" = "$commit" ] || die "$TAG moved: $(cat "$S/commit") at start, $commit now"
@@ -86,7 +95,7 @@ resolve() {
   n=$(find "$S/release.new" -name '*.images.txt' | wc -l)
   [ "$n" -gt 0 ] || die "release $ID has no *.images.txt assets"
   if [ -d "$S/release" ]; then
-    diff -r "$S/release" "$S/release.new" > /dev/null || die "the draft's images.txt changed since the start; see $S/release{,.new}"
+    diff -r "$S/release" "$S/release.new" > /dev/null || die "the $kind's images.txt changed since the start; see $S/release{,.new}"
     rm -r "$S/release.new"
   else
     mv "$S/release.new" "$S/release"
@@ -100,17 +109,17 @@ resolve() {
         sed 's/\.images\.txt$//' | sort | xargs)
     fi
   fi
-  [ -n "$TARGETS" ] || die "no $(host_arch) target in the draft"
+  [ -n "$TARGETS" ] || die "no $(host_arch) target in the $kind"
   for t in $TARGETS; do
     [[ "$t" == "$(host_arch)".* ]] || die "$t cannot be built on this $(host_arch) host"
-    [ -f "$S/release/$t.images.txt" ] || die "the draft has no $t.images.txt"
+    [ -f "$S/release/$t.images.txt" ] || die "the $kind has no $t.images.txt"
     d=$(grep -E '^([a-z0-9._-]+/)+eve@sha256:[0-9a-f]{64}$' "$S/release/$t.images.txt") ||
       die "$t.images.txt has no eve digest"
     [ "$(wc -l <<< "$d")" = 1 ] || die "$t.images.txt has several eve digests"
     echo "$d" > "$S/$t.eve"
   done
   echo "$TARGETS" > "$S/targets"
-  echo "release $REPO $ID draft, tag $TAG at $commit"
+  echo "release $REPO $ID $kind, tag $TAG at $commit"
   for t in $TARGETS; do echo "  $t: $(cat "$S/$t.eve")"; done
 }
 
@@ -188,7 +197,7 @@ wait_build() {
 }
 
 compare() {
-  local t img want got rc ref overall=0 tooldir toolrev targets
+  local t img want got rc ref overall=0 tooldir toolrev targets all skipped
   [ -f "$EVE_BUILD_DIFF" ] || die "no eve-build-diff at $EVE_BUILD_DIFF; set EVE_BUILD_DIFF"
   tooldir=$(dirname "$EVE_BUILD_DIFF")
   toolrev=$(git -C "$tooldir" log -1 --format='%h %s' 2> /dev/null || echo "not in git")
@@ -218,10 +227,14 @@ compare() {
   if grep -qE 'TEST ENV| FAKE_BUILD ' "$S/vm-status" 2> /dev/null || [ -n "${REBUILD:-}" ]; then
     test="TEST ENV, NOT APPROVABLE: "
   fi
-  if [ "$overall" = 0 ]; then
-    log "${test}RESULT: every target matches its release image up to known differences; reports in $S"
-  else
+  all=$(find "$S/release" -maxdepth 1 -name '*.images.txt' -printf '%f\n' | sed 's/\.images\.txt$//' | sort)
+  skipped=$(comm -23 <(echo "$all") <(printf '%s\n' "${targets[@]}" | sort) | xargs)
+  if [ "$overall" != 0 ]; then
     log "${test}RESULT: DO NOT APPROVE: unexplained differences or a failed comparison; see $S/*.diff.txt"
+  elif [ -n "$skipped" ]; then
+    log "${test}RESULT: PARTIAL: ${targets[*]} match up to known differences; NOT COMPARED by this run: $skipped; every target needs a clean comparison before approval; reports in $S"
+  else
+    log "${test}RESULT: every target matches its release image up to known differences; reports in $S"
   fi
   return "$overall"
 }
