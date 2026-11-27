@@ -83,7 +83,7 @@ func (z *zedkube) collectKubeStats() {
 		}
 
 		// Publish the cluster info, first w/ nodes and app pods and VMIs
-		ksi, err := kubeapi.PopulateKSI()
+		ksi, err := kubeapi.PopulateKSI(ctx)
 		if err != nil {
 			log.Errorf("collectKubeStats: can't get KSI %v", err)
 		}

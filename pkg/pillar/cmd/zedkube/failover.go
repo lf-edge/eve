@@ -147,7 +147,7 @@ func (z *zedkube) checkAppsFailover(wdFunc func()) {
 				log.Errorf("aiDisplayName:%s aiUUID:%s vmirsname get err:%v",
 					aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID, err)
 			} else {
-				err := kubeapi.DetachUtilVmirsReplicaReset(log, vmiRsName)
+				err := kubeapi.DetachUtilVmirsReplicaReset(log, vmiRsName, wdFunc)
 				if err != nil {
 					log.Errorf("aiDisplayName:%s aiUUID:%s replica reset for vmirs:%s err:%v",
 						aiconfig.DisplayName, aiconfig.UUIDandVersion.UUID, vmiRsName, err)

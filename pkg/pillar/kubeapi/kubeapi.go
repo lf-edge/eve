@@ -522,9 +522,12 @@ func CleanupStaleVMIRs() (int, error) {
 // DeleteControlPlanePodsOnNode : handle unresponsive/unreachable node
 // - delete all control plane pods for kubevirt and longhorn-system
 // - update kubevirt label and annotation placed on node for scheduling/VMI ready state.
-func DeleteControlPlanePodsOnNode(log *base.LogObject, kubernetesHostName string) {
+func DeleteControlPlanePodsOnNode(log *base.LogObject, kubernetesHostName string, wdFunc func()) {
 	if log == nil {
 		return
+	}
+	if wdFunc == nil {
+		wdFunc = func() {}
 	}
 	if kubernetesHostName == "" {
 		log.Errorf("kubernetesHostName is required!")
@@ -545,7 +548,9 @@ func DeleteControlPlanePodsOnNode(log *base.LogObject, kubernetesHostName string
 	log.Noticef("cleaning up control plane pods on host:%s", kubernetesHostName)
 
 	// 1. Is the node unreachable?
-	node, err := clientset.CoreV1().Nodes().Get(context.Background(), kubernetesHostName, metav1.GetOptions{})
+	getCtx, getCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	node, err := clientset.CoreV1().Nodes().Get(getCtx, kubernetesHostName, metav1.GetOptions{})
+	getCancel()
 	if (err != nil) || (node == nil) {
 		log.Errorf("can't get node:%s object err:%v", kubernetesHostName, err)
 		return
@@ -560,7 +565,9 @@ func DeleteControlPlanePodsOnNode(log *base.LogObject, kubernetesHostName string
 	heartbeatTs := time.Now().UTC().Format(time.RFC3339)
 	node.Annotations["kubevirt.io/heartbeat"] = heartbeatTs
 	log.Noticef("node:%s marking kubevirt label unschedulable and heartbeat to:%s", kubernetesHostName, heartbeatTs)
-	_, err = clientset.CoreV1().Nodes().Update(context.TODO(), node, metav1.UpdateOptions{})
+	updCtx, updCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	_, err = clientset.CoreV1().Nodes().Update(updCtx, node, metav1.UpdateOptions{})
+	updCancel()
 	if err != nil {
 		log.Errorf("node:%s unable to update kubevirt label and annotation err:%v", kubernetesHostName, err)
 	}
@@ -568,9 +575,12 @@ func DeleteControlPlanePodsOnNode(log *base.LogObject, kubernetesHostName string
 	log.Noticef("node:%s IS declared unreachable long enough to force delete all kubevirt pods", kubernetesHostName)
 
 	// 3. find all the kubevirt pods on this node
-	pods, err := clientset.CoreV1().Pods("kubevirt").List(context.Background(), metav1.ListOptions{
+	wdFunc()
+	listCtx, listCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	pods, err := clientset.CoreV1().Pods("kubevirt").List(listCtx, metav1.ListOptions{
 		FieldSelector: "spec.nodeName=" + kubernetesHostName,
 	})
+	listCancel()
 	if err != nil {
 		log.Errorf("can't get node:%s object err:%v", kubernetesHostName, err)
 		return
@@ -586,21 +596,26 @@ func DeleteControlPlanePodsOnNode(log *base.LogObject, kubernetesHostName string
 
 		gracePeriod := int64(0)
 		propagationPolicy := metav1.DeletePropagationForeground
-		err = clientset.CoreV1().Pods("kubevirt").Delete(context.Background(), podName,
+		delCtx, delCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+		err = clientset.CoreV1().Pods("kubevirt").Delete(delCtx, podName,
 			metav1.DeleteOptions{
 				GracePeriodSeconds: &gracePeriod,
 				PropagationPolicy:  &propagationPolicy,
 			})
+		delCancel()
 		if err != nil {
 			log.Errorf("can't delete pod:%s err:%v", podName, err)
 		}
+		wdFunc()
 	}
 
 	log.Noticef("node:%s IS declared unreachable long enough to force delete all longhorn-system pods", kubernetesHostName)
 	// 4. find all the kubevirt pods on this node
-	pods, err = clientset.CoreV1().Pods("longhorn-system").List(context.Background(), metav1.ListOptions{
+	lhListCtx, lhListCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	pods, err = clientset.CoreV1().Pods("longhorn-system").List(lhListCtx, metav1.ListOptions{
 		FieldSelector: "spec.nodeName=" + kubernetesHostName,
 	})
+	lhListCancel()
 	if err != nil {
 		log.Errorf("can't get node:%s object err:%v", kubernetesHostName, err)
 		return
@@ -614,14 +629,17 @@ func DeleteControlPlanePodsOnNode(log *base.LogObject, kubernetesHostName string
 
 		gracePeriod := int64(0)
 		propagationPolicy := metav1.DeletePropagationForeground
-		err = clientset.CoreV1().Pods("longhorn-system").Delete(context.Background(), podName,
+		delCtx, delCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+		err = clientset.CoreV1().Pods("longhorn-system").Delete(delCtx, podName,
 			metav1.DeleteOptions{
 				GracePeriodSeconds: &gracePeriod,
 				PropagationPolicy:  &propagationPolicy,
 			})
+		delCancel()
 		if err != nil {
 			log.Errorf("Can't delete pod:%s err:%v", podName, err)
 		}
+		wdFunc()
 	}
 	return
 
@@ -664,8 +682,12 @@ func vmirsReplicaCountSet(ctx context.Context, log *base.LogObject, vmiRsName st
 }
 
 // DetachUtilVmirsReplicaReset manages retries around scaling down and back up the replica
-// count of a vmirs to push the control plane into scheduling a new vmi
-func DetachUtilVmirsReplicaReset(log *base.LogObject, vmiRsName string) (err error) {
+// count of a vmirs to push the control plane into scheduling a new vmi.
+// wdFunc is kicked on each try, since the retries run on the caller's loop.
+func DetachUtilVmirsReplicaReset(log *base.LogObject, vmiRsName string, wdFunc func()) (err error) {
+	if wdFunc == nil {
+		wdFunc = func() {}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), detachUtilVmirsReplicaResetTimeout)
 	defer cancel()
 
@@ -676,6 +698,7 @@ func DetachUtilVmirsReplicaReset(log *base.LogObject, vmiRsName string) (err err
 			log.Errorf("DetachOldWorkload vmirs scale reset canceled for vmirs:%s err:%v", vmiRsName, err)
 			return err
 		}
+		wdFunc()
 
 		time.Sleep(time.Second)
 
@@ -690,6 +713,7 @@ func DetachUtilVmirsReplicaReset(log *base.LogObject, vmiRsName string) (err err
 			continue
 		}
 
+		wdFunc()
 		err = vmirsReplicaCountSet(ctx, log, vmiRsName, 1)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
@@ -1076,7 +1100,7 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 	log.Noticef(detachLogRecipe, failedNodevLPodName, failedNodeVmiName, failedNodeName, strings.Join(replicaNames, ","))
 
 	// Start Cleanup
-	DeleteControlPlanePodsOnNode(log, failedNodeName)
+	DeleteControlPlanePodsOnNode(log, failedNodeName, wdFunc)
 
 	// Policy for all deletes in the failover path
 	gracePeriod := int64(0)
@@ -1084,7 +1108,7 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 
 	// Push the kubevirt control plane to schedule new pod, otherwise this can be a larger delay
 	if vmiRsName != "" {
-		if err := DetachUtilVmirsReplicaReset(log, vmiRsName); err != nil {
+		if err := DetachUtilVmirsReplicaReset(log, vmiRsName, wdFunc); err != nil {
 			log.Errorf("DetachOldWorkload vmirs scale reset failed for %s: %v", vmiRsName, err)
 		}
 	}
@@ -1126,6 +1150,7 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 		if err := longhornReplicaDelete(replicaName); err != nil {
 			log.Errorf("DetachOldWorkload Can't delete failed replica:%s err:%v", replicaName, err)
 		}
+		wdFunc()
 	}
 
 	newVAReportsAttached := false
@@ -1156,6 +1181,7 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 		for _, va := range vaList {
 			log.Noticef("DetachOldWorkload Deleting volumeattachment %s on remote node %s", va, failedNodeName)
 			err = DeleteVolumeAttachment(va, log)
+			wdFunc()
 			if err != nil {
 				log.Errorf("DetachOldWorkload Error deleting volumeattachment %s from PV %v", va, err)
 				continue
@@ -1199,9 +1225,11 @@ func DetachOldWorkload(log *base.LogObject, failedNodeName string, appDomainName
 		for _, lhVolName := range lhVolNames {
 			err = longhornVolumeSetNode(lhVolName, newNodeName)
 			log.Noticef("DetachOldWorkload: set lhVol:%s to node:%s err:%v", lhVolName, newNodeName, err)
+			wdFunc()
 
 			attached, err := GetVolumeAttachmentAttached(lhVolName, newNodeName, log)
 			log.Noticef("DetachOldWorkload: check attachment lhVol:%s node:%s attached:%v err:%v", lhVolName, newNodeName, attached, err)
+			wdFunc()
 			newVAReportsAttached = attached
 		}
 
