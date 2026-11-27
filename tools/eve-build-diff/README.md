@@ -138,7 +138,7 @@ the rules must not explain, and checks that each is reported as an error.
 `tests/input-controls.py` builds small squashfs images, trees and an ELF
 binary, and uses a `docker` stub, to check names with a newline, extended
 attributes, that `docker:` inputs need a digest and are never run, that a glob
-does not reach below its path segment, and that volatile strings are not
-accepted in code. It needs `mksquashfs` and `gcc`. Both take another
-tool and rules file as optional arguments, to show that a control fails
-against them.
+does not reach below its path segment, that volatile strings are not
+accepted in code, and that the InitiatorName rule masks only the suffix. It
+needs `mksquashfs` and `gcc`. Both take another tool and rules file as
+optional arguments, to show that a control fails against them.
