@@ -210,8 +210,9 @@ agent. The decision tree, in order, is:
 7. `validateAndAssignPartition`: refuse if current = `inprogress` or
    other = `active` (we're still in the test window of a different
    upgrade); otherwise assign `PartitionLabel = otherPartName`,
-8. `doBaseOsActivate`: size check (image vs partition), call
-   `installDownloadedObjects` to schedule the `dd` worker, on worker
+8. `doBaseOsActivate`: call
+   `installDownloadedObjects` to schedule the `dd` worker (which checks
+   that the rootfs fits the partition before it writes), on worker
    completion call `checkInstalledVersion` (read `ShortVersion` back out
    of the freshly written partition); on a match call
    `zboot.SetOtherPartitionStateUpdating`, on a mismatch
@@ -365,9 +366,9 @@ zedagent → BaseOsConfig{ContentTreeUUID, BaseOsVersion, Activate=true}
         ├─ validateAndAssignPartition          (curr=inprogress|other=active? → TooEarly)
         └─ doBaseOsActivate
              ├─ check partition state ∈ {unused,inprogress,updating}
-             ├─ check partition size ≥ image size
              ├─ installDownloadedObjects
-             │    └─ AddWorkInstall (worker → zboot.WriteToPartition)
+             │    └─ AddWorkInstall (worker → zboot.WriteToPartition,
+             │         which checks partition size ≥ rootfs size)
              ├─ wait for worker.MsgChan() result
              ├─ checkInstalledVersion          (read ShortVersion back; mismatch → unused)
              └─ zboot.SetOtherPartitionStateUpdating
@@ -503,7 +504,7 @@ Useful `grep` patterns:
 "doBaseOsStatusUpdate"                  – top-level state-machine entry, prints the BaseOsConfig
 "validatePartition"                     – early reject (other=inprogress same version)
 "validateAndAssignPartition"            – partition assignment / TooEarly path
-"Image size .* greater than partition"  – size precheck failure
+"rootfs does not fit"                   – rootfs larger than the partition
 "installWorker to install"              – the actual dd starting
 "installWorker DONE install"            – the dd finished
 "Mark other partition .* unused"        – version-mismatch rollback after install

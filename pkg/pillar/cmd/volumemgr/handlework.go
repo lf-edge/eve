@@ -136,7 +136,16 @@ func AddWorkLoad(ctx *volumemgrContext, status *types.ContentTreeStatus) error {
 		}
 		seen[blobSha] = true
 		blob := ctx.LookupBlobStatus(blobSha)
-		if blob == nil || blob.State != types.LOADING {
+		if blob == nil {
+			continue
+		}
+		if status.OCIArchiveBlob != "" {
+			// The archive has every blob of the image, also one that
+			// another content tree is still downloading.
+			if blob.State == types.LOADED {
+				continue
+			}
+		} else if blob.State != types.LOADING {
 			continue
 		}
 		if owner, ok := ctx.inflightBlobIngests[blobSha]; ok && owner != status.Key() {
@@ -335,6 +344,29 @@ func casIngestWorker(ctxPtr interface{}, w worker.Work) worker.WorkResult {
 
 	appImgName := status.ReferenceID()
 
+	if status.OCIArchiveBlob != "" {
+		archive := ctx.LookupBlobStatus(status.OCIArchiveBlob)
+		if archive == nil {
+			result.Error = fmt.Errorf("casIngestWorker(%s): archive blob not found",
+				status.Key())
+			result.ErrorTime = time.Now()
+			return result
+		}
+		shas := make([]string, 0, len(loadBlobs))
+		for _, blob := range loadBlobs {
+			shas = append(shas, blob.Sha256)
+		}
+		loaded, err := ctx.casClient.IngestOCILayoutAndCreateImage(appImgName,
+			archive.Path, archive.Sha256, shas)
+		d.loaded = loaded
+		result.Description = d
+		if err != nil {
+			result.Error = err
+			result.ErrorTime = time.Now()
+		}
+		return result
+	}
+
 	// load the blobs
 	loadedBlobs, err := ctx.casClient.IngestBlobsAndCreateImage(appImgName, *root, loadBlobs...)
 	// loadedBlobs are BlobStatus for the ones we loaded
@@ -430,6 +462,11 @@ func processCasIngestWorkResult(ctxPtr interface{}, res worker.WorkResult) error
 	blobs := lookupBlobStatuses(ctx, d.loaded...)
 	for _, blob := range blobs {
 		blob.State = types.LOADED
+		if blob.HasError() {
+			// Loaded from an OCI archive while another content tree failed
+			// to download it. Nothing would clear that error any more.
+			blob.ClearErrorWithSource()
+		}
 		publishBlobStatus(ctx, blob)
 	}
 	updateStatusByBlob(ctx, d.status.Blobs...)

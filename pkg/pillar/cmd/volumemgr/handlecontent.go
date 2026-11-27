@@ -232,7 +232,18 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 		// we only publish the BlobStatus if we have the hash for it and IsLocal is set to true; this
 		// might come later
 		if config.ContentSha256 != "" && config.IsLocal {
-			if lookupOrCreateBlobStatus(ctx, config.ContentSha256) == nil {
+			rootSha := strings.ToLower(config.ContentSha256)
+			if manifestSha := loadedArchiveManifest(ctx, status); manifestSha != "" {
+				log.Noticef("createContentTreeStatus(%s): OCI archive %s is already loaded as image %s",
+					config.ContentID, rootSha, manifestSha)
+				rootSha = manifestSha
+			} else if root := lookupOrCreateBlobStatus(ctx, config.ContentSha256); root != nil {
+				if hasNoSource(root) {
+					root.DatastoreIDList = config.DatastoreIDList
+					root.RelativeURL = config.RelativeURL
+					publishBlobStatus(ctx, root)
+				}
+			} else {
 				// the blobType is binary unless we are dealing with OCI
 				// in reality, this is not determined by the *format* but by the source,
 				// i.e. an OCI registry may have other formats, no matter what the
@@ -256,7 +267,7 @@ func createContentTreeStatus(ctx *volumemgrContext, config types.ContentTreeConf
 				}
 				publishBlobStatus(ctx, rootBlob)
 			}
-			AddBlobsToContentTreeStatus(ctx, status, strings.ToLower(config.ContentSha256))
+			AddBlobsToContentTreeStatus(ctx, status, rootSha)
 		}
 		// If this node is not supposed to download content tree, then report it as LOADED in contentreestatus.
 		// Controller will display the content as online
@@ -310,6 +321,7 @@ func RemoveAllBlobsFromContentTreeStatus(ctx *volumemgrContext, status *types.Co
 		blobStatus = nil // Potentially deleted
 	}
 	status.Blobs = make([]string, 0)
+	releaseArchive(ctx, status)
 }
 
 func updateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus) {

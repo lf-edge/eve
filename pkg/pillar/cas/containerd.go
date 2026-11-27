@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/edge-containers/pkg/resolver"
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
+	"github.com/lf-edge/eve/pkg/pillar/ocilayout"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	"github.com/moby/sys/mountinfo"
@@ -547,6 +548,44 @@ func (c *containerdCAS) GetImageHash(reference string) (string, error) {
 	return image.Target().Digest.String(), nil
 }
 
+// GetImageLayers returns the layers of the manifest that 'reference' points to.
+// If the reference is an index, the platform-matching manifest is selected
+// (falling back to the first); if it is a plain manifest, its layers are
+// returned directly.
+func (c *containerdCAS) GetImageLayers(reference string) ([]ImageLayer, error) {
+	hash, err := c.GetImageHash(reference)
+	if err != nil {
+		return nil, err
+	}
+	manifestHash := hash
+	// Descend through an index to the (platform) manifest. A plain manifest
+	// parses as an index with no entries, in which case we use it directly.
+	if index, ierr := getIndexManifest(c, hash); ierr == nil && len(index.Manifests) > 0 {
+		manifestHash = index.Manifests[0].Digest.String()
+		for _, m := range index.Manifests {
+			if m.Platform != nil && m.Platform.OS == runtime.GOOS &&
+				m.Platform.Architecture == runtime.GOARCH {
+				manifestHash = m.Digest.String()
+				break
+			}
+		}
+	}
+	manifest, err := getManifest(c, manifestHash)
+	if err != nil {
+		return nil, err
+	}
+	layers := make([]ImageLayer, 0, len(manifest.Layers))
+	for _, l := range manifest.Layers {
+		layers = append(layers, ImageLayer{
+			Digest:      l.Digest.String(),
+			MediaType:   string(l.MediaType),
+			Size:        l.Size,
+			Annotations: l.Annotations,
+		})
+	}
+	return layers, nil
+}
+
 // GetImageLabels returns the Image Labels of the reference
 // Returns error if the given 'reference' is not found.
 func (c *containerdCAS) GetImageLabels(reference string) (map[string]string, error) {
@@ -989,6 +1028,96 @@ func (c *containerdCAS) IngestBlobsAndCreateImage(reference string, root types.B
 		}
 	}
 	return loadedBlobs, nil
+}
+
+// IngestOCILayoutAndCreateImage loads blobs of the image held by an OCI
+// image-layout tar archive, streaming each from the archive into containerd.
+func (c *containerdCAS) IngestOCILayoutAndCreateImage(reference, archivePath, archiveSha256 string, blobs []string) ([]string, error) {
+	logrus.Infof("IngestOCILayoutAndCreateImage: loading %d blobs of %s from archive %s",
+		len(blobs), reference, archivePath)
+	archive, err := ocilayout.Open(archivePath)
+	if err != nil {
+		return nil, fmt.Errorf("IngestOCILayoutAndCreateImage: opening %s: %w", archivePath, err)
+	}
+	defer archive.Close()
+	img, err := archive.Image(runtime.GOARCH)
+	if err != nil {
+		return nil, fmt.Errorf("IngestOCILayoutAndCreateImage: %s: %w", archivePath, err)
+	}
+
+	ctxWithLease, deleteLease, err := c.ctrdClient.CtrNewUserServicesCtxWithLease()
+	if err != nil {
+		return nil, fmt.Errorf("IngestOCILayoutAndCreateImage: creating lease for %s: %w", reference, err)
+	}
+	defer deleteLease()
+
+	toLoad := make(map[string]bool, len(blobs))
+	for _, sha := range blobs {
+		toLoad[strings.ToLower(sha)] = true
+	}
+	loaded := make([]string, 0, len(blobs))
+	for _, desc := range append([]ocispec.Descriptor{img.Config}, img.Layers...) {
+		sha := desc.Digest.Encoded()
+		if !toLoad[sha] {
+			continue
+		}
+		// a manifest may list the same layer twice
+		delete(toLoad, sha)
+		r, err := archive.Blob(desc)
+		if err != nil {
+			return nil, fmt.Errorf("IngestOCILayoutAndCreateImage: %w", err)
+		}
+		// containerd verifies digest and size on commit
+		if err := c.ctrdClient.CtrWriteBlob(ctxWithLease, desc.Digest.String(), uint64(desc.Size), r); err != nil {
+			return nil, fmt.Errorf("IngestOCILayoutAndCreateImage: loading blob %s: %w", desc.Digest, err)
+		}
+		loaded = append(loaded, sha)
+	}
+
+	if sha := img.Manifest.Digest.Encoded(); toLoad[sha] {
+		// Through IngestBlob, so that the manifest gets the labels that keep
+		// its children from being garbage collected.
+		manifest := types.BlobStatus{
+			Sha256:    sha,
+			Size:      uint64(img.Manifest.Size),
+			MediaType: img.Manifest.MediaType,
+			State:     types.VERIFIED,
+			Content:   img.ManifestRaw,
+		}
+		if _, err := c.IngestBlob(ctxWithLease, manifest); err != nil {
+			return nil, fmt.Errorf("IngestOCILayoutAndCreateImage: loading manifest: %w", err)
+		}
+		delete(toLoad, sha)
+		loaded = append(loaded, sha)
+	}
+	if len(toLoad) > 0 {
+		return nil, fmt.Errorf("IngestOCILayoutAndCreateImage: %d blobs to load are not part of the image in %s",
+			len(toLoad), archivePath)
+	}
+
+	labels := getEVEDownloadedLabel()
+	labels[types.EVEOCIArchiveLabel] = strings.ToLower(archiveSha256)
+	labels[types.EVEOCIArchiveManifestLabel] = img.Manifest.Digest.String()
+	image := images.Image{
+		Name:      reference,
+		Labels:    labels,
+		Target:    img.Manifest,
+		CreatedAt: time.Now(),
+	}
+	_, err = c.GetImageHash(reference)
+	switch {
+	case errors.Is(err, ErrImageNotFound):
+		_, err = c.ctrdClient.CtrCreateImage(ctxWithLease, image)
+	case err == nil:
+		// target and labels together: a stale label would tie the new
+		// target to an archive it did not come from
+		_, err = c.ctrdClient.CtrUpdateImage(ctxWithLease, image, "target", "labels")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("IngestOCILayoutAndCreateImage: pointing %s at %s: %w",
+			reference, img.Manifest.Digest, err)
+	}
+	return loaded, nil
 }
 
 // Resolver get a resolver.ResolverCloser for containerd

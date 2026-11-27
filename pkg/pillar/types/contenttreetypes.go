@@ -142,6 +142,11 @@ type ContentTreeStatus struct {
 	NameIsURL    bool
 	// Blobs the sha256 hashes of the blobs that are in this tree, the first of which always is the root
 	Blobs []string
+	// OCIArchiveBlob is the sha256 of the OCI image-layout archive the content
+	// was delivered as. It is set only while the image inside the archive is
+	// being loaded: the content tree then holds a reference on that blob,
+	// which is not one of Blobs.
+	OCIArchiveBlob string
 
 	HVTypeKube bool
 	IsLocal    bool

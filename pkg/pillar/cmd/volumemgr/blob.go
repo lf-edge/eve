@@ -287,6 +287,10 @@ func getBlobChildren(ctx *volumemgrContext, blob *types.BlobStatus) []*types.Blo
 			// because if any child blob is not downloaded already, then we would need the below data.
 			existingChild.DatastoreIDList = blob.DatastoreIDList
 			existingChild.RelativeURL = replaceSha(blob.RelativeURL, manifest.Digest)
+		} else if hasNoSource(existingChild) {
+			existingChild.DatastoreIDList = blob.DatastoreIDList
+			existingChild.RelativeURL = replaceSha(blob.RelativeURL, manifest.Digest)
+			publishBlobStatus(ctx, existingChild)
 		}
 		log.Functionf("getBlobChildren(%s): manifest %s already exists.", blob.Sha256, childHash)
 		return []*types.BlobStatus{existingChild}
@@ -308,6 +312,11 @@ func getBlobChildren(ctx *volumemgrContext, blob *types.BlobStatus) []*types.Blo
 				existingChild := lookupOrCreateBlobStatus(ctx, childHash)
 				if existingChild != nil {
 					log.Tracef("getBlobChildren(%s): child blob %s already exists.", blob.Sha256, childHash)
+					if hasNoSource(existingChild) {
+						existingChild.DatastoreIDList = blob.DatastoreIDList
+						existingChild.RelativeURL = replaceSha(blob.RelativeURL, child.Digest)
+						publishBlobStatus(ctx, existingChild)
+					}
 					blobChildren = append(blobChildren, existingChild)
 				} else {
 					log.Functionf("getBlobChildren(%s): creating a new BlobStatus for child %s", blob.Sha256, childHash)
@@ -327,6 +336,14 @@ func getBlobChildren(ctx *volumemgrContext, blob *types.BlobStatus) []*types.Blo
 	default:
 		return nil
 	}
+}
+
+// hasNoSource reports whether a blob is known only as part of an OCI archive
+// (see addArchiveImage), so that nothing can download it. A content tree that
+// finds it in a registry gives it that source, and so does not depend on the
+// tree that holds the archive.
+func hasNoSource(blob *types.BlobStatus) bool {
+	return blob.State == types.INITIAL && len(blob.DatastoreIDList) == 0
 }
 
 // blobsNotInList find any in the first argument slice that are not in the second argument slice

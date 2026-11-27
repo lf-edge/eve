@@ -361,7 +361,18 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		// if we just had an image pointing to a single blob that is not index or manifest, we need
 		// to add a manifest to it.
 		log.Functionf("doUpdateContentTree(%s) checking if we need to add a manifest, have %d blobs", status.Key(), len(blobStatuses))
-		if len(blobStatuses) == 1 && !blobStatuses[0].IsManifest() && !blobStatuses[0].IsIndex() {
+		bare := len(blobStatuses) == 1 && !blobStatuses[0].IsManifest() && !blobStatuses[0].IsIndex()
+		if bare {
+			isArchive, err := addArchiveImage(ctx, status, blobStatuses[0])
+			if err != nil {
+				err = fmt.Errorf("doUpdateContentTree(%s): reading OCI archive: %w", status.ContentID, err)
+				log.Error(err.Error())
+				status.SetErrorWithSource(err.Error(), types.ContentTreeStatus{}, time.Now())
+				return changed, false
+			}
+			bare = !isArchive
+		}
+		if bare {
 			blobs, err := getManifestsForBareBlob(ctx, refID, blobStatuses[0].Sha256, int64(blobStatuses[0].Size))
 			if err != nil {
 				err = fmt.Errorf("doUpdateContentTree(%s): Exception while getting manifest and config for bare blob: %s",
@@ -562,6 +573,7 @@ func doUpdateContentTree(ctx *volumemgrContext, status *types.ContentTreeStatus)
 		status.CreateTime = time.Now()
 		// ContentTreeStatus.FileLocation has no meaning once everything is loaded
 		status.FileLocation = ""
+		releaseArchive(ctx, status)
 
 		changed = true
 	}
