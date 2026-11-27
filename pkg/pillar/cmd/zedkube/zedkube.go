@@ -64,6 +64,9 @@ const (
 	// kube-API failures and the boot race where ENCC arrives before leader
 	// election settles are self-healing instead of stuck-until-next-config.
 	pruneStaleMasterInterval = 600
+	// pruneStaleMasterRetryInterval: how often a sweep that could not run is
+	// retried (seconds), see pruneStaleMasterDue.
+	pruneStaleMasterRetryInterval = 30
 	// longhornDiskReservedErrRelogInterval: how often a still-unchanged
 	// applyLonghornDiskReserved failure is re-logged at Error level. That
 	// reconcile runs every kubeCfgInterval forever with no success latch, so
@@ -131,10 +134,14 @@ type zedkube struct {
 	// AppNetworkConfig synthesized for directly-deployed Kubernetes workloads on this node.
 	pubKubeAppNetworkConfig pubsub.Publication
 
-	networkInstanceStatusMap   sync.Map
-	ioAdapterMap               sync.Map
-	deviceNetworkStatus        types.DeviceNetworkStatus
-	clusterConfig              types.EdgeNodeClusterConfig
+	networkInstanceStatusMap sync.Map
+	ioAdapterMap             sync.Map
+	deviceNetworkStatus      types.DeviceNetworkStatus
+	clusterConfig            types.EdgeNodeClusterConfig
+	// pruneStaleMasterPending is set while the last stale-master sweep did
+	// not complete, and pruneStaleMasterLast is when one last did.
+	pruneStaleMasterPending    bool
+	pruneStaleMasterLast       time.Time
 	config                     *rest.Config
 	appLogStarted              bool
 	appContainerLogger         *logrus.Logger
@@ -884,7 +891,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	appStatusTimer := time.NewTimer(logcollectInterval * time.Second)
 	kubeStatsTimer := time.NewTimer(kubeStatsInterval * time.Second)
 	kubeCfgTimer := time.NewTimer(kubeCfgInterval * time.Second)
-	pruneStaleMasterTimer := time.NewTimer(pruneStaleMasterInterval * time.Second)
+	pruneStaleMasterTimer := time.NewTimer(pruneStaleMasterRetryInterval * time.Second)
 	kubeAppNetTimer := time.NewTimer(kubeAppNetInterval * time.Second)
 
 	zedkubeWdUpdate := func() {
@@ -1008,14 +1015,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// MasterNodeIDs is empty, so this branch is essentially free off the
 		// leader. Recovers from transient kube-API failures during the
 		// event-driven path and from the boot race where ENCC arrives
-		// before this node wins the kube-stats lease.
+		// before this node wins the kube-stats lease: a sweep that could not
+		// run is retried every tick (see pruneStaleMasterDue).
 		case <-pruneStaleMasterTimer.C:
-			if !zedkubeCtx.kubernetesAlive() {
-				pruneStaleMasterTimer = time.NewTimer(pruneStaleMasterInterval * time.Second)
-				break
+			if zedkubeCtx.kubernetesAlive() &&
+				pruneStaleMasterDue(zedkubeCtx.pruneStaleMasterPending,
+					zedkubeCtx.pruneStaleMasterLast, time.Now()) {
+				zedkubeCtx.pruneStaleMasterNodes(&zedkubeCtx.clusterConfig)
 			}
-			zedkubeCtx.pruneStaleMasterNodes(&zedkubeCtx.clusterConfig)
-			pruneStaleMasterTimer = time.NewTimer(pruneStaleMasterInterval * time.Second)
+			pruneStaleMasterTimer = time.NewTimer(pruneStaleMasterRetryInterval * time.Second)
 
 		// Timer 6: synthesize AppNetworkConfig for directly-deployed Kubernetes workloads
 		// scheduled on this node (per-node, not leader-gated). Now just a backstop for
