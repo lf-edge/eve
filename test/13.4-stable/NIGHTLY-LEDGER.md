@@ -2,6 +2,60 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-27 -- 0.0.0-13.4-stable-b96891fd (run #66)](https://github.com/lf-edge/eve/actions/runs/45943140686)
+
+[Full report](https://lf-edge.github.io/eve/test/13.4-stable/runs/66/)
+
+### TestSwitchNetworkInstanceSuite: failure analysis
+
+#### TestSwitchNetInstanceACLs
+
+##### Failure
+
+```
+timed out after 5m0.001083379s (excluding download) waiting for app "cc0437d4-9cc6-45dd-be87-89cfdbf991fb" (acl-app-1) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+Confirmed: this exact test, `TestSwitchNetInstanceACLs`, has failed with this identical CREATING_VOLUME/container-unpack-stall signature before, per the ledger.
+
+**Root cause:** `acl-app-1` (volume `3d6eeb29-d0ba-4de6-b5cc-628c2a69f223`) is stuck in `CREATING_VOLUME` on device `edge-dev` well past the 5-minute test timeout. Live inspection shows the cause is a stalled containerd image unpack under host CPU/IO oversubscription, not a networking/ACL product bug: `ctr -n eve-user-apps snapshots ls` shows two `extract-*` snapshots still `Active` (uncommitted) for the app's image layer, `nproc` inside the guest reports only 1 usable CPU despite the device being configured for 4 vCPUs, and `vmstat` shows a process perpetually blocked on I/O (`b=1`, `wa`≈21–28%). The broker (`farfalle`) is running 12/15 VMs at 124% of host RAM assigned and 1.9 GiB of swap in use, consistent with memory/CPU oversubscription slowing the unpack past the fixed 5-minute budget. This is a known, heavily recurring issue per `live-ledger.md`: this exact test (`TestSwitchNetInstanceACLs`) failed with this identical signature before (e.g. the 2026-11-23 run #45 entry references it), and the same CPU/IO-oversubscription unpack-stall class has recurred across nearly every nightly run since at least 2026-11-20 (run #30), hitting many different suites/apps. No PR diff was provided for this investigation, so no relatedness judgment is needed.
+#### TestSwitchNIWithMultiplePorts
+
+##### Failure
+
+```
+timed out after 5m0.00022281s (excluding download) waiting for app "fbd785a7-1bfb-40ef-ad51-f5874ba23232" (container-app) on device "edge-dev" to reach RUNNING state (last state: CREATING_VOLUME)
+```
+
+##### Claude's conclusion
+
+This failure matches the exact same pattern confirmed heavily throughout this ledger and in the earlier `TestSwitchNetInstanceACLs` failure in this same run.
+
+###### Root cause
+
+`container-app`'s root volume (`a43b692c-100f-4425-94ce-1ba0dc8d996c`) entered `CREATING_VOLUME` at 06:18:24Z when `volumemgr` began `CreateVolume` for the `evetest-ubuntu-ctr` container image; as of my live check (06:23) the content store on `/persist` (124.1M used of 61.7G available) and the containerd `tmpmounts` directory under `io.containerd.content.v1.content` show the image pull/unpack is still in progress and far short of the volume completing. Live `nproc`/`uptime`/`vmstat` on `edge-dev` show the classic oversubscription signature seen repeatedly tonight: the guest exposes only `nproc=1` against a device configured for 4 vCPUs, load average ~3.9-4.6, and `vmstat` shows a process perpetually blocked on I/O (`b=1`, `wa`≈24-28%). The broker (`farfalle`) corroborates environmental contention: 13/16 VMs running at 102% of host RAM assigned, load 8.3, and 1.9 GiB swap in use.
+
+This shares the identical root cause as the `TestSwitchNetInstanceACLs` failure already investigated earlier in this same suite run (recorded in `live-investigation.md`) — host/device CPU-oversubscription stalling a containerd image unpack past the fixed 5-minute `CREATING_VOLUME`→`RUNNING` test timeout. It is also a known, heavily recurring issue per `live-ledger.md`: this exact `CREATING_VOLUME`/unpack-stall-under-CPU-oversubscription class has hit dozens of tests across nearly every nightly run since at least 2026-11-20 (run #30), including multiple occurrences within `TestSwitchNetworkInstanceSuite` itself. This is an infrastructure/environment issue, not a product regression.
+#### TestAccessVLANs
+
+##### Failure
+
+```
+
+Told to stop trying after 19.462s.
+Stop waiting for: NI is ONLINE
+Network instance is in error state
+networkID:"33ff36f1-99e1-4853-8716-70a143b6e135" networkVersion:"1" instType:1 displayname:"vlan-switch" bridgeNum:1 networkErr:{description:"failed to select ports for network instance 33ff36f1-99e1-4853-8716-70a143b6e135: no port is matching label 'switch-ports'" timestamp:{seconds:1795760923 nanos:755803930} severity:SEVERITY_ERROR} state:ZNETINST_STATE_ERROR mtu:1500
+```
+
+##### Claude's conclusion
+
+**Root cause:** This is a transient, self-healing boot-time DPC-promotion race, not a product bug. Device `edge-dev` did a first boot at 06:26:57, and came up briefly on the fallback `lastresort` DPC (bare eth0/eth1, no `switch-ports` label). The real `zedagent` DPC — which carries `SharedLabels:[switch-ports]` on ethernet1-3 — was only inserted at 06:28:42.211 and its verification ("DPC verify: Started testing DPC") began at 06:28:43.371, but zedrouter had already applied the `vlan-switch` NI config at 06:28:42.959 and tried to resolve port label `switch-ports` at 06:28:43.755, before the new DPC had finished verification/promotion — logging `no port is matching label 'switch-ports'`. The test's 19.462s fail-fast wait gave up right at that point, but live `evetest eve ni-info vlan-switch` now shows the NI fully recovered: `state:ZNETINST_STATE_ONLINE` with ethernet1/2/3 correctly assigned.
+
+This does **not** share a root cause with the two earlier failures in this run (`TestSwitchNetInstanceACLs`, `TestSwitchNIWithMultiplePorts`), which were `CREATING_VOLUME` container-unpack stalls under host CPU/IO oversubscription — a completely different mechanism. It is, however, a known/recurring issue per `live-ledger.md`: this exact test (`TestAccessVLANs`) has failed with this identical `no port is matching label 'switch-ports'` boot-DPC-race signature in at least three prior nightly runs (including 2026-11-23 run #45), with the same self-healing-shortly-after pattern each time, so this is a long-standing, recurring race rather than a new bug.
+
 ## [2026-11-26 -- 0.0.0-13.4-stable-b96891fd (run #60)](https://github.com/lf-edge/eve/actions/runs/45758696740)
 
 [Full report](https://lf-edge.github.io/eve/test/13.4-stable/runs/60/)
