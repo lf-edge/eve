@@ -2,6 +2,114 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-27 -- 0.0.0-master-8979e049 (run #62)](https://github.com/lf-edge/eve/actions/runs/45901869455)
+
+[Full report](https://lf-edge.github.io/eve/test/master/runs/62/)
+
+### TestNodeClusterResilienceSuite: failure analysis
+
+#### TestVMAppPurgeDuringFailover
+
+##### Failure
+
+```
+
+Timed out after 900.000s.
+The function passed to Eventually failed at /evetest/tests/cluster/purge_during_failover_test.go:169 with:
+expected exactly one VMIRS for the app, found []
+Expected
+    <[]string | len:0, cap:0>: nil
+to have length 1
+```
+
+##### Claude's conclusion
+
+Host is healthy (8% CPU, 78% RAM assigned, no significant swap), ruling out infra overload as a contributing factor — consistent with this being a deterministic code bug rather than environment flakiness.
+
+No PR diff was supplied for this investigation, so I'll give the root-cause summary without a relatedness verdict.
+
+###### Root cause
+
+This is the long-known, recurring `TestVMAppPurgeDuringFailover` designated-node/backup-DNID deadlock, first seen 2026-10-29 (introduced by commit `98acf1411`) and reproducing in the large majority of nightly runs since, including multiple times already tonight in this same run per `live-ledger.md`. Live evidence matches exactly: `edge-dev1` (the app's designated node) is `EVE_DEVICE_STATE_SUSPECT` — deliberately powered off by the test to simulate failover — and `kubectl get vmirs,vmi,vm,pod -A` from `edge-dev2` returns zero VMIRS/VMI/VM anywhere in the cluster (only infra pods: cdi, kubevirt, longhorn-system, kube-system), exactly matching the test's `found []`. `edge-dev2`'s live `/run/zedkube/ENClusterAppStatus/` for the app (`failover-purge-app`, uuid `70eeab6c-...`) shows `IsDNidNode:false, ScheduledOnThisNode:false, AppKubeStatus:NotInCluster`, and `zedkube`'s log is still looping unbroken through the current moment (`newStatus:{...false false Unknown false 0}` repeating every ~10s) — no node ever re-requests a VMIRS after the purge tore down the old one, since none of the surviving nodes is the designated node and the designated node is unreachable. The broker host is healthy (8% CPU, load 2.19, 78% RAM assigned, negligible swap), ruling out resource contention as a contributing factor and pointing squarely at this deterministic code-level deadlock. This failure doesn't share a root cause with other suites in this run — it's simply the latest instance of the same unresolved, month-old bug.
+#### TestClusterPVCRedownload
+
+##### Failure
+
+```
+
+vm1's content tree is in state LOADED, not REMOTELOADED -- it was re-downloaded despite the PVC already being complete
+Expected
+    <types.SwState>: 108
+to equal
+    <types.SwState>: 125
+```
+
+##### Claude's conclusion
+
+Live evidence confirms the exact same well-documented mechanism found in every prior occurrence of this failure.
+
+###### Root cause
+
+Live `volumemgr` log on `edge-dev1` at 02:54:01.735 shows `contentTreeSatisfiedByPVCs(87c8aad0-...)`: "no local volumes reference this content tree" for vm1-image — the matching VolumeConfig/PVC hadn't been republished to volumemgr yet when the content tree was recreated — so `doUpdateContentTree` falls through the ordinary non-PVC path: `INITIAL → VERIFIED → LOADING` (02:54:01.763) then "image ... exists in CAS, Content Tree load is completely LOADED" at 02:54:02.367, landing on `LOADED` (108) instead of `REMOTELOADED` (125). This matches the live on-disk `ContentTreeStatus` for vm1-image (`"State":108`) and the failing assertion exactly. This is the identical `contentTreeSatisfiedByPVCs`/`doUpdateContentTree` PVC-adoption-timing race in `pkg/pillar/cmd/volumemgr` that `live-ledger.md` documents as a long-standing, well-known recurring issue specific to `TestClusterPVCRedownload`, first seen 2026-10-30 (run #2) and reproducing in the large majority of nightly runs since (20+ prior logged occurrences). It does not share a root cause with this run's other already-investigated failure (`TestVMAppPurgeDuringFailover`'s designated-node/zedkube VMIRS deadlock) — different mechanism, different agents. No PR diff was supplied for this investigation.
+
+### TestNodeClusterSuite: failure analysis
+
+#### TestAppInstancePurge
+
+##### Failure
+
+```
+app "c453ebfa-57e5-44a1-ba0d-7e52b527978e" (purge-app) on device "edge-dev" download stalled at 0% for more than 5m0s
+```
+
+##### Claude's conclusion
+
+Broker host is healthy (13% CPU, load ~5/32, no meaningful swap pressure), so this isn't an environment-overload issue.
+
+**Root cause:** This is the known "datastore-ID-loss" bug in `volumemgr`. Live on `edge-dev`, `purge-app-image`'s `ContentTreeStatus` shows the manifest blob already resolved from the verifier cache (`FileLocation` under `/persist/vault/verifier/verified/...`, `AllDatastoresResolved:true`), but all 6 child-blob `DownloaderStatus` entries are stuck at `State:103 (DOWNLOADING)` with `DatastoreIDList:null, TotalSize:0, CurrentSize:0, Progress:0` — downloader has nothing to pull from and silently never starts, exactly matching the 5-minute "stalled at 0%" the test hit. The broker is healthy (13% CPU, load 5/32, no swap), ruling out infra contention as the cause.
+
+This is a **known, recurring issue**: the ledger records this identical mechanism and symptom for `TestAppInstancePurge` on 2026-11-06 (run #9) — a reused manifest blob (state `VERIFIED`, not `LOADED`) failing to have its `DatastoreIDList` refreshed before being propagated to child blobs (`pkg/pillar/cmd/volumemgr/updatestatus.go` `doUpdateContentTree`/`AddBlobsToContentTreeStatus`) — and has now recurred again tonight after about a two-week gap. No shared root cause with any other failure in this run (no other failures investigated so far). No PR diff was provided, so no relatedness verdict applies.
+#### TestMgmtProxy
+
+##### Failure
+
+```
+Device "edge-dev3" failed to confirm the latest config (version 1): timed out waiting for LastProcessedConfig >= 2026-11-26 23:13:49.409914476 +0000 UTC
+```
+
+##### Claude's conclusion
+
+###### Root cause
+
+Live `nim`/`zedagent` logs on `edge-dev3` show exactly what happened: at `23:13:49.409914476` the controller pushed config v1 with the real (non-`lastresort`) DevicePortConfig (`eth0`+`eth1`, the latter a static `10.244.245.4/24` cluster address). `nim` tore down the bootstrap DPC's local dnsmasq forwarder at `23:13:50.715` and restarted it at `23:13:59.994` pointed at the SDN's DNS server (`10.16.16.25`), but DPC verification then sat in `DPC_IPDNS_WAIT` for the next **three full minutes** (`23:14:45`, `23:15:30`, `23:16:15` retries), with `eth1` stuck on "no suitable IP address available" and even `eth0`'s own controller probes failing with `dial tcp: lookup adam.evetest on 127.0.0.1:53: i/o timeout`/`server misbehaving` despite `eth0` having a valid, stable IP (`172.20.20.180`) the whole time. Only at `23:17:00` did `nim` give up on the new DPC (`DPC_FAIL_WITH_IPANDDNS`) and fall back to the old `lastresort` DPC, which came up in ~3s — matching the harness seeing the device flip `BOOTING→ONLINE` at `23:17:03`, long after its 2‑minute `LastProcessedConfig` wait (expired `23:15:50`) and far behind sibling devices `edge-dev1`/`edge-dev2`, which confirmed the same config v1 in 12–20s. The guest itself was not under load (load avg 0.16–0.41, 6.7 GiB free), so this looks like a controller-reachability/DNS stall specific to this device rather than CPU starvation inside the VM — though the broker host is running unusually hot tonight (91% of host RAM committed to 21 running VMs, load 6.5–7.6/32), which is a plausible external contributor to degraded DNS/network responsiveness for one VM among several concurrently onboarding.
+
+This does **not** share a root cause with the other failure already recorded in this run (`TestAppInstancePurge`'s volumemgr datastore-ID-loss bug — a completely different layer/mechanism). It does, however, look like the same failure family already flagged in the ledger: the exact `"failed to confirm the latest config (version 1): timed out waiting for LastProcessedConfig"` signature is a long-known, recurring race (documented since 2026-11-07, recurring 11-09, 11-12, 11-18, 11-24, and twice on 11-25) where the controller-assigned DPC switch causes DNS/metrics stalls that miss the harness's wait window. Notably, yesterday's (2026-11-25) occurrence of this exact test (`TestMgmtProxy`/`edge-dev2`) was flagged as a more severe "~3-minute total silence" variant whose precise mechanism wasn't confirmed at the time — tonight's `edge-dev3` failure reproduces that identical severe variant and, with full device-side logs available live, now pins down the mechanism as a DPC-verification/DNS-fallback stall rather than the classic single 120s metrics-POST hang.
+
+### TestSecuritySuite: failure analysis
+
+#### TestVaultWithoutControllerKeyOnExt4
+
+##### Failure
+
+```
+
+Timed out after 300.001s.
+the empty key from the controller must be processed (no vaultmgr log record containing "Processing empty EncryptedVaultKeyFromController" logged since 2026-11-26T23:39:48Z)
+Expected
+    <<-chan evetest.LogMsg | len:0, cap:100>: 0x194a560ed8f0
+to receive something.
+```
+
+##### Claude's conclusion
+
+Host load is healthy (3% CPU, no overcommit), ruling out infra contention as the direct cause.
+
+###### Root cause
+
+vaultmgr behaved correctly: the device logs show it fired `"Processing empty EncryptedVaultKeyFromController Application Data Store"` at `2026-11-26T23:42:10.079700853Z` — well within the test's 5-minute wait window (since `23:39:48Z`). The test failure is not a vaultmgr logic bug; it's that this log record never reached the controller. Live on-device evidence pins this precisely: `/run/loguploader/NewlogMetrics/global.json` shows `FailedToSend:true` with `FailSentStartTime: 2026-11-26T23:41:48Z` and no successful upload since, while `logread` shows Vector's `parse_json_upload` transform continuously emitting `vector_buffers::buffer_usage_data: Buffer counter overflowed. Clamping value to u64::MAX` every ~10s from 23:41:48 straight through to the current time (23:47:47+) — the newlog delivery pipeline to the controller is stalled, not vaultmgr's logic.
+
+This is the identical Vector buffer-overflow bug already recorded in `live-ledger.md`'s run #61 entry (same suite, same test `TestVaultWithoutControllerKeyOnExt4`, same `FailedToSend`/buffer-overflow signature, just a different assertion checkpoint within the test timed out) and in run #56 against the sibling test `TestVaultKeyModeRecoveryOnExt4`. So this is a known, recurring issue as of today (2026-11-26), not new — any vault test depending on a controller-delivered log record is vulnerable to it, and it has now reproduced for a third time tonight across two different tests in this suite.
+
 ## [2026-11-26 -- 0.0.0-master-35b640fd (run #61)](https://github.com/lf-edge/eve/actions/runs/45827874328)
 
 [Full report](https://lf-edge.github.io/eve/test/master/runs/61/)
