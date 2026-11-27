@@ -133,8 +133,10 @@ moved within mold's merged strings, which changes references that cannot be
 checked without relocations, so it is an error until that build is
 reproducible.
 
-`tests/positive-controls.py` mutates a copy of an extracted build in 27 ways
-the rules must not explain, and checks that each is reported as an error.
+`tests/positive-controls.py` mutates a copy of an extracted build in up to 27
+ways the rules must not explain, and checks that each is reported as an error;
+the three Xen controls run only on a build that has Xen and are listed as
+skipped otherwise.
 `tests/input-controls.py` builds small squashfs images, trees and an ELF
 binary, and uses a `docker` stub, to check names with a newline, extended
 attributes, that `docker:` inputs need a digest and are never run, that a glob

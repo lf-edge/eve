@@ -104,8 +104,21 @@ def swap_strings(section):
 
 
 expect = {}   # path -> description of the mutation
+skipped = []  # controls for files this build does not have
 
-V = "containers/services/vector/lower/usr/bin/vector"
+PILLAR_ONBOOT = next(os.path.relpath(p, B) for p in
+                     sorted(glob.glob(os.path.join(B, "containers/onboot/*-pillar-onboot"))))
+
+
+def present(rel, label):
+    """True if the build has the file rel; otherwise record the control label as skipped."""
+    if os.path.exists(os.path.join(B, rel)):
+        return True
+    skipped.append(label)
+    return False
+
+
+V ="containers/services/vector/lower/usr/bin/vector"
 rewrite(V, swap_strings(".rodata.str1.1"))
 expect[V] = "vector: two strings swapped, their references unchanged"
 
@@ -115,18 +128,20 @@ rewrite(G, flip(off + size // 3))
 expect[G] = "Go binary: one .text byte besides the version"
 
 H = "containers/services/xen-tools/lower/usr/lib/xen/boot/hvmloader"
-rewrite(H, flip(0x1000))
-expect[H] = "hvmloader: a byte outside the BIOS date"
+if present(H, "hvmloader"):
+    rewrite(H, flip(0x1000))
+    expect[H] = "hvmloader: a byte outside the BIOS date"
 
 X = "boot/xen.gz"
-rewrite(X, lambda d: gzip.compress(flip(0x2000)(gzip.decompress(d)), mtime=0))
-expect[X] = "xen.gz: a byte outside the compile date, inside the gzip stream"
+if present(X, "xen.gz"):
+    rewrite(X, lambda d: gzip.compress(flip(0x2000)(gzip.decompress(d)), mtime=0))
+    expect[X] = "xen.gz: a byte outside the compile date, inside the gzip stream"
 
 MAN = "containers/services/vtpm/lower/usr/share/man/man8/swtpm.8"
 rewrite(MAN, lambda d: d.replace(b"swtpm", b"swtpX", 2))
 expect[MAN] = "man page: text besides the .TH date"
 
-SH = "containers/onboot/004-pillar-onboot/lower/etc/shadow"
+SH = PILLAR_ONBOOT + "/lower/etc/shadow"
 rewrite(SH, lambda d: re.sub(rb"^(root:)[^:]*", rb"\1$6$changed", d, count=1, flags=re.M))
 expect[SH] = "shadow: root password field"
 
@@ -147,8 +162,9 @@ rewrite(MID, lambda d: b"not-a-machine-id\n")
 expect[MID] = "machine-id: not a 32-hex ID"
 
 OV = "containers/services/xen-tools/lower/usr/lib/xen/boot/ovmf.bin"
-rewrite(OV, flip(0x100))
-expect[OV] = "ovmf.bin: an unknown variant"
+if present(OV, "ovmf.bin"):
+    rewrite(OV, flip(0x100))
+    expect[OV] = "ovmf.bin: an unknown variant"
 
 SB = "sbom.spdx.json"
 def sbom(d):
@@ -219,7 +235,7 @@ XA = "etc/init.d/002-logging"
 os.setxattr(own(XA), "user.test", b"1")
 expect[XA] = "an extended attribute"
 
-DUP = "containers/onboot/004-pillar-onboot/lower/lib/apk/db/installed"
+DUP = PILLAR_ONBOOT + "/lower/lib/apk/db/installed"
 def dup_record(d):
     """Prepend a second record for the first package, with another version."""
     first = d.split(b"\n\n", 1)[0]
@@ -292,5 +308,7 @@ unexpected = sorted(rel for rel, st in status.items()
                     if "ERROR" in st and rel not in expect and rel not in also)
 for p in unexpected:
     print(f"EXTRA error on an unmutated path: {p}")
+if skipped:
+    print("skipped, not in this build: " + ", ".join(skipped))
 print(f"exit status {rc} (expected 1); {res['flagged']} flagged, {res['errors']} errors")
 sys.exit(1 if fail or unexpected or rc != 1 else 0)
