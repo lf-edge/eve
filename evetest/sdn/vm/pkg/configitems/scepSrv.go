@@ -46,6 +46,14 @@ type SCEPServer struct {
 	// Optional SCEP challenge password (shared secret).
 	// When set, clients must present this password during enrollment.
 	ChallengeSecret string
+	// Validity period of issued client certificates.
+	// If zero, the server default (365 days) is used.
+	CertValidity time.Duration
+	// How far into the past the validity of issued client certificates starts.
+	// If zero, the server default (10 minutes) is used.
+	CertBackdate time.Duration
+	// Do not advertise the Renewal capability and reject renewal requests.
+	DisableRenewal bool
 }
 
 // Name of the SCEP server.
@@ -71,7 +79,10 @@ func (s SCEPServer) Equal(other depgraph.Item) bool {
 		s.Port == s2.Port &&
 		s.CACertPEM == s2.CACertPEM &&
 		s.CAKeyPEM == s2.CAKeyPEM &&
-		s.ChallengeSecret == s2.ChallengeSecret
+		s.ChallengeSecret == s2.ChallengeSecret &&
+		s.CertValidity == s2.CertValidity &&
+		s.CertBackdate == s2.CertBackdate &&
+		s.DisableRenewal == s2.DisableRenewal
 }
 
 // External returns false.
@@ -234,6 +245,15 @@ func startSCEPSrv(config SCEPServer) error {
 
 	if config.ChallengeSecret != "" {
 		args = append(args, "-challenge", config.ChallengeSecret)
+	}
+	if config.CertValidity != 0 {
+		args = append(args, "-crtvalid", config.CertValidity.String())
+	}
+	if config.CertBackdate != 0 {
+		args = append(args, "-crtbackdate", config.CertBackdate.String())
+	}
+	if config.DisableRenewal {
+		args = append(args, "-norenewal")
 	}
 
 	pidFile := scepSrvPidFile(config.ServerName)

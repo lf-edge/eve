@@ -14,7 +14,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -96,17 +95,14 @@ func loadDownloadedParts(locFilename string) types.DownloadedParts {
 	}
 
 	// recover from a valid, newer <image_name>.tmp.part.tmp (leftover from crash between fsync and rename)
-	dir := filepath.Dir(progressFilename)
 	stProgress, errProgress := os.Stat(progressFilename)
 	stProgressTmp, errProgressTmp := os.Stat(tmpProgessLocFilename)
 	// <image_name>.tmp.part file does not exist or tmp exists and is newer than <image_name>.tmp.part -> promote
 	if errProgress != nil ||
 		(errProgressTmp == nil && stProgressTmp.ModTime().After(stProgress.ModTime())) {
 		if parts, ok := readSavedParts(tmpProgessLocFilename); ok {
-			if err := os.Rename(tmpProgessLocFilename, progressFilename); err == nil {
-				utils.DirSync(dir)
-			} else {
-				log.Error("Error when loading downloaded parts, rename failed")
+			if err := utils.RenameSync(tmpProgessLocFilename, progressFilename); err != nil {
+				log.Errorf("Error when loading downloaded parts, rename failed: %v", err)
 			}
 			return parts
 		}

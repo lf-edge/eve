@@ -86,6 +86,15 @@ func DirSync(dirName string) error {
 	return err
 }
 
+// RenameSync renames the file and flushes the change of the target directory
+// to the disk.
+func RenameSync(oldPath, newPath string) error {
+	if err := os.Rename(oldPath, newPath); err != nil {
+		return err
+	}
+	return DirSync(filepath.Dir(newPath))
+}
+
 func backupFile(fileName string) error {
 	_, err := os.Stat(fileName)
 	if err != nil {

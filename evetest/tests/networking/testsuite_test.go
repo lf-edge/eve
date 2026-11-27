@@ -190,7 +190,7 @@ func TestBootstrapSuite(test *testing.T) {
 // Subtests
 // --------
 //   - TestPNAC (variants: REQUIRE_SCEP_PROXY=false / =true) -- 802.1X +
-//     SCEP enrollment.
+//     SCEP enrollment and renewal.
 //   - TestDHCPIPv4Only / TestStaticIPv4Only -- IPv4-only port config on a
 //     dual-stack SDN network.
 //   - TestDNSFunctionality -- per-port DNS aggregation, resolv.conf

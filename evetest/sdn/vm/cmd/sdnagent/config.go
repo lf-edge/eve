@@ -1351,6 +1351,9 @@ func (a *agent) getIntendedScepSrvEp(scepSrv *api.SCEPServer) dg.Graph {
 		CACertPEM:       scepSrv.GetCaCertPem(),
 		CAKeyPEM:        scepSrv.GetCaKeyPem(),
 		ChallengeSecret: scepSrv.GetChallengePassword(),
+		CertValidity:    time.Duration(scepSrv.GetCertValiditySeconds()) * time.Second,
+		CertBackdate:    time.Duration(scepSrv.GetCertBackdateSeconds()) * time.Second,
+		DisableRenewal:  scepSrv.GetDisableRenewal(),
 	}, nil)
 	return intendedCfg
 }

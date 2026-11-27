@@ -75,3 +75,29 @@ func TestReadWithMaxSize(t *testing.T) {
 		})
 	}
 }
+
+func TestRenameSync(t *testing.T) {
+	dir := t.TempDir()
+	oldPath := filepath.Join(dir, "old")
+	newPath := filepath.Join(dir, "new")
+	content := []byte("content")
+	if err := os.WriteFile(oldPath, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := RenameSync(oldPath, newPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
+		t.Errorf("%s still exists: %v", oldPath, err)
+	}
+	got, err := os.ReadFile(newPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, content) {
+		t.Errorf("unexpected content of %s: %q", newPath, got)
+	}
+	if err = RenameSync(oldPath, newPath); err == nil {
+		t.Error("expected an error when renaming a missing file")
+	}
+}
