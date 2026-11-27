@@ -18,6 +18,9 @@ name: Claude Code
 #             structured output, so a prompt injected through the diff cannot
 #             post anything itself;
 #   post    - posts that output as a single PR review (no secrets, no LLM).
+# These runs belong to master's commit, so they do not show on the PR. A
+# "Claude Review" commit status on the PR's head does: pending while the
+# review runs, then success or error, linking to the run.
 on:  # yamllint disable-line rule:truthy
   workflow_run:
     workflows: ["Claude Review Request"]
@@ -49,6 +52,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write  # to react to the @claude comment
+      statuses: write
     outputs:
       number: ${{ steps.pr.outputs.number }}
       sha: ${{ steps.pr.outputs.sha }}
@@ -61,6 +65,17 @@ jobs:
         uses: ./.github/actions/claude-pr-resolve
         with:
           github-token: ${{ github.token }}
+      - if: steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.pr.outputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh api -X POST "repos/$REPO/statuses/$SHA" -f state=pending \
+            -f context="Claude Review" -f description="Reviewing" \
+            -f target_url="$RUN_URL" >/dev/null ||
+            echo "::warning::Could not set the commit status"
 
   review:
     needs: resolve
@@ -155,21 +170,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      contents: read
       pull-requests: write
     steps:
-      - env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR: ${{ needs.resolve.outputs.number }}
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/actions/claude-post-review
+      - id: payload
+        env:
           SHA: ${{ needs.resolve.outputs.sha }}
           REVIEW: ${{ needs.review.outputs.review }}
         run: |
           set -euo pipefail
           if [ -z "$REVIEW" ]; then
-            echo "::warning::The reviewer returned no review"
-            exit 0
+            echo "::error::The reviewer returned no review"
+            exit 1
           fi
-          payload=$(jq -n --argjson r "$REVIEW" --arg sha "$SHA" '
+          # -c keeps it on one line, as GITHUB_OUTPUT needs
+          payload=$(jq -nc --argjson r "$REVIEW" --arg sha "$SHA" '
             ($r.comments // []) as $c | ($r.summary // "") as $s
             | {commit_id: $sha, event: "COMMENT",
                body: ("**Claude review** of \($sha[:12])\n\n"
@@ -180,12 +199,40 @@ jobs:
                  + (if (.start_line // 0) > 0 and .start_line < .line
                     then {start_line, start_side: (.side // "RIGHT")}
                     else {} end)]}')
-          if ! gh api "repos/$REPO/pulls/$PR/reviews" --input - \
-                 <<<"$payload" >/dev/null; then
-            # GitHub rejects the whole review if one comment is not on a
-            # line of the diff; fold them into the body instead.
-            echo "::warning::Inline comments refused; posting them in the review body"
-            jq '.body += ([.comments[] | "\n\n---\n`\(.path):\(.line)`\n\n\(.body)"]
-                          | join("")) | .body |= .[:65000] | del(.comments)' \
-              <<<"$payload" | gh api "repos/$REPO/pulls/$PR/reviews" --input - >/dev/null
+          echo "json=$payload" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/claude-post-review
+        with:
+          github-token: ${{ github.token }}
+          pr: ${{ needs.resolve.outputs.number }}
+          payload: ${{ steps.payload.outputs.json }}
+
+  report:
+    needs: [resolve, review, post]
+    # A cancelled run was superseded; the run that replaced it reports.
+    if: >-
+      always() && needs.resolve.outputs.number != '' &&
+      needs.review.result != 'cancelled' && needs.post.result != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          REVIEW_RESULT: ${{ needs.review.result }}
+          POST_RESULT: ${{ needs.post.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$REVIEW_RESULT" = success ] && [ "$POST_RESULT" = success ]; then
+            state=success
+            description="Review posted"
+          else
+            state=error
+            description="Failed: review $REVIEW_RESULT, post $POST_RESULT"
           fi
+          gh api -X POST "repos/$REPO/statuses/$SHA" -f state="$state" \
+            -f context="Claude Review" -f description="$description" \
+            -f target_url="$RUN_URL" >/dev/null

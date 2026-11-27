@@ -8,7 +8,8 @@ name: Claude Security Review
 # The anthropics/claude-code-security-review action only works on
 # pull_request(_target) events, so its audit script is run here directly.
 # As in "Claude Code", the job that holds the Anthropic key has a read-only
-# token and returns findings as data; a job without secrets posts them.
+# token and returns findings as data; a job without secrets posts them, and
+# a "Claude Security Review" commit status on the PR's head shows the result.
 on:  # yamllint disable-line rule:truthy
   workflow_run:
     workflows: ["Claude Review Request"]
@@ -19,6 +20,7 @@ permissions: {}
 env:
   # anthropics/claude-code-security-review main, 2026-08-27
   SEC_REVIEW_REF: 0c6a49f1fa56a1d472575da86a94dbc1edb78eda
+  STATUS_CONTEXT: Claude Security Review
 
 jobs:
   resolve:
@@ -30,6 +32,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      statuses: write
     outputs:
       number: ${{ steps.pr.outputs.number }}
       sha: ${{ steps.pr.outputs.sha }}
@@ -42,6 +45,17 @@ jobs:
         uses: ./.github/actions/claude-pr-resolve
         with:
           github-token: ${{ github.token }}
+      - if: steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.pr.outputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh api -X POST "repos/$REPO/statuses/$SHA" -f state=pending \
+            -f context="$STATUS_CONTEXT" -f description="Auditing" \
+            -f target_url="$RUN_URL" >/dev/null ||
+            echo "::warning::Could not set the commit status"
 
   security-review:
     needs: resolve
@@ -117,9 +131,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      contents: read
       pull-requests: write
+    outputs:
+      posted: ${{ steps.payload.outputs.count }}
     steps:
-      - env:
+      - id: payload
+        env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ needs.resolve.outputs.number }}
@@ -131,7 +149,8 @@ jobs:
           # not already on the PR.
           posted=$(gh api --paginate "repos/$REPO/pulls/$PR/comments" |
                    jq -s '[.[][] | select(.user.type == "Bot") | .body]')
-          payload=$(jq -n --argjson f "${FINDINGS:-[]}" --argjson posted "$posted" \
+          # -c keeps it on one line, as GITHUB_OUTPUT needs
+          payload=$(jq -nc --argjson f "${FINDINGS:-[]}" --argjson posted "$posted" \
                       --arg sha "$SHA" '
             [$f[] | {path: .file, line: ((.line // 1) | tonumber? // 1),
                      side: "RIGHT",
@@ -144,16 +163,51 @@ jobs:
             | {commit_id: $sha, event: "COMMENT",
                body: "**Claude security review** of \($sha[:12]): \($c | length) new finding(s)",
                comments: $c}')
-          if [ "$(jq '.comments | length' <<<"$payload")" -eq 0 ]; then
-            echo "No new findings"
-            exit 0
+          count=$(jq '.comments | length' <<<"$payload")
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "json=$payload" >> "$GITHUB_OUTPUT"
+          echo "$count new finding(s)"
+      - if: steps.payload.outputs.count != '0'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/actions/claude-post-review
+      - if: steps.payload.outputs.count != '0'
+        uses: ./.github/actions/claude-post-review
+        with:
+          github-token: ${{ github.token }}
+          pr: ${{ needs.resolve.outputs.number }}
+          payload: ${{ steps.payload.outputs.json }}
+
+  report:
+    needs: [resolve, security-review, post]
+    # A cancelled run was superseded; the run that replaced it reports.
+    if: >-
+      always() && needs.resolve.outputs.number != '' &&
+      needs.security-review.result != 'cancelled' &&
+      needs.post.result != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          AUDIT_RESULT: ${{ needs.security-review.result }}
+          POST_RESULT: ${{ needs.post.result }}
+          POSTED: ${{ needs.post.outputs.posted }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$AUDIT_RESULT" != success ] || [ "$POST_RESULT" != success ]; then
+            state=error
+            description="Failed: audit $AUDIT_RESULT, post $POST_RESULT"
+          else
+            state=success
+            description="${POSTED:-0} new finding(s)"
           fi
-          if ! gh api "repos/$REPO/pulls/$PR/reviews" --input - \
-                 <<<"$payload" >/dev/null; then
-            # GitHub rejects the whole review if one comment is not on a
-            # line of the diff; fold them into the body instead.
-            echo "::warning::Inline comments refused; posting them in the review body"
-            jq '.body += ([.comments[] | "\n\n---\n`\(.path):\(.line)`\n\n\(.body)"]
-                          | join("")) | .body |= .[:65000] | del(.comments)' \
-              <<<"$payload" | gh api "repos/$REPO/pulls/$PR/reviews" --input - >/dev/null
-          fi
+          gh api -X POST "repos/$REPO/statuses/$SHA" -f state="$state" \
+            -f context="$STATUS_CONTEXT" -f description="$description" \
+            -f target_url="$RUN_URL" >/dev/null
