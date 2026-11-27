@@ -166,8 +166,11 @@ func triggerDeschedulerWithClient(log *base.LogObject, client kubernetes.Interfa
 		return nil
 	}
 
-	// Job is completed or failed — delete and recreate.
-	deletePolicy := metav1.DeletePropagationForeground
+	// Job is completed or failed — delete and recreate. Background
+	// propagation removes the Job object at once and its finished pods
+	// after it: with Foreground the Job lingers until its pods are gone,
+	// so the Create right below would fail with AlreadyExists.
+	deletePolicy := metav1.DeletePropagationBackground
 	if err := client.BatchV1().Jobs(deschedulerNamespace).Delete(ctx, deschedulerJobName,
 		metav1.DeleteOptions{PropagationPolicy: &deletePolicy}); err != nil && !k8serrors.IsNotFound(err) {
 		return fmt.Errorf("TriggerDescheduler: delete stale job: %w", err)
