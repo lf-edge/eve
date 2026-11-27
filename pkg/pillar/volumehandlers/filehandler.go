@@ -213,12 +213,24 @@ func (handler *volumeHandlerFile) CreateSnapshot() (interface{}, time.Time, erro
 	err := diskmetrics.CreateSnapshot(createSnapContext, handler.log, baseImagFile, snapshotName)
 	if err != nil {
 		handler.log.Errorf("CreateSnapshot: error creating snapshot image: %s", err)
+		var sound *diskmetrics.SoundImageError
+		if errors.Is(err, diskmetrics.ErrImageNotVerified) || errors.As(err, &sound) {
+			// qemu-img ran, so the snapshot may be there. The name is
+			// needed to delete it.
+			return snapshotName, time.Time{}, err
+		}
 		return "", time.Time{}, err
 	}
 	// Replace VolumeStatus with a new snapshot file
 	timeCreated := time.Now()
 	handler.log.Noticef("CreateSnapshot: created snapshot %s %s", snapshotName, timeCreated.Format("02.01.2006 at 15:04:05"))
 	return snapshotName, timeCreated, nil
+}
+
+// VerifyImage checks the disk image and repairs it if needed. volumemgr
+// calls it for an image that a failed snapshot action may have left damaged.
+func (handler *volumeHandlerFile) VerifyImage() error {
+	return diskmetrics.VerifyImg(context.Background(), handler.log, handler.status.FileLocation)
 }
 
 func (handler *volumeHandlerFile) RollbackToSnapshot(snapshotMeta interface{}) error {
@@ -230,9 +242,10 @@ func (handler *volumeHandlerFile) RollbackToSnapshot(snapshotMeta interface{}) e
 	}
 	err := diskmetrics.ApplySnapshot(context.Background(), handler.log, handler.status.FileLocation, snapshotName)
 	if err != nil {
-		errStr := fmt.Sprintf("RollbackToSnapshot: error applying snapshot image: %s", err)
-		handler.log.Error(errStr)
-		return errors.New(errStr)
+		// %w: volumemgr looks for diskmetrics.ErrImageNotVerified.
+		err = fmt.Errorf("RollbackToSnapshot: error applying snapshot image: %w", err)
+		handler.log.Error(err)
+		return err
 	}
 	// Run with the base image file
 	handler.log.Noticef("RollbackToSnapshot for a file based volume (%s) to snapshot (%s)", handler.status.FileLocation, snapshotName)

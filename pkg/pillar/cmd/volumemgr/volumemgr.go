@@ -26,6 +26,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/utils/wait"
 	"github.com/lf-edge/eve/pkg/pillar/worker"
 	"github.com/lf-edge/eve/pkg/pillar/zfs"
+	uuid "github.com/satori/go.uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -98,6 +99,26 @@ type volumemgrContext struct {
 	deferDelete             *time.Ticker
 
 	worker worker.Worker // For background work
+	// snapshotOpInFlight has the snapshot a worker is creating, rolling back
+	// to or deleting for each app. Main loop only.
+	snapshotOpInFlight map[uuid.UUID]string
+	snapshotWorkCount  int
+	// snapshotsWaiting are the snapshots whose action could not start yet.
+	// Main loop only.
+	snapshotsWaiting map[string]bool
+	// snapshotDeletionRetries are the snapshots whose failed deletion is
+	// being tried again. Main loop only.
+	snapshotDeletionRetries map[string]bool
+	// snapshotVolumesInFlight has the volumes that a worker has in use for
+	// a snapshot, by volume key, with the snapshot. Main loop only.
+	snapshotVolumesInFlight map[string]string
+	// volumesAwaitingSnapshot are the volumes that are to be destroyed once
+	// the worker is done with them. Main loop only.
+	volumesAwaitingSnapshot map[string]bool
+	// snapshotConfigsComplete is set once zedmanager has published a config
+	// for every snapshot it wants to keep. Only then is a snapshot without a
+	// config one to delete.
+	snapshotConfigsComplete bool
 
 	signalledRestartedStatus bool
 	// pendingIngest tracks ContentTreeStatus keys for which a CAS ingest job
@@ -492,10 +513,16 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		poolSize = types.DefaultVolumemgrWorkerPoolSize
 	}
 	ctx.worker = worker.NewPool(log, &ctx, poolSize, map[string]worker.Handler{
-		workCreate:  {Request: volumeWorker, Response: processVolumeWorkResult},
-		workIngest:  {Request: casIngestWorker, Response: processCasIngestWorkResult},
-		workPrepare: {Request: volumePrepareWorker, Response: processVolumePrepareResult},
+		workCreate:   {Request: volumeWorker, Response: processVolumeWorkResult},
+		workIngest:   {Request: casIngestWorker, Response: processCasIngestWorkResult},
+		workPrepare:  {Request: volumePrepareWorker, Response: processVolumePrepareResult},
+		workSnapshot: {Request: snapshotWorker, Response: processSnapshotResult},
 	})
+	ctx.snapshotOpInFlight = make(map[uuid.UUID]string)
+	ctx.snapshotsWaiting = make(map[string]bool)
+	ctx.snapshotDeletionRetries = make(map[string]bool)
+	ctx.snapshotVolumesInFlight = make(map[string]string)
+	ctx.volumesAwaitingSnapshot = make(map[string]bool)
 
 	// Set up our publications before the subscriptions so ctx is set
 	pubDownloaderConfig, err := ps.NewPublication(pubsub.PublicationOptions{
@@ -776,14 +803,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	subZVolStatus.Activate()
 
 	subVolumesSnapshotConfig, err := ps.NewSubscription(pubsub.SubscriptionOptions{
-		CreateHandler: handleVolumesSnapshotConfigCreate,
-		ModifyHandler: handleVolumesSnapshotConfigModify,
-		DeleteHandler: handleVolumesSnapshotConfigDelete,
-		WarningTime:   warningTime,
-		ErrorTime:     errorTime,
-		AgentName:     "zedmanager",
-		TopicImpl:     types.VolumesSnapshotConfig{},
-		Ctx:           &ctx,
+		CreateHandler:  handleVolumesSnapshotConfigCreate,
+		ModifyHandler:  handleVolumesSnapshotConfigModify,
+		DeleteHandler:  handleVolumesSnapshotConfigDelete,
+		RestartHandler: handleVolumesSnapshotConfigRestarted,
+		WarningTime:    warningTime,
+		ErrorTime:      errorTime,
+		AgentName:      "zedmanager",
+		TopicImpl:      types.VolumesSnapshotConfig{},
+		Ctx:            &ctx,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -801,6 +829,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Fatal(err)
 	}
 	ctx.pubVolumesSnapStatus = pubVolumesSnapshotStatus
+	restoreVolumesSnapshotStatuses(&ctx)
 
 	if ctx.casClient, err = cas.NewCAS(casClientType); err != nil {
 		err = fmt.Errorf("Run: exception while initializing CAS client: %s", err.Error())
@@ -1000,6 +1029,9 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 			res.Process(&ctx, true)
 
 		case <-stillRunning.C:
+			// The pool can refuse work while a worker is between two
+			// jobs, and then no result may come to retry on.
+			driveSnapshots(&ctx)
 		}
 		ps.StillRunning(agentName, warningTime, errorTime)
 	}

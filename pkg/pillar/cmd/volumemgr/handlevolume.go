@@ -247,6 +247,8 @@ func handleVolumeRestart(ctxArg interface{}, restartCount int) {
 			ctx.signalledRestartedStatus = true
 		}
 	}
+	// A snapshot action that a reboot cut off waits for its volumes.
+	driveSnapshots(ctx)
 	log.Tracef("handleVolumeRestart done: %d", restartCount)
 }
 
@@ -327,6 +329,10 @@ func maybeDeleteVolume(ctx *volumemgrContext, status *types.VolumeStatus) {
 		return
 	}
 	var readyToUnPublish bool
+	if status.SubState == types.VolumeSubStateCreated && deferDestroyForSnapshot(ctx, status) {
+		publishVolumeStatus(ctx, status)
+		return
+	}
 	if status.SubState == types.VolumeSubStateCreated {
 		// we are not interested in result
 		_ = popVolumeWorkResult(ctx, status.Key())

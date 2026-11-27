@@ -370,20 +370,20 @@ const (
 func (status SenderStatus) String() string
 ```
 
-### `VolumesSnapshotAction` (`volumetypes.go`)
+### `VolumesSnapshotState` (`volumetypes.go`)
 
 ```go
-type VolumesSnapshotAction uint8
+type VolumesSnapshotState uint8
 
 const (
-    VolumesSnapshotUnspecifiedAction VolumesSnapshotAction = iota
-    VolumesSnapshotCreate
-    VolumesSnapshotRollback
-    VolumesSnapshotDelete
+    VolumesSnapshotStateCreating VolumesSnapshotState = iota + 1
+    VolumesSnapshotStateCreated
+    VolumesSnapshotStateRollingBack
+    VolumesSnapshotStateDeleting
 )
 
-func (action VolumesSnapshotAction) String() string
-// Returns: "Create", "Rollback", "Delete", "Unspecified"
+func (state VolumesSnapshotState) String() string
+// Returns: "Creating", "Created", "RollingBack", "Deleting", "Unspecified"
 ```
 
 ### `SnapshotType` (`zedmanagertypes.go`)
@@ -702,9 +702,7 @@ func (s SnapshotInstanceStatus) Key() string  // SnapshotID
 
 type SnapshottingStatus struct {
     MaxSnapshots                   uint32
-    RequestedSnapshots             []SnapshotDesc
-    AvailableSnapshots             []SnapshotInstanceStatus
-    SnapshotsToBeDeleted           []string
+    Snapshots                      []SnapshotInstanceStatus
     PreparedVolumesSnapshotConfigs []VolumesSnapshotConfig
     SnapshotTakenType              SnapshotType
     HasRollbackRequest             bool
@@ -870,11 +868,12 @@ func (status VolumeStatus) GetPVCName() string
 
 ```go
 type VolumesSnapshotConfig struct {
-    SnapshotID string
-    Action     VolumesSnapshotAction
-    VolumeIDs  []uuid.UUID
-    AppUUID    uuid.UUID
-    RollbackCount int  // makes every rollback request a change for pubsub
+    SnapshotID    string
+    VolumeIDs     []uuid.UUID
+    AppUUID       uuid.UUID
+    RollbackCount int  // higher than in the status: roll back to the snapshot
+    SnapshotType  SnapshotType
+    ConfigVersion UUIDandVersion
 }
 func (config VolumesSnapshotConfig) Key() string  // SnapshotID
 
@@ -883,11 +882,14 @@ type VolumesSnapshotStatus struct {
     VolumeSnapshotMeta map[string]interface{} `mandatory:"true"`
     TimeCreated        time.Time
     AppUUID            uuid.UUID              `mandatory:"true"`
-    RefCount           int
-    ResultOfAction     VolumesSnapshotAction
+    State              VolumesSnapshotState
+    RollbackCount      int
+    RollbackCountKnown bool
+    Verifying          bool                   // after a boot: the images of a failed action are still to be checked
     ErrorAndTimeWithSource
 }
 func (status VolumesSnapshotStatus) Key() string  // SnapshotID
+func (status VolumesSnapshotStatus) Busy() bool   // being worked on: a state other than Created, with no error or with Verifying
 ```
 
 ### `ContentTreeConfig` / `ContentTreeStatus` (`contenttreetypes.go`)

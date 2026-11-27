@@ -395,7 +395,9 @@ func processVolumeWorkResult(ctxPtr interface{}, res worker.WorkResult) error {
 		}
 	}
 	// This job's completion freed a slot in the shared worker pool: give any
-	// volume or content tree whose submission was refused another chance.
+	// snapshot request, volume or content tree whose submission was refused
+	// another chance. Snapshots go first, as their app is down meanwhile.
+	driveSnapshots(ctx)
 	reevaluatePendingVolumes(ctx)
 	reevaluatePendingContentTrees(ctx, types.VERIFIED)
 	return nil
@@ -407,6 +409,7 @@ func processVolumePrepareResult(ctxPtr interface{}, res worker.WorkResult) error
 	d := res.Description.(volumeWorkDescription)
 	updateVolumeStatus(ctx, d.status.VolumeID)
 	// See processVolumeWorkResult: this frees a slot in the shared pool.
+	driveSnapshots(ctx)
 	reevaluatePendingVolumes(ctx)
 	reevaluatePendingContentTrees(ctx, types.VERIFIED)
 	return nil
@@ -434,6 +437,7 @@ func processCasIngestWorkResult(ctxPtr interface{}, res worker.WorkResult) error
 	}
 	updateStatusByBlob(ctx, d.status.Blobs...)
 	// See processVolumeWorkResult: this frees a slot in the shared pool.
+	driveSnapshots(ctx)
 	reevaluatePendingVolumes(ctx)
 	reevaluatePendingContentTrees(ctx, types.VERIFIED)
 	return nil
