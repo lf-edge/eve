@@ -16,6 +16,7 @@ and they currently include:
 * [Apache Yetus](https://github.com/lf-edge/eve/actions?query=workflow%3A%22Apache+Yetus%22) runs static, lint-like [Apache Yetus](http://yetus.apache.org/) checks on EVE
 * [Eden](https://github.com/lf-edge/eve/actions?query=workflow%3AEden) runs integration tests from EVE's sister project [Eden](https://github.com/lf-edge/eden)
 * [Claude Code](https://github.com/lf-edge/eve/actions?query=workflow%3A%22Claude+Code%22) and [Claude Security Review](https://github.com/lf-edge/eve/actions?query=workflow%3A%22Claude+Security+Review%22) review pull requests with Claude
+* [PR Event](https://github.com/lf-edge/eve/actions?query=workflow%3A%22PR+Event%22) triggers the pull request automation that needs secrets or write access
 
 Since EVE community generally frowns on branch-heavy development most of the descriptions below
 will only apply to the master branch (unless stated otherwise).
@@ -91,13 +92,8 @@ review, if its author has write access to the repository. Draft pull requests ar
 who has contributed to the repository can also ask for a code review by writing `@claude` in a
 comment on the pull request's Conversation tab; a comment on a line of code does not work.
 
-Pull requests come from forks, and a `pull_request` run on a fork gets neither secrets nor a token
-that can write. So the `Claude Review Request` workflow only runs on `pull_request` and does
-nothing else; the reviews run after it on `workflow_run`, from the master branch, with the
-secrets. They trust nothing from that run and look the pull request up again. Claude runs with a
-read-only token and returns its review as data, and a separate job without secrets posts it. A
-pull request into a stable branch is only reviewed automatically if that branch has the
-`Claude Review Request` workflow.
+The reviews run after the `PR Event` workflow, as described below. Claude runs with a read-only
+token and returns its review as data, and a separate job without secrets posts it.
 
 These runs belong to master's commit, so they do not appear among the pull request's checks.
 Instead, each review sets a commit status on the pull request's head, `Claude Review` or
@@ -105,6 +101,26 @@ Instead, each review sets a commit status on the pull request's head, `Claude Re
 
 The security review skips a push whose changes were already audited, such as a rebase, and does
 not post a finding again when one of the same category was already posted near the same line.
+
+## Pull request automation
+
+Pull requests come from forks, and a `pull_request` run on a fork gets neither secrets nor a token
+that can write, while GitHub blocks `pull_request_target` in public repositories. So the `PR Event`
+workflow only runs on `pull_request` (opened, pushed to, reopened, ready for review) and does
+nothing else. The workflows that need secrets or write access run after it on `workflow_run`, from
+the master branch:
+
+* the Claude reviews above;
+* **Request Code Owners Review**, which requests reviews from the owners in the base branch's
+  `.github/CODEOWNERS` of every path the pull request changes, except its author;
+* **Close PRs from master**, which closes pull requests opened from a `master` or `main` branch
+  and explains how to open one from a feature branch instead.
+
+They trust nothing from the `PR Event` run and look the pull request up again. A `pull_request` run
+uses the workflows of the branch the pull request targets, so on a pull request into a stable
+branch these only run if that branch has the `PR Event` workflow. Runs from first-time
+contributors wait for a maintainer's approval, so **Close PRs from master** also runs every 30
+minutes and checks every open pull request.
 
 ## Maintaining Dockerfile Versions
 
