@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -238,7 +239,7 @@ func TestEncryptedStateResetsWithWrongKey(t *testing.T) {
 		}
 	})
 	isTPMAvailable = func() bool { return true }
-	sha256PCRAvailable = func() bool { return false }
+	sha256PCRAvailable = func() (bool, error) { return false, nil }
 	key := make([]byte, 32)
 	getEncryptionKey = func() ([]byte, error) { return key, nil }
 	if body, _, err := sendLaunchRequest(id); err != nil {
@@ -286,7 +287,7 @@ func prepareLegacyStateForMigration(t *testing.T, id uuid.UUID) ([]byte, []byte,
 	oldTPM, oldPCR, oldGetKey, oldLegacy := isTPMAvailable, sha256PCRAvailable, getEncryptionKey, getLegacyEncryptionKey
 	protectedMode := false
 	isTPMAvailable = func() bool { return true }
-	sha256PCRAvailable = func() bool { return protectedMode }
+	sha256PCRAvailable = func() (bool, error) { return protectedMode, nil }
 	getEncryptionKey = func() ([]byte, error) {
 		if protectedMode {
 			return protectedKey, nil
@@ -408,7 +409,7 @@ func TestLegacyMigrationFailurePreservesState(t *testing.T) {
 		t.Fatalf("expected migration failure: status=%d err=%v body=%s", status, err, body)
 	}
 	// The original state is still loadable with the legacy key.
-	sha256PCRAvailable = func() bool { return false }
+	sha256PCRAvailable = func() (bool, error) { return false, nil }
 	getEncryptionKey = func() ([]byte, error) { return getLegacyEncryptionKey() }
 	if body, _, err := sendLaunchRequest(id); err != nil {
 		t.Fatalf("legacy state lost after migration failure: %v: %s", err, body)
@@ -489,7 +490,7 @@ func TestMigrationNeverFallsBackToLegacyKeyAgain(t *testing.T) {
 		t.Fatalf("migrated state marker lost: %v", err)
 	}
 	// Removing SHA-256 PCR support must also leave protected state untouched.
-	sha256PCRAvailable = func() bool { return false }
+	sha256PCRAvailable = func() (bool, error) { return false, nil }
 	if body, status, err := sendLaunchRequest(id); err == nil || status != http.StatusFailedDependency {
 		t.Fatalf("expected no-PCR failure: status=%d err=%v body=%s", status, err, body)
 	}
@@ -512,7 +513,7 @@ func TestMigrationMarkerFailureLeavesLegacyStateActive(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(state, protectedStateMarker)); !os.IsNotExist(err) {
 		t.Fatalf("protected marker appeared before migration: %v", err)
 	}
-	sha256PCRAvailable = func() bool { return false }
+	sha256PCRAvailable = func() (bool, error) { return false, nil }
 	getEncryptionKey = func() ([]byte, error) { return getLegacyEncryptionKey() }
 	if body, _, err := sendLaunchRequest(id); err != nil {
 		t.Fatalf("legacy state lost after marker failure: %v: %s", err, body)
@@ -541,7 +542,7 @@ func TestMigrationSecondRenameFailureRestoresLegacyState(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(active, protectedStateMarker)); !os.IsNotExist(err) {
 		t.Fatalf("legacy state unexpectedly marked protected: %v", err)
 	}
-	sha256PCRAvailable = func() bool { return false }
+	sha256PCRAvailable = func() (bool, error) { return false, nil }
 	getEncryptionKey = func() ([]byte, error) { return getLegacyEncryptionKey() }
 	if body, _, err := sendLaunchRequest(id); err != nil {
 		t.Fatalf("legacy state could not load after rollback: %v: %s", err, body)
@@ -1256,6 +1257,8 @@ func TestLaunchAndPurgeWithoutStateEncryption(t *testing.T) {
 }
 
 func TestLaunchAndPurgeWithStateEncryption(t *testing.T) {
+	oldTPM, oldKey := isTPMAvailable, getEncryptionKey
+	t.Cleanup(func() { isTPMAvailable, getEncryptionKey = oldTPM, oldKey })
 	id := generateUUID()
 	defer func() { _ = cleanupFiles(id) }()
 	isTPMAvailable = func() bool {
@@ -1279,6 +1282,8 @@ func TestExhaustSwtpmInstancesWithoutStateEncryption(t *testing.T) {
 }
 
 func TestExhaustSwtpmInstancesWithStateEncryption(t *testing.T) {
+	oldTPM, oldKey := isTPMAvailable, getEncryptionKey
+	t.Cleanup(func() { isTPMAvailable, getEncryptionKey = oldTPM, oldKey })
 	isTPMAvailable = func() bool {
 		return true
 	}
@@ -1292,6 +1297,8 @@ func TestExhaustSwtpmInstancesWithStateEncryption(t *testing.T) {
 }
 
 func TestSwtpmStateChange(t *testing.T) {
+	oldTPM, oldKey := isTPMAvailable, getEncryptionKey
+	t.Cleanup(func() { isTPMAvailable, getEncryptionKey = oldTPM, oldKey })
 	id := generateUUID()
 	defer func() { _ = cleanupFiles(id) }()
 	isTPMAvailable = func() bool {
@@ -1343,8 +1350,10 @@ func TestSwtpmStateBackupWithStateEncryption(t *testing.T) {
 		t.Skip("swtpm does not support tpmstate-dir-backend-opt-backup")
 	}
 	oldPCR := sha256PCRAvailable
-	sha256PCRAvailable = func() bool { return false }
+	sha256PCRAvailable = func() (bool, error) { return false, nil }
 	t.Cleanup(func() { sha256PCRAvailable = oldPCR })
+	oldTPM, oldKey := isTPMAvailable, getEncryptionKey
+	t.Cleanup(func() { isTPMAvailable, getEncryptionKey = oldTPM, oldKey })
 	id := generateUUID()
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)
@@ -1684,6 +1693,10 @@ func TestLaunchWithRealTPMEncryption(t *testing.T) {
 	origTpmPath := etpm.TpmDevicePath
 	etpm.TpmDevicePath = etpm.SimTpmPath
 	isTPMAvailable = func() bool { return true }
+	// The real probe asks IsTpmEnabled, which needs a device cert the test lacks.
+	origSha256PCRAvailable := sha256PCRAvailable
+	sha256PCRAvailable = func() (bool, error) { return true, nil }
+	defer func() { sha256PCRAvailable = origSha256PCRAvailable }()
 	binKeyPath := fmt.Sprintf(stateEncryptionKey, id.String())
 	isEncryptedPath := fmt.Sprintf(stateIsEncryptedPath, id.String())
 	defer func() { etpm.TpmDevicePath = origTpmPath }()
@@ -1790,5 +1803,44 @@ func TestSwtpmMultipleLaucnhRequest(t *testing.T) {
 
 	if liveInstances != 0 {
 		t.Fatalf("expected liveInstances to be 0, got %d", liveInstances)
+	}
+}
+
+// A failed SHA-256 bank probe must fail the launch, not select the legacy key.
+func TestLaunchFailsWhenPCRBankProbeFails(t *testing.T) {
+	oldWork, oldTPM, oldPCR, oldKey := workDir, isTPMAvailable, sha256PCRAvailable, getEncryptionKey
+	t.Cleanup(func() {
+		workDir, isTPMAvailable, sha256PCRAvailable, getEncryptionKey = oldWork, oldTPM, oldPCR, oldKey
+	})
+	workDir = filepath.Join(t.TempDir(), "state-%s")
+	isTPMAvailable = func() bool { return true }
+	sha256PCRAvailable = func() (bool, error) { return false, errors.New("injected PCR_Read failure") }
+	getEncryptionKey = func() ([]byte, error) {
+		t.Error("encryption key fetched after a failed SHA-256 bank probe")
+		return nil, errors.New("unexpected key fetch")
+	}
+	before := liveInstances
+
+	w := httptest.NewRecorder()
+	handleLaunch(w, httptest.NewRequest(http.MethodGet, "/launch?id="+generateUUID().String(), nil))
+	if w.Code != http.StatusFailedDependency || !strings.Contains(w.Body.String(), "injected PCR_Read failure") {
+		t.Fatalf("launch returned %d: %s", w.Code, w.Body.String())
+	}
+	if liveInstances != before {
+		t.Fatalf("liveInstances %d after the failed launch, want %d", liveInstances, before)
+	}
+}
+
+// fetchEncryptionKey must return a failed SHA-256 bank probe as an error rather
+// than read it as an absent bank and take the legacy key. It is called directly
+// because other tests replace getEncryptionKey.
+func TestEncryptionKeyFailsWhenPCRBankProbeFails(t *testing.T) {
+	oldPCR := sha256PCRAvailable
+	t.Cleanup(func() { sha256PCRAvailable = oldPCR })
+	injected := errors.New("injected PCR_Read failure")
+	sha256PCRAvailable = func() (bool, error) { return false, injected }
+
+	if _, err := fetchEncryptionKey(); !errors.Is(err, injected) {
+		t.Fatalf("fetchEncryptionKey returned %v, want the probe error", err)
 	}
 }
