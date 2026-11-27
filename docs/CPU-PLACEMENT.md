@@ -207,21 +207,25 @@ When a VM starts, `domainmgr` and the KVM backend:
    there.
 2. Launch QEMU paused, with `-smp sockets=1,cores=C,threads=T` from the
    assignment for a whole-core workload and a flat topology otherwise.
-3. Arrange its threads in a threaded subtree of its cgroup, the layout libvirt
-   uses, with each vCPU's thread found through QMP `query-cpus-fast`:
+3. Arrange its threads in a threaded subtree of the `task` child of its cgroup,
+   where runc runs the domain, the layout libvirt uses, with each vCPU's
+   thread found through QMP `query-cpus-fast`:
 
    ```text
-   eve-user-apps/<domain>/   every CPU of the domain; its memory and IO limits
-   |-- emulator/             every thread but the vCPUs'
-   `-- vcpu<i>/              vCPU i's thread
+   eve-user-apps/<domain>/   every CPU of the domain; its memory limit
+   |-- task/                 QEMU, runc's cgroup; the task's memory and IO limits
+   |   |-- emulator/         every thread but the vCPUs'
+   |   `-- vcpu<i>/          vCPU i's thread
+   `-- helpers/              its containerd shim and swtpm
    ```
 
    For a pinned VM each `vcpu<i>` holds its one host CPU, and `emulator` the IO
-   CPUs under `io_placement=HOUSEKEEPING`; a group whose CPUs are the domain's
-   leaves its cpuset empty and follows the domain, as both groups of an
-   unpinned VM do. Each group gets its CPUs before a thread joins it, and the
-   domain's group all of its CPUs last. A vCPU count mismatch, or any failure
-   to arrange the threads, fails the launch.
+   CPUs under `io_placement=HOUSEKEEPING`, as `helpers` does, which the swtpm
+   joins just before; a group whose CPUs are the domain's leaves its cpuset
+   empty and follows the domain, as `task` does and both groups of an unpinned
+   VM do. Each group gets its CPUs before a thread joins it, and the domain's
+   group all of its CPUs last. A vCPU count mismatch, or any failure to
+   arrange the threads, fails the launch.
 4. Release the guest with QMP `cont`.
 5. On x86, wait in the background, up to 30 seconds, for KVM's NX huge-page
    recovery thread, which the first vCPU to run creates in its own group, and
@@ -246,15 +250,20 @@ cgroup cpuset through containerd; nothing pins its threads.
 
 Housekeeping workloads run on the housekeeping set, and so do the host's own
 processes. EVE's services run in `/eve/services` on the CPUs reserved for EVE.
-`containerd` with every shim runs in `/eve/containerd` on the lowest
-`ctrd_max_vcpus` CPUs, and the memory monitor in `/eve-memory-monitor` on those
-of `/eve`, the lowest `dom0_max_vcpus`: they stay off the dedicated and isolated
-CPUs while neither limit exceeds `eve_max_vcpus`, as by default.
+EVE's system `containerd`, with the shims of EVE's own containers, runs in
+`/eve/containerd` on the lowest `ctrd_max_vcpus` CPUs, and the memory monitor
+in `/eve-memory-monitor` on those of `/eve`, the lowest `dom0_max_vcpus`: they
+stay off the dedicated and isolated CPUs while neither limit exceeds
+`eve_max_vcpus`, as by default. A workload's own shim and swtpm run in its
+`helpers` group, where its emulator threads run.
 What is left in the root cgroup -- `init`, `udevd`, the getty -- is moved into
 a top-level `housekeeping` group beside them, whose CPUs `domainmgr` sets to the
 housekeeping set before it moves any process, at startup and on every
 allocation change; a shell started with `eve exec` goes there too. The root's
 cpuset itself cannot be narrowed. Kernel threads are left where they are.
+The user `containerd`, which holds the workloads' images, runs in
+`/eve-user-apps/containerd`, beside the workloads but none of them, and
+`domainmgr` gives that group the housekeeping set as well.
 
 The CPUs a workload holds are fixed at launch: moving it to others means
 restarting it. Only the IO CPUs under `io_placement=HOUSEKEEPING` move, with the
@@ -391,6 +400,6 @@ holds to the same rules everywhere.
 | The plan, for inspection only (nothing reads it back) | `/run/domainmgr/cpuplan.json` |
 | The pools | `/run/domainmgr/CPUPoolStatus/global.json` |
 | The demand set | `/run/zedmanager/CPUDemandSet/` |
-| cpusets | `/sys/fs/cgroup/eve-user-apps/<domain>/cpuset.cpus`, the same in its `emulator/` and `vcpu<i>/` groups, `/sys/fs/cgroup/housekeeping/cpuset.cpus` |
+| cpusets | `/sys/fs/cgroup/eve-user-apps/<domain>/cpuset.cpus`, the same in the `emulator/` and `vcpu<i>/` groups below its `task/`, `/sys/fs/cgroup/housekeeping/cpuset.cpus`, `/sys/fs/cgroup/eve-user-apps/containerd/cpuset.cpus` |
 | Which threads are in which group | `cgroup.threads` of each group; `/proc/<qemu pid>/task/<tid>/cgroup` |
 | A thread's host CPUs | `grep Cpus_allowed_list /proc/<qemu pid>/task/<tid>/status` |

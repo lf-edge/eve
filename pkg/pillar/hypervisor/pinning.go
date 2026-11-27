@@ -28,20 +28,29 @@ import (
 // cont, in that vCPU's cgroup.
 const kvmNXRecoveryComm = "kvm-nx-lpage-re"
 
-// A domain's QEMU threads live in a threaded subtree of its cgroup, as libvirt
-// arranges them:
+// A domain's QEMU threads live in a threaded subtree of the task child of its
+// cgroup, where runc runs the domain, as libvirt arranges them:
 //
-//	eve-user-apps/<domain>/  every CPU the domain uses; its memory and IO limits
-//	├── emulator/            every thread but the vCPUs': main loop, iothreads, vhost, IO workers
-//	├── vcpu0/               vCPU 0's thread
-//	└── vcpuN/
+//	eve-user-apps/<domain>/  every CPU the domain uses; its memory limit
+//	├── task/                QEMU, runc's cgroup: the task's memory and IO limits
+//	│   ├── emulator/        every thread but the vCPUs': main loop, iothreads, vhost, IO workers
+//	│   ├── vcpu0/           vCPU 0's thread
+//	│   └── vcpuN/
+//	└── helpers/             the domain's containerd shim and swtpm
+//
+// The groups cannot hang off the domain's cgroup itself, whose children task
+// and helpers hold processes: the kernel turns no child of such a cgroup
+// threaded.
 //
 // A thread starts in the group of the thread that created it, so one QEMU or
 // the kernel starts later -- an io_uring or vhost worker -- is confined by the
 // kernel, not by a pass that would have to find it. A group whose CPUs are the
 // domain's leaves cpuset.cpus empty and follows the domain: both groups of an
 // unpinned domain, and the emulator group of a pinned one whose IO stays on
-// its own CPUs.
+// its own CPUs. The task child has no CPUs of its own either. The helpers
+// child gets the emulator group's: the shim and the swtpm serve the domain as
+// its emulator threads do, and under io_placement=housekeeping they too stay
+// off the vCPUs' cores.
 const (
 	emulatorGroup   = "emulator"
 	vcpuGroupPrefix = "vcpu"
@@ -62,19 +71,45 @@ func qemuPid(domainName string) (int, error) {
 	return procutils.GetPidFromFile(filepath.Join(kvmStateDir, domainName, "pid"))
 }
 
-// DomainCgroup is the cgroup of the domain named domainName, as containerd
-// creates it.
+// DomainCgroup is the cgroup of the domain named domainName, which carries the
+// domain's CPUs.
 func DomainCgroup(domainName string) string {
 	return path.Join(containerd.GetServicesNamespace(), domainName)
 }
 
+// TaskCgroup is the child of the domain's cgroup that runc runs the domain
+// named domainName in: QEMU's cgroup, and the root of its thread groups.
+func TaskCgroup(domainName string) string {
+	return path.Join(DomainCgroup(domainName), containerd.AppTaskCgroupName)
+}
+
+// helpersCgroup is the child of the domain's cgroup that its helpers, its
+// containerd shim and its swtpm, run in.
+func helpersCgroup(domainName string) string {
+	return path.Join(DomainCgroup(domainName), containerd.AppHelpersCgroupName)
+}
+
+// setHelpersCPUs puts the domain's helpers on cpus, the IO CPUs of its emulator
+// threads. A domain without a helpers child, whose shim and swtpm stayed where
+// their services started them, has nothing to confine.
+func setHelpersCPUs(domainName string, cpus []uint32) error {
+	helpers := helpersCgroup(domainName)
+	if _, err := os.Stat(cgroup.Path(helpers, "")); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err := cgroup.WriteCPUs(helpers, cpus); err != nil {
+		return fmt.Errorf("CPUs of %s: %w", helpers, err)
+	}
+	return nil
+}
+
 // arrangeDomainThreads puts the domain's threads in its thread groups: vCPU i's
 // thread in vcpu<i>/, every other thread in emulator/. For a domain holding CPUs
-// vcpu<i>/ holds a.CPUs[i] alone and emulator/ a.IOCPUs under
-// io_placement=housekeeping; once every thread is in its group the domain's
-// group gets all its CPUs (a.DomainCPUs()). It started where its non-vCPU
-// threads run (DomainStatus.StartCPUs), so what QEMU set up while starting
-// names no other CPU.
+// vcpu<i>/ holds a.CPUs[i] alone and emulator/, like the domain's helpers
+// child, a.IOCPUs under io_placement=housekeeping; once every thread is in its
+// group the domain's group gets all its CPUs (a.DomainCPUs()). It started where
+// its non-vCPU threads run (DomainStatus.StartCPUs), so what QEMU set up while
+// starting names no other CPU.
 //
 // It runs in Start, after QEMU is up and paused (-S) and before cont, and
 // returns every failure but a thread that exited: the caller keeps the guest
@@ -93,11 +128,12 @@ func arrangeDomainThreads(domainName, qmpFile string, a types.CPUAssignment) err
 		return fmt.Errorf("qemu pid: %w", err)
 	}
 	domain := DomainCgroup(domainName)
-	emulator := path.Join(domain, emulatorGroup)
+	task := TaskCgroup(domainName)
+	emulator := path.Join(task, emulatorGroup)
 	groups := []string{emulator}
 	vcpuGroup := make(map[int]string, len(tids))
 	for i, tid := range tids {
-		vcpuGroup[tid] = path.Join(domain, fmt.Sprintf("%s%d", vcpuGroupPrefix, i))
+		vcpuGroup[tid] = path.Join(task, fmt.Sprintf("%s%d", vcpuGroupPrefix, i))
 		groups = append(groups, vcpuGroup[tid])
 	}
 	for _, g := range groups {
@@ -105,14 +141,17 @@ func arrangeDomainThreads(domainName, qmpFile string, a types.CPUAssignment) err
 			return fmt.Errorf("thread group %s: %w", g, err)
 		}
 	}
-	if err := cgroup.EnableControllers(domain, "cpuset"); err != nil {
-		return fmt.Errorf("cpuset for the thread groups of %s: %w", domain, err)
+	if err := cgroup.EnableControllers(task, "cpuset"); err != nil {
+		return fmt.Errorf("cpuset for the thread groups of %s: %w", task, err)
 	}
 	// Each group gets its CPUs before any thread joins it, so none runs, even
 	// briefly, where it does not belong.
 	if len(a.IOCPUs) > 0 {
 		if err := cgroup.WriteCPUs(emulator, a.IOCPUs); err != nil {
 			return fmt.Errorf("CPUs of %s: %w", emulator, err)
+		}
+		if err := setHelpersCPUs(domainName, a.IOCPUs); err != nil {
+			return err
 		}
 	}
 	var mapping []string
@@ -164,21 +203,21 @@ func arrangeDomainThreads(domainName, qmpFile string, a types.CPUAssignment) err
 	return nil
 }
 
-// SetIOCPUs moves a running domain's non-vCPU threads onto a.IOCPUs, the
-// housekeeping set they follow under io_placement=housekeeping. The domain's
-// group is written first: a thread group runs on its own CPUs within its
-// parent's, so a shrink reaches every thread at once and a growth only once
-// the domain has the CPUs.
+// SetIOCPUs moves a running domain's non-vCPU threads, and its helpers with
+// them, onto a.IOCPUs, the housekeeping set they follow under
+// io_placement=housekeeping. The domain's group is written first: a group runs
+// on its own CPUs within its parent's, so a shrink reaches every thread at once
+// and a growth only once the domain has the CPUs.
 func SetIOCPUs(domainName string, a types.CPUAssignment) error {
 	domain := DomainCgroup(domainName)
 	if err := cgroup.WriteCPUs(domain, a.DomainCPUs()); err != nil {
 		return fmt.Errorf("CPUs of %s: %w", domain, err)
 	}
-	emulator := path.Join(domain, emulatorGroup)
+	emulator := path.Join(TaskCgroup(domainName), emulatorGroup)
 	if err := cgroup.WriteCPUs(emulator, a.IOCPUs); err != nil {
 		return fmt.Errorf("CPUs of %s: %w", emulator, err)
 	}
-	return nil
+	return setHelpersCPUs(domainName, a.IOCPUs)
 }
 
 // placeLateThreads moves the QEMU threads that only appear once the guest runs
@@ -195,7 +234,7 @@ func placeLateThreads(domainName string) {
 		logrus.Warnf("CPU pinning: domain %s: qemu pid: %v", domainName, err)
 		return
 	}
-	go placeNXRecoveryThread(domainName, pid, path.Join(DomainCgroup(domainName), emulatorGroup))
+	go placeNXRecoveryThread(domainName, pid, path.Join(TaskCgroup(domainName), emulatorGroup))
 }
 
 // nxRecoveryThreadExpected: x86 KVM starts the thread unless the mitigation is

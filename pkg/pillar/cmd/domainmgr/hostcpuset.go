@@ -5,6 +5,7 @@ package domainmgr
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,11 +13,13 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/utils/cgroup"
 )
 
-// EVE's services run in /eve/services, on the CPUs reserved for EVE, containerd
-// with its shims in /eve/containerd, and each workload in its own group under
+// EVE's services run in /eve/services, on the CPUs reserved for EVE, its system
+// containerd with the shims of EVE's own containers in /eve/containerd, and
+// each workload, with its own shim and swtpm, in its own group under
 // /eve-user-apps. The host processes left in the root cgroup -- init, udevd,
 // the getty -- may use every CPU: the root's cpuset spans them all and cannot
 // be narrowed. Left there, they run on CPUs dedicated to workloads.
@@ -24,7 +27,9 @@ import (
 // So they are moved into a group of their own, beside /eve and /eve-user-apps,
 // holding exactly the housekeeping CPUs and following them as workloads are
 // placed and released. Processes they fork inherit it. Kernel threads are left
-// where they are.
+// where they are. The user containerd, which runs under /eve-user-apps beside
+// the workloads but is none of them, follows the housekeeping CPUs in its own
+// group the same way.
 
 // hostCpusetGroup names the host processes' group after the pool it holds.
 const hostCpusetGroup = "housekeeping"
@@ -63,10 +68,12 @@ func (h *hostCpuset) update(cpus []uint32) {
 	}
 }
 
-// apply sets the group's CPUs to cpus and moves into it every user-space process
-// still in the root cgroup, returning how many it moved. The CPUs are written
-// before any process is moved, so none runs, even briefly, on a CPU that has
-// just been dedicated.
+// apply sets the CPUs of the group, and of the user containerd's, to cpus and
+// moves into the group every user-space process still in the root cgroup,
+// returning how many it moved. The CPUs are written before any process is
+// moved, so none runs, even briefly, on a CPU that has just been dedicated. A
+// failure to confine the user containerd is returned once the host processes
+// are moved.
 func (h *hostCpuset) apply(cpus []uint32) (int, error) {
 	if h == nil {
 		return 0, nil
@@ -80,9 +87,10 @@ func (h *hostCpuset) apply(cpus []uint32) (int, error) {
 	if err := cgroup.WriteCPUs(hostCpusetGroup, cpus); err != nil {
 		return 0, err
 	}
+	ctrdErr := confineUserContainerd(cpus)
 	pids, err := cgroup.Processes("")
 	if err != nil {
-		return 0, err
+		return 0, errors.Join(ctrdErr, err)
 	}
 	moved := 0
 	for _, pid := range pids {
@@ -98,7 +106,21 @@ func (h *hostCpuset) apply(cpus []uint32) (int, error) {
 			log.Warnf("host cpuset: cannot move pid %d: %v", pid, err)
 		}
 	}
-	return moved, nil
+	return moved, ctrdErr
+}
+
+// confineUserContainerd puts the user containerd's group on cpus. The group is
+// made if the daemon has not joined it yet -- domainmgr's first update comes
+// before it starts the daemon -- so that the daemon finds the CPUs there.
+func confineUserContainerd(cpus []uint32) error {
+	group := containerd.UserContainerdCgroup()
+	if err := os.MkdirAll(cgroup.Path(group, ""), 0755); err != nil {
+		return fmt.Errorf("the user containerd's group: %w", err)
+	}
+	if err := cgroup.WriteCPUs(group, cpus); err != nil {
+		return fmt.Errorf("the user containerd's group: %w", err)
+	}
+	return nil
 }
 
 // isUserSpace reports whether pid is a live process that is not a kernel thread.

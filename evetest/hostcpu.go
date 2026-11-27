@@ -228,10 +228,11 @@ type QEMUThread struct {
 	// Comm is the thread's name. It may contain spaces: QEMU names its vCPU
 	// threads "CPU <n>/KVM".
 	Comm string
-	// Group is the thread's cgroup relative to the domain's own: "" for the
-	// domain's group itself, else one of the thread groups below it, such as
-	// "emulator" or "vcpu0". A thread outside the domain's group keeps the
-	// absolute path the kernel reports, which names none of them.
+	// Group is the thread's cgroup relative to the root of the domain's thread
+	// groups, the task child of the domain's cgroup that EVE runs the domain
+	// in: "" for that root itself, else one of the thread groups below it,
+	// such as "emulator" or "vcpu0". A thread outside the domain's group keeps
+	// the absolute path the kernel reports, which names none of them.
 	Group string
 	// AllowedCPUs is where the scheduler may run the thread
 	// (Cpus_allowed_list): its affinity within its group's cpuset.
@@ -261,11 +262,11 @@ exit 0
 // /proc/<pid>/task. Which thread serves which guest vCPU only the hypervisor
 // knows (QueryVCPUs).
 //
-// A domain's cgroup is a threaded subtree, as libvirt arranges it: the domain's
-// group holds every CPU it uses, vcpu<i>/ holds vCPU i's thread and emulator/
-// every other thread. A thread starts in the group of the thread that created
-// it, so this also places helper threads QEMU or the kernel start later, such
-// as io_uring and vhost workers.
+// The domain's group holds every CPU it uses, and its task child, where EVE
+// runs the domain, a threaded subtree, as libvirt arranges it: vcpu<i>/ holds
+// vCPU i's thread and emulator/ every other thread. A thread starts in the
+// group of the thread that created it, so this also places helper threads QEMU
+// or the kernel start later, such as io_uring and vhost workers.
 func (d *EdgeDevice) AppThreadGroups(appUUID uuid.UUID) ([]QEMUThread, error) {
 	domainName, err := d.AppDomainName(appUUID)
 	if err != nil {
@@ -315,15 +316,21 @@ func (d *EdgeDevice) AppThreadGroups(appUUID uuid.UUID) ([]QEMUThread, error) {
 	return threads, nil
 }
 
-// groupBelow returns a cgroup path relative to the domain's group, the path
-// component named after the domain. The kernel reports the path relative to the
-// reader's cgroup namespace, so it is found by that component rather than by a
-// fixed prefix; a path without it is returned as it is.
+// domainTaskGroup is the child of a domain's group that EVE runs the domain in,
+// beside the one holding its containerd shim and swtpm.
+const domainTaskGroup = "task"
+
+// groupBelow returns a cgroup path relative to the root of the domain's thread
+// groups, the task child of the domain's group, which is the path component
+// named after the domain. The kernel reports the path relative to the reader's
+// cgroup namespace, so the domain's group is found by that component rather
+// than by a fixed prefix; a path without it is returned as it is.
 func groupBelow(cgroupPath, domainName string) string {
 	_, rest, found := strings.Cut(cgroupPath+"/", "/"+domainName+"/")
 	if !found {
 		return cgroupPath
 	}
+	rest = strings.TrimPrefix(rest, domainTaskGroup+"/")
 	return strings.TrimSuffix(rest, "/")
 }
 

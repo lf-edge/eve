@@ -184,6 +184,39 @@ func TestHostCpuset_AFailedMoveIsNotFatal(t *testing.T) {
 	}
 }
 
+// The user containerd runs under /eve-user-apps beside the workloads, but is
+// none of them: its group gets the housekeeping CPUs too, and is made if the
+// daemon has not joined it yet, so that it finds them there.
+func TestHostCpuset_ConfinesUserContainerd(t *testing.T) {
+	h, dir := fakeHostCpuset(t, nil, nil)
+	if _, err := h.apply([]uint32{0, 27}); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	ctrd := filepath.Join(filepath.Dir(dir), "eve-user-apps", "containerd", "cpuset.cpus")
+	if got := readTestFile(t, ctrd); got != "0,27" {
+		t.Errorf("the user containerd's cpuset.cpus = %q, want 0,27", got)
+	}
+}
+
+// A user containerd group that cannot take the CPUs is reported, but the host
+// processes are moved all the same.
+func TestHostCpuset_UserContainerdFailureIsReported(t *testing.T) {
+	h, dir := fakeHostCpuset(t, []int{1}, map[int]uint64{1: userFlags})
+	moves := recordMoves(t, dir)
+	// A directory where cpuset.cpus should be makes the write fail.
+	ctrd := filepath.Join(filepath.Dir(dir), "eve-user-apps", "containerd", "cpuset.cpus")
+	if err := os.MkdirAll(ctrd, 0755); err != nil {
+		t.Fatal(err)
+	}
+	moved, err := h.apply([]uint32{0})
+	if err == nil {
+		t.Error("a failure to confine the user containerd must be reported")
+	}
+	if got := moves(); moved != 1 || got != "1" {
+		t.Errorf("moved %d processes (%q), want pid 1 regardless", moved, got)
+	}
+}
+
 // The contexts built by tests and tools have no host cpuset, and must not touch
 // the machine's cgroups.
 func TestHostCpuset_NilIsANoOp(t *testing.T) {

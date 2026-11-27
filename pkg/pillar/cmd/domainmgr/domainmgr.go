@@ -1288,10 +1288,10 @@ func asyncKubevirtDeactivate(ctx *domainContext, status *types.DomainStatus, imp
 
 // taskCrashError returns the error to report for a crashed application task,
 // naming the OOM killer and the cgroup's memory limit when it killed processes
-// in the task's cgroup.
+// in the task's cgroup, the child of the domain's that runc runs it in.
 func taskCrashError(domainName string) string {
 	const restart = " - please restart application instance"
-	group := filepath.Join(containerd.GetServicesNamespace(), domainName)
+	group := hypervisor.TaskCgroup(domainName)
 	events, err := cgroup.MemoryEvents(group)
 	if err != nil {
 		log.Functionf("taskCrashError(%s): %v", domainName, err)
@@ -1448,6 +1448,7 @@ func verifyStatus(ctx *domainContext, status *types.DomainStatus) {
 				status.Key())
 			publishDomainStatus(ctx, status)
 		}
+		forgetCrashRetries(ctx, status, domainStatus)
 	}
 }
 
@@ -2232,6 +2233,7 @@ func doActivate(ctx *domainContext, config types.DomainConfig,
 	}
 
 	status.TriedCount = 0
+	status.CrashRetries = 0
 	var domainID int
 	// Invoke domain create; try 3 times with a timeout
 	for {

@@ -93,8 +93,8 @@ func TestCompressorAvailMemUnreadableCgroupUsesMinimumWindow(t *testing.T) {
 func TestTaskCrashErrorNamesTheOOMKiller(t *testing.T) {
 	task := testDomain().GetTaskName()
 	cgrouptest.FakeTree(t, map[string]string{
-		filepath.Join("eve-user-apps", task, "memory.events"): "max 40\noom 1\noom_kill 1\n",
-		filepath.Join("eve-user-apps", task, "memory.max"):    "268435456\n",
+		filepath.Join("eve-user-apps", task, "task", "memory.events"): "max 40\noom 1\noom_kill 1\n",
+		filepath.Join("eve-user-apps", task, "task", "memory.max"):    "268435456\n",
 	})
 	got := taskCrashError(task)
 	if !strings.Contains(got, "reached its memory limit of 256 MiB and the kernel's OOM killer killed 1 of its processes") {
@@ -105,8 +105,8 @@ func TestTaskCrashErrorNamesTheOOMKiller(t *testing.T) {
 func TestTaskCrashErrorUnlimitedMemory(t *testing.T) {
 	task := testDomain().GetTaskName()
 	cgrouptest.FakeTree(t, map[string]string{
-		filepath.Join("eve-user-apps", task, "memory.events"): "oom_kill 2\n",
-		filepath.Join("eve-user-apps", task, "memory.max"):    "max\n",
+		filepath.Join("eve-user-apps", task, "task", "memory.events"): "oom_kill 2\n",
+		filepath.Join("eve-user-apps", task, "task", "memory.max"):    "max\n",
 	})
 	got := taskCrashError(task)
 	if !strings.Contains(got, "reached its memory limit and the kernel's OOM killer killed 2 of its processes") {
@@ -117,7 +117,7 @@ func TestTaskCrashErrorUnlimitedMemory(t *testing.T) {
 func TestTaskCrashErrorWithoutOOMKill(t *testing.T) {
 	task := testDomain().GetTaskName()
 	cgrouptest.FakeTree(t, map[string]string{
-		filepath.Join("eve-user-apps", task, "memory.events"): "max 0\noom 0\noom_kill 0\n",
+		filepath.Join("eve-user-apps", task, "task", "memory.events"): "max 0\noom 0\noom_kill 0\n",
 	})
 	want := "one of the application's tasks has crashed - please restart application instance"
 	if got := taskCrashError(task); got != want {

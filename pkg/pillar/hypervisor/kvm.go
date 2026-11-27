@@ -27,6 +27,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/agentlog"
 	"github.com/lf-edge/eve/pkg/pillar/containerd"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	"github.com/lf-edge/eve/pkg/pillar/utils/cgroup"
 	fileutils "github.com/lf-edge/eve/pkg/pillar/utils/file"
 	procutils "github.com/lf-edge/eve/pkg/pillar/utils/proc"
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -837,12 +838,16 @@ func (ctx KvmContext) GetCapabilities() (*types.Capabilities, error) {
 	return ctx.capabilities, nil
 }
 
-// CountMemOverhead - returns the memory overhead estimation for a domain.
+// CountMemOverhead returns the memory overhead estimation for a domain: the
+// VMM's, plus the allowance of the domain's helpers.
 func (ctx KvmContext) CountMemOverhead(domainName string, domainUUID uuid.UUID, domainRAMSize int64, vmmMaxMem int64,
 	domainMaxCpus int64, domainVCpus int64, domainIoAdapterList []types.IoAdapter, aa *types.AssignableAdapters,
 	globalConfig *types.ConfigItemValueMap) (uint64, error) {
 	result, err := vmmOverhead(domainName, domainUUID, domainRAMSize, vmmMaxMem, domainMaxCpus, domainVCpus, domainIoAdapterList, aa, globalConfig)
-	return uint64(result), err
+	if err != nil {
+		return 0, err
+	}
+	return uint64(result) + types.DomainHelpersMemory, nil
 }
 
 func (ctx KvmContext) checkIOVirtualisation() (bool, error) {
@@ -2098,6 +2103,18 @@ func (ctx KvmContext) Start(domainName string) error {
 	if vncPassword, ok := annotations[containerd.EVEOCIVNCPasswordLabel]; ok && vncPassword != "" {
 		if err := execVNCPassword(qmpFile, vncPassword); err != nil {
 			return logError("failed to set VNC password %v", err)
+		}
+	}
+
+	// The swtpm joins the domain's helpers only now, when the domain's cgroup
+	// has the CPUs it starts on: VirtualTPMSetup runs before the task exists,
+	// and so before the cgroup has CPUs, or exists at all. It is running (vtpm
+	// waits for its pid file) and charged to vtpm's cgroup, where staying is
+	// harmless, so a failure to move it is only logged.
+	if ctx.status != nil && ctx.status.VirtualTPM {
+		id := ctx.status.UUIDandVersion.UUID
+		if err := joinSwtpmCgroup(cgroup.Root, "/proc", id, domainName); err != nil {
+			logrus.Warnf("swtpm of %s stays in vtpm's cgroup: %v", domainName, err)
 		}
 	}
 

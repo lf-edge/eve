@@ -35,10 +35,11 @@ import (
 // Fault injection
 // ---------------
 //   - A worker: a device shell starts a process that moves itself into the
-//     app's cgroup, raises its own oom_score_adj to 1000 and allocates until
+//     app's task cgroup, the child of the app's cgroup that runc runs the
+//     container in, raises its own oom_score_adj to 1000 and allocates until
 //     the OOM killer kills it. The container's main process is untouched.
 //   - The main process: a pinned process (oom_score_adj -1000, never chosen)
-//     moves into the app's cgroup and holds 8 MiB; then the cgroup's
+//     moves into the app's task cgroup and holds 8 MiB; then the cgroup's
 //     memory.max is lowered to 4 MiB. Reclaim cannot get below that, so the
 //     OOM killer kills every other process in the cgroup, the container's
 //     main process included. The script then kills the pinned process.
@@ -109,13 +110,13 @@ func TestAppOOMKillReported(test *testing.T) {
 	start := time.Now()
 	f := deviceFacts(t, device, oomWorkerScript(appUUID))
 	evetest.Logger().Infof("worker OOM injection: %v", f)
-	t.Expect(f["dir"]).ToNot(BeEmpty(), "no cgroup for the app under /eve-user-apps")
+	t.Expect(f["dir"]).ToNot(BeEmpty(), "no task cgroup for the app under /eve-user-apps")
 	t.Expect(f["rc"]).To(Equal("137"), "the worker did not die of SIGKILL")
 	before, err := strconv.Atoi(f["before"])
 	t.Expect(err).ToNot(HaveOccurred(), "oom_kill before: %q", f["before"])
 	t.Expect(f["after"]).To(Equal(strconv.Itoa(before+1)), "oom_kill after the worker's kill")
 	limit, err := strconv.ParseUint(f["memory.max"], 10, 64)
-	t.Expect(err).ToNot(HaveOccurred(), "the app cgroup's memory.max: %q", f["memory.max"])
+	t.Expect(err).ToNot(HaveOccurred(), "the app's task cgroup memory.max: %q", f["memory.max"])
 
 	t.Eventually(func() string {
 		return deviceFacts(t, device, domainMetricOOMScript(appUUID))["oomkills"]
@@ -149,11 +150,11 @@ func TestAppOOMKillReported(test *testing.T) {
 	deleteAppAndWait(t, device, devConfig, appUUID)
 }
 
-// oomWorkerScript runs a process in the app's cgroup until the OOM killer
+// oomWorkerScript runs a process in the app's task cgroup until the OOM killer
 // kills it, and prints the cgroup's oom_kill count before and after.
 // oom_score_adj 1000 makes it the victim over the container's main process.
 func oomWorkerScript(appUUID uuid.UUID) string {
-	return fmt.Sprintf(`d=$(ls -d /sys/fs/cgroup/eve-user-apps/%s.* 2>/dev/null | head -1)
+	return fmt.Sprintf(`d=$(ls -d /sys/fs/cgroup/eve-user-apps/%s.*/task 2>/dev/null | head -1)
 echo "dir=$d"
 [ -n "$d" ] || exit 0
 echo "memory.max=$(cat $d/memory.max)"
@@ -173,11 +174,11 @@ func domainMetricOOMScript(appUUID uuid.UUID) string {
 
 // oomSqueezeScript makes the OOM killer kill the app's main process: a
 // process the OOM killer never chooses (oom_score_adj -1000) holds 8 MiB in
-// the app's cgroup, whose memory.max is then lowered to 4 MiB, so every other
-// process in it is killed. A container whose own use reclaim can bring under
-// any limit cannot be OOM-killed by lowering memory.max alone.
+// the app's task cgroup, whose memory.max is then lowered to 4 MiB, so every
+// other process in it is killed. A container whose own use reclaim can bring
+// under any limit cannot be OOM-killed by lowering memory.max alone.
 func oomSqueezeScript(appUUID uuid.UUID) string {
-	return fmt.Sprintf(`d=$(ls -d /sys/fs/cgroup/eve-user-apps/%s.* 2>/dev/null | head -1)
+	return fmt.Sprintf(`d=$(ls -d /sys/fs/cgroup/eve-user-apps/%s.*/task 2>/dev/null | head -1)
 echo "dir=$d"
 [ -n "$d" ] || exit 0
 echo "procs.before=$(tr '\n' ' ' < $d/cgroup.procs)"
