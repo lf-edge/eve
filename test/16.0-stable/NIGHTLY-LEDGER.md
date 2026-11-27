@@ -2,6 +2,28 @@
 
 One section per nightly run with at least one failing suite.
 
+## [2026-11-27 -- 0.0.0-16.0-stable-3e39d960 (run #64)](https://github.com/lf-edge/eve/actions/runs/45931566491)
+
+[Full report](https://lf-edge.github.io/eve/test/16.0-stable/runs/64/)
+
+### TestSwitchNetworkInstanceSuite: failure analysis
+
+#### TestSwitchNIDeletedWithAppsAttached
+
+##### Failure
+
+```
+timed out after 5m0.000702977s (excluding download) waiting for app "238c21b0-2cb0-42a3-afd2-e6998caf5c44" (app-1) on device "edge-dev" to reach RUNNING state (last state: RESOLVING_TAG)
+```
+
+##### Claude's conclusion
+
+Confirmed: tx_queue `0x10F`, retransmit count `0x0A` (10, close to the 11 seen previously), both connections still ESTABLISHED (st=01) and unacknowledged — the identical TCP black-hole fingerprint to the 2026-11-23 and 2026-11-26 occurrences, while a fresh curl to the same registry from the device succeeds in 5ms.
+
+This is a confirmed recurrence of the known, recurring `TestSwitchNIDeletedWithAppsAttached` registry black-hole flake:
+
+**Root cause:** `app-1`'s OCI tag resolve against the test registry (`192.168.170.2:5000`) started at `03:45:48` and then hung forever in `RESOLVING_TAG` for the full 5-minute test window. Live inspection of the device confirms two TCP connections to `192.168.170.2:5000` still ESTABLISHED with unacknowledged data stuck in the send queue (`tx_queue=0x10F`) and ~10 retransmits each — a TCP black-hole on those specific connections — while a brand-new `curl` to the same registry from the same device succeeds instantly (`200`, 5ms). Because the OCI datastore resolve path has no end-to-end timeout, this single stalled connection hangs resolution indefinitely, leaving the app stuck until the test's 5-minute wait expires. This is the identical signature (same test, same registry, same `tx_queue=0x10F`/~10-11 retransmit fingerprint) the ledger first recorded on **2026-11-23** and which recurred again on **2026-11-26** — so this is a known, recurring environment/network flake against the test registry, not a new product or test-logic bug, now confirmed a third time.
+
 ## [2026-11-26 -- 0.0.0-16.0-stable-57a75412 (run #58)](https://github.com/lf-edge/eve/actions/runs/45746054501)
 
 [Full report](https://lf-edge.github.io/eve/test/16.0-stable/runs/58/)
