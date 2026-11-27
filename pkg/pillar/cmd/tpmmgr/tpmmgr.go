@@ -6,21 +6,17 @@ package tpmmgr
 import (
 	"bytes"
 	"crypto"
-	"crypto/aes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"io"
 	"math/big"
 	"os"
-	"reflect"
 	"time"
 
 	"github.com/google/go-tpm/legacy/tpm2"
@@ -370,119 +366,6 @@ func printPCRs() {
 		}
 		fmt.Printf("Quote: %x\n", quote)
 		fmt.Printf("Signature: %x\n", signature)
-	}
-}
-
-func testTpmEcdhSupport() error {
-	rw, err := tpm2.OpenTPM(etpm.TpmDevicePath)
-	if err != nil {
-		log.Errorln(err)
-		return err
-	}
-	defer rw.Close()
-
-	z, p, err := tpm2.ECDHKeyGen(rw, etpm.TpmDeviceKeyHdl)
-	if err != nil {
-		fmt.Printf("generating Shared Secret failed: %s", err)
-		return err
-	}
-	tpmOwnerPasswd, err := etpm.ReadOwnerCrdl()
-	if err != nil {
-		log.Errorf("Reading owner credential failed: %s", err)
-		return err
-	}
-
-	z1, err := tpm2.ECDHZGen(rw, etpm.TpmDeviceKeyHdl, tpmOwnerPasswd, *p)
-	if err != nil {
-		fmt.Printf("recovering Shared Secret failed: %s", err)
-		return err
-	}
-	fmt.Println(reflect.DeepEqual(z, z1))
-	return nil
-}
-
-// Test ECDH key exchange and a symmetric cipher based on ECDH
-func testEcdhAES() error {
-	//Simulate Controller generating an ephemeral key
-	privateA, publicAX, publicAY, err := elliptic.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		fmt.Printf("Failed to generate A private/public key pair: %s\n", err)
-	}
-
-	//read public key from ecdh certificate
-	certBytes, err := os.ReadFile(ecdhCertFile)
-	if err != nil {
-		fmt.Printf("error in reading ecdh cert file: %v", err)
-		return err
-	}
-	block, _ := pem.Decode(certBytes)
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		fmt.Printf("error in parsing ecdh cert file: %v", err)
-		return err
-	}
-	publicB := cert.PublicKey.(*ecdsa.PublicKey)
-
-	//multiply privateA with publicB (Controller Part)
-	X, Y := elliptic.P256().Params().ScalarMult(publicB.X, publicB.Y, privateA)
-
-	fmt.Printf("publicAX, publicAY, X/Y = %v, %v, %v, %v\n", publicAX, publicAY, X, Y)
-	encryptKey, err := etpm.Sha256FromECPoint(X, Y, publicB)
-	if err != nil {
-		fmt.Printf("Sha256FromECPoint failed with error: %v", err)
-		return err
-	}
-	iv := make([]byte, aes.BlockSize)
-	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		fmt.Printf("Unable to generate Initial Value %v\n", err)
-	}
-
-	msg := []byte("this is the secret")
-	ciphertext := make([]byte, len(msg))
-	etpm.AESEncrypt(ciphertext, msg, encryptKey[:], iv)
-
-	recoveredMsg := make([]byte, len(ciphertext))
-	certHash, err := getCertHash(certBytes, types.CertHashTypeSha256First16)
-	if err != nil {
-		fmt.Printf("getCertHash failed with error: %v", err)
-		return err
-	}
-
-	isTpm := true
-	if !etpm.IsTpmEnabled() || fileutils.FileExists(log, etpm.EcdhKeyFile) {
-		isTpm = false
-	}
-
-	ecdhCert := &types.EdgeNodeCert{
-		HashAlgo: types.CertHashTypeSha256First16,
-		CertID:   certHash,
-		CertType: types.CertTypeEcdhXchange,
-		Cert:     certBytes,
-		IsTpm:    isTpm,
-	}
-	err = etpm.DecryptSecretWithEcdhKey(log, publicAX, publicAY, ecdhCert, iv, ciphertext, recoveredMsg)
-	if err != nil {
-		fmt.Printf("Decryption failed with error %v\n", err)
-		return err
-	}
-	if reflect.DeepEqual(msg, recoveredMsg) == true {
-		return nil
-	} else {
-		return fmt.Errorf("want %v, but got %v", msg, recoveredMsg)
-	}
-}
-
-func testEncryptDecrypt() error {
-	plaintext := []byte("This is the Secret Key")
-	ciphertext, err := etpm.EncryptDecryptUsingTpm(plaintext, true)
-	if err != nil {
-		return err
-	}
-	decryptedtext, err := etpm.EncryptDecryptUsingTpm(ciphertext, false)
-	if reflect.DeepEqual(plaintext, decryptedtext) == true {
-		return nil
-	} else {
-		return fmt.Errorf("want %v, but got %v", plaintext, decryptedtext)
 	}
 }
 
@@ -1147,16 +1030,6 @@ func readEdgeNodeCert(certPath string) ([]byte, error) {
 	return certBytes, nil
 }
 
-func getCertHash(cert []byte, hashAlgo types.CertHashType) ([]byte, error) {
-	certHash := sha256.Sum256(cert)
-	switch hashAlgo {
-	case types.CertHashTypeSha256First16:
-		return certHash[:16], nil
-	default:
-		return []byte{}, fmt.Errorf("Unsupported cert hash type: %d\n", hashAlgo)
-	}
-}
-
 func publishEdgeNodeCertToController(ctx *tpmMgrContext, certFile string, certType types.CertType, isTpm bool, metaDataItems []types.CertMetaData) {
 	log.Functionf("publishEdgeNodeCertToController started")
 	if !fileutils.FileExists(log, certFile) {
@@ -1169,7 +1042,7 @@ func publishEdgeNodeCertToController(ctx *tpmMgrContext, certFile string, certTy
 		log.Error(errStr)
 		return
 	}
-	certHash, err := getCertHash(certBytes, types.CertHashTypeSha256First16)
+	certHash, err := etpm.GetCertHash(certBytes, types.CertHashTypeSha256First16)
 	if err != nil {
 		errStr := fmt.Sprintf("publishEdgeNodeCertToController failed: %v", err)
 		log.Error(errStr)
@@ -1512,24 +1385,6 @@ func runCommand(command string, args []string) int {
 		printCapability()
 	case "printPCRs":
 		printPCRs()
-	case "testTpmEcdhSupport":
-		if err := testTpmEcdhSupport(); err != nil {
-			fmt.Printf("failed with error %v", err)
-		} else {
-			fmt.Print("test passed")
-		}
-	case "testEcdhAES":
-		if err := testEcdhAES(); err != nil {
-			fmt.Printf("failed with error %v", err)
-		} else {
-			fmt.Print("test passed")
-		}
-	case "testEncryptDecrypt":
-		if err := testEncryptDecrypt(); err != nil {
-			fmt.Printf("failed with error %v", err)
-		} else {
-			fmt.Print("test passed")
-		}
 	case "createCerts":
 		// Create required directories if not present
 		initializeDirs()
@@ -1670,14 +1525,14 @@ func tpmSanityCheck() *tpmSanityCheckError {
 	// encrypt/decrypt the vualt key and send/received it from controller.
 	// this can prevent the device from being upgraded.
 	message := []byte("TPM Sanity Check, may god have mercy on us")
-	encrypted, err := etpm.EncryptDecryptUsingTpm(message, true)
+	encrypted, err := etpm.EncryptDecryptUsingTpm(message, types.EncryptionAEAD, true)
 	if err != nil {
 		return &tpmSanityCheckError{
 			fmt.Errorf("failed to encrypt key using TPM: %w", err),
 			types.MaintenanceModeReasonTpmEncFailure,
 		}
 	}
-	decrypted, err := etpm.EncryptDecryptUsingTpm(encrypted, false)
+	decrypted, err := etpm.EncryptDecryptUsingTpm(encrypted, types.EncryptionAEAD, false)
 	if err != nil {
 		return &tpmSanityCheckError{
 			fmt.Errorf("failed to decrypt key using TPM: %w", err),
