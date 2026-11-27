@@ -12,9 +12,11 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/hypervisor"
 	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	virtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 )
 
@@ -164,4 +166,82 @@ func nodeExists(clientset kubernetes.Interface, nodeName string) bool {
 		return true
 	}
 	return !errors.IsNotFound(err)
+}
+
+// patchVMIRSAffinity rewrites vmiRsName's template affinity to nodeName
+// when it currently names a different node. Returns whether it actually
+// patched anything (false when the affinity already matched or there is no
+// VMIRS yet).
+//
+// Patching only spec.template.spec.affinity does not disturb a VMI
+// already running: a ReplicaSet controller consults the template only
+// when creating a NEW replica to satisfy the desired count, never
+// retroactively for a replica already running.
+func patchVMIRSAffinity(virtClient kubecli.KubevirtClient, nodeName, vmiRsName string,
+	affinityType types.Affinity) (bool, error) {
+	getCtx, getCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	existing, err := virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Get(getCtx, vmiRsName, metav1.GetOptions{})
+	getCancel()
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Nothing to reconcile yet, Start() will create it with the
+			// correct affinity for whichever node activates it.
+			return false, nil
+		}
+		return false, err
+	}
+
+	staleNode := vmirsAffinityNode(existing)
+	if staleNode == "" || staleNode == nodeName {
+		return false, nil
+	}
+
+	existing.Spec.Template.Spec.Affinity = hypervisor.SetKubeAffinity(nodeName, affinityType)
+	updateCtx, updateCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	_, err = virtClient.ReplicaSet(kubeapi.EVEKubeNameSpace).Update(updateCtx, existing, metav1.UpdateOptions{})
+	updateCancel()
+	if err != nil {
+		return false, err
+	}
+	log.Noticef("patchVMIRSAffinity: updated vmirs %s affinity to node %s (was %s)",
+		vmiRsName, nodeName, staleNode)
+	return true, nil
+}
+
+// vmirsAffinityNode returns the node a VMIRS template's affinity names.
+func vmirsAffinityNode(vmirs *virtv1.VirtualMachineInstanceReplicaSet) string {
+	if vmirs.Spec.Template == nil {
+		return ""
+	}
+	return affinityNode(vmirs.Spec.Template.Spec.Affinity)
+}
+
+// affinityNode extracts the kubernetes.io/hostname value from the node
+// affinity EVE sets on a VMI, a pod or their templates. EVE encodes the
+// owner node via hypervisor.SetKubeAffinity using either
+// preferredDuringSchedulingIgnoredDuringExecution or
+// requiredDuringSchedulingIgnoredDuringExecution. Returns "" if neither is
+// present or the hostname matchExpression is absent.
+func affinityNode(aff *corev1.Affinity) string {
+	if aff == nil || aff.NodeAffinity == nil {
+		return ""
+	}
+	na := aff.NodeAffinity
+	for _, pref := range na.PreferredDuringSchedulingIgnoredDuringExecution {
+		for _, expr := range pref.Preference.MatchExpressions {
+			if expr.Key == "kubernetes.io/hostname" && len(expr.Values) > 0 {
+				return expr.Values[0]
+			}
+		}
+	}
+	if req := na.RequiredDuringSchedulingIgnoredDuringExecution; req != nil {
+		for _, term := range req.NodeSelectorTerms {
+			for _, expr := range term.MatchExpressions {
+				if expr.Key == "kubernetes.io/hostname" && len(expr.Values) > 0 {
+					return expr.Values[0]
+				}
+			}
+		}
+	}
+	return ""
 }

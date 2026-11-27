@@ -16,7 +16,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 )
@@ -71,7 +73,7 @@ func TestIsDeschedulerReady_Unschedulable(t *testing.T) {
 	node.Spec.Unschedulable = true
 	client := fake.NewSimpleClientset(node)
 
-	ready, err := isDeschedulerReadyWithClient(newTestLog(), client, "node1")
+	ready, _, err := isDeschedulerReadyWithClient(newTestLog(), client, "node1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,7 +93,7 @@ func TestIsDeschedulerReady_NodeNotReady(t *testing.T) {
 	}
 	client := fake.NewSimpleClientset(node)
 
-	ready, err := isDeschedulerReadyWithClient(newTestLog(), client, "node1")
+	ready, _, err := isDeschedulerReadyWithClient(newTestLog(), client, "node1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -175,6 +177,41 @@ func TestTriggerDescheduler_RecreateOnCompletion(t *testing.T) {
 
 	if _, err := client.BatchV1().Jobs(deschedulerNamespace).Get(ctx, deschedulerJobName, metav1.GetOptions{}); err != nil {
 		t.Errorf("job not recreated: %v", err)
+	}
+}
+
+// TestTriggerDescheduler_RecreateWhileOldPodsRemain covers a finished Job
+// whose pods are still there, as they are until garbage collection: the
+// recreate must not wait for them. The fake clientset deletes at once
+// whatever the propagation policy, so the reactor keeps the Job in place on
+// a Foreground delete, as the API server does until the Job's pods are gone.
+func TestTriggerDescheduler_RecreateWhileOldPodsRemain(t *testing.T) {
+	ctx := context.Background()
+	completedJob := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: deschedulerJobName, Namespace: deschedulerNamespace},
+		Status:     batchv1.JobStatus{Succeeded: 1},
+	}
+	client := fake.NewSimpleClientset(completedJob)
+	seedSetupResources(ctx, t, client)
+	client.PrependReactor("delete", "jobs",
+		func(action k8stesting.Action) (bool, runtime.Object, error) {
+			opts := action.(k8stesting.DeleteActionImpl).GetDeleteOptions()
+			policy := opts.PropagationPolicy
+			if policy != nil && *policy == metav1.DeletePropagationForeground {
+				return true, nil, nil
+			}
+			return false, nil, nil
+		})
+
+	if err := triggerDeschedulerWithClient(newTestLog(), client, "node1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	job, err := client.BatchV1().Jobs(deschedulerNamespace).Get(ctx, deschedulerJobName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("job not recreated: %v", err)
+	}
+	if job.Status.Succeeded != 0 {
+		t.Errorf("the finished job was left in place instead of a new one")
 	}
 }
 

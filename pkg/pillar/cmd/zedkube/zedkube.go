@@ -64,6 +64,9 @@ const (
 	// kube-API failures and the boot race where ENCC arrives before leader
 	// election settles are self-healing instead of stuck-until-next-config.
 	pruneStaleMasterInterval = 600
+	// pruneStaleMasterRetryInterval: how often a sweep that could not run is
+	// retried (seconds), see pruneStaleMasterDue.
+	pruneStaleMasterRetryInterval = 30
 	// longhornDiskReservedErrRelogInterval: how often a still-unchanged
 	// applyLonghornDiskReserved failure is re-logged at Error level. That
 	// reconcile runs every kubeCfgInterval forever with no success latch, so
@@ -131,10 +134,14 @@ type zedkube struct {
 	// AppNetworkConfig synthesized for directly-deployed Kubernetes workloads on this node.
 	pubKubeAppNetworkConfig pubsub.Publication
 
-	networkInstanceStatusMap   sync.Map
-	ioAdapterMap               sync.Map
-	deviceNetworkStatus        types.DeviceNetworkStatus
-	clusterConfig              types.EdgeNodeClusterConfig
+	networkInstanceStatusMap sync.Map
+	ioAdapterMap             sync.Map
+	deviceNetworkStatus      types.DeviceNetworkStatus
+	clusterConfig            types.EdgeNodeClusterConfig
+	// pruneStaleMasterPending is set while the last stale-master sweep did
+	// not complete, and pruneStaleMasterLast is when one last did.
+	pruneStaleMasterPending    bool
+	pruneStaleMasterLast       time.Time
 	config                     *rest.Config
 	appLogStarted              bool
 	appContainerLogger         *logrus.Logger
@@ -176,9 +183,26 @@ type zedkube struct {
 
 	// Block 'uncordon' after running it once at boot-up
 	onBootUncordonCheckComplete bool
-	// deschedulerOnBootStarted ensures the watcher goroutine is launched at most once per boot.
-	deschedulerOnBootStarted bool
-	receivedENCC             bool
+	// The boot trigger event, recorded when it happens; deschedulerPending
+	// decides when to act on it. A zero deschedulerBootWindowEnd means
+	// kubernetes is not ready yet.
+	triggeredSinceBoot       bool
+	deschedulerBootWindowEnd time.Time
+	deschedulePendingLogged  time.Time
+	// placementReadySince is when this node last became ready to receive
+	// apps, and lastPlacementRun when it last pulled back the apps
+	// designated to it (see restorePlacement).
+	placementReadySince time.Time
+	lastPlacementRun    time.Time
+
+	// kubeAlive caches the last apiserver liveness probe, with the time it
+	// was taken, so the per-tick collectors can be skipped while the
+	// apiserver cannot serve rather than each one discovering it again.
+	kubeAlive        bool
+	kubeAliveChecked time.Time
+	kubeAliveLogged  bool
+
+	receivedENCC bool
 
 	// longhornDiskReservedErr / longhornDiskReservedErrLogged throttle the error
 	// logging in applyLonghornDiskReserved. That reconcile has no success latch,
@@ -848,22 +872,12 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		log.Errorf("zedkube: WaitForKubenetes %v", err)
 	}
 
-	// Launch the VMI descheduler watcher once kubernetes is ready. GlobalConfig
-	// (which sets OnBoot) is processed as early as the ENCC wait loop above, so
-	// pubKubeConfig already reflects the operator's intent by the time we reach
-	// here. nodeName is also guaranteed set — WaitForEdgeNodeInfo completed
-	// before WaitForKubernetes.
-	//
-	// NOTE: if the operator enables types.KubernetesVmiDescheduleEvents after
-	// WaitForKubernetes returns (i.e. new config pushed just as k3s comes ready),
-	// the descheduler will not fire this boot. handleVmiDescheduleEventsOverride
-	// updates pubKubeConfig but there is no re-trigger once this window has passed.
-	if glbKubeConfig, ok := zedkubeCtx.pubKubeConfig.GetAll()["global"].(types.KubeConfig); ok &&
-		glbKubeConfig.VmiDescheduleEvents.OnBoot &&
-		!zedkubeCtx.deschedulerOnBootStarted {
-		zedkubeCtx.deschedulerOnBootStarted = true
-		go zedkubeCtx.deschedulerOnBootWatcher()
-	}
+	// Kubernetes is up, so the boot event may fire from here until the
+	// window closes. The app-status tick decides when, which keeps this
+	// independent of whether the operator's config has arrived yet.
+	// nodeName is guaranteed set — WaitForEdgeNodeInfo completed before
+	// WaitForKubernetes.
+	zedkubeCtx.deschedulerBootWindowEnd = time.Now().Add(deschedulerBootWindow)
 
 	err = zedkubeCtx.initKubePrefixes()
 	if err != nil { // should never happen
@@ -877,7 +891,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 	appStatusTimer := time.NewTimer(logcollectInterval * time.Second)
 	kubeStatsTimer := time.NewTimer(kubeStatsInterval * time.Second)
 	kubeCfgTimer := time.NewTimer(kubeCfgInterval * time.Second)
-	pruneStaleMasterTimer := time.NewTimer(pruneStaleMasterInterval * time.Second)
+	pruneStaleMasterTimer := time.NewTimer(pruneStaleMasterRetryInterval * time.Second)
 	kubeAppNetTimer := time.NewTimer(kubeAppNetInterval * time.Second)
 
 	zedkubeWdUpdate := func() {
@@ -917,8 +931,10 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// collectAppLogs() returns early on stream timeout so this branch
 		// is bounded by a single kubeAPITimeout, not N*kubeAPITimeout.
 		case <-appLogTimer.C:
-			zedkubeCtx.collectAppLogs()
-			zedkubeWdUpdate()
+			if zedkubeCtx.kubernetesAlive() {
+				zedkubeCtx.collectAppLogs()
+				zedkubeWdUpdate()
+			}
 			appLogTimer = time.NewTimer(logcollectInterval * time.Second)
 
 		// Timer 2: failover detection and per-app cluster status.
@@ -927,34 +943,47 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// needs its own because a recovery attempt adds the supervisor-socket
 		// handshake on top of its pod LIST.
 		case <-appStatusTimer.C:
-			zedkubeCtx.checkAppsFailover(zedkubeWdUpdate)
-			zedkubeCtx.checkStuckPendingVMI()
-			zedkubeWdUpdate()
-			zedkubeCtx.checkStuckVolumeMount()
-			zedkubeWdUpdate()
-			zedkubeCtx.checkAppsStatus()
-			zedkubeCtx.reconcileVMIRSAffinity(zedkubeWdUpdate)
-			zedkubeWdUpdate()
-			zedkubeCtx.publishNodeHealth()
+			if zedkubeCtx.kubernetesAlive() {
+				zedkubeCtx.checkAppsFailover(zedkubeWdUpdate)
+				zedkubeCtx.checkStuckPendingVMI()
+				zedkubeWdUpdate()
+				zedkubeCtx.checkStuckVolumeMount()
+				zedkubeWdUpdate()
+				zedkubeCtx.checkAppsStatus()
+				zedkubeCtx.reconcileVMIRSAffinity(zedkubeWdUpdate)
+				zedkubeCtx.runDeschedulerIfPending(zedkubeWdUpdate)
+				zedkubeWdUpdate()
+				zedkubeCtx.publishNodeHealth()
+			} else {
+				// The node cannot receive apps while kubernetes is down
+				// here, so it has to settle again once it is back.
+				zedkubeCtx.placementReadySince = time.Time{}
+			}
 			appStatusTimer = time.NewTimer(logcollectInterval * time.Second)
 
 		// Timer 3: cluster-wide stats and service health (leader-only, less frequent).
 		// zedkubeWdUpdate between the two calls resets the watchdog budget.
 		case <-kubeStatsTimer.C:
-			zedkubeCtx.collectKubeStats()
-			zedkubeWdUpdate()
-			zedkubeCtx.collectKubeSvcs()
-			// On the leader->true edge, ensure a NAD exists for every known NI
-			// (handlers only fire for NIs that change after the lease is won).
-			isLeader := zedkubeCtx.isStatsLeader()
-			if isLeader && !nadWasLeader {
-				zedkubeCtx.reconcileAllNINADs()
+			if zedkubeCtx.kubernetesAlive() {
+				zedkubeCtx.collectKubeStats()
+				zedkubeWdUpdate()
+				zedkubeCtx.collectKubeSvcs()
+				// On the leader->true edge, ensure a NAD exists for every known NI
+				// (handlers only fire for NIs that change after the lease is won).
+				isLeader := zedkubeCtx.isStatsLeader()
+				if isLeader && !nadWasLeader {
+					zedkubeCtx.reconcileAllNINADs()
+				}
+				nadWasLeader = isLeader
 			}
-			nadWasLeader = isLeader
 			kubeStatsTimer = time.NewTimer(kubeStatsInterval * time.Second)
 
 		// Timer 4: cluster-wide component config application
 		case <-kubeCfgTimer.C:
+			if !zedkubeCtx.kubernetesAlive() {
+				kubeCfgTimer = time.NewTimer(kubeCfgInterval * time.Second)
+				break
+			}
 			zedkubeCtx.applyLonghornDiskReserved()
 			zedkubeCtx.applyLonghornRecurringSnapshot()
 			// Safety net for the SR-IOV device-plugin ConfigMap.  The primary
@@ -986,10 +1015,15 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		// MasterNodeIDs is empty, so this branch is essentially free off the
 		// leader. Recovers from transient kube-API failures during the
 		// event-driven path and from the boot race where ENCC arrives
-		// before this node wins the kube-stats lease.
+		// before this node wins the kube-stats lease: a sweep that could not
+		// run is retried every tick (see pruneStaleMasterDue).
 		case <-pruneStaleMasterTimer.C:
-			zedkubeCtx.pruneStaleMasterNodes(&zedkubeCtx.clusterConfig)
-			pruneStaleMasterTimer = time.NewTimer(pruneStaleMasterInterval * time.Second)
+			if zedkubeCtx.kubernetesAlive() &&
+				pruneStaleMasterDue(zedkubeCtx.pruneStaleMasterPending,
+					zedkubeCtx.pruneStaleMasterLast, time.Now()) {
+				zedkubeCtx.pruneStaleMasterNodes(&zedkubeCtx.clusterConfig)
+			}
+			pruneStaleMasterTimer = time.NewTimer(pruneStaleMasterRetryInterval * time.Second)
 
 		// Timer 6: synthesize AppNetworkConfig for directly-deployed Kubernetes workloads
 		// scheduled on this node (per-node, not leader-gated). Now just a backstop for
@@ -1359,20 +1393,14 @@ func (z *zedkube) handleK3sVersionOverride(currentGcp *types.ConfigItemValueMap,
 }
 
 func (z *zedkube) handleVmiDescheduleEventsOverride(newGcp *types.ConfigItemValueMap) {
-	newVal := newGcp.GlobalValueString(types.KubernetesVmiDescheduleEvents)
-	newOnBoot := false
-	for _, token := range strings.Split(newVal, ",") {
-		if strings.TrimSpace(token) == types.VmiDescheduleEventBoot {
-			newOnBoot = true
-			break
-		}
-	}
+	events := parseVmiDescheduleEvents(
+		newGcp.GlobalValueString(types.KubernetesVmiDescheduleEvents))
 
-	// Compare against the currently published bool so the first call always
+	// Compare against the currently published value so the first call always
 	// reconciles the zero-value initial publish regardless of the raw string diff.
 	items := z.pubKubeConfig.GetAll()
 	glbKubeConfig, ok := items["global"].(types.KubeConfig)
-	if ok && glbKubeConfig.VmiDescheduleEvents.OnBoot == newOnBoot {
+	if ok && glbKubeConfig.VmiDescheduleEvents == events {
 		return
 	}
 
@@ -1380,8 +1408,23 @@ func (z *zedkube) handleVmiDescheduleEventsOverride(newGcp *types.ConfigItemValu
 	if ok {
 		kubeConfig = glbKubeConfig
 	}
-	kubeConfig.VmiDescheduleEvents = types.VmiDescheduleConfig{OnBoot: newOnBoot}
+	kubeConfig.VmiDescheduleEvents = events
 	z.pubKubeConfig.Publish("global", kubeConfig)
+}
+
+// parseVmiDescheduleEvents reads the comma-separated event tokens of
+// KubernetesVmiDescheduleEvents. Unknown tokens are ignored.
+func parseVmiDescheduleEvents(val string) types.VmiDescheduleConfig {
+	var events types.VmiDescheduleConfig
+	for _, token := range strings.Split(val, ",") {
+		switch strings.TrimSpace(token) {
+		case types.VmiDescheduleEventBoot:
+			events.OnBoot = true
+		case types.VmiDescheduleEventPeriodic:
+			events.OnPeriodic = true
+		}
+	}
+	return events
 }
 
 func handleEdgeNodeClusterConfigCreate(ctxArg interface{}, key string,
@@ -1514,4 +1557,37 @@ func nodeOnBootHealthStatusWatcher(z *zedkube) {
 			log.Errorf("zedkube Unable to uncordon local node: %v", err)
 		}
 	}
+}
+
+// kubeAlivePeriod is how long a liveness verdict is reused. A tick that
+// skips its work is cheap to repeat, so this only has to keep the probe
+// off the hot path.
+const kubeAlivePeriod = 10 * time.Second
+
+// kubernetesAlive reports whether the local apiserver can serve, caching
+// the verdict for kubeAlivePeriod.
+//
+// The collectors on the periodic timers all talk to Kubernetes, and when
+// it is down they do not fail quickly: client-go retries, and the calls
+// share the select loop with the EdgeNodeClusterConfig subscription. A
+// quorum recovery lands on that subscription, and it is asked for exactly
+// when Kubernetes is down, so a stalled loop delays the one operation
+// that would bring it back. Skipping work that cannot succeed keeps the
+// loop responsive to config.
+func (z *zedkube) kubernetesAlive() bool {
+	if time.Since(z.kubeAliveChecked) < kubeAlivePeriod {
+		return z.kubeAlive
+	}
+	z.kubeAlive = kubeapi.APIServerReachable()
+	z.kubeAliveChecked = time.Now()
+	if z.kubeAlive != z.kubeAliveLogged {
+		if z.kubeAlive {
+			log.Noticef("kubernetesAlive: apiserver is serving again")
+		} else {
+			log.Noticef("kubernetesAlive: apiserver is not serving, " +
+				"skipping the periodic Kubernetes collectors")
+		}
+		z.kubeAliveLogged = z.kubeAlive
+	}
+	return z.kubeAlive
 }

@@ -554,3 +554,10 @@ func copyFileContents(src, dst string, perm fs.FileMode) error {
 	// O_CREATE honours umask, so set the mode explicitly.
 	return os.Chmod(dst, perm)
 }
+
+// CopyTree recursively copies src into dst with the same guarantees
+// SaveVarLib relies on: modes, ownership, timestamps and symlinks
+// preserved, entries that vanish mid-copy skipped rather than fatal,
+// and a destination created at 0700 because the trees this is used on
+// carry secrets. op names the operation in log lines.
+func CopyTree(src, dst, op string) error { return copyTree(src, dst, op) }

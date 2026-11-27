@@ -1301,3 +1301,24 @@ func GetStorageClassForReplicaCount(count int) string {
 	}
 	return fmt.Sprintf("%s%d", VolumeCSIStorageClassReplicaPrefix, count)
 }
+
+// apiServerProbeTimeout bounds the liveness probe. Short on purpose: it
+// exists to decide whether to attempt work, so waiting on it defeats it.
+const apiServerProbeTimeout = 3 * time.Second
+
+// APIServerReachable reports whether the local kube-apiserver can serve.
+//
+// Probes /readyz rather than dialling the port: an apiserver that has lost
+// its datastore may still accept connections while answering nothing, and
+// callers want to know whether work will succeed, not whether a socket is
+// open.
+func APIServerReachable() bool {
+	client, err := GetClientSet()
+	if err != nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), apiServerProbeTimeout)
+	defer cancel()
+	res := client.Discovery().RESTClient().Get().AbsPath("/readyz").Do(ctx)
+	return res.Error() == nil
+}

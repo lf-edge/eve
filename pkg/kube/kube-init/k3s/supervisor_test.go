@@ -365,3 +365,20 @@ func TestRunHooksOptionalFailureDoesNotBlock(t *testing.T) {
 		t.Error("RequiredHookFailed = true for a non-required hook")
 	}
 }
+
+// TestStopBeforeStart pins the property the quorum recovery relies on: it
+// may run before k3s has started this boot, and both of its actions stop
+// k3s first, so stopping a supervisor that never started must be a
+// harmless no-op rather than an error or a signal to something else.
+func TestStopBeforeStart(t *testing.T) {
+	s := NewSupervisor()
+	if s.IsRunning() {
+		t.Fatal("a fresh supervisor reports k3s running")
+	}
+	if err := s.Stop(); err != nil {
+		t.Errorf("Stop() on a fresh supervisor = %v, want nil", err)
+	}
+	if pid := s.K3sPID(); pid != 0 {
+		t.Errorf("K3sPID() = %d, want 0", pid)
+	}
+}

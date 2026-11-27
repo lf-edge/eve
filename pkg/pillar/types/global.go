@@ -342,9 +342,14 @@ const (
 	// mechanism (see WwanModemRecoveryReloadDrivers).
 	WwanModemRecoveryRestartModemManager GlobalSettingKey = "wwan.modem.recovery.restart.modemmanager"
 	// KubernetesVmiDescheduleEvents : Comma-separated list of events that trigger VMI
-	// descheduling. Currently only "boot" is supported. When empty (default), no
-	// event-driven descheduling is performed.
+	// descheduling: "boot" and "periodic". When empty (default), no event-driven
+	// descheduling is performed, except that "periodic" is always enabled in a
+	// 2-node HA cluster.
 	KubernetesVmiDescheduleEvents GlobalSettingKey = "kubernetes.vmi.deschedule.events"
+	// KubernetesVmiDeschedulePeriodicSettle : seconds a node must have been ready to
+	// receive apps before the periodic descheduler event moves the apps designated to
+	// it back, and the minimum time between two such moves.
+	KubernetesVmiDeschedulePeriodicSettle GlobalSettingKey = "kubernetes.vmi.deschedule.periodic.settle"
 	// DnidOutageThresholdForUsage : how long an app's designated node has to
 	// have been unhealthy (seconds) before another cluster node may act on
 	// that app in its place. The effective delay is this plus the Kubernetes
@@ -1378,6 +1383,11 @@ func NewConfigItemSpecMap() ConfigItemSpecMap {
 	configItemSpecMap.AddStringItem(K3sConfigOverride, "", base64Validator)
 	configItemSpecMap.AddStringItem(K3sVersionOverride, "", k3sVersionValidator)
 	configItemSpecMap.AddStringItem(KubernetesVmiDescheduleEvents, "", blankValidator)
+	// KubernetesVmiDeschedulePeriodicSettle - three minutes by default, so that a
+	// node that keeps failing does not pull apps back and forth, each move
+	// restarting them. The minimum is the app-status tick the check runs on.
+	configItemSpecMap.AddIntItem(KubernetesVmiDeschedulePeriodicSettle, 3*MinuteInSec,
+		10, 24*HourInSec)
 	// DnidOutageThresholdForUsage - ten minutes by default. The minimum is a
 	// minute rather than zero: at zero a backup would take over as soon as
 	// the node-monitor grace period elapsed, which defeats the point of

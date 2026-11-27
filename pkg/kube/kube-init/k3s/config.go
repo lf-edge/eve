@@ -355,11 +355,31 @@ func ClusterStatusPresent() (bool, error) {
 // for everyone else. On first boot for a joining node the call blocks
 // until the bootstrap server is reachable and reports a matching
 // cluster UUID.
+//
+// It also resets this node's local k3s server state (certs, tokens,
+// managed-etcd datastore) when it no longer matches the identity the
+// controller assigns now — otherwise k3s can silently keep a foreign
+// CA, and the failure surfaces much later as a permanent "certificate
+// signed by unknown authority". No recorded identity yet just records
+// the current one, without a reset. See resetStaleServerState for the
+// QuorumRecoveryGeneration/bootstrap-node nuance.
 func ProvisionClusterConfig(ctx context.Context, isFirstBoot bool) error {
 	cs, err := GetClusterStatus()
 	if err != nil {
 		return fmt.Errorf("get cluster status: %w", err)
 	}
+	current := Generation{ClusterID: cs.ClusterID, Counter: cs.QuorumRecoveryGeneration}
+
+	reset, err := resetStaleServerState(current, cs.IsBootstrapNode)
+	if err != nil {
+		return err
+	}
+	if reset {
+		// Local state is gone, so this is a genuine first join
+		// regardless of this device's own boot/init history.
+		isFirstBoot = true
+	}
+
 	if err := provisionDisableLocalPath(); err != nil {
 		return fmt.Errorf("provision disable-local-path: %w", err)
 	}
@@ -368,9 +388,188 @@ func ProvisionClusterConfig(ctx context.Context, isFirstBoot bool) error {
 	}
 	clusterCfgPath := filepath.Join(K3sConfigDir, ClusterConfig)
 	if cs.IsBootstrapNode {
-		return writeBootstrapConfig(clusterCfgPath, cs, isFirstBoot)
+		err = writeBootstrapConfig(clusterCfgPath, cs, isFirstBoot)
+	} else {
+		err = writeJoinConfig(ctx, clusterCfgPath, cs, isFirstBoot)
 	}
-	return writeJoinConfig(ctx, clusterCfgPath, cs, isFirstBoot)
+	if err != nil {
+		return err
+	}
+	return writeClusterIdentity(current)
+}
+
+// clusterIdentityPath records the Generation the node's local k3s
+// server state (k3sServerDir) belongs to. Lives alongside that state,
+// not under /var/lib/*_initialized (ephemeral — see
+// AllComponentsInitialized), since its lifetime must track the k3s
+// state, not the current boot.
+var clusterIdentityPath = "/var/lib/rancher/k3s/cluster-identity"
+
+// k3sServerDir is k3s's own persistent state: TLS material, the
+// managed-etcd datastore, and k3s's bootstrap-data cache. Removed by
+// DiscardClusterState on a cluster-identity mismatch.
+var k3sServerDir = "/var/lib/rancher/k3s/server"
+
+// SingleNodeClusterID is the ClusterID recorded for local k3s server
+// state that belongs to no cluster: the node's own pre-cluster CA,
+// tokens and datastore, as put back by a cluster to single-node restore.
+const SingleNodeClusterID = "single-node"
+
+// RecordSingleNodeIdentity marks the local k3s server state as the node's
+// own single-node state. Call it after restoring /var/lib from the
+// pre-cluster snapshot: the restore leaves the cluster identity written on
+// join next to the restored single-node CA, so the next join would keep
+// that CA and fail with "certificate signed by unknown authority".
+// See resetStaleServerState.
+func RecordSingleNodeIdentity() error {
+	return writeClusterIdentity(Generation{ClusterID: SingleNodeClusterID})
+}
+
+// readClusterIdentity returns the Generation recorded for the node's
+// local k3s server state, and whether one was recorded at all.
+//
+// A file that fails to parse — the single-field format a build
+// predating generation tracking wrote, or a corrupt file — counts as
+// no record too, so an upgrade just records the current identity
+// instead of forcing a reset.
+func readClusterIdentity() (identity Generation, recorded bool, err error) {
+	raw, err := os.ReadFile(clusterIdentityPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return Generation{}, false, nil
+		}
+		return Generation{}, false, fmt.Errorf("read %s: %w", clusterIdentityPath, err)
+	}
+	identity, recorded, err = ParseGeneration(string(raw))
+	if err != nil {
+		return Generation{}, false, nil
+	}
+	return identity, recorded, nil
+}
+
+// writeClusterIdentity records identity as what the node's local k3s
+// server state now belongs to.
+func writeClusterIdentity(identity Generation) error {
+	if err := state.AtomicWriteFile(clusterIdentityPath, []byte(identity.String()+"\n"), 0644); err != nil {
+		return fmt.Errorf("write %s: %w", clusterIdentityPath, err)
+	}
+	return nil
+}
+
+// Markers DiscardClusterState clears and the kubeconfigs it removes with
+// the PKI they describe. Vars so tests can redirect them.
+var (
+	nodeLabelsMarker   = state.NodeLabelsInitialized
+	debugUserMarker    = state.DebugUserInitialized
+	derivedKubeconfigs = []string{state.K3sKubeconfig, KubeconfigCopy}
+)
+
+// DiscardClusterState drops what the node still holds from the cluster it
+// is leaving, so the next cluster-init or join starts clean instead of
+// reconciling against, and keeping, material from a different cluster.
+// Called with k3s stopped, from the single to cluster transition and from
+// resetStaleServerState, which are the two ways a node ends up joining
+// with local state that is not the cluster's.
+//
+// wipeServerDir removes all of k3s's server state (datastore, tokens, PKI),
+// for a node whose state belongs to a different cluster. Without it only
+// the PKI goes, for a node that keeps its datastore across the transition.
+//
+// What goes, and why it is tied to a join:
+//
+//   - The PKI, unless the node is bootstrap and keeps its state: a joiner
+//     is re-issued the cluster's CA, so a surviving cert signed by the old
+//     one keeps being used. The debug-user marker goes with it, as its
+//     certificate is signed by the client CA that is removed.
+//   - The pod-subnet CNI state of a joiner, which would otherwise network a
+//     pod against the retired subnet. A bootstrap node keeps its subnet.
+//   - The node-labels marker, always. The node comes back as a new Node
+//     object without the labels and the Longhorn default-disk annotation
+//     kube-init stamped on the old one. With the marker left set the health
+//     tick never re-stamps them, Longhorn creates the node with no disk,
+//     and volumemgr waits on cluster storage forever, leaving every app on
+//     it in Init.
+//
+// Only a failure to remove the server state or PKI is returned: leaving
+// that behind guarantees the join fails at the TLS handshake. The CNI
+// state and markers are best-effort, as a stale one delays or degrades the
+// join without breaking it.
+func DiscardClusterState(isBootstrap, wipeServerDir bool) error {
+	var joined error
+	dropPKI := wipeServerDir || !isBootstrap
+
+	if wipeServerDir {
+		if err := os.RemoveAll(k3sServerDir); err != nil {
+			joined = errors.Join(joined, fmt.Errorf("remove %s: %w", k3sServerDir, err))
+		}
+	}
+	if dropPKI {
+		if err := removeServerTLSDir(
+			filepath.Join(k3sServerDir, "tls"),
+			filepath.Join(k3sServerDir, "cred", "ipsec.psk"),
+			derivedKubeconfigs...); err != nil {
+			joined = errors.Join(joined, err)
+		}
+		if err := state.Unmark(debugUserMarker); err != nil {
+			log.Printf("warning: %v", err)
+		}
+	}
+	if !isBootstrap {
+		if err := removeStaleCNIState(flannelSubnetEnv, cniIPAMStateDir); err != nil {
+			log.Printf("warning: clear stale CNI state: %v", err)
+		}
+	}
+	if err := state.Unmark(nodeLabelsMarker); err != nil {
+		log.Printf("warning: %v", err)
+	}
+	return joined
+}
+
+// resetStaleServerState resets local k3s server state when it no
+// longer matches current, and reports whether it did so the caller
+// can force a genuine first join regardless of boot history. No
+// recorded identity at all is left alone — see readClusterIdentity.
+//
+// isBootstrapNode exempts a QuorumRecoveryGeneration-only mismatch for
+// the node the controller currently names bootstrap: that bump is the
+// recovery this node is about to perform (package quorum), which
+// needs the existing etcd data to reset from — wiping it first
+// destroys exactly what it needs. A ClusterID change always resets
+// regardless of role; that's a different cluster, not a recovery.
+//
+// A restored single-node tree (SingleNodeClusterID) is reset for
+// every joining node, since its CA is not the cluster's, and kept by
+// the bootstrap node, which seeds the cluster from it.
+func resetStaleServerState(current Generation, isBootstrapNode bool) (reset bool, err error) {
+	recordedIdentity, recorded, err := readClusterIdentity()
+	if err != nil {
+		return false, fmt.Errorf("read cluster identity: %w", err)
+	}
+	if !recorded {
+		log.Printf("no cluster identity recorded yet for local k3s server state; recording %s", current)
+		return false, nil
+	}
+	if recordedIdentity.ClusterID == SingleNodeClusterID && isBootstrapNode {
+		log.Printf("local k3s server state is this node's own single-node state; "+
+			"bootstrap node keeps it as the seed for cluster %s", current)
+		return false, nil
+	}
+	if recordedIdentity == current {
+		log.Printf("local k3s server state identity matches %s, no reset needed", current)
+		return false, nil
+	}
+	if recordedIdentity.ClusterID == current.ClusterID && isBootstrapNode {
+		log.Printf("local k3s server state generation %d is behind cluster %q's %d, "+
+			"but this node is bootstrap — leaving it for quorum recovery to handle",
+			recordedIdentity.Counter, current.ClusterID, current.Counter)
+		return false, nil
+	}
+	log.Printf("local k3s server state belongs to %s, controller assigns %s — resetting before provisioning",
+		recordedIdentity, current)
+	if err := DiscardClusterState(isBootstrapNode, true); err != nil {
+		return false, fmt.Errorf("reset k3s server state for cluster change: %w", err)
+	}
+	return true, nil
 }
 
 // ProvisionSingleNodeConfig cleans up cluster-mode drop-ins left
@@ -790,9 +989,42 @@ func bracketIPv6(addr string) string {
 	return "[" + addr + "]"
 }
 
-// RemoveServerTLSDir empties the k3s server TLS directory so a joining
-// node is re-issued its whole PKI under the bootstrap node's CA. Used by
-// the single→cluster transition on non-bootstrap nodes.
+// removeStaleCNIState drops the pod-subnet state this node built up while it
+// ran its own single-node cluster, so that nothing can hand out an address
+// from the retired subnet once the node has joined.
+//
+// A node running standalone owns 10.42.0.0/24; joining assigns it a different
+// podCIDR, and flannel rewrites subnet.env to match. Between the join and that
+// rewrite the flannel CNI plugin still reads the old subnet, so a pod networked
+// in that window is given an address the cluster routes to a different node.
+// It never recovers: the address is fixed for the pod's lifetime, and a
+// daemonset pod that crash-loops on it restarts in place and keeps it.
+//
+// Removing subnet.env makes that window fail closed instead. A CNI ADD with no
+// subnet to read fails, kubelet retries, and the pod is networked correctly
+// once flannel has published the new subnet — where an ADD that "succeeds"
+// against the stale subnet is permanent.
+//
+// The host-local reservations go too. They are keyed by network name rather
+// than by subnet, so the retired subnet's entries would otherwise sit in the
+// directory indefinitely; flannel and host-local rebuild both paths on the
+// next start.
+func removeStaleCNIState(subnetEnv, ipamDir string) error {
+	var joined error
+	if err := removeIfExists(subnetEnv); err != nil {
+		log.Printf("warning: remove %s: %v", subnetEnv, err)
+		joined = errors.Join(joined, fmt.Errorf("remove %s: %w", subnetEnv, err))
+	}
+	if err := os.RemoveAll(ipamDir); err != nil {
+		log.Printf("warning: remove %s: %v", ipamDir, err)
+		joined = errors.Join(joined, fmt.Errorf("remove %s: %w", ipamDir, err))
+	}
+	return joined
+}
+
+// removeServerTLSDir empties the k3s server TLS directory so a joining
+// node is re-issued its whole PKI under the bootstrap node's CA. See
+// DiscardClusterState for when it runs.
 //
 // Everything under server/tls goes, not a named subset of CA files.
 // k3s rewrites what it manages as bootstrap data from the datastore on
@@ -826,53 +1058,6 @@ func bracketIPv6(addr string) string {
 //
 // Missing paths are silently ignored. Errors are joined and returned
 // together so one undeletable file does not hide the rest.
-func RemoveServerTLSDir() error {
-	return removeServerTLSDir(
-		"/var/lib/rancher/k3s/server/tls",
-		"/var/lib/rancher/k3s/server/cred/ipsec.psk",
-		state.K3sKubeconfig,
-		KubeconfigCopy)
-}
-
-// RemoveStaleCNIState drops the pod-subnet state this node built up while it
-// ran its own single-node cluster, so that nothing can hand out an address
-// from the retired subnet once the node has joined.
-//
-// A node running standalone owns 10.42.0.0/24; joining assigns it a different
-// podCIDR, and flannel rewrites subnet.env to match. Between the join and that
-// rewrite the flannel CNI plugin still reads the old subnet, so a pod networked
-// in that window is given an address the cluster routes to a different node.
-// It never recovers: the address is fixed for the pod's lifetime, and a
-// daemonset pod that crash-loops on it restarts in place and keeps it.
-//
-// Removing subnet.env makes that window fail closed instead. A CNI ADD with no
-// subnet to read fails, kubelet retries, and the pod is networked correctly
-// once flannel has published the new subnet — where an ADD that "succeeds"
-// against the stale subnet is permanent.
-//
-// The host-local reservations go too. They are keyed by network name rather
-// than by subnet, so the retired subnet's entries would otherwise sit in the
-// directory indefinitely; flannel and host-local rebuild both paths on the
-// next start.
-func RemoveStaleCNIState() error {
-	return removeStaleCNIState(flannelSubnetEnv, cniIPAMStateDir)
-}
-
-// removeStaleCNIState is RemoveStaleCNIState with injectable paths.
-func removeStaleCNIState(subnetEnv, ipamDir string) error {
-	var joined error
-	if err := removeIfExists(subnetEnv); err != nil {
-		log.Printf("warning: remove %s: %v", subnetEnv, err)
-		joined = errors.Join(joined, fmt.Errorf("remove %s: %w", subnetEnv, err))
-	}
-	if err := os.RemoveAll(ipamDir); err != nil {
-		log.Printf("warning: remove %s: %v", ipamDir, err)
-		joined = errors.Join(joined, fmt.Errorf("remove %s: %w", ipamDir, err))
-	}
-	return joined
-}
-
-// removeServerTLSDir is RemoveServerTLSDir with injectable paths.
 // derivedKubeconfigs are removed after the TLS material they describe.
 func removeServerTLSDir(tlsRoot, ipsecPSK string, derivedKubeconfigs ...string) error {
 	var joined error

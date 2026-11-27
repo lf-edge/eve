@@ -7,9 +7,12 @@ package zedkube
 
 import (
 	"context"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/pillar/types"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 // controlPlaneRoleLabel is the k3s/k8s node label identifying a control-plane
@@ -25,7 +28,10 @@ const nodeUUIDLabel = "node-uuid"
 // pruneStaleMasterNodes is invoked from applyClusterConfig on every ENCC
 // create/modify with a valid config. The elected stats-leader deletes any k8s
 // control-plane Node whose node-uuid label is absent from
-// config.MasterNodeIDs; followers no-op. This is the EVE-side response to a
+// config.MasterNodeIDs; followers no-op. A sweep that could not run, on a
+// follower or while the kube API is down, is left pending and retried by the
+// periodic re-evaluation (see pruneStaleMasterDue). This is the EVE-side
+// response to a
 // controller "replace node" operation: removing the stale Node object lets
 // k3s's embedded-etcd controller drop the corresponding etcd member, which is
 // the precondition for a replacement master to join the cluster.
@@ -44,34 +50,64 @@ const nodeUUIDLabel = "node-uuid"
 // the node delete itself while still running would disrupt etcd membership
 // and Longhorn replicas before a graceful exit.
 func (z *zedkube) pruneStaleMasterNodes(config *types.EdgeNodeClusterConfig) {
+	swept := z.sweepStaleMasterNodes(config)
+	z.pruneStaleMasterPending = !swept
+	if swept {
+		z.pruneStaleMasterLast = time.Now()
+	}
+}
+
+// pruneStaleMasterDue reports whether the periodic re-evaluation should sweep
+// now: on every tick while a sweep is pending, as one that could not run
+// must run as soon as it can, and otherwise once pruneStaleMasterInterval
+// has passed since the last completed sweep.
+//
+// A sweep is pending when the last one did not complete: this node was not
+// the stats leader, or the kube API did not answer. That is the case right
+// after a quorum recovery, when the cluster config that drops the lost member
+// arrives while the API is still down, so the stale member is removed as soon
+// as the API is back rather than up to pruneStaleMasterInterval later.
+func pruneStaleMasterDue(pending bool, last, now time.Time) bool {
+	return pending || now.Sub(last) >= pruneStaleMasterInterval*time.Second
+}
+
+// sweepStaleMasterNodes deletes the stale master nodes when this node is the
+// stats leader, and returns whether there is nothing left to do: either it
+// swept them all, or the controller has not sent master_node_uuids.
+func (z *zedkube) sweepStaleMasterNodes(config *types.EdgeNodeClusterConfig) bool {
 	if config == nil || len(config.MasterNodeIDs) == 0 {
-		return
+		return true
 	}
 	if !z.isStatsLeader() {
-		return
+		return false
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
-	defer cancel()
-
 	clientset, err := getKubeClientSet()
 	if err != nil {
 		log.Errorf("pruneStaleMasterNodes: clientset: %v", err)
-		return
+		return false
 	}
-
 	keep := make(map[string]struct{}, len(config.MasterNodeIDs))
 	for _, u := range config.MasterNodeIDs {
 		keep[u.String()] = struct{}{}
 	}
+	return deleteStaleMasterNodes(clientset, keep, z.nodeuuid)
+}
 
+// deleteStaleMasterNodes deletes every control-plane Node whose node-uuid
+// label is not in keep, except this node's own (selfUUID). Returns whether it
+// listed the nodes and deleted every stale one.
+func deleteStaleMasterNodes(clientset kubernetes.Interface, keep map[string]struct{},
+	selfUUID string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
 	nodes, err := clientset.CoreV1().Nodes().List(ctx,
 		metav1.ListOptions{LabelSelector: controlPlaneRoleLabel})
 	if err != nil {
 		log.Errorf("pruneStaleMasterNodes: list nodes: %v", err)
-		return
+		return false
 	}
 
+	swept := true
 	for i := range nodes.Items {
 		n := &nodes.Items[i]
 		uuidLabel := n.Labels[nodeUUIDLabel]
@@ -83,7 +119,7 @@ func (z *zedkube) pruneStaleMasterNodes(config *types.EdgeNodeClusterConfig) {
 		if _, ok := keep[uuidLabel]; ok {
 			continue
 		}
-		if uuidLabel == z.nodeuuid {
+		if uuidLabel == selfUUID {
 			// Never delete our own Node object. The controller stops
 			// shipping config to us when we are being replaced; self-
 			// deletion while still running would disrupt etcd and
@@ -96,9 +132,11 @@ func (z *zedkube) pruneStaleMasterNodes(config *types.EdgeNodeClusterConfig) {
 		log.Noticef("pruneStaleMasterNodes: deleting stale master node %s (uuid=%s) not in ENCC master_node_uuids",
 			n.Name, uuidLabel)
 		if err := clientset.CoreV1().Nodes().Delete(deleteCtx,
-			n.Name, metav1.DeleteOptions{}); err != nil {
+			n.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 			log.Errorf("pruneStaleMasterNodes: delete %s: %v", n.Name, err)
+			swept = false
 		}
 		deleteCancel()
 	}
+	return swept
 }

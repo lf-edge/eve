@@ -222,23 +222,28 @@ When a failed node recovers and rejoins the cluster, Kubernetes does not automat
 
 #### Descheduler trigger
 
-The `deschedulerOnBootWatcher` goroutine in the `zedkube` microservice
-(`pkg/pillar/cmd/zedkube/descheduler.go`) runs the descheduler once per boot on any
-booting cluster node — this includes the recovered node returning to service, a surviving
-node rebooting, or any other node in the cluster.
+The boot event of the `zedkube` microservice (`runDeschedulerIfPending` in
+`pkg/pillar/cmd/zedkube/descheduler.go`) moves the apps designated to a node back to it,
+once per boot of that node: the recovered node returning to service pulls back the apps
+that failed over away from it. It does so the same way as the periodic trigger described
+below: with the descheduler for an app whose running pod still prefers this node, which is
+the case after a failover, and otherwise by retargeting the app at this node.
 
 The trigger is opt-in: it is enabled by setting the `kubernetes.vmi.deschedule.events`
 config key to a value containing `"boot"` (e.g. `kubernetes.vmi.deschedule.events:boot`).
 When the key is empty (the default), no event-driven descheduling is performed.
 
-The goroutine launches once after `EdgeNodeInfo` is first received and polls
-`kubeapi.IsDeschedulerReady` every 15 seconds until all of the following are satisfied:
+For 30 minutes after Kubernetes becomes ready on the node, zedkube checks on every
+app-status tick (10 seconds) whether the boot run is still owed, and if so whether
+`kubeapi.IsDeschedulerReadyWithReason` reports all of the following:
 
 * This node is `Ready` and not `Unschedulable`
 * All Longhorn daemonsets on this node report `numberReady == desiredNumberScheduled`
 * The KubeVirt CR reports `Available` (if the kubevirt namespace exists)
 
-Once ready, `kubeapi.TriggerDescheduler` manages the Job with a Create-first idempotent
+Once ready, if an app designated to this node runs elsewhere and its pod still prefers
+this node, `kubeapi.TriggerDescheduler` runs the descheduler Job. It manages the Job with
+a Create-first idempotent
 pattern: it attempts to create a new `descheduler-job`; if one already exists and is
 active (another node's descheduler is running), it skips; if the existing Job is
 completed or failed, it deletes it and recreates. This avoids the multi-node boot race
@@ -258,13 +263,56 @@ Once the descheduler evicts the pod, KubeVirt reschedules a new VMI. The survivi
 
 The descheduler only acts on apps with `AffinityType == PreferredDuringScheduling`. Apps configured with `AffinityType == RequiredDuringScheduling` never fail over and therefore never require failback.
 
+#### Periodic trigger
+
+The boot event only fails an app back when a node boots. After a failover that ends without
+a reboot, for example a network outage, or when an app is designated to a node while it runs
+elsewhere, nothing moves it. The `periodic` event covers those cases: with it, the designated
+node of an app keeps it on itself.
+
+The event is opt-in (`kubernetes.vmi.deschedule.events:boot,periodic`), except in a 2-node
+HA cluster (one with a witness, see [EVE-K-2-NODE-HA.md](../../../docs/EVE-K-2-NODE-HA.md)),
+where it is always enabled: there the placement of an app is what keeps it running, so
+failback cannot depend on a reboot or on configuration.
+
+* It acts for apps the controller designated to it explicitly (`designated_node_id` set)
+  with `AffinityType == PreferredDuringScheduling`. Without a designated node, every node
+  counts as designated, so such an app is left wherever it runs.
+* On every app-status tick, it checks the `ENClusterAppStatus` of those apps: an app that
+  runs on another node is misplaced. This covers a failback after a reboot, after a
+  network outage, and after the app was designated to this node while running elsewhere,
+  e.g. on a replaced node or after a quorum recovery.
+* It acts once it has passed the same readiness checks as the boot event for 3 minutes
+  without interruption, and again at the earliest 3 minutes later, so a node that keeps
+  coming and going does not pull apps back and forth (each move restarts the app). This
+  settle period, set by `kubernetes.vmi.deschedule.periodic.settle`, is the only
+  difference to the boot event, which acts at once.
+* Where the running instance of the app still prefers this node, the app is moved by the
+  same descheduler Job as the boot event. Where it prefers another node, because the app
+  was designated to this node after it started, the Job sees nothing wrong with it: a
+  running pod's affinity cannot be changed. Then zedkube retargets the app's ReplicaSet
+  (the VMIRS of a VMI app, the ReplicaSet of a native container) at this node and replaces
+  the running instance: it cycles the VMIRS, or deletes the pod.
+
+zedkube logs which way each app is moved, and the affinity of its running pod that
+decided it:
+
+* `"restorePlacement: <app> runs on node <node> and its pod <pod> prefers this node:
+  moving it with the descheduler"`, followed by `"restorePlacement: descheduler
+  triggered"`.
+* `"restorePlacement: <app> runs on node <node> and its pod <pod> prefers node "<node>":
+  retargeting its <VMIRS|ReplicaSet> <name> at this node and replacing the pod"`.
+
 ### Failback Troubleshooting
 
 #### Descheduler Job Not Created After Boot
 
-After a node boots, the `descheduler-job` in the `kube-system` namespace is the signal
-that EVE triggered the descheduler to run the failback logic. If the job never appears,
-work through the following checks in order.
+After a node boots while an app designated to it runs on another node, the
+`descheduler-job` in the `kube-system` namespace is the signal that EVE triggered the
+descheduler to run the failback logic. No job is created when no app designated to the
+booting node runs elsewhere, or when such an app is moved by retargeting instead (see the
+`restorePlacement` log lines above). If the job never appears, work through the
+following checks in order.
 
 ##### 1. Verify the feature flag is enabled
 
@@ -282,9 +330,12 @@ cat /run/global/zedagent/global.json | python3 -c \
 If the key is missing or the value does not contain `boot`, no descheduler job will
 ever be created on boot.
 
-##### 2. Confirm the watcher goroutine started
+##### 2. Confirm zedkube is waiting to run the descheduler
 
-The watcher is launched only once, on first receipt of `EdgeNodeInfo`. Search zedkube logs:
+The boot event is armed once Kubernetes is ready, after `EdgeNodeInfo` was received.
+While it waits for the node to become ready to receive apps, zedkube logs
+`"runDeschedulerIfPending: waiting to receive apps: <reason>"` once a minute. Search
+zedkube logs:
 
 ```bash
 logread | grep zedkube | grep -i "descheduler\|devicename"
@@ -296,8 +347,8 @@ zedkube is running and that the device is registered with the controller.
 
 ##### 3. Check node Ready status
 
-The watcher polls `IsDeschedulerReady` every 15 seconds and will not proceed while the
-node is unschedulable or not `Ready`:
+zedkube checks `IsDeschedulerReadyWithReason` on every app-status tick and will not
+proceed while the node is unschedulable or not `Ready`:
 
 ```bash
 kubectl get node <nodename>
@@ -323,7 +374,7 @@ kubectl get pods -n longhorn-system -o wide | grep <nodename>
 
 Relevant log line: `"IsDeschedulerReady: longhorn not ready: <error>"`
 
-If any Longhorn pod is `Pending` or `CrashLoopBackOff`, the watcher will keep retrying
+If any Longhorn pod is `Pending` or `CrashLoopBackOff`, zedkube will keep retrying
 but will not trigger the job.
 
 ##### 5. Verify KubeVirt is Available
@@ -340,7 +391,7 @@ Relevant log line: `"IsDeschedulerReady: kubevirt not ready: <error>"`
 
 ##### 6. Check whether the job already ran
 
-The watcher is single-shot per boot. If the job was already created and completed (or
+The boot event is single-shot per boot. If the job was already created and completed (or
 was deleted after completion), it will not be recreated until the next boot:
 
 ```bash
@@ -360,8 +411,8 @@ If all prerequisites passed but the job still was not created, look for error lo
 ```bash
 logread | grep zedkube | grep -i descheduler
 # Key errors to look for:
-#   "deschedulerOnBootWatcher: readiness check error: <err>"
-#   "deschedulerOnBootWatcher: trigger error: <err>"
+#   "runDeschedulerIfPending: readiness check: <err>"
+#   "runDeschedulerIfPending: trigger: <err>"
 #   "EnsureVMsDeschedulerAnnotated: update vmirs <name>: <err>"
 ```
 

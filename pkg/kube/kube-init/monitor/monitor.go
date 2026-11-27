@@ -32,6 +32,7 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeinitstatus"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/prereqs"
+	"github.com/lf-edge/eve/pkg/kube/kube-init/quorum"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/role"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/tiebreaker"
@@ -79,6 +80,9 @@ const (
 	RestartSingleToCluster RestartReason = 5
 	// RestartClusterToSingle — run the cluster → single transition.
 	RestartClusterToSingle RestartReason = 6
+	// RestartQuorumRecovery — converge to the controller's
+	// quorum-recovery generation.
+	RestartQuorumRecovery RestartReason = 7
 )
 
 // Monitor owns the running-state goroutines.
@@ -351,6 +355,26 @@ func (m *Monitor) CheckContainerd() {
 // Cluster-config + user-override watchers
 // ---------------------------------------------------------------------------
 
+// withdrawalGrace is how long after the monitor starts a missing
+// EdgeNodeClusterConfig is still taken for zedagent not having
+// republished it yet rather than for the controller withdrawing it.
+var withdrawalGrace = 3 * time.Minute
+
+// clusterWithdrawn decides whether a missing EdgeNodeClusterStatus is a
+// real withdrawal. Right after boot neither the status nor the config
+// has been republished, so an absent config proves nothing until the
+// grace period has passed; recheckAfter is then how long to wait before
+// asking again.
+func clusterWithdrawn(configPresent bool, sinceStart, grace time.Duration) (withdrawn bool, recheckAfter time.Duration) {
+	if configPresent {
+		return false, 0
+	}
+	if sinceStart < grace {
+		return false, grace - sinceStart
+	}
+	return true, 0
+}
+
 // ClusterConfig watches EdgeNodeClusterStatus and the daemon's
 // own KubeInitStatus topic, signalling single ↔ cluster
 // transitions on restartCh. The FSM owns the actual transition
@@ -371,6 +395,7 @@ func (m *Monitor) CheckContainerd() {
 // because it is the sole writer.
 func ClusterConfig(ctx context.Context, restartCh chan<- RestartReason) error {
 	log.Printf("cluster config monitor started")
+	startedAt := time.Now()
 
 	if err := waitForInitialized(ctx); err != nil {
 		return err
@@ -385,6 +410,8 @@ func ClusterConfig(ctx context.Context, restartCh chan<- RestartReason) error {
 		// it would otherwise mis-fire either transition direction.
 		return fmt.Errorf("check cluster-mode marker: %w", err)
 	}
+
+	recheckCh := make(chan struct{}, 1)
 
 	evaluate := func() {
 		// ClusterStatusPresent folds file-missing and zero-UUID
@@ -405,9 +432,19 @@ func ClusterConfig(ctx context.Context, restartCh chan<- RestartReason) error {
 			// live cluster membership and restore the pre-cluster
 			// /var/lib. Only a config that is gone (or zeroed) is a
 			// real withdrawal.
-			if encconfig.Present() {
-				log.Printf("EdgeNodeClusterStatus missing but " +
-					"EdgeNodeClusterConfig still present — waiting for zedkube")
+			withdrawn, recheckAfter := clusterWithdrawn(encconfig.Present(),
+				time.Since(startedAt), withdrawalGrace)
+			if !withdrawn {
+				log.Printf("EdgeNodeClusterStatus missing but the cluster " +
+					"config is present or not yet republished — waiting for zedagent/zedkube")
+				if recheckAfter > 0 {
+					time.AfterFunc(recheckAfter, func() {
+						select {
+						case recheckCh <- struct{}{}:
+						default:
+						}
+					})
+				}
 				return
 			}
 			log.Printf("EdgeNodeClusterStatus missing while in cluster mode — " +
@@ -425,6 +462,16 @@ func ClusterConfig(ctx context.Context, restartCh chan<- RestartReason) error {
 			}
 			inClusterMode = true
 			trySend(restartCh, RestartSingleToCluster, "single→cluster")
+		case encExists && inClusterMode:
+			// Steady state, so the only thing left to notice is the
+			// controller declaring a quorum recovery. Evaluate records
+			// a baseline when nothing is owed, which is what lets a
+			// node that was powered off across a change still see it.
+			if _, needed, err := quorum.Evaluate(); err != nil {
+				log.Printf("warning: evaluate quorum recovery: %v", err)
+			} else if needed {
+				trySend(restartCh, RestartQuorumRecovery, "quorum-recovery")
+			}
 		}
 	}
 
@@ -434,6 +481,8 @@ func ClusterConfig(ctx context.Context, restartCh chan<- RestartReason) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-encCh:
+			evaluate()
+		case <-recheckCh:
 			evaluate()
 		}
 	}

@@ -351,6 +351,35 @@ func (cc *EdgeClusterConfig) AddNode(node ClusterNode) {
 	cc.setNodeClusterConfig(node)
 }
 
+// syncMasterNodeUUIDs sets master_node_uuids on every node that still has a
+// cluster config to the UUIDs of all nodes that do, the way a controller
+// lists the control-plane members of a cluster in every member's config.
+// EVE prunes the Kubernetes Node object of any control-plane node absent from
+// this list, which is how a member the controller removed (e.g. a seed
+// evicted by a quorum recovery) stops being reported; an empty list disables
+// that pruning.
+//
+// Derived from the configs as they stand rather than kept in step with each
+// edit, since a test may withdraw a member's cluster config directly. Called
+// by EdgeCluster.ApplyConfig, so every pushed config carries the current list.
+func (cc *EdgeClusterConfig) syncMasterNodeUUIDs() {
+	var members []string
+	for _, node := range cc.nodes {
+		if cc.configs[node.DevName].Cluster == nil {
+			continue
+		}
+		id, onboarded := cc.th.deviceUUID(node.DevName)
+		if !onboarded {
+			cc.th.t.Fatalf("Device %q must be onboarded to be listed as a "+
+				"cluster master node", node.DevName)
+		}
+		members = append(members, id.String())
+	}
+	cc.forEachClusterBlock(func(cluster *eveconfig.EdgeNodeCluster) {
+		cluster.MasterNodeUuids = members
+	})
+}
+
 // GetDeviceConfig returns the EdgeDeviceConfig for a specific device,
 // allowing per-device customization.
 func (cc *EdgeClusterConfig) GetDeviceConfig(devName string) *EdgeDeviceConfig {
@@ -382,6 +411,120 @@ func (cc *EdgeClusterConfig) SetWitness(witnessIP net.IP) {
 			WitnessIp: witnessIP.String(),
 		}
 	})
+}
+
+// TriggerQuorumRecovery declares newSeedDevName as the cluster's new
+// bootstrap/seed: promotes it by updating its own JoinServerIp to its
+// ClusterIP and incrementing its QuorumRecoveryGeneration, which signals
+// it to perform a forced etcd quorum reset and become the sole bootstrap
+// (see config.EdgeNodeCluster's quorum_recovery_generation field).
+//
+// Every other current/former member has its cluster config withdrawn
+// outright rather than told to converge to this generation: a device
+// with no cluster config converts back to single-node on its own, the
+// same mechanism TestClusterToSingleConversion exercises. With only two
+// physical nodes in this topology the only such member is whichever
+// device is being recovered from; it rejoins later through the ordinary
+// join workflow - see RestoreClusterConfig.
+func (cc *EdgeClusterConfig) TriggerQuorumRecovery(newSeedDevName string) {
+	var newSeedIP string
+	for _, node := range cc.nodes {
+		if node.DevName == newSeedDevName {
+			if node.ClusterIP == nil {
+				cc.th.t.Fatalf("TriggerQuorumRecovery: node %q has no ClusterIP",
+					newSeedDevName)
+			}
+			newSeedIP = node.ClusterIP.IP.String()
+		}
+	}
+	if newSeedIP == "" {
+		cc.th.t.Fatalf("TriggerQuorumRecovery: %q is not a member of this cluster",
+			newSeedDevName)
+	}
+	cc.forEachDevice(func(dc *EdgeDeviceConfig) {
+		if dc.GetDeviceName() != newSeedDevName {
+			dc.Cluster = nil
+			return
+		}
+		if dc.Cluster == nil {
+			cc.th.t.Fatalf("TriggerQuorumRecovery: device %q has no cluster config",
+				dc.GetDeviceName())
+		}
+		dc.Cluster.JoinServerIp = newSeedIP
+		dc.Cluster.QuorumRecoveryGeneration++
+	})
+}
+
+// RestoreClusterConfig rebuilds devName's cluster config after it was
+// withdrawn (typically by nilling EdgeDeviceConfig.Cluster to convert the
+// device back to single-node, e.g. following a quorum recovery that named
+// a different device the new seed). This is not a distinct operation from
+// an ordinary join: devName gets back the same ClusterIP and
+// ClusterInterface it was originally given, while the join server, cluster
+// type, tie-breaker, witness and quorum-recovery generation are read off
+// another already-configured member, so the rejoining device picks up the
+// cluster as it stands now rather than as it stood when this
+// EdgeClusterConfig was first built.
+func (cc *EdgeClusterConfig) RestoreClusterConfig(devName string) {
+	dc, ok := cc.configs[devName]
+	if !ok {
+		cc.th.t.Fatalf("RestoreClusterConfig: %q is not a member of this cluster", devName)
+		return
+	}
+	var node *ClusterNode
+	for i := range cc.nodes {
+		if cc.nodes[i].DevName == devName {
+			node = &cc.nodes[i]
+			break
+		}
+	}
+	if node == nil {
+		cc.th.t.Fatalf("RestoreClusterConfig: %q is not a member of this cluster", devName)
+		return
+	}
+
+	var reference *eveconfig.EdgeNodeCluster
+	for _, other := range cc.nodes {
+		if other.DevName == devName {
+			continue
+		}
+		if oc := cc.configs[other.DevName].Cluster; oc != nil {
+			reference = oc
+			break
+		}
+	}
+	if reference == nil {
+		cc.th.t.Fatalf("RestoreClusterConfig: no other member of this " +
+			"cluster has a cluster config to rejoin")
+		return
+	}
+
+	if !cc.th.isDeviceOnboarded(devName) {
+		cc.th.t.Fatalf("Device %q must be onboarded to encrypt cluster token", devName)
+		return
+	}
+	cipherData, err := cc.th.encryptCipherData(devName,
+		&evecommon.EncryptionBlock{
+			ClusterToken: cc.Token,
+		})
+	if err != nil {
+		cc.th.t.Fatalf("Failed to encrypt cluster token for device %q: %v", devName, err)
+		return
+	}
+
+	dc.Cluster = &eveconfig.EdgeNodeCluster{
+		ClusterId:                cc.ClusterID.String(),
+		ClusterInterface:         node.ClusterInterface,
+		ClusterType:              reference.ClusterType,
+		JoinServerIp:             reference.JoinServerIp,
+		EncryptedClusterToken:    cipherData,
+		TieBreakerNodeId:         reference.TieBreakerNodeId,
+		Witness:                  reference.Witness,
+		QuorumRecoveryGeneration: reference.QuorumRecoveryGeneration,
+	}
+	if node.ClusterIP != nil {
+		dc.Cluster.ClusterIpPrefix = node.ClusterIP.String()
+	}
 }
 
 // SetConfigProperties sets configuration properties on all devices.

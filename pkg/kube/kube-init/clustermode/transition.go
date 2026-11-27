@@ -26,16 +26,12 @@
 //  2. uninstall-base-components    iff ClusterType==Base
 //  3. rotate-token                 iff IsBootstrapNode (k3s still running)
 //  4. multus-reset                 uninstall + re-apply pinned to ClusterIP
-//  5. unmark-node-labels           force label re-apply on next deploy
-//  6. stop-k3s
-//  7. run-hooks
-//  8. clear-tls-if-join            non-bootstrap: drop server PKI + unmark debug user
-//  9. clear-cni-if-join            non-bootstrap: drop the retired subnet's CNI state
-//
-// 10. provision-config             write cluster-mode drop-in
-//
-// 11. write-join-marker            non-bootstrap: stuck-join watchdog
-// 12. apply-registration           stage controller-supplied AddOn manifest
+//  5. stop-k3s
+//  6. run-hooks
+//  7. discard-cluster-state        drop the old cluster's PKI, CNI state, labels marker
+//  8. provision-config             write cluster-mode drop-in
+//  9. write-join-marker            non-bootstrap: stuck-join watchdog
+//  10. apply-registration          stage controller-supplied AddOn manifest
 //
 // Cluster→single is a one-shot cleanup that ends in
 // RebootWithReason and under normal circumstances does not return.
@@ -106,11 +102,9 @@ func (r *Runner) Run(ctx context.Context) error {
 		{"uninstall-base-components", r.StepUninstallIfBase},
 		{"rotate-token", r.StepRotateTokenIfBootstrap},
 		{"multus-reset", r.StepMultusReset},
-		{"unmark-node-labels", r.StepUnmarkNodeLabels},
 		{"stop-k3s", r.StepStopK3s},
 		{"run-hooks", r.StepRunHooks},
-		{"clear-tls-if-join", r.StepClearTLSIfNonBootstrap},
-		{"clear-cni-if-join", r.StepClearCNIStateIfNonBootstrap},
+		{"discard-cluster-state", r.StepDiscardClusterState},
 		{"provision-config", r.StepProvisionConfig},
 		{"write-join-marker", r.StepWriteJoinMarkerIfNonBootstrap},
 		{"apply-registration", r.StepApplyRegistration},
@@ -217,7 +211,7 @@ func (r *Runner) StepRotateTokenIfBootstrap(ctx context.Context) error {
 // Best-effort throughout, including the apply. Multus owns pod
 // networking for the new ClusterIP, which argues for treating a failure
 // here as fatal, but that is not worth what failing costs: everything
-// after this step — stop-k3s, clear-tls-if-join, provision-config — is
+// after this step — stop-k3s, discard-cluster-state, provision-config — is
 // what actually makes the node able to join, and skipping it is
 // unrecoverable. A Multus daemonset still carrying the old node IP, by
 // contrast, is re-applied by the deploy graph on the next pass. A
@@ -253,7 +247,7 @@ func (r *Runner) StepMultusReset(ctx context.Context) error {
 	if err := components.ApplyMultusCNI(ctx, addr); err != nil {
 		log.Printf("WARNING: apply multus with cluster IP: %v — continuing; "+
 			"the health loop re-applies while multus-initialized is clear, "+
-			"and aborting here would skip clear-tls-if-join and leave the "+
+			"and aborting here would skip discard-cluster-state and leave the "+
 			"node unable to join", err)
 		return nil
 	}
@@ -263,16 +257,6 @@ func (r *Runner) StepMultusReset(ctx context.Context) error {
 	// come back for the new node IP to reach /etc/cni/net.d.
 	if err := components.RestartMultusDaemonSet(ctx); err != nil {
 		log.Printf("warning: restart multus daemonset: %v", err)
-	}
-	return nil
-}
-
-// StepUnmarkNodeLabels clears the node-labels-initialized marker
-// so the next deploy/health tick re-applies labels with the new
-// cluster identity. Non-fatal on failure.
-func (r *Runner) StepUnmarkNodeLabels(_ context.Context) error {
-	if err := state.Unmark(state.NodeLabelsInitialized); err != nil {
-		log.Printf("warning: unmark node-labels-initialized: %v", err)
 	}
 	return nil
 }
@@ -320,49 +304,23 @@ func (r *Runner) StepRunHooks(_ context.Context) error {
 	return nil
 }
 
-// StepClearTLSIfNonBootstrap drops the k3s server TLS material so
-// the joining node can be re-issued certs by the bootstrap node,
-// and forces debug-user regeneration on the next deploy.
+// StepDiscardClusterState drops what this node still holds from the
+// cluster it is leaving, so the join starts clean: the server PKI and the
+// retired pod-subnet state on a non-bootstrap node, which is re-issued
+// both under the bootstrap node's CA, and the node-labels marker on every
+// node, so the new Node object is re-stamped. See k3s.DiscardClusterState
+// for what goes and why.
 //
-// Bootstrap nodes keep their CA/PKI — they are the issuer that
-// joining nodes will trust.
+// Bootstrap nodes keep their CA/PKI, as they are the issuer joining nodes
+// will trust, and their 10.42.0.0/24 subnet.
 //
-// RemoveServerTLSDir failures propagate: stale server TLS
-// material on a joining node guarantees the rejoin fails at TLS
-// handshake with no breadcrumb pointing back here. The debug-
-// user Unmark is best-effort because a stale marker only delays
-// debug-cert refresh, doesn't break the rejoin.
-func (r *Runner) StepClearTLSIfNonBootstrap(_ context.Context) error {
-	if r.cs.IsBootstrapNode {
-		log.Printf("bootstrap node — skipping TLS clear")
-		return nil
-	}
-	if err := k3s.RemoveServerTLSDir(); err != nil {
-		return fmt.Errorf("remove server TLS dir: %w", err)
-	}
-	if err := state.Unmark(state.DebugUserInitialized); err != nil {
-		log.Printf("warning: unmark debug-user: %v", err)
-	}
-	return nil
-}
-
-// StepClearCNIStateIfNonBootstrap drops the pod-subnet state left from this
-// node's standalone cluster, so no pod can be networked against the retired
-// subnet after the join. See k3s.RemoveStaleCNIState for why that matters.
-//
-// Bootstrap nodes are skipped: they keep 10.42.0.0/24 across the transition,
-// so their subnet.env is still correct and clearing it would only cost a
-// needless round of failed ADDs.
-//
-// Runs after stop-k3s so flannel is not live to rewrite what we remove.
-// Failure is non-fatal: the join still works, it just leaves the window open.
-func (r *Runner) StepClearCNIStateIfNonBootstrap(_ context.Context) error {
-	if r.cs.IsBootstrapNode {
-		log.Printf("bootstrap node — keeping CNI state")
-		return nil
-	}
-	if err := k3s.RemoveStaleCNIState(); err != nil {
-		log.Printf("warning: clear stale CNI state: %v", err)
+// Runs after stop-k3s so neither k3s nor flannel is live to rewrite what is
+// removed. A failure to remove the PKI propagates: stale server TLS on a
+// joining node guarantees the rejoin fails at the TLS handshake with no
+// breadcrumb pointing back here.
+func (r *Runner) StepDiscardClusterState(_ context.Context) error {
+	if err := k3s.DiscardClusterState(r.cs.IsBootstrapNode, false); err != nil {
+		return fmt.Errorf("discard cluster state: %w", err)
 	}
 	return nil
 }

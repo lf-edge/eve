@@ -84,7 +84,7 @@ require (
 	github.com/klauspost/compress v1.19.2 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
-	github.com/lf-edge/eve-api/go v0.0.0-20261015104443-e46e4c3a39ce // indirect
+	github.com/lf-edge/eve-api/go v0.0.0-20261104182329-7570235438d6 // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20261015084011-20eade920485 // indirect
 	github.com/moby/locker v1.0.1 // indirect
 	github.com/moby/spdystream v0.5.1 // indirect

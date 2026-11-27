@@ -56,7 +56,7 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/lf-edge/edge-containers v0.0.0-20261115122227-84b20c8a4501 // indirect
-	github.com/lf-edge/eve-api/go v0.0.0-20261015104443-e46e4c3a39ce // indirect
+	github.com/lf-edge/eve-api/go v0.0.0-20261104182329-7570235438d6 // indirect
 	github.com/lf-edge/eve/pkg/kube/cnirpc v0.0.0-20261015084011-20eade920485 // indirect
 	github.com/linuxkit/linuxkit/src/cmd/linuxkit v0.0.0-20240507172735-6d37353ca1ee // indirect
 	github.com/moby/locker v1.0.1 // indirect

@@ -55,7 +55,7 @@ github.com/json-iterator/go
 # github.com/leodido/go-urn v1.2.4
 ## explicit; go 1.16
 github.com/leodido/go-urn
-# github.com/lf-edge/eve-api/go v0.0.0-20261015104443-e46e4c3a39ce
+# github.com/lf-edge/eve-api/go v0.0.0-20261104182329-7570235438d6
 ## explicit; go 1.21.1
 github.com/lf-edge/eve-api/go/auth
 github.com/lf-edge/eve-api/go/certs

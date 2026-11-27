@@ -51,6 +51,8 @@ func (ec *EdgeCluster) ApplyConfig(clusterConfig *EdgeClusterConfig,
 		excluded[name] = true
 	}
 
+	clusterConfig.syncMasterNodeUUIDs()
+
 	// Set the cluster name on each device's config and collect devices.
 	nodes := clusterConfig.nodes
 	ec.devices = make([]*EdgeDevice, len(nodes))
