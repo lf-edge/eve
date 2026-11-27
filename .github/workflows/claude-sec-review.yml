@@ -2,39 +2,264 @@
 # SPDX-License-Identifier: Apache-2.0
 ---
 name: Claude Security Review
+# Runs after "Claude Review Request", like the "Claude Code" workflow: see
+# there why this cannot be pull_request or pull_request_target.
+#
+# The anthropics/claude-code-security-review action only works on
+# pull_request(_target) events, so its audit script is run here directly.
+# As in "Claude Code", the job that holds the Anthropic key has a read-only
+# token and returns findings as data; a job without secrets posts them, and
+# a "Claude Security Review" commit status on the PR's head shows the result.
+#
+# A push is audited only when the PR's changes differ from every audited
+# version (a rebase alone is skipped), and a finding is posted only when no
+# finding of the same category was already posted near the same line.
 on:  # yamllint disable-line rule:truthy
-  pull_request_target:
-    types: [opened, synchronize, ready_for_review, reopened]
+  workflow_run:
+    workflows: ["Claude Review Request"]
+    types: [completed]
 
-permissions:
-  contents: read
-  pull-requests: write
+permissions: {}
+
+env:
+  # anthropics/claude-code-security-review main, 2026-08-27
+  SEC_REVIEW_REF: 0c6a49f1fa56a1d472575da86a94dbc1edb78eda
+  STATUS_CONTEXT: Claude Security Review
 
 jobs:
-  security-review:
+  resolve:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    concurrency:
-      group: claude-sec-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
+    timeout-minutes: 5
     if: |
-      github.event.pull_request.author_association == 'MEMBER' ||
-      github.event.pull_request.author_association == 'COLLABORATOR' ||
-      github.event.pull_request.author_association == 'OWNER'
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    outputs:
+      number: ${{ steps.pr.outputs.number }}
+      sha: ${{ steps.pr.outputs.sha }}
     steps:
-      # Check out the base branch, never the PR head: secrets are in scope on
-      # pull_request_target, and the claude CLI runs in this tree and honors
-      # its .claude and .mcp.json configs. The action fetches the PR diff
-      # through the GitHub API, so the base tree only supplies context.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           persist-credentials: false
-      # fork of anthropics/claude-code-security-review: upstream refuses to
-      # run on pull_request_target, which this repo needs for fork PRs
-      - uses: shjala/claude-code-security-review@4d62096960937fdd393d3e4b15ac501ff1a77ede  # main
+          sparse-checkout: .github/actions/claude-pr-resolve
+      - id: pr
+        uses: ./.github/actions/claude-pr-resolve
         with:
-          claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          claude-model: claude-opus-4-8
-          comment-pr: true
-          upload-results: true
-          exclude-directories: vendor
+          github-token: ${{ github.token }}
+      - if: steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.pr.outputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh api -X POST "repos/$REPO/statuses/$SHA" -f state=pending \
+            -f context="$STATUS_CONTEXT" -f description="Auditing" \
+            -f target_url="$RUN_URL" >/dev/null ||
+            echo "::warning::Could not set the commit status"
+
+  security-review:
+    needs: resolve
+    if: needs.resolve.outputs.number != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: claude-sec-${{ needs.resolve.outputs.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      findings: ${{ steps.audit.outputs.findings }}
+      unchanged: ${{ steps.seen.outputs.cache-hit }}
+    steps:
+      # Hunk headers are left out, so a rebase that only moves the changes
+      # keeps the same key.
+      - id: diff
+        name: Fingerprint the PR's changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ needs.resolve.outputs.number }}
+        run: |
+          set -euo pipefail
+          hash=$(gh api --paginate "repos/$REPO/pulls/$PR/files" \
+                   --jq '.[] | .filename, ((.patch // "") | split("\n")
+                         | map(select(startswith("@@") | not)) | join("\n"))' |
+                 sha256sum | cut -c1-32)
+          echo "key=claude-sec-audited-$PR-$hash" >> "$GITHUB_OUTPUT"
+      # Only the key's existence is checked; nothing is restored.
+      - id: seen
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
+        with:
+          path: ${{ runner.temp }}/audited
+          key: ${{ steps.diff.outputs.key }}
+          lookup-only: true
+      - if: steps.seen.outputs.cache-hit == 'true'
+        run: echo "::notice::These changes were already audited; skipping"
+      # master, never the PR head: the claude CLI runs in this tree and
+      # honors its .claude and .mcp.json configs. The script reads the PR's
+      # diff through the API, so this tree only supplies context.
+      - if: steps.seen.outputs.cache-hit != 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+      - if: steps.seen.outputs.cache-hit != 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          repository: anthropics/claude-code-security-review
+          ref: ${{ env.SEC_REVIEW_REF }}
+          path: .sec-review
+          persist-credentials: false
+      - name: Install the audit tool
+        if: steps.seen.outputs.cache-hit != 'true'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q -r .sec-review/claudecode/requirements.txt
+          npm install -g @anthropic-ai/claude-code@2.1.331  # zizmor: ignore[adhoc-packages]
+      - id: audit
+        name: Run the audit
+        if: steps.seen.outputs.cache-hit != 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ needs.resolve.outputs.number }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_MODEL: claude-opus-5-5
+          CLAUDE_TIMEOUT: "20"
+          ENABLE_CLAUDE_FILTERING: "true"
+          EXCLUDE_DIRECTORIES: vendor
+          REPO_PATH: ${{ github.workspace }}
+        run: |
+          set -uo pipefail
+          results="$RUNNER_TEMP/results.json"
+          # Exits 1 when it finds a HIGH severity issue; that is a result,
+          # not a failure, so judge the run by its output instead.
+          (cd .sec-review && PYTHONPATH="$PWD" "$RUNNER_TEMP/venv/bin/python" \
+             -u claudecode/github_action_audit.py) \
+            > "$results" 2> "$RUNNER_TEMP/error.log"
+          if ! jq -e 'has("findings")' "$results" >/dev/null 2>&1; then
+            echo "::error::Security audit failed: $(jq -r '.error // empty' "$results" 2>/dev/null)"
+            cat "$RUNNER_TEMP/error.log"
+            exit 1
+          fi
+          jq '.filtering_summary | del(.excluded_findings_details)' "$results"
+          echo "findings=$(jq -c .findings "$results")" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/audited"
+          touch "$RUNNER_TEMP/audited/done"
+      - if: steps.audit.outcome == 'success'
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5.0.4
+        with:
+          path: ${{ runner.temp }}/audited
+          key: ${{ steps.diff.outputs.key }}
+      - if: always() && steps.seen.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: security-review-results
+          path: |
+            ${{ runner.temp }}/results.json
+            ${{ runner.temp }}/error.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  post:
+    needs: [resolve, security-review]
+    if: needs.security-review.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      posted: ${{ steps.payload.outputs.count }}
+    steps:
+      - id: payload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ needs.resolve.outputs.number }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          FINDINGS: ${{ needs.security-review.outputs.findings }}
+        run: |
+          set -euo pipefail
+          # Claude words a finding differently on every audit, so compare
+          # findings by file, category and line, not by text.
+          posted=$(gh api --paginate "repos/$REPO/pulls/$PR/comments" |
+                   jq -s '[.[][] | select(.user.type == "Bot")
+                           | select(.body | startswith("🤖 **Security Issue:"))
+                           | {path, line: (.line // .original_line // 0),
+                              category: ((.body | capture("\\*\\*Category:\\*\\* (?<c>[^\\n]*)")
+                                          | .c) // "")}]')
+          # -c keeps it on one line, as GITHUB_OUTPUT needs
+          payload=$(jq -nc --argjson f "${FINDINGS:-[]}" --argjson posted "$posted" \
+                      --arg sha "$SHA" '
+            [$f[] | {path: .file, line: ((.line // 1) | tonumber? // 1),
+                     category: (.category // "security_issue"),
+                     side: "RIGHT",
+                     body: ("🤖 **Security Issue: \(.description // "Security vulnerability detected")**\n\n"
+                            + "**Severity:** \(.severity // "HIGH")\n"
+                            + "**Category:** \(.category // "security_issue")\n"
+                            + (if .exploit_scenario then "\n**Exploit Scenario:** \(.exploit_scenario)\n" else "" end)
+                            + (if .recommendation then "\n**Recommendation:** \(.recommendation)\n" else "" end))}
+             | select(. as $n | $posted | any(.path == $n.path
+                 and .category == $n.category
+                 and ((.line - $n.line) | fabs) <= 10) | not)
+             | del(.category)] as $c
+            | {commit_id: $sha, event: "COMMENT",
+               body: "**Claude security review** of \($sha[:12]): \($c | length) new finding(s)",
+               comments: $c}')
+          count=$(jq '.comments | length' <<<"$payload")
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "json=$payload" >> "$GITHUB_OUTPUT"
+          echo "$count new finding(s)"
+      - if: steps.payload.outputs.count != '0'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/actions/claude-post-review
+      - if: steps.payload.outputs.count != '0'
+        uses: ./.github/actions/claude-post-review
+        with:
+          github-token: ${{ github.token }}
+          pr: ${{ needs.resolve.outputs.number }}
+          payload: ${{ steps.payload.outputs.json }}
+
+  report:
+    needs: [resolve, security-review, post]
+    # A cancelled run was superseded; the run that replaced it reports.
+    if: >-
+      always() && needs.resolve.outputs.number != '' &&
+      needs.security-review.result != 'cancelled' &&
+      needs.post.result != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          AUDIT_RESULT: ${{ needs.security-review.result }}
+          POST_RESULT: ${{ needs.post.result }}
+          UNCHANGED: ${{ needs.security-review.outputs.unchanged }}
+          POSTED: ${{ needs.post.outputs.posted }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$AUDIT_RESULT" != success ] || [ "$POST_RESULT" != success ]; then
+            state=error
+            description="Failed: audit $AUDIT_RESULT, post $POST_RESULT"
+          elif [ "$UNCHANGED" = true ]; then
+            state=success
+            description="Changes already audited"
+          else
+            state=success
+            description="${POSTED:-0} new finding(s)"
+          fi
+          gh api -X POST "repos/$REPO/statuses/$SHA" -f state="$state" \
+            -f context="$STATUS_CONTEXT" -f description="$description" \
+            -f target_url="$RUN_URL" >/dev/null

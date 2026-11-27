@@ -1,0 +1,71 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Resolve the PR for a Claude review
+description: >-
+  Shared by claude-review.yml and claude-sec-review.yml. Finds the PR a
+  workflow_run or issue_comment event is about and decides whether to review
+  it. Nothing from a "Claude Review Request" run is trusted, since a PR can
+  rewrite that workflow: the PR is looked up again by its head branch and
+  SHA. Outputs are empty when the PR should not be reviewed.
+
+inputs:
+  github-token:
+    required: true
+
+outputs:
+  number:
+    value: ${{ steps.pr.outputs.number }}
+  sha:
+    value: ${{ steps.pr.outputs.sha }}
+
+runs:
+  using: composite
+  steps:
+    - id: pr
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        EVENT: ${{ github.event_name }}
+        HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        HEAD_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
+        HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        ISSUE: ${{ github.event.issue.number }}
+        COMMENT_ID: ${{ github.event.comment.id }}
+      run: |
+        set -euo pipefail
+        skip() { echo "::notice::$1; not reviewing"; exit 0; }
+
+        if [ "$EVENT" = workflow_run ]; then
+          # workflow_run.pull_requests is empty for fork PRs. Require that
+          # the PR's head is still the commit the request ran on: a later
+          # push brings its own request.
+          pr=$(gh api -X GET "repos/$REPO/pulls" -f state=open \
+                 -f head="$HEAD_OWNER:$HEAD_BRANCH" |
+               jq -c --arg sha "$HEAD_SHA" \
+                 '[.[] | select(.head.sha == $sha)][0] // empty')
+          [ -n "$pr" ] || skip "No open PR has $HEAD_SHA as its head"
+          [ "$(jq -r .draft <<<"$pr")" != true ] || skip "Draft PR"
+          # author_association hides private org membership, so ask for
+          # the author's permission on the repo instead.
+          author=$(jq -r .user.login <<<"$pr")
+          perm=$(gh api "repos/$REPO/collaborators/$author/permission" \
+                   --jq .permission 2>/dev/null || echo none)
+          case "$perm" in
+            admin|maintain|write) ;;
+            *) skip "$author has no write access (permission: $perm)" ;;
+          esac
+        elif [ "$EVENT" = issue_comment ]; then
+          pr=$(gh api "repos/$REPO/pulls/$ISSUE")
+          [ "$(jq -r .state <<<"$pr")" = open ] || skip "PR #$ISSUE is closed"
+          gh api -X POST "repos/$REPO/issues/comments/$COMMENT_ID/reactions" \
+            -f content=eyes >/dev/null || true
+        else
+          skip "Unsupported event $EVENT"
+        fi
+
+        {
+          echo "number=$(jq -r .number <<<"$pr")"
+          echo "sha=$(jq -r .head.sha <<<"$pr")"
+        } >> "$GITHUB_OUTPUT"
