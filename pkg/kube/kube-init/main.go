@@ -113,6 +113,7 @@ const (
 	EvClusterRecycle                   // monitor: generic recycle
 	EvHealthTick                       // health-check timer fired
 	EvHealthDone                       // health-check worker finished
+	EvUpdateRetry                      // health worker: a pending pass can start
 	EvSingleToCluster                  // monitor: ENC appeared
 	EvClusterToSingle                  // monitor: ENC removed
 	EvTransitionDone                   // clustermode runner finished
@@ -176,6 +177,8 @@ func (e EventType) String() string {
 		return "EvHealthTick"
 	case EvHealthDone:
 		return "EvHealthDone"
+	case EvUpdateRetry:
+		return "EvUpdateRetry"
 	case EvSingleToCluster:
 		return "EvSingleToCluster"
 	case EvClusterToSingle:
@@ -417,6 +420,10 @@ const (
 	healthCheckInterval = 15 * time.Second
 	errorRetryDelay     = 5 * time.Second
 
+	// passRetryInterval is how often RUNNING asks whether a pending
+	// component pass, deferred or owed since, can start.
+	passRetryInterval = 10 * time.Minute
+
 	kubeconfigTimeout = 30 * time.Minute
 	readinessTimeout  = 30 * time.Minute
 )
@@ -570,6 +577,9 @@ type daemon struct {
 	componentsReady bool
 	updateState     string
 	updateError     string
+	// lastPassTry is when a pass last ran or was last asked whether it
+	// could start. Written on the event loop only.
+	lastPassTry time.Time
 
 	// stateMirrorCh carries the latest FSM state to the goroutine
 	// that mirrors it onto the Node object. Nil in tests.
@@ -1166,6 +1176,17 @@ func (d *daemon) handleDeploying(ctx context.Context, ev Event) {
 	}
 }
 
+// passRetryDue reports whether the health worker should ask if a
+// pending pass can start, at most once per passRetryInterval since the
+// pass last ran or was last asked about.
+func (d *daemon) passRetryDue() bool {
+	if !d.componentPassPending() || time.Since(d.lastPassTry) < passRetryInterval {
+		return false
+	}
+	d.lastPassTry = time.Now()
+	return true
+}
+
 // componentPassPending reports whether this boot still owes the
 // cluster a component update pass, in which case WAIT_UPGRADE runs it
 // before RUNNING. Only replicated clusters are updated this way, as
@@ -1263,10 +1284,12 @@ func (d *daemon) handleWaitUpgrade(ctx context.Context, ev Event) {
 		}
 		if errors.Is(ev.Err, update.ErrUpdateDeferred) {
 			// Nothing was changed. Go on to RUNNING rather than keep
-			// pillar waiting; its health tick runs the pass again.
+			// pillar waiting; RUNNING brings the pass back here once
+			// it can start.
 			log.Printf("WAIT_UPGRADE deferred: %v", ev.Err)
 			d.updateState = updateStateDeferred
 			d.updateError = ev.Err.Error()
+			d.lastPassTry = time.Now()
 			d.transition(ctx, StateRunning, "update-deferred")
 			return
 		}
@@ -1334,14 +1357,20 @@ func (d *daemon) handleRunning(ctx context.Context, ev Event) {
 			break
 		}
 		d.healthInflight = true
+		tryPass := d.passRetryDue()
 		// Snapshot mon and supervisor at spawn time so the
 		// worker has stable references — leaving RUNNING nils
 		// d.mon, and racing reads from the worker would either
 		// nil-deref or trip the race detector.
-		go d.runHealthWorker(d.runningCtx, d.mon, d.supervisor)
+		go d.runHealthWorker(d.runningCtx, d.mon, d.supervisor, tryPass)
 
 	case EvHealthDone:
 		d.healthInflight = false
+
+	case EvUpdateRetry:
+		if d.componentPassPending() {
+			d.transition(ctx, StateWaitUpgrade, "update-retry")
+		}
 
 	case EvError:
 		d.lastError = ev.Err
@@ -1690,13 +1719,17 @@ func (d *daemon) transition(ctx context.Context, newState State, reason string) 
 
 	switch newState {
 	case StateWaitUpgrade:
+		// Entered again from RUNNING to retry a pass, this closes
+		// pillar's gate for as long as the pass runs.
+		d.componentsReady = false
 		d.updateState = updateStateInProgress
 		d.updateError = ""
+		d.lastPassTry = time.Now()
 	case StateRunning:
 		// Reaching RUNNING means the component pass for this boot is
-		// over or was not needed. Latched: a later k3s restart does
-		// not reopen the question for pillar. A failed pass leaves it
-		// unset and says so in the update state.
+		// over, deferred or not needed. Only a pass retried from
+		// RUNNING through WAIT_UPGRADE clears it again. A failed pass
+		// leaves it unset and says so in the update state.
 		if d.updateState != updateStateFailed {
 			d.componentsReady = true
 		}
@@ -2990,8 +3023,9 @@ func (d *daemon) bridgeOneMonitorRestart(reason monitor.RestartReason) {
 // mon and sup are passed in (rather than read from d) so the
 // worker holds stable references — the run loop nils d.mon when
 // leaving RUNNING, and an unsynchronised read here would race or
-// nil-deref.
-func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup *k3s.Supervisor) {
+// nil-deref. tryPass asks it whether a pending component pass can
+// start.
+func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup *k3s.Supervisor, tryPass bool) {
 	defer func() {
 		select {
 		case d.eventCh <- Event{Type: EvHealthDone}:
@@ -3128,11 +3162,14 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 		// Per-tick controller-driven k3s drift check. Base mode
 		// receives drift signals via the registration manifest
 		// server, not via update-component, so this only fires
-		// for replicated clusters.
-		if updated, err := update.CheckNodeComponents(ctx, sup); err != nil {
-			log.Printf("WARNING: k3s version check: %v", err)
-		} else if updated {
-			log.Printf("k3s updated; supervisor will restart on next exit")
+		// for replicated clusters. Held, like the component pass,
+		// while an image under test has not reached the controller.
+		if nodeagentstatus.UpdateAllowed() {
+			if updated, err := update.CheckNodeComponents(ctx, sup); err != nil {
+				log.Printf("WARNING: k3s version check: %v", err)
+			} else if updated {
+				log.Printf("k3s updated; supervisor will restart on next exit")
+			}
 		}
 
 		if err := components.LonghornPostInstallConfig(); err != nil {
@@ -3159,17 +3196,21 @@ func (d *daemon) runHealthWorker(ctx context.Context, mon *monitor.Monitor, sup 
 			}
 		}
 
-		// A pending pass normally runs in WAIT_UPGRADE before RUNNING.
-		// This covers a node that only became replicated since, and
-		// advances a status an earlier step left unfinished.
-		if !nodeagentstatus.UpdateAllowed() {
-			return
-		}
-		if err := update.CheckClusterComponents(ctx); err != nil {
-			if !errors.Is(err, update.ErrUpdateFailed) {
-				log.Printf("WARNING: cluster component update: %v", err)
+		// A pending pass runs in WAIT_UPGRADE, with pillar's gate
+		// closed. One that was deferred, or that a node owes since it
+		// became replicated, goes back there once it can start; until
+		// then the gate stays open. With nothing pending, advance a
+		// status an earlier step left unfinished.
+		switch {
+		case tryPass:
+			if nodeagentstatus.UpdateAllowed() && update.PassCanStart(ctx) {
+				select {
+				case d.eventCh <- Event{Type: EvUpdateRetry}:
+				case <-ctx.Done():
+				}
 			}
-			return
+		case !update.ComponentPassPending():
+			update.ReleaseStaleUpdateStatus()
 		}
 	}
 }

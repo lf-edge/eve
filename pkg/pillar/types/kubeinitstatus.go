@@ -13,6 +13,11 @@ const KubeInitAgentName = "kube-init"
 // component update pass that failed and is not retried.
 const KubeInitUpdateStateFailed = "failed"
 
+// KubeInitUpdateStateDeferred is the KubeInitStatus.UpdateState of a
+// component update pass that stopped, for a reason that can clear up on
+// its own, and is run again later.
+const KubeInitUpdateStateDeferred = "deferred"
+
 // KubeInitUpdateStateNone is the KubeInitStatus.UpdateState when no
 // component update pass has been started this boot.
 const KubeInitUpdateStateNone = "none"

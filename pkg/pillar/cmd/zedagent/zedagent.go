@@ -45,6 +45,7 @@ import (
 	"github.com/lf-edge/eve/pkg/pillar/base"
 	"github.com/lf-edge/eve/pkg/pillar/controllerconn"
 	"github.com/lf-edge/eve/pkg/pillar/hardware"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/localcommand"
 	"github.com/lf-edge/eve/pkg/pillar/netdump"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
@@ -169,6 +170,8 @@ type zedagentContext struct {
 	pubNodeDrainRequest    pubsub.Publication
 	subClusterUpdateStatus pubsub.Subscription
 	subKubeClusterInfo     pubsub.Subscription
+	// kubeComponentsGate is nil off EVE-k.
+	kubeComponentsGate *kubeapi.KubeComponentsGate
 
 	subNestedAppRuntimeStorageMetric pubsub.Subscription
 

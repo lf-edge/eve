@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/update"
 )
@@ -177,5 +178,62 @@ func TestComponentsReadyIsLatched(t *testing.T) {
 	}
 	if !d.buildStatus().ComponentsReady {
 		t.Error("ComponentsReady dropped when k3s exited")
+	}
+}
+
+// TestPassRetryFromRunning pins that a pass deferred to RUNNING is run
+// again through WAIT_UPGRADE, which closes pillar's gate for as long as
+// it runs, and only while one is still pending.
+func TestPassRetryFromRunning(t *testing.T) {
+	ctx := context.Background()
+	for _, pending := range []bool{true, false} {
+		d := newTestDaemon()
+		d.state = StateWaitUpgrade
+		d.handleEvent(ctx, Event{Type: EvError,
+			Err: fmt.Errorf("update component longhorn: %w", update.ErrUpdateDeferred)})
+		if d.state != StateRunning || !d.buildStatus().ComponentsReady {
+			t.Fatalf("deferral: state = %v, ComponentsReady = %v",
+				d.state, d.buildStatus().ComponentsReady)
+		}
+		d.passPendingFn = func() bool { return pending }
+
+		d.handleEvent(ctx, Event{Type: EvUpdateRetry})
+
+		status := d.buildStatus()
+		if pending {
+			if d.state != StateWaitUpgrade || status.ComponentsReady ||
+				status.UpdateState != updateStateInProgress {
+				t.Errorf("retry: state = %v, ComponentsReady = %v, UpdateState = %q",
+					d.state, status.ComponentsReady, status.UpdateState)
+			}
+		} else if d.state != StateRunning || !status.ComponentsReady {
+			t.Errorf("nothing pending: state = %v, ComponentsReady = %v",
+				d.state, status.ComponentsReady)
+		}
+	}
+}
+
+// TestPassRetryDue pins the retry cadence: not before passRetryInterval
+// after the last attempt, at once for a pass never tried this boot, and
+// never with nothing pending.
+func TestPassRetryDue(t *testing.T) {
+	d := newTestDaemon()
+	pending := true
+	d.passPendingFn = func() bool { return pending }
+
+	if !d.passRetryDue() {
+		t.Error("a pass never tried is not due")
+	}
+	if d.passRetryDue() {
+		t.Error("due again right after being asked")
+	}
+	d.lastPassTry = time.Now().Add(-passRetryInterval)
+	if !d.passRetryDue() {
+		t.Error("not due after passRetryInterval")
+	}
+	pending = false
+	d.lastPassTry = time.Time{}
+	if d.passRetryDue() {
+		t.Error("due with no pass pending")
 	}
 }

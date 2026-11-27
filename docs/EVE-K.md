@@ -167,8 +167,12 @@ ends:
 Every step of the pass is bounded, so it always ends, in success, failure or
 deferral. A pass is deferred when a component is not ready at its current
 version within 10 minutes, or the node stays cordoned for 10 minutes, before
-anything is changed. A deferred pass lets the node carry on and is run again
-later, by the same boot or the next one. A failed pass is not retried by the
+anything is changed. It is also deferred when Longhorn was already upgraded,
+by this node or another, but has not converged enough to restore its upgrade
+version check. A deferred pass lets the node carry on, and the device does not
+report itself as updating. Every 10 minutes kube-init asks whether the pass
+could now get past those checks, and once it could, runs it again in
+`WAIT_UPGRADE`, with volumes and apps held as above. A failed pass is not retried by the
 same image. The node carries on
 with the components as they are, the partition is committed, and the failure
 is reported in the device's cluster update status. A later image with a higher

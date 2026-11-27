@@ -333,7 +333,7 @@ func newFakeUpdateComponent(t *testing.T) *fakeUpdateComponent {
 action=""
 for arg in "$@"; do
 	case "$arg" in
-	--compare|--upgrade|--check-comp-ready|--finalize) action="${arg#--}" ;;
+	--compare|--upgrade|--check-comp-ready|--check-upgrade-ready|--finalize) action="${arg#--}" ;;
 	esac
 done
 echo "$action" >> "` + f.dir + `/calls"
@@ -405,6 +405,33 @@ func TestUpgradeComponent(t *testing.T) {
 		}
 		if got := f.calls(t); got != "compare finalize" {
 			t.Errorf("helper calls = %q", got)
+		}
+	})
+
+	t.Run("already at version defers on any finalize error", func(t *testing.T) {
+		for _, rc := range []int{1, compUpdateExitNotStarted} {
+			f := newFakeUpdateComponent(t)
+			f.set(t, "finalize", rc, "longhorn not ready at v1.13.0")
+			err := upgradeComponent(context.Background(), CompMultus)
+			if !errors.Is(err, ErrUpdateDeferred) || errors.Is(err, ErrUpdateFailed) {
+				t.Errorf("finalize rc %d: err = %v, want ErrUpdateDeferred only", rc, err)
+			}
+			if got := f.calls(t); got != "compare finalize" {
+				t.Errorf("finalize rc %d: helper calls = %q", rc, got)
+			}
+		}
+	})
+
+	t.Run("finalize not started after an upgrade is deferred", func(t *testing.T) {
+		f := newFakeUpdateComponent(t)
+		f.set(t, "compare", 1, "")
+		f.set(t, "finalize", compUpdateExitNotStarted, "longhorn not ready at v1.13.0")
+		err := upgradeComponent(context.Background(), CompMultus)
+		if !errors.Is(err, ErrUpdateDeferred) || errors.Is(err, ErrUpdateFailed) {
+			t.Fatalf("err = %v, want ErrUpdateDeferred only", err)
+		}
+		if passFailed.Load() {
+			t.Error("a deferred finalize latched the pass as failed")
 		}
 	})
 
@@ -633,5 +660,21 @@ func TestCurlDownloadUsesMgmtProxy(t *testing.T) {
 	}
 	if strings.Contains(string(got), "HTTPS_PROXY=\n") {
 		t.Errorf("HTTPS_PROXY was empty: %q", got)
+	}
+}
+
+// TestCompCheckUpgradeReady pins how the probe reads the helper.
+func TestCompCheckUpgradeReady(t *testing.T) {
+	f := newFakeUpdateComponent(t)
+	if !compCheckUpgradeReady(context.Background(), CompLonghorn) {
+		t.Error("rc 0 read as not ready")
+	}
+	f.set(t, "check-upgrade-ready", compUpdateExitNotStarted, "not ready at version:v1.9.1")
+	if compCheckUpgradeReady(context.Background(), CompLonghorn) {
+		t.Error("rc 2 read as ready")
+	}
+	compUpdatePath = filepath.Join(t.TempDir(), "missing")
+	if compCheckUpgradeReady(context.Background(), CompLonghorn) {
+		t.Error("a helper that could not run read as ready")
 	}
 }
