@@ -3,91 +3,113 @@
 ---
 name: Request Code Owners Review
 
+# Runs after "PR Event" (opened, pushed to, reopened, ready for review):
+# requesting reviewers needs a token that can write, which a pull_request
+# run on a fork does not get, and GitHub blocks pull_request_target on
+# public repositories. Nothing from the triggering run is trusted; the PR
+# is looked up again by its head commit, and CODEOWNERS is read from the
+# PR's base branch.
 on:  # yamllint disable-line rule:truthy
-  pull_request_target:
-    types: ["opened", "synchronize"]
-    paths-ignore:
-      - '.github/workflows/request_codeowners_review.yml'
+  workflow_run:
+    workflows: ["PR Event"]
+    types: [completed]
 
 permissions: {}
 
 jobs:
   auto_request_review:
+    if: github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
+      contents: read
       pull-requests: write
     steps:
+      - name: Find the PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          # workflow_run.pull_requests is empty for fork PRs
+          pr=$(gh api -X GET "repos/$REPO/pulls" -f state=open \
+                 -f head="$HEAD_OWNER:$HEAD_BRANCH" |
+               jq -c --arg sha "$HEAD_SHA" \
+                 '[.[] | select(.head.sha == $sha)][0] // empty')
+          if [ -z "$pr" ]; then
+            echo "No open PR has $HEAD_SHA as its head"
+            exit 0
+          fi
+          jq -r '"number=\(.number)", "author=\(.user.login)",
+                 "base_ref=\(.base.ref)", "base_sha=\(.base.sha)",
+                 "head_sha=\(.head.sha)"' <<<"$pr" >> "$GITHUB_OUTPUT"
+
+      # Commits and trees only, and only CODEOWNERS in the worktree: the
+      # diff below needs the history, not the files.
       - name: Checkout code
+        if: steps.pr.outputs.number != ''
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
-          ref: ${{ github.base_ref }}
+          ref: ${{ steps.pr.outputs.base_ref }}
           fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: .github/CODEOWNERS
+          sparse-checkout-cone-mode: false
           persist-credentials: false
 
-      # Fetch only: the worktree stays on the base ref, so the
-      # .github/CODEOWNERS read below is the base branch's, not the PR's.
-      - name: Fetch the PR's head commit
-        env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          git fetch origin "$HEAD_SHA"
-
       - name: Auto request review
+        if: steps.pr.outputs.number != ''
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_AUTHOR: ${{ steps.pr.outputs.author }}
+          BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
         run: |
-          reviewers=""
-          # Get changed files in this pull request
-          echo "Checking base: $BASE_SHA"
-          echo "Checking head: $HEAD_SHA"
-          for changed_file in $(git diff --name-only "$BASE_SHA...$HEAD_SHA"); do
-            echo "Checking $changed_file"
-            while read -r line; do
-              # Get pattern of the files owned
-              pattern=$(echo "$line" | awk '{print $1}')
-              # Remove leading / from pattern and changed_file for comparison
-              pattern="${pattern#/}"
-              # Get owners of the files owned
-              owners=$(echo "$line" | awk '{$1=""; print $0}' | xargs)
-              # Remove leading / from changed_file for comparison
-              changed_file="${changed_file#/}"
-              if [[ "$changed_file" == $pattern* ]]; then
-                # Add owners to reviewers
-                echo "Found owners for $changed_file: $owners"
-                reviewers="$reviewers $owners"
+          set -euo pipefail
+          git fetch -q origin "$HEAD_SHA"
+          mapfile -t changed_files < <(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          echo "PR #$PR_NUMBER changes ${#changed_files[@]} files"
+
+          # Every line whose pattern prefixes a changed file adds its
+          # owners. Matching stays in bash: a PR can change thousands of
+          # files, and a process per file and line took up to 50 minutes.
+          patterns=()
+          owners=()
+          while read -r pattern rest; do
+            [[ -z "$pattern" || "$pattern" == \#* ]] && continue
+            patterns+=("${pattern#/}")
+            owners+=("$rest")
+          done < .github/CODEOWNERS
+          declare -A reviewers=()
+          for i in "${!patterns[@]}"; do
+            for changed_file in "${changed_files[@]}"; do
+              # shellcheck disable=SC2053 # the pattern is a glob on purpose
+              if [[ "${changed_file#/}" == ${patterns[$i]}* ]]; then
+                echo "Found owners for ${patterns[$i]}: ${owners[$i]}"
+                read -ra line_owners <<< "${owners[$i]//@/}"
+                for owner in "${line_owners[@]}"; do
+                  reviewers[$owner]=1
+                done
+                break
               fi
-            done < .github/CODEOWNERS
+            done
           done
-          # Remove duplicates and format for JSON
-          reviewers=$(echo "$reviewers" | xargs -n1 | sort -u | xargs)
-          # Remove @ from reviewers (it stays in the beginning of the username)
-          reviewers_cleaned=${reviewers//@/}
-          IFS=' ' read -ra reviewers_array <<< "$reviewers_cleaned"
-          # Remove PR author from reviewers
-          filtered_reviewers=()
-          for reviewer in "${reviewers_array[@]}"; do
-            if [[ "$reviewer" != "$PR_AUTHOR" ]]; then
-              filtered_reviewers+=("$reviewer")
-            fi
-          done
-          if [ ${#filtered_reviewers[@]} -gt 0 ]; then
-            json_array=$(printf ',\"%s\"' "${filtered_reviewers[@]}")
-            json_array="[${json_array:1}]" # Remove the leading comma
-            echo "JSON array: $json_array"
-            echo "Requesting review from: ${filtered_reviewers[*]}"
-            echo "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/requested_reviewers"
-            curl -L \
-              -D - \
-              -X POST \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" \
-              -d "{\"reviewers\": $json_array}"
+          unset "reviewers[$PR_AUTHOR]"
+
+          if [ ${#reviewers[@]} -gt 0 ]; then
+            echo "Requesting review from: ${!reviewers[*]}"
+            # A refused request (e.g. an owner without access) is not fatal
+            printf '%s\n' "${!reviewers[@]}" |
+              jq -R . | jq -s '{reviewers: .}' |
+              gh api -X POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" \
+                --input - --jq '[.requested_reviewers[].login] | join(" ")' ||
+              echo "::warning::GitHub refused the review request"
           else
             echo "No reviewers found for the changed files."
           fi

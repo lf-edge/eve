@@ -1,0 +1,76 @@
+# Copyright (c) 2026, Zededa, Inc.
+# SPDX-License-Identifier: Apache-2.0
+---
+name: Post a Claude review
+description: >-
+  Shared by claude-review.yml and claude-sec-review.yml. Posts a PR review
+  given as a JSON payload for the reviews API. Transient errors are retried.
+  If GitHub refuses the inline comments (HTTP 422, e.g. a line that is not in
+  the diff), they are folded into the review body. Fails when the review
+  cannot be posted.
+
+inputs:
+  github-token:
+    required: true
+  pr:
+    required: true
+  payload:
+    description: JSON body for POST /repos/{owner}/{repo}/pulls/{pr}/reviews
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        PR: ${{ inputs.pr }}
+        PAYLOAD: ${{ inputs.payload }}
+      run: |
+        set -euo pipefail
+        review="$RUNNER_TEMP/review.json"
+        printf '%s' "$PAYLOAD" > "$review"
+
+        # A failed response does not mean the review was not created.
+        already_posted() {
+          gh api --paginate "repos/$REPO/pulls/$PR/reviews" 2>/dev/null |
+            jq -se --slurpfile r "$1" \
+              'any(.[][]; .commit_id == $r[0].commit_id and .body == $r[0].body)' \
+              >/dev/null
+        }
+
+        # Returns 2 when GitHub refuses the review itself (HTTP 422), and 1
+        # when every attempt failed otherwise.
+        post() {
+          local attempt err
+          for attempt in 1 2 3; do
+            if [ "$attempt" -gt 1 ] && already_posted "$1"; then
+              echo "The review was created despite the error"
+              return 0
+            fi
+            if err=$(gh api "repos/$REPO/pulls/$PR/reviews" --input "$1" \
+                       2>&1 >/dev/null); then
+              return 0
+            fi
+            echo "Attempt $attempt: $err"
+            [[ "$err" == *"HTTP 422"* ]] && return 2
+            [ "$attempt" -lt 3 ] && sleep $((attempt * 20))
+          done
+          return 1
+        }
+
+        rc=0
+        post "$review" || rc=$?
+        if [ "$rc" -eq 2 ]; then
+          echo "::warning::GitHub refused the inline comments; posting them in the review body"
+          jq '.body += ([.comments[] | "\n\n---\n`\(.path):\(.line)`\n\n\(.body)"]
+                        | join("")) | .body |= .[:65000] | del(.comments)' \
+            "$review" > "$review.body"
+          rc=0
+          post "$review.body" || rc=$?
+        fi
+        if [ "$rc" -ne 0 ]; then
+          echo "::error::Could not post the review on PR #$PR"
+          exit 1
+        fi
