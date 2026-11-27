@@ -5,7 +5,7 @@
 
 ARG PLATFORM=generic
 
-FROM lfedge/eve-alpine:2e8bb7ac88e47c8dd32369167d2fab3528e282a3 AS build-base
+FROM lfedge/eve-alpine:ce3d0be803cf6912083f71ec01761123faf9144f AS build-base
 ENV BUILD_PKGS="autoconf automake bash build-base coreutils gettext git glib-dev libtool libmd-dev m4 ncurses-dev tar xz-dev yq zstd-dev dpkg"
 
 RUN eve-alpine-deploy.sh
@@ -227,7 +227,7 @@ CMD []
 # /opt/vendor/nvidia; buildkit builds only the stages the selected platform
 # reaches, so neither pipeline runs for the other.
 # ---------------------------------------------------------------------------
-FROM lfedge/eve-alpine:2e8bb7ac88e47c8dd32369167d2fab3528e282a3 AS dgpu-base
+FROM lfedge/eve-alpine:ce3d0be803cf6912083f71ec01761123faf9144f AS dgpu-base
 ENV BUILD_PKGS="dpkg tar zstd"
 RUN eve-alpine-deploy.sh && \
     mkdir -p /staging/opt /staging/etc && \

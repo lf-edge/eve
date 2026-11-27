@@ -7,10 +7,10 @@
 # DTBs and overlays; on riscv64 it holds u-boot.bin, which QEMU loads.
 # amd64 boots through UEFI and uses no u-boot, so its /boot is empty.
 
-FROM lfedge/eve-alpine:2e8bb7ac88e47c8dd32369167d2fab3528e282a3 AS build-amd64
+FROM lfedge/eve-alpine:ce3d0be803cf6912083f71ec01761123faf9144f AS build-amd64
 RUN eve-alpine-deploy.sh && mkdir -p /boot
 
-FROM lfedge/eve-alpine:2e8bb7ac88e47c8dd32369167d2fab3528e282a3 AS uboot
+FROM lfedge/eve-alpine:ce3d0be803cf6912083f71ec01761123faf9144f AS uboot
 ENV BUILD_PKGS bash binutils-dev build-base bc bison flex gnutls gnutls-dev openssl-dev python3 swig dtc git
 RUN eve-alpine-deploy.sh
 

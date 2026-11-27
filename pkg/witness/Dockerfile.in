@@ -15,7 +15,7 @@
 # hadolint ignore=DL3006
 FROM KUBE_TAG AS kube
 
-FROM lfedge/eve-alpine:2e8bb7ac88e47c8dd32369167d2fab3528e282a3 AS build
+FROM lfedge/eve-alpine:ce3d0be803cf6912083f71ec01761123faf9144f AS build
 ARG TARGETARCH
 # iproute2 is not used by the witness itself; it is there because this
 # container has a network namespace of its own, and diagnosing what NIM
