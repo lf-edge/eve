@@ -54,8 +54,15 @@ The tool needs `unsquashfs` and Python 3.11 or later. It does not need root.
   ```
 
   Exit 0 and a `RESULT: every target matches` line mean every difference is
-  known. Two tests run everything but the build. `FAKE_BUILD=1` uses the
-  release's own rootfs as the rebuild, and must exit 0.
+  known. A run compares only `TARGETS` (default `amd64.kvm.generic`), so a
+  release is verified only when every variant has such a line: one run per
+  `<arch>.<hv>.<platform>`, each with its own `VM` and `STATE_ROOT`, on a host
+  of that architecture. A run that leaves targets out prints `RESULT: PARTIAL`
+  and names them. The script cannot cover a variant the draft has no
+  `images.txt` for, because `publish.yml` can build more `eve` images than
+  `assets.yml` releases; their digests are in the Publish run's
+  `sign-images-eve-*` artifacts. Two tests run everything but the build.
+  `FAKE_BUILD=1` uses the release's own rootfs as the rebuild, and must exit 0.
   `release-rebuild/make-test-env.sh` loads a finished build into a VM for
   `release-rebuild.sh finish`. Both label their RESULT `TEST ENV, NOT
   APPROVABLE`.
@@ -70,9 +77,13 @@ The tool needs `unsquashfs` and Python 3.11 or later. It does not need root.
 
   Run this as root so owners, device nodes and extended attributes read
   correctly.
-- **Audit of a published release.** Rebuild an older tag and compare it with
-  the published `rootfs.img`. Errors show what is not reproducible or not yet
-  covered by a rule.
+- **Audit of a published release.** `PUBLISHED=1` makes
+  `release-rebuild.sh` rebuild a published release's tag and compare it with
+  the `eve` digests in the release's `images.txt` files. Take the release id
+  and URL from
+  `gh api repos/<owner>/eve/releases/tags/<tag> --jq '"\(.tag_name) \(.id) \(.html_url)"'`.
+  Errors show what is not reproducible or not yet covered by a rule. The
+  coverage rules above apply: one run per variant.
 - **Reproducibility work.** Compare two builds of the same commit; `-v` lists
   every flagged entry and `--workdir` keeps the extracted trees.
 - **Rule changes.** After changing `known-diffs.toml`, run both control
