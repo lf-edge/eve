@@ -30,11 +30,6 @@ import (
 // "ports_with_bpdu_guard", and a forwarding-port failure must cause STP to
 // re-converge so that previously blocked links carry traffic.
 //
-// Replicates the eden SDN example:
-//
-//	github.com/lf-edge/eden/sdn/examples/switch-ni-multiple-ports
-//	(redundant-links subdirectory)
-//
 // Topology
 // --------
 //

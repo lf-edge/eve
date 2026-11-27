@@ -520,17 +520,15 @@ Useful `grep` patterns:
 
 ### Forcing transitions for development
 
-* The normal upgrade path is exercised by
-  `eden controller edge-node eveimage-update file://<rootfs>.squashfs`,
-  which makes `zedagent` publish a `BaseOsConfig{Activate:true}`.
-  See `tests/update_eve_image/testdata/update_eve_image_http.txt`.
+* The normal upgrade path is exercised by the evetest `TestEVEUpgrade`
+  (`evetest/tests/upgrade`), which has the controller push a new base
+  image, making `zedagent` publish a `BaseOsConfig{Activate:true}`.
 * To exercise the *post-test commit* path quickly, set
   `timer.test.baseimage.update=30` so nodeagent's test window is 30s
   rather than the default 600s.
-* To exercise the *fallback* (rollback) path, see the eden tests
-  under `tests/nodeagent/testdata/baseos_fallback_*.txt`: they cut
-  controller reachability during the test window so nodeagent
-  reboots back to the previous image.
+* To exercise the *fallback* (rollback) path, run `TestEVEUpgrade` with
+  `EXPECT_REVERT=true` and cut controller reachability during the test
+  window so nodeagent reboots back to the previous image.
 * To exercise the *retry-update* path, install a known-bad image
   (so the test window times out and the partition lands in
   `inprogress`), then bump `RetryUpdateCounter` in `BaseOsConfig`.

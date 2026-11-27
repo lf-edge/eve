@@ -20,7 +20,7 @@ EVE LTS: [Download latest LTS](https://github.com/lf-edge/eve/releases/latest)
 
 ## How to use EVE with a controller (recommended)
 
-EVE-OS can be used with the opensource [Adam controller](https://github.com/lf-edge/adam) by following the instructions at [Eden](https://github.com/lf-edge/eden).
+EVE-OS can be used with the opensource [Adam controller](https://github.com/lf-edge/adam) by following the instructions in its repository.
 
 There are also ongoing development of [EVE-OS tutorials](https://github.com/shantanoo-desai/EVE-OS-tutorials).
 

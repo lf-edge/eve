@@ -402,7 +402,7 @@ jobs:
 
   # Fails when a Go module or Rust crate in a variant's SBoM is missing from
   # the license or supplier map. The PR gate looks only at the eve jobs, so
-  # this does not hold back Eden or evetest.
+  # this does not hold back evetest.
   sbom-maps:
     name: SBoM license and supplier maps
     needs:

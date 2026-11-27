@@ -200,11 +200,10 @@ func main() { fmt.Println(Greet("world")) }
 	return covBinDir
 }
 
-// TestRealMerge exercises coverage-merge against the real unit-test and Eden
-// E2E coverage profiles produced by "make test" and "make eden-cover",
-// supplemented by a dummy binary coverage dir (as EXTRA_COVERAGE_DIR).
-// It skips if either real coverage file is absent.
-// Run it to reproduce the full three-source merge and print per-function totals.
+// TestRealMerge exercises coverage-merge against the real unit-test coverage
+// profile produced by "make test", supplemented by a dummy binary coverage dir
+// (as EXTRA_COVERAGE_DIR). It skips if the real coverage file is absent.
+// Run it to reproduce the full merge and print per-function totals.
 func TestRealMerge(t *testing.T) {
 	root := repoRoot(t)
 
@@ -212,16 +211,11 @@ func TestRealMerge(t *testing.T) {
 	if _, err := os.Stat(unitCov); err != nil {
 		t.Skipf("unit coverage not found (%s); run 'make test' first", unitCov)
 	}
-	edenCov := filepath.Join(root, "dist/amd64/current/eden_coverage/eden_e2e_coverage.txt")
-	if _, err := os.Stat(edenCov); err != nil {
-		t.Skipf("Eden E2E coverage not found (%s); run 'make eden-cover' first", edenCov)
-	}
 
 	tmpDir := t.TempDir()
 	extraCovDir := buildExtraCovDir(t, tmpDir)
 
-	// Run make coverage-merge against the real dist tree so that the Eden E2E
-	// profile is picked up automatically via its standard path.
+	// Run make coverage-merge against the real dist tree.
 	cmd := exec.Command("make", "-C", root, "coverage-merge",
 		"UNIT_COV_FILE="+unitCov,
 		"EXTRA_COVERAGE_DIR="+extraCovDir,
@@ -269,7 +263,7 @@ func TestRealMerge(t *testing.T) {
 	// Print the total line so the caller can see the numbers.
 	for _, line := range strings.Split(string(funcOut), "\n") {
 		if strings.HasPrefix(line, "total:") {
-			fmt.Printf("\nCoverage summary (unit + Eden E2E + extra):\n%s\n", line)
+			fmt.Printf("\nCoverage summary (unit + extra):\n%s\n", line)
 			break
 		}
 	}
