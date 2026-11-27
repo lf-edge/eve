@@ -73,6 +73,22 @@ The base config disables k3s's servicelb and Traefik, and kube-init's
 drop-in that sets a bare `disable:` replaces the whole list and re-enables
 servicelb, which then exposes Traefik on ports 80 and 443 of every node address.
 
+Nodes that ran servicelb and Traefik before they were disabled (every node
+before 16.12.0; single-node and replicated-storage nodes until 17.7.0) keep
+what they created: servicelb's `svclb-*` DaemonSets, whose pods every node now
+rejects with `SysctlForbidden`, and the `kube-system/traefik` LoadBalancer
+Service. Nothing in k3s removes them once servicelb is off, so kube-init does,
+from its health check after each k3s start until a pass finds nothing left to
+do. It deletes the DaemonSets carrying servicelb's
+`svccontroller.k3s.cattle.io/svcname` label and the Traefik Service of the
+packaged chart, and releases the Service's
+`service.kubernetes.io/load-balancer-cleanup` finalizer if it is still stuck
+two minutes after deletion. It leaves them alone while any Ready node's kubelet
+allows `net.ipv4.ip_forward`, which k3s sets only while servicelb is enabled,
+for example on a node running an older EVE or a `k3s.config.override` that
+re-enables servicelb. It also leaves the Service alone while a `traefik`
+HelmChart or Helm release record owns it.
+
 ## Network Exposure
 
 EVE's firewall drops unsolicited input on uplink ports. In a cluster it admits
