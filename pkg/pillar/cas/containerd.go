@@ -779,23 +779,12 @@ func (c *containerdCAS) prepareContainerRootDirForKubevirt(clientImageSpec *ocis
 		return fmt.Errorf("PrepareContainerRootDir error mount of snapshot: %s. %w", snapshotID, err)
 	}
 
-	// create env manifest
-	var envContent string
-	if workdir != "" {
-		envContent = fmt.Sprintf("export WORKDIR=\"%s\"\n", workdir)
-	} else {
-		envContent = "export WORKDIR=/\n"
+	// create env manifest: only the variables of the image, the ones of the
+	// user-data come with the cloud-init NoCloud cdrom at every start
+	if workdir == "" {
+		workdir = "/"
 	}
-	for _, e := range unProcessedEnv {
-		keyAndValueSlice := strings.SplitN(e, "=", 2)
-		if len(keyAndValueSlice) == 2 {
-			// handles Key=Value case
-			envContent += fmt.Sprintf("export %s=\"%s\"\n", keyAndValueSlice[0], keyAndValueSlice[1])
-		} else {
-			// handles Key= case
-			envContent += fmt.Sprintf("export %s\n", e)
-		}
-	}
+	envContent := containerd.ShimEnvManifest(workdir, unProcessedEnv, nil, false)
 	//nolint:gosec // we want this file to be 0644
 	if err := os.WriteFile(filepath.Join(rootPath, "environment"), []byte(envContent), 0644); err != nil {
 		return err

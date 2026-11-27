@@ -70,6 +70,10 @@ func TestFetchEnvVariablesFromCloudInit(t *testing.T) {
 	// FOO4=BAR4
 	// environment variables which will be set inside container.
 	testString5 := "Rk9PMT1CQVIxCkZPTzI9CkZPTzMKRk9PND1CQVI0"
+	// testString6 contains
+	// JSON=[ { \"title\":\"Atlas of the World (second edition - 1987)\",\"lent\":true} ]
+	// a JSON document whose double quotes are written as \"
+	testString6 := "SlNPTj1bIHsgXCJ0aXRsZVwiOlwiQXRsYXMgb2YgdGhlIFdvcmxkIChzZWNvbmQgZWRpdGlvbiAtIDE5ODcpXCIsXCJsZW50XCI6dHJ1ZX0gXQ=="
 	testFetchEnvVar := map[string]fetchEnvVar{
 		"Test env var 1": {
 			cloudInitStr: testString1,
@@ -97,6 +101,12 @@ func TestFetchEnvVariablesFromCloudInit(t *testing.T) {
 		},
 		"Negative test env var 5": {
 			cloudInitStr: testString5,
+		},
+		"Test env var 6": {
+			cloudInitStr: testString6,
+			expectOutput: map[string]string{
+				"JSON": `[ { "title":"Atlas of the World (second edition - 1987)","lent":true} ]`,
+			},
 		},
 	}
 	for testname, test := range testFetchEnvVar {
@@ -133,6 +143,48 @@ func decodeAndParseEnvVariablesFromCloudInit(ciStr string) (map[string]string, e
 	} else { // treat like the key value map for envs (old syntax)
 		envPairs := strings.Split(string(ud), "\n")
 		return parseEnvVariablesFromCloudInit(envPairs)
+	}
+}
+
+// TestEnvVarsToUserData checks how the variables of the user-data are
+// rendered for the cidata disk of an HV=k shim VM, whose init sources the
+// lines. A value of a plain NAME=value line has to arrive as it is. A value
+// of a runcmd entry is shell text, and nothing but what the shell expands in
+// it may change.
+func TestEnvVarsToUserData(t *testing.T) {
+	envVars := map[string]string{
+		"JSON":   `[ { "title":"Atlas","lent":true} ]`,
+		"DOLLAR": `$HOME and \$HOME`,
+		"QUOTE":  `it's`,
+		"SHARE":  `\\server\share\`,
+	}
+	tests := []struct {
+		name   string
+		expand bool
+		want   string
+	}{
+		{
+			name: "plain lines",
+			want: `DOLLAR='$HOME and \$HOME'` + "\n" +
+				`JSON='[ { "title":"Atlas","lent":true} ]'` + "\n" +
+				`QUOTE='it'\''s'` + "\n" +
+				`SHARE='\\server\share\'` + "\n",
+		},
+		{
+			name:   "runcmd",
+			expand: true,
+			want: `DOLLAR="$HOME and \$HOME"` + "\n" +
+				`JSON="[ { \"title\":\"Atlas\",\"lent\":true} ]"` + "\n" +
+				`QUOTE="it's"` + "\n" +
+				`SHARE="\\\\server\\share\\"` + "\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := envVarsToUserData(envVars, tt.expand); got != tt.want {
+				t.Errorf("unexpected user-data\nwant:\n%s\n got:\n%s", tt.want, got)
+			}
+		})
 	}
 }
 

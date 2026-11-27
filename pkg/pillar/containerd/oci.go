@@ -55,6 +55,11 @@ type ociSpec struct {
 	stopSignal    string
 	service       bool
 	containerOpts []containerd.NewContainerOpts
+	// userEnv are the entries at the end of Process.Env which UpdateEnvVar
+	// has added: the variables of the user-data. expandUserEnv tells that
+	// their values are shell text.
+	userEnv       []string
+	expandUserEnv bool
 }
 
 // OCISpec provides methods to manipulate OCI runtime specifications and create containers based on them
@@ -69,7 +74,7 @@ type OCISpec interface {
 	UpdateFromDomain(dom *types.DomainConfig, status *types.DomainStatus)
 	UpdateFromVolume(string) error
 	UpdateMounts([]types.DiskStatus) error
-	UpdateEnvVar(map[string]string)
+	UpdateEnvVar(map[string]string, bool)
 	UpdateWithIoBundles(config *types.DomainConfig, aa *types.AssignableAdapters, domainID int) error
 	GrantFullAccessToDevices()
 }
@@ -182,22 +187,7 @@ func (s *ociSpec) AddLoader(volume string) error {
 		}
 
 		// create env manifest
-		envContent := ""
-		if s.Process.Cwd != "" {
-			envContent = fmt.Sprintf("export WORKDIR=\"%s\"\n", s.Process.Cwd)
-		}
-		for _, e := range s.Process.Env {
-			keyAndValueSlice := strings.SplitN(e, "=", 2)
-			if len(keyAndValueSlice) == 2 {
-				// handles Key=Value case
-				envContent = envContent + fmt.Sprintf("export %s=\"%s\"\n", keyAndValueSlice[0], keyAndValueSlice[1])
-			} else {
-				// handles Key= case
-				envContent = envContent + fmt.Sprintf("export %s\n", e)
-			}
-		}
-
-		if err := os.WriteFile(filepath.Join(volumeRoot, "environment"), []byte(envContent), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(volumeRoot, "environment"), []byte(s.envManifest()), 0644); err != nil {
 			return err
 		}
 
@@ -718,10 +708,14 @@ func (s *ociSpec) UpdateMounts(disks []types.DiskStatus) error {
 	return nil
 }
 
-// UpdateEnvVar adds user specified env variables to the OCI spec.
-func (s *ociSpec) UpdateEnvVar(envVars map[string]string) {
+// UpdateEnvVar adds user specified env variables to the OCI spec. expand tells
+// that their values are shell text, which the shell of a shim VM expands.
+func (s *ociSpec) UpdateEnvVar(envVars map[string]string, expand bool) {
+	s.expandUserEnv = expand
 	for k, v := range envVars {
-		s.Process.Env = append(s.Process.Env, fmt.Sprintf("%s=%s", k, v))
+		entry := fmt.Sprintf("%s=%s", k, v)
+		s.Process.Env = append(s.Process.Env, entry)
+		s.userEnv = append(s.userEnv, entry)
 		switch k {
 		case eveECOCMDOverride:
 			if len(v) != 0 {

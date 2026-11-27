@@ -2767,6 +2767,7 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 
 	//clean environment variables
 	status.EnvVariables = nil
+	status.ExpandEnvVariables = false
 
 	// Fetch cloud-init userdata
 	if config.IsCipher || config.CloudInitUserData != nil {
@@ -2798,6 +2799,8 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 						err)
 				}
 				status.EnvVariables = envList
+				// an entry of runcmd is a line of shell
+				status.ExpandEnvVariables = true
 			} else { // treat like the key value map for envs (old syntax)
 				envPairs := strings.Split(ciStr, "\n")
 				envList, err := parseEnvVariablesFromCloudInit(envPairs)
@@ -2822,15 +2825,16 @@ func configToStatus(ctx *domainContext, config types.DomainConfig,
 			//                              as /dev/vd[b,c,...]; rewritten by
 			//                              the initrd into /mnt/mountPoints so
 			//                              mount_disk.sh can map device → dir.
-			//   KEY="value"              — env vars, sourced as `export KEY=...`
-			//                              into /mnt/environment.
+			//   KEY='value'              — env vars, sourced as `export KEY=...`
+			//                              into /mnt/environment; KEY="value"
+			//                              where the shell has to expand it.
 			// The initrd handles each line kind separately. Volume markers use
 			// a shell comment prefix so they're inert under `. /mnt/environment`.
 			// VM apps and HV=kvm container shims continue to use the standard
 			// HostDisk-backed ISO path via appendCloudInitDisk below.
 			if ctx.hvTypeKube && config.VirtualizationMode != types.NOHYPER {
 				mountUserData := mountDirsToUserData(status.DiskStatusList)
-				envUserData := envVarsToUserData(status.EnvVariables)
+				envUserData := envVarsToUserData(status.EnvVariables, status.ExpandEnvVariables)
 				userData := mountUserData + envUserData
 				if userData != "" {
 					status.DiskStatusList = append(status.DiskStatusList, types.DiskStatus{
@@ -3721,11 +3725,12 @@ func mountDirsToUserData(diskStatusList []types.DiskStatus) string {
 	return sb.String()
 }
 
-// envVarsToUserData renders an env-var map as shell KEY="value" lines, sorted
+// envVarsToUserData renders an env-var map as shell KEY='value' lines, sorted
 // by key for determinism. Used to build the user-data payload for a container
 // shim-VMI's cloud-init NoCloud disk; the eve-external-boot-image initrd
-// sources these as `export KEY=value` before launching the container.
-func envVarsToUserData(envVars map[string]string) string {
+// sources these as `export KEY=value` before launching the container. With
+// expand the lines are KEY="value", where the initrd's shell expands the value.
+func envVarsToUserData(envVars map[string]string, expand bool) string {
 	if len(envVars) == 0 {
 		return ""
 	}
@@ -3735,13 +3740,14 @@ func envVarsToUserData(envVars map[string]string) string {
 	}
 	sort.Strings(keys)
 	var sb strings.Builder
+	// The initrd's shell sources the lines: quote the values the way the
+	// environment file of an HV=kvm shim VM has the ones of the user-data.
+	quote := containerd.ShellLiteral
+	if expand {
+		quote = containerd.ShellExpanded
+	}
 	for _, k := range keys {
-		// Wrap the value in double quotes and escape embedded double quotes
-		// and backslashes so the initrd's shell parser handles values with
-		// spaces or special characters safely.
-		v := strings.ReplaceAll(envVars[k], `\`, `\\`)
-		v = strings.ReplaceAll(v, `"`, `\"`)
-		fmt.Fprintf(&sb, "%s=\"%s\"\n", k, v)
+		fmt.Fprintf(&sb, "%s=%s\n", k, quote(envVars[k]))
 	}
 	return sb.String()
 }
