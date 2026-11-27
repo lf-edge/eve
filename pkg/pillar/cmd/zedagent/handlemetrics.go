@@ -572,7 +572,15 @@ func publishMetrics(ctx *zedagentContext, iteration int) {
 	}
 	log.Tracef("persistAppUsage %d, elapse sec %v", persistAppUsage, time.Since(startPubTime).Seconds())
 
-	persistOverhead := persistUsage - persistAppUsage
+	// The app paths are summed per directory, so shared blocks (overlay
+	// layers, snapshots) can make them exceed the filesystem's used size.
+	var persistOverhead uint64
+	if persistUsage < persistAppUsage {
+		log.Functionf("persist overhead would be negative: used %d < app usage %d",
+			persistUsage, persistAppUsage)
+	} else {
+		persistOverhead = persistUsage - persistAppUsage
+	}
 	// Convert to MB
 	runtimeStorageOverhead := types.RoundupToKB(types.RoundupToKB(persistOverhead))
 	appRunTimeStorage := types.RoundupToKB(types.RoundupToKB(persistAppUsage))
