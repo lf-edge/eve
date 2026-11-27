@@ -15,6 +15,7 @@ and they currently include:
 * [Pulls](https://github.com/lf-edge/eve/actions?query=workflow%3APRs) manages pull requests
 * [Apache Yetus](https://github.com/lf-edge/eve/actions?query=workflow%3A%22Apache+Yetus%22) runs static, lint-like [Apache Yetus](http://yetus.apache.org/) checks on EVE
 * [Eden](https://github.com/lf-edge/eve/actions?query=workflow%3AEden) runs integration tests from EVE's sister project [Eden](https://github.com/lf-edge/eden)
+* [Claude Code](https://github.com/lf-edge/eve/actions?query=workflow%3A%22Claude+Code%22) and [Claude Security Review](https://github.com/lf-edge/eve/actions?query=workflow%3A%22Claude+Security+Review%22) review pull requests with Claude
 
 Since EVE community generally frowns on branch-heavy development most of the descriptions below
 will only apply to the master branch (unless stated otherwise).
@@ -74,6 +75,36 @@ local build.
 It may be marginally useful to run Yetus on updates to the master itself, but Yetus in its full
 glory will generate too much feedback and the incremental updates are already covered by Yetus
 triggering on pull request submissions.
+
+## Claude reviews
+
+Two workflows review pull requests with Claude and post the result as a PR review from
+`github-actions[bot]`:
+
+* **Claude Code** reviews the code: bugs, quality, security and performance.
+* **Claude Security Review** runs the audit of
+  [claude-code-security-review](https://github.com/anthropics/claude-code-security-review)
+  and posts each finding as an inline comment.
+
+Both run automatically when a pull request is opened, pushed to, reopened or marked ready for
+review, if its author has write access to the repository. Draft pull requests are skipped. Anyone
+who has contributed to the repository can also ask for a code review by writing `@claude` in a
+comment on the pull request's Conversation tab; a comment on a line of code does not work.
+
+Pull requests come from forks, and a `pull_request` run on a fork gets neither secrets nor a token
+that can write. So the `Claude Review Request` workflow only runs on `pull_request` and does
+nothing else; the reviews run after it on `workflow_run`, from the master branch, with the
+secrets. They trust nothing from that run and look the pull request up again. Claude runs with a
+read-only token and returns its review as data, and a separate job without secrets posts it. A
+pull request into a stable branch is only reviewed automatically if that branch has the
+`Claude Review Request` workflow.
+
+These runs belong to master's commit, so they do not appear among the pull request's checks.
+Instead, each review sets a commit status on the pull request's head, `Claude Review` or
+`Claude Security Review`: pending while it runs, then success or error, linking to the run.
+
+The security review skips a push whose changes were already audited, such as a rebase, and does
+not post a finding again when one of the same category was already posted near the same line.
 
 ## Maintaining Dockerfile Versions
 
