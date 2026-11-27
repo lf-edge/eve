@@ -26,7 +26,7 @@ profile vtpm /usr/bin/vtpm {
     /config/device.key.pem          r,
 
     # allow executing swtpm
-    /usr/bin/swtpm                  Px,
+    /usr/bin/swtpm                  Px -> swtpm,
     /usr/bin/swtpm_ioctl            ix,
 
     # allow saving boot variables

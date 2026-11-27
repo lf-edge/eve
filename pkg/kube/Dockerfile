@@ -1,5 +1,9 @@
 # syntax=docker/dockerfile-upstream:1.5.0-rc2-labs
 
+# The only declaration of the KubeVirt release. Declared above the first
+# FROM so every stage can pick it up with a bare `ARG KUBEVIRT_VERSION`.
+ARG KUBEVIRT_VERSION=v1.7.3
+
 # sriov-cni upstream image is used only as a source of the prebuilt sriov
 # binary; we copy it into our final image at build time so we don't need a
 # DaemonSet at runtime just to stage the binary on each node.  Pinned by
@@ -22,6 +26,7 @@ FROM --platform=linux/amd64 ghcr.io/k8snetworkplumbingwg/sriov-cni@sha256:fce504
 FROM lfedge/eve-alpine:2e8bb7ac88e47c8dd32369167d2fab3528e282a3 AS build
 
 ARG TARGETARCH
+ENV BUILD_PKGS="patch"
 ENV PKGS="alpine-baselayout musl-utils iproute2 iptables curl openrc \
          open-iscsi libvirt libvirt-client util-linux grep findutils jq \
          cni-plugins nfs-utils inotify-tools sqlite"
@@ -39,12 +44,26 @@ COPY --from=sriov-cni-bin /usr/bin/sriov /out/usr/bin/sriov
 # Register etcdctl in the APK DB, mandatory for it to be included in the SBOM.
 RUN register-sbom-pkg.sh -n etcdctl -v "${ETCDCTL_VERSION}" -l Apache-2.0 -u https://github.com/etcd-io/etcd
 
-# Note: virtctl itself is downloaded and installed in the final scratch stage below;
-# the APK DB entry is added here in the build stage so it propagates via COPY /out/.
-# Keep this version aligned with VIRTCTL_VERSION in the final stage.
-ENV VIRTCTL_VERSION=v1.7.3
+# pillar's RolloutDiskToPVC reads only virtctl image-upload's stderr: it
+# relies on the progress bar and status lines going to stdout, and on the
+# returned error ("already successfully imported" included) going to stderr.
+# Re-verify that split when bumping this version.
+ARG KUBEVIRT_VERSION
+ADD https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/virtctl-${KUBEVIRT_VERSION}-linux-${TARGETARCH} /tmp/virtctl
+RUN install /tmp/virtctl /out/usr/bin/virtctl && rm -f /tmp/virtctl
 # Register virtctl in the APK DB, mandatory for it to be included in the SBOM.
-RUN register-sbom-pkg.sh -n virtctl -v "${VIRTCTL_VERSION}" -l Apache-2.0 -u https://github.com/kubevirt/kubevirt
+RUN register-sbom-pkg.sh -n virtctl -v "${KUBEVIRT_VERSION}" -l Apache-2.0 -u https://github.com/kubevirt/kubevirt
+
+# kubevirt-operator.yaml of the same release. The patch adds the license
+# header and puts KV_IO_EXTRA_ENV_VIRT_IN_CONTAINER into the env: of the
+# virt-operator container. The hash pins the patched result for this
+# KUBEVIRT_VERSION; on a bump, refresh the patch if it no longer applies and
+# set the hash to the sha256sum of the newly patched manifest.
+ADD https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml /tmp/
+COPY kubevirt-operator.yaml.patch /tmp/
+RUN patch /tmp/kubevirt-operator.yaml /tmp/kubevirt-operator.yaml.patch
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+RUN echo 'c8f600c2cd6679644c6c217f03265835e014ce3ade1b79e293a94415acfbf925 /tmp/kubevirt-operator.yaml' | sha256sum -c
 
 COPY eve-bridge /plugins/eve-bridge
 WORKDIR /plugins/eve-bridge
@@ -77,10 +96,11 @@ ARG COVER=n
 # hadolint ignore=SC2086
 RUN COVERFLAGS="" && \
     if [ "$COVER" = "y" ]; then COVERFLAGS="-cover -covermode=atomic -tags cover"; fi && \
-    GO111MODULE=on CGO_ENABLED=0 go build -v $COVERFLAGS -ldflags "-s -w" -mod=vendor -o /out/usr/bin/kube-init . && \
+    GO111MODULE=on CGO_ENABLED=0 go build -v $COVERFLAGS -ldflags "-s -w -X github.com/lf-edge/eve/pkg/kube/kube-init/versions.KubeVirt=${KUBEVIRT_VERSION}" -mod=vendor -o /out/usr/bin/kube-init . && \
     GO111MODULE=on CGO_ENABLED=0 go build -v -ldflags "-s -w" -mod=vendor -o /out/usr/bin/k3s-sctl ./cmd/k3s-sctl
 
 FROM scratch
+ARG KUBEVIRT_VERSION
 COPY --from=build /out/ /
 RUN mkdir -p /usr/bin/kube/
 
@@ -91,6 +111,7 @@ COPY manifests/* /etc/k3s-manifests/
 
 # upgrades
 COPY update-component/expected_versions.yaml /etc/
+RUN printf 'kubevirt: "%s"\n' "${KUBEVIRT_VERSION}" >> /etc/expected_versions.yaml
 COPY update-component/settings_longhorn.yaml /etc/
 
 # k3s
@@ -104,7 +125,7 @@ COPY cfg-manifests/04-multinode-watch-cache.yaml /etc/kube/
 # Manifests the daemon applies at first boot. Stays under /etc; the
 # Go components/ package reads them by path.
 COPY multus-daemonset.yaml /etc
-COPY kubevirt-operator.yaml /etc
+COPY --from=build /tmp/kubevirt-operator.yaml /etc
 COPY kubevirt-features.yaml /etc
 
 # Longhorn config
@@ -157,17 +178,6 @@ RUN chmod +x /usr/bin/k3s-control /usr/bin/k3s-sctl && \
     ln -s /usr/bin/k3s-control /usr/bin/k3s-stop && \
     ln -s /usr/bin/k3s-control /usr/bin/k3s-start && \
     ln -s /usr/bin/k3s-control /usr/bin/k3s-status
-
-# pillar's RolloutDiskToPVC reads only virtctl image-upload's stderr: it
-# relies on the progress bar and status lines going to stdout, and on the
-# returned error ("already successfully imported" included) going to stderr.
-# Re-verify that split when bumping this version.
-ENV VIRTCTL_VERSION=v1.7.3
-ADD https://github.com/kubevirt/kubevirt/releases/download/${VIRTCTL_VERSION}/virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH} .
-
-RUN install virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH} /usr/bin/virtctl
-# We installed under /usr/bin. Remove the downloaded version
-RUN rm -f ./virtctl-${VIRTCTL_VERSION}-linux-${TARGETARCH}
 
 # Where a COVER=y kube-init writes its binary coverage data. Must be in the
 # environment at process start (the Go cover runtime reads it early). Harmless
