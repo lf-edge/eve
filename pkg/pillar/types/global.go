@@ -632,8 +632,8 @@ const (
 const LonghornDiskReservedGBDisabled uint32 = 1024 * 1024
 
 // Valid values for LonghornNodeDrainPolicy.
-// https://longhorn.io/docs/1.9.1/maintenance/maintenance/#node-drain-policy-recommendations
-// Please update above if pkg/kube/longhorn-utils.sh LONGHORN_VERSION=v1.9.1 changes.
+// https://longhorn.io/docs/1.13.0/maintenance/maintenance/#node-drain-policy-recommendations
+// Please update above if Longhorn in pkg/kube/kube-init/versions/versions.go changes.
 const (
 	LonghornNodeDrainPolicyBlockForEviction           = "block-for-eviction"
 	LonghornNodeDrainPolicyBlockIfContainsLastReplica = "block-for-eviction-if-contains-last-replica"

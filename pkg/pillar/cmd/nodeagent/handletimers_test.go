@@ -59,6 +59,41 @@ func TestFallbackOnCloudDisconnect_Exceeded(t *testing.T) {
 	}
 }
 
+// Once kube-init has started upgrading the kube components on this
+// image, losing the controller does not fall back to the other partition.
+func TestFallbackOnCloudDisconnect_SkippedOnceKubePassStarted(t *testing.T) {
+	tc := newTestCtx()
+	tc.ctx.updateInprogress = true
+	tc.ctx.configGetSuccess = true
+	tc.ctx.kubePassStarted = func() bool { return true }
+	limit := tc.ctx.globalConfig.GlobalValueInt(types.FallbackIfCloudGoneTime)
+	tc.ctx.timeTickCount = limit + 100
+	tc.ctx.lastControllerReachableTime = 0
+
+	handleFallbackOnCloudDisconnect(tc.ctx)
+
+	if len(tc.scheduledOps) != 0 {
+		t.Fatalf("kube pass started: should not schedule a fallback reboot")
+	}
+}
+
+// An image that has not reached the controller still falls back, whatever
+// kube-init reports.
+func TestFallbackOnCloudDisconnect_ControllerNeverReached(t *testing.T) {
+	tc := newTestCtx()
+	tc.ctx.updateInprogress = true
+	tc.ctx.kubePassStarted = func() bool { return true }
+	limit := tc.ctx.globalConfig.GlobalValueInt(types.FallbackIfCloudGoneTime)
+	tc.ctx.timeTickCount = limit + 100
+	tc.ctx.lastControllerReachableTime = 0
+
+	handleFallbackOnCloudDisconnect(tc.ctx)
+
+	if len(tc.scheduledOps) != 1 {
+		t.Fatalf("expected 1 fallback reboot scheduled, got %d", len(tc.scheduledOps))
+	}
+}
+
 // --- handleResetOnCloudDisconnect ------------------------------------
 
 func TestResetOnCloudDisconnect_WithinLimit(t *testing.T) {
@@ -231,6 +266,104 @@ func TestUpgradeTestValidation_Expires(t *testing.T) {
 	got, _ := tc.pubZbootConfig.items["IMGA"].(types.ZbootConfig)
 	if !got.TestComplete {
 		t.Errorf("expected ZbootConfig.TestComplete=true, got %+v", got)
+	}
+}
+
+// On an EVE-k image the commit of the new partition waits for kube-init's
+// component update pass, and goes through on the first tick after it ends.
+func TestUpgradeTestValidation_HeldByKubeComponents(t *testing.T) {
+	tc := newTestCtx()
+	tc.ctx.testInprogress = true
+	tc.ctx.updateInprogress = true
+	tc.ctx.curPart = "IMGA"
+	tc.pubZbootConfig.items["IMGA"] = types.ZbootConfig{
+		PartitionLabel: "IMGA", TestComplete: false,
+	}
+	tc.subZbootStatus.items["IMGA"] = types.ZbootStatus{
+		PartitionLabel: "IMGA", CurrentPartition: true,
+		PartitionState: "inprogress", ShortVersion: "v2",
+	}
+	limit := tc.ctx.globalConfig.GlobalValueInt(types.MintimeUpdateSuccess)
+	tc.ctx.upgradeTestStartTime = 0
+	tc.ctx.timeTickCount = limit + 1
+	ready := false
+	tc.ctx.kubeComponentsReady = func() bool { return ready }
+
+	handleUpgradeTestValidation(tc.ctx)
+
+	if tc.ctx.testComplete {
+		t.Fatalf("test completed while the kube component update pass was running")
+	}
+	if got, _ := tc.pubZbootConfig.items["IMGA"].(types.ZbootConfig); got.TestComplete {
+		t.Fatalf("ZbootConfig.TestComplete set while held: %+v", got)
+	}
+	if !tc.ctx.testInprogress {
+		t.Fatalf("the hold must leave the test in progress")
+	}
+
+	// Much later, but within the cap: still held.
+	tc.ctx.timeTickCount = limit + 1 + kubeComponentsHoldLimit - 1
+	handleUpgradeTestValidation(tc.ctx)
+	if tc.ctx.testComplete {
+		t.Fatalf("test completed while still held")
+	}
+
+	ready = true
+	handleUpgradeTestValidation(tc.ctx)
+
+	if !tc.ctx.testComplete {
+		t.Errorf("expected testComplete=true once the pass ended")
+	}
+	if got, _ := tc.pubZbootConfig.items["IMGA"].(types.ZbootConfig); !got.TestComplete {
+		t.Errorf("expected ZbootConfig.TestComplete=true, got %+v", got)
+	}
+}
+
+// A pass that never ends cannot hold the commit past the cap.
+func TestUpgradeTestValidation_KubeHoldCapped(t *testing.T) {
+	tc := newTestCtx()
+	tc.ctx.testInprogress = true
+	tc.ctx.updateInprogress = true
+	tc.ctx.curPart = "IMGA"
+	tc.pubZbootConfig.items["IMGA"] = types.ZbootConfig{
+		PartitionLabel: "IMGA", TestComplete: false,
+	}
+	tc.subZbootStatus.items["IMGA"] = types.ZbootStatus{
+		PartitionLabel: "IMGA", CurrentPartition: true,
+		PartitionState: "inprogress", ShortVersion: "v2",
+	}
+	limit := tc.ctx.globalConfig.GlobalValueInt(types.MintimeUpdateSuccess)
+	tc.ctx.upgradeTestStartTime = 0
+	tc.ctx.timeTickCount = limit + 1
+	tc.ctx.kubeComponentsReady = func() bool { return false }
+
+	handleUpgradeTestValidation(tc.ctx)
+	if tc.ctx.testComplete {
+		t.Fatalf("test completed as soon as it was held")
+	}
+
+	tc.ctx.timeTickCount += kubeComponentsHoldLimit
+	handleUpgradeTestValidation(tc.ctx)
+	if !tc.ctx.testComplete {
+		t.Errorf("expected testComplete=true once the hold cap ran out")
+	}
+}
+
+// The minimum test time still applies when the kube components are ready.
+func TestUpgradeTestValidation_KubeReadyStillCounts(t *testing.T) {
+	tc := newTestCtx()
+	tc.ctx.testInprogress = true
+	tc.ctx.updateInprogress = true
+	tc.ctx.curPart = "IMGA"
+	limit := tc.ctx.globalConfig.GlobalValueInt(types.MintimeUpdateSuccess)
+	tc.ctx.upgradeTestStartTime = 0
+	tc.ctx.timeTickCount = limit / 2
+	tc.ctx.kubeComponentsReady = func() bool { return true }
+
+	handleUpgradeTestValidation(tc.ctx)
+
+	if tc.ctx.testComplete {
+		t.Errorf("test should not be complete before the test time is up")
 	}
 }
 

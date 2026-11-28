@@ -9,6 +9,8 @@ import (
 
 	"github.com/golang/protobuf/ptypes"
 	"github.com/lf-edge/eve-api/go/info"
+	"github.com/lf-edge/eve/pkg/pillar/base"
+	"github.com/lf-edge/eve/pkg/pillar/kubeapi"
 	"github.com/lf-edge/eve/pkg/pillar/pubsub"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	"google.golang.org/protobuf/proto"
@@ -97,9 +99,21 @@ func isKubeClusterUpdating(ctx *zedagentContext) bool {
 	if ctx.subClusterUpdateStatus == nil {
 		return false
 	}
+	// A deferred pass is run again later and leaves its last step's
+	// status behind; the device is not updating meanwhile.
+	if status, ok := ctx.kubeComponentsGate.Status(); ok &&
+		status.UpdateState == types.KubeInitUpdateStateDeferred {
+		return false
+	}
 	items := ctx.subClusterUpdateStatus.GetAll()
 	if status, ok := items["global"].(types.KubeClusterUpdateStatus); ok {
 		if (status.Component == types.CompLonghorn) && (status.Status == types.CompStatusCompleted) {
+			return false
+		}
+		// A failed update is not retried by the running image, so it
+		// is not in progress either. Its error is still reported.
+		if status.Status == types.CompStatusFailed ||
+			status.Status == types.CompStatusDownloadFailed {
 			return false
 		}
 		return true
@@ -142,6 +156,13 @@ func initKubeSubs(ctx *zedagentContext) {
 		log.Fatal(err)
 	}
 	ctx.subKubeClusterInfo.Activate()
+
+	if base.IsHVTypeKube() {
+		ctx.kubeComponentsGate, err = kubeapi.NewKubeComponentsGate(ctx.ps, agentName)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 }
 
 func kubeClusterInfoTask(ctxPtr *zedagentContext, triggerClusterInfo <-chan destinationBitset) {

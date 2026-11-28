@@ -127,6 +127,95 @@ to the `HV=k` zvol layout has no path back to a filesystem dataset the other
 flavors can read once the conversion is committed. Before that, the automatic
 fallback described below restores the old vault.
 
+### Kubernetes component upgrades
+
+An EVE upgrade can carry newer versions of the cluster components the kube
+container manages: Multus, KubeVirt, CDI and Longhorn. kube-init upgrades them
+in that order in one pass, on the first boot of the new image.
+
+Each image carries a kube version number, and each node records the number of
+the last pass it completed in `/var/lib/applied-kube-version` inside the kube
+container. The pass runs only when the image's number is higher than the
+node's. A component version changed without raising the number is therefore
+never applied, and booting an older image never downgrades anything. The pass
+only runs on devices with replicated cluster storage, or with no cluster
+configuration at all.
+
+On a new EVE image that is still under test, the pass starts only once the
+device has reached the controller on that image. Until then nodeagent can
+still fall back to the other partition if the controller stays out of reach.
+Once the pass has started it does not: the other partition cannot downgrade
+the components.
+
+In a cluster the controller upgrades one node at a time. The first node to boot
+the new image upgrades the components for the whole cluster while the others
+still run the old image. Each later node runs the same pass, finds every
+component at its target version, and records the new number.
+
+While the pass is pending kube-init is in the state `WAIT_UPGRADE`, before
+`RUNNING`. `eve exec kube k3s-status` shows it, as does the
+`eve.lfedge.org/kube-init-state` annotation on the Node object. Until the pass
+ends:
+
+- the new EVE partition is not marked active, so the controller does not start
+  upgrading the next node. This lasts at most 8 hours after the test time is
+  up; after that the partition is committed even if the pass is still
+  running;
+- volumes are not created or prepared and app VMs are not started on this
+  node, and the on-boot descheduler does not bring apps back to it.
+
+Every step of the pass is bounded, so it always ends, in success, failure or
+deferral. A pass is deferred when a component is not ready at its current
+version within 10 minutes, or the node stays cordoned for 10 minutes, before
+anything is changed. It is also deferred when Longhorn was already upgraded,
+by this node or another, but has not converged enough to restore its upgrade
+version check. A deferred pass lets the node carry on, and the device does not
+report itself as updating. Every 10 minutes kube-init asks whether the pass
+could now get past those checks, and once it could, runs it again in
+`WAIT_UPGRADE`, with volumes and apps held as above. A failed pass is not retried by the
+same image. The node carries on
+with the components as they are, the partition is committed, and the failure
+is reported in the device's cluster update status. A later image with a higher
+kube version number runs the pass again.
+
+#### Longhorn
+
+Longhorn supports upgrading by one minor version at a time and refuses
+anything wider, and kube-init applies the same rule before it touches
+anything: same major version, at most one minor version up, never down. A
+wider upgrade is only attempted for an exact pair of versions listed as a
+validated large step in
+`pkg/kube/update-component/longhorn_upgrade.go`. For such a step
+longhorn-manager is started without its own upgrade version check, and the
+check is restored once every volume runs the new engine.
+
+This build ships Longhorn v1.13.0 and upgrades to it only from v1.9.1, as a
+validated large step. A node running any other Longhorn version is refused,
+and its pass fails with the reason in its error.
+
+Before applying a Longhorn upgrade kube-init requires that no volume is
+faulted, that no Longhorn CRD still stores objects of an API version the
+target no longer serves, that the node is not cordoned (the tie-breaker node
+excepted), and, for a large step, that every engine image in use is at the
+version being upgraded from. An upgrade that is refused for any of these
+reasons fails the pass with the reason in its error, except a cordoned node,
+which defers it.
+
+The upgrade is complete when Longhorn reports the new version as installed and
+every volume has been moved to the new engine image. Attached volumes are
+upgraded live, one per node at a time, which is what makes this the longest
+step: it is given 60 minutes.
+
+In a cluster with a tie-breaker node, a Longhorn upgrade recreates the CSI
+plugin DaemonSet and the CSI sidecar Deployments, which drops the node
+selector and replica count the tie-breaker configuration gave them. kube-init
+sets both again once the upgrade is complete. It leaves the engine-image
+DaemonSets alone, because changing them restarts their pods while volumes are
+attached, so the tie-breaker runs an engine-image pod for the new engine
+image. No replica is placed on the tie-breaker either way: that is a setting
+on its Longhorn node, which an upgrade keeps. A failure to set them again is
+logged and does not fail the upgrade.
+
 ### Carrying app volumes from EVE-kvm
 
 Every volume except container volumes becomes a Longhorn PVC on `HV=k`. When
@@ -309,7 +398,7 @@ falls back to volume creation time, which is equivalent to a full rebuild for an
 long-running volume.
 
 EVE-k automatically creates a Longhorn
-[`RecurringJob`](https://longhorn.io/docs/1.9.1/snapshots-and-backups/scheduling-backups-and-snapshots/)
+[`RecurringJob`](https://longhorn.io/docs/1.13.0/snapshots-and-backups/scheduling-backups-and-snapshots/)
 that snapshots all enrolled volumes on a configurable interval (default: daily). This caps
 the maximum delta rebuild data at approximately one interval's worth of writes regardless
 of volume age or size.

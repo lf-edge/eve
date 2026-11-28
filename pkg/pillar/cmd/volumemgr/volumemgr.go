@@ -171,6 +171,8 @@ type volumemgrContext struct {
 	// EdgeNodeInfo.DeviceName; passed to the kubeapi readiness helpers instead of
 	// relying on os.Hostname().
 	nodeName string
+	// kubeComponentsGate is nil off EVE-k.
+	kubeComponentsGate *kubeapi.KubeComponentsGate
 
 	// isAppOpLeader mirrors zedmanager's own field of the same name
 	// (cmd/zedmanager/dnidbackup.go): this node's cached answer to whether
@@ -212,6 +214,12 @@ func (ctxPtr *volumemgrContext) IsTwoNodeHACluster() bool {
 	}
 	encc := item.(types.EdgeNodeClusterConfig)
 	return encc.Valid && encc.WitnessIP != nil
+}
+
+// GetKubeComponentsGate returns the gate on kube-init's component update
+// pass (EVE-k), or nil, which is always ready, off EVE-k.
+func (ctxPtr *volumemgrContext) GetKubeComponentsGate() *kubeapi.KubeComponentsGate {
+	return ctxPtr.kubeComponentsGate
 }
 
 // AddAgentSpecificCLIFlags adds CLI options
@@ -406,6 +414,11 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		}
 		ctx.nodeName = nodeName
 
+		ctx.kubeComponentsGate, err = kubeapi.NewKubeComponentsGate(ps, agentName)
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		// Assume single node: where kubevirt is running
 		waitForLhFlag := true
 		if encc.Valid && encc.ClusterType != types.ClusterTypeReplicatedStorage {
@@ -414,6 +427,7 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning, ctx.nodeName,
 			kubeapi.WaitForKubernetesOptions{
 				WaitForLonghorn: waitForLhFlag,
+				ComponentsGate:  ctx.kubeComponentsGate,
 			})
 		if err != nil {
 			log.Errorf("volumemgr run: wait for kubernetes error %v", err)

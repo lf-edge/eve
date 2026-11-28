@@ -18,9 +18,10 @@ import (
 // expects on its third positional argument; see
 // pkg/pillar/cmd/zedkube/zedkube.go.
 const (
-	StatusDownload  = "download"
-	StatusCompleted = "completed"
-	StatusFailed    = "failed"
+	StatusDownload   = "download"
+	StatusInProgress = "in_progress"
+	StatusCompleted  = "completed"
+	StatusFailed     = "failed"
 )
 
 // PublishUpdateStatus shells out to pillar's zedkube binary to emit

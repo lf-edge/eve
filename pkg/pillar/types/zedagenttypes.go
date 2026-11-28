@@ -466,6 +466,7 @@ type NodeAgentStatus struct {
 	Name                        string
 	CurPart                     string
 	UpdateInprogress            bool
+	ControllerReached           bool // config received from the controller since boot
 	RemainingTestTime           time.Duration
 	DeviceReboot                bool
 	DeviceShutdown              bool

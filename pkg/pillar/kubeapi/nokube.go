@@ -20,6 +20,7 @@ import (
 type WaitForKubernetesOptions struct {
 	WaitForKubevirt bool
 	WaitForLonghorn bool
+	ComponentsGate  *KubeComponentsGate
 }
 
 // WaitForKubernetes in this file is just stub for non EVE-k builds.

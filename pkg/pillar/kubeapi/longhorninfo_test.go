@@ -430,7 +430,7 @@ func TestPopulateKVIInner(t *testing.T) {
 		r2TcpAddr = "tcp://10.0.0.2:8502" // rebuildStatus key format (with tcp://)
 	)
 
-	noSnapBytes := func(string) (int64, error) { return 0, nil }
+	noSnapBytes := func(context.Context, string) (int64, error) { return 0, nil }
 
 	r1 := fakeReplica("r1", eng1, "10.0.0.1", 8502, lhv1beta2.InstanceStateRunning)
 	r2 := fakeReplica("r2", eng1, "10.0.0.2", 8502, lhv1beta2.InstanceStateRunning)

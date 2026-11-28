@@ -27,7 +27,7 @@ const (
 	K3s      = "v1.34.2+k3s1"
 	KubeVirt = "v1.7.3"
 	CDI      = "v1.66.1"
-	Longhorn = "v1.9.1"
+	Longhorn = "v1.13.0"
 	Multus   = "v3.9.3"
 
 	Descheduler             = "v0.29.0"
@@ -40,11 +40,11 @@ const (
 // Longhorn ships these alongside its own release but they follow the
 // upstream CSI sidecar cadence, so they do not track Longhorn above.
 const (
-	SupportBundleKit       = "v0.0.61"
-	CSIAttacher            = "v4.9.0-20250709"
-	CSIProvisioner         = "v5.3.0-20250709"
-	CSINodeDriverRegistrar = "v2.14.0-20250709"
-	CSIResizer             = "v1.14.0-20250709"
-	CSISnapshotter         = "v8.3.0-20250709"
-	CSILivenessProbe       = "v2.16.0-20250709"
+	SupportBundleKit       = "v0.0.98"
+	CSIAttacher            = "v4.13.0"
+	CSIProvisioner         = "v6.3.0"
+	CSINodeDriverRegistrar = "v2.18.0"
+	CSIResizer             = "v2.2.1"
+	CSISnapshotter         = "v8.6.0"
+	CSILivenessProbe       = "v2.20.0"
 )

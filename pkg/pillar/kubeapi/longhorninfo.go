@@ -91,6 +91,11 @@ func LonghornVolumeSnapshotBytes(longhornVolumeName string) (int64, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	return longhornVolumeSnapshotBytes(ctx, lhClient, longhornVolumeName)
+}
+
+func longhornVolumeSnapshotBytes(ctx context.Context, lhClient versioned.Interface,
+	longhornVolumeName string) (int64, error) {
 	snaps, err := lhClient.LonghornV1beta2().Snapshots(longhornNamespace).List(
 		ctx, metav1.ListOptions{LabelSelector: "longhornvolume=" + longhornVolumeName})
 	if err != nil {
@@ -248,7 +253,7 @@ func populateKVIInner(
 	lhVols lhVolumeGetter,
 	lhReplicas lhReplicaLister,
 	lhEngines lhEngineGetter,
-	snapshotBytes func(string) (int64, error),
+	snapshotBytes func(context.Context, string) (int64, error),
 ) (*types.KubeVolumeInfo, error) {
 	pvc, err := pvcs.Get(ctx, kvi.Name, metav1.GetOptions{})
 	if err != nil {
@@ -272,7 +277,7 @@ func populateKVIInner(
 		return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get lh vol err:%v", err)
 	}
 	kvi.AllocatedBytes = uint64(lhVol.Status.ActualSize)
-	if snapBytes, snapErr := snapshotBytes(lhVolName); snapErr == nil && snapBytes > 0 {
+	if snapBytes, snapErr := snapshotBytes(ctx, lhVolName); snapErr == nil && snapBytes > 0 {
 		kvi.AllocatedBytes += uint64(snapBytes)
 	}
 
@@ -383,7 +388,7 @@ func populateKVIInner(
 
 // populateKVIFromPVCName uses the longhorn api to retrieve volume and replica health
 // to be sent out to the controller as info messages
-func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, error) {
+func populateKVIFromPVCName(ctx context.Context, kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, error) {
 	config, err := GetKubeConfig()
 	if err != nil {
 		return kvi, fmt.Errorf("PopulateKVIFromPVCName can't get kubeconfig %v", err)
@@ -400,18 +405,20 @@ func populateKVIFromPVCName(kvi *types.KubeVolumeInfo) (*types.KubeVolumeInfo, e
 	}
 
 	return populateKVIInner(
-		context.Background(),
+		ctx,
 		kvi,
 		clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace),
 		lhClient.LonghornV1beta2().Volumes(longhornNamespace),
 		lhClient.LonghornV1beta2().Replicas(longhornNamespace),
 		lhClient.LonghornV1beta2().Engines(longhornNamespace),
-		LonghornVolumeSnapshotBytes,
+		func(ctx context.Context, lhVolName string) (int64, error) {
+			return longhornVolumeSnapshotBytes(ctx, lhClient, lhVolName)
+		},
 	)
 }
 
 // Return transitionTime and health
-func getDsServiceStatus(ds appsv1.DaemonSet) (time.Time, types.ServiceStatus) {
+func getDsServiceStatus(ctx context.Context, ds appsv1.DaemonSet) (time.Time, types.ServiceStatus) {
 	latestTime := time.Time{}
 
 	config, err := GetKubeConfig()
@@ -431,7 +438,7 @@ func getDsServiceStatus(ds appsv1.DaemonSet) (time.Time, types.ServiceStatus) {
 
 	// get all the pods for that
 	//kubectl -n longhorn-system get pods -l app=longhorn-manager
-	pods, err := clientset.CoreV1().Pods(longhornNamespace).List(context.Background(), metav1.ListOptions{
+	pods, err := clientset.CoreV1().Pods(longhornNamespace).List(ctx, metav1.ListOptions{
 		LabelSelector: "app=" + matchLabel,
 	})
 	if err != nil {
@@ -464,7 +471,7 @@ func getDsServiceStatus(ds appsv1.DaemonSet) (time.Time, types.ServiceStatus) {
 // EVE-k, where the longhorn-manager pods stay Ready but no replica can be
 // placed. The returned string (node/disk/reason) is for logging only; it is
 // not propagated in KubeStorageInfo.
-func longhornStorageUnschedulable() (bool, string) {
+func longhornStorageUnschedulable(ctx context.Context) (bool, string) {
 	config, err := GetKubeConfig()
 	if err != nil {
 		return false, ""
@@ -473,8 +480,6 @@ func longhornStorageUnschedulable() (bool, string) {
 	if err != nil {
 		return false, ""
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
-	defer cancel()
 	nodes, err := lhClient.LonghornV1beta2().Nodes(longhornNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return false, ""
@@ -497,8 +502,9 @@ func longhornStorageUnschedulable() (bool, string) {
 }
 
 // PopulateKSI retrieve cluster-wide PVC health data which
-// will be sent out to the controller as info messages
-func PopulateKSI() (types.KubeStorageInfo, error) {
+// will be sent out to the controller as info messages. All its API
+// calls share ctx, so the caller bounds the whole collection.
+func PopulateKSI(ctx context.Context) (types.KubeStorageInfo, error) {
 	ksi := types.KubeStorageInfo{}
 	apiExists, err := longhornAPIExists()
 	if err != nil {
@@ -518,13 +524,13 @@ func PopulateKSI() (types.KubeStorageInfo, error) {
 		return ksi, fmt.Errorf("PopulateKSI can't get clientset %v", err)
 	}
 
-	daemonsets, err := clientset.AppsV1().DaemonSets(longhornNamespace).List(context.Background(), metav1.ListOptions{})
+	daemonsets, err := clientset.AppsV1().DaemonSets(longhornNamespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return ksi, fmt.Errorf("PopulateKSI failed to list longhorn daemonsets: %v", err)
 	}
 	ksi.Health = types.ServiceStatusHealthy
 	for _, ds := range daemonsets.Items {
-		healthTime, dsStat := getDsServiceStatus(ds)
+		healthTime, dsStat := getDsServiceStatus(ctx, ds)
 		ksi.Health = min(ksi.Health, dsStat)
 		ksi.TransitionTime = healthTime
 	}
@@ -532,17 +538,17 @@ func PopulateKSI() (types.KubeStorageInfo, error) {
 	// The daemonset check above only sees pod readiness; an unschedulable disk
 	// (too-small /persist) leaves pods Ready but no replica placeable, so fold
 	// that into the reported health.
-	if unschedulable, _ := longhornStorageUnschedulable(); unschedulable {
+	if unschedulable, _ := longhornStorageUnschedulable(ctx); unschedulable {
 		ksi.Health = min(ksi.Health, types.ServiceStatusDegraded)
 	}
 
-	pvcs, err := clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace).List(context.Background(), metav1.ListOptions{})
+	pvcs, err := clientset.CoreV1().PersistentVolumeClaims(EVEKubeNameSpace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return ksi, fmt.Errorf("PopulateKSI can't get pvcs err:%v", err)
 	}
 	for _, pvc := range pvcs.Items {
 		kvi := &types.KubeVolumeInfo{Name: pvc.ObjectMeta.Name}
-		kvi, err := populateKVIFromPVCName(kvi)
+		kvi, err := populateKVIFromPVCName(ctx, kvi)
 		if err != nil {
 			return ksi, fmt.Errorf("PopulateKSI can't get kvi: %v", err)
 		}
@@ -684,7 +690,9 @@ func longhornReplicaDelete(lhRepName string) error {
 
 	gracePeriod := int64(0)
 	propagationPolicy := metav1.DeletePropagationBackground
-	err = lhClient.LonghornV1beta2().Replicas(longhornNamespace).Delete(context.Background(), lhRepName, metav1.DeleteOptions{
+	ctx, cancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	defer cancel()
+	err = lhClient.LonghornV1beta2().Replicas(longhornNamespace).Delete(ctx, lhRepName, metav1.DeleteOptions{
 		GracePeriodSeconds: &gracePeriod,
 		PropagationPolicy:  &propagationPolicy,
 	})
@@ -736,7 +744,9 @@ func longhornVolumeSetNode(lhVolName string, kubeNodeName string) error {
 	}
 
 	volumes := lhClient.LonghornV1beta2().Volumes(longhornNamespace)
-	vol, err := volumes.Get(context.Background(), lhVolName, metav1.GetOptions{})
+	getCtx, getCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	vol, err := volumes.Get(getCtx, lhVolName, metav1.GetOptions{})
+	getCancel()
 	if err != nil {
 		return err
 	}
@@ -744,13 +754,18 @@ func longhornVolumeSetNode(lhVolName string, kubeNodeName string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := volumes.Patch(context.Background(), lhVolName,
-		ktypes.MergePatchType, volPatch, metav1.PatchOptions{}); err != nil {
+	patchCtx, patchCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	_, err = volumes.Patch(patchCtx, lhVolName, ktypes.MergePatchType, volPatch,
+		metav1.PatchOptions{})
+	patchCancel()
+	if err != nil {
 		return fmt.Errorf("patch volume %s: %w", lhVolName, err)
 	}
 
 	engines := lhClient.LonghornV1beta2().Engines(longhornNamespace)
-	engineList, err := engines.List(context.Background(), metav1.ListOptions{})
+	listCtx, listCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+	engineList, err := engines.List(listCtx, metav1.ListOptions{})
+	listCancel()
 	if err != nil {
 		return fmt.Errorf("list engines: %w", err)
 	}
@@ -762,8 +777,11 @@ func longhornVolumeSetNode(lhVolName string, kubeNodeName string) error {
 		if eng.Spec.VolumeName != lhVolName {
 			continue
 		}
-		if _, err := engines.Patch(context.Background(), eng.Name,
-			ktypes.MergePatchType, engPatch, metav1.PatchOptions{}); err != nil {
+		engCtx, engCancel := context.WithTimeout(context.Background(), kubeAPITimeout)
+		_, err := engines.Patch(engCtx, eng.Name, ktypes.MergePatchType, engPatch,
+			metav1.PatchOptions{})
+		engCancel()
+		if err != nil {
 			return fmt.Errorf("patch engine %s: %w", eng.Name, err)
 		}
 	}

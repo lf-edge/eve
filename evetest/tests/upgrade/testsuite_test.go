@@ -16,8 +16,19 @@ import (
 // before the big rewrite of kube-init from shell scripts to Go.
 const initialEVEVersionForKubevirt = "0.0.0-master-66475696"
 
+// initialEVEVersionForKubeUpgrade is the build the kube component upgrade
+// tests install before upgrading to the build under test. It is the most
+// recent EVE release whose kube version (KubeVersion in
+// pkg/kube/kube-init/update/version.go) differs from the one at HEAD, or
+// the most recent release when none differs yet. kube-init runs the
+// component upgrade pass only across such a difference, so this pairing is
+// what makes the tests exercise it. Revisit it whenever KubeVersion is
+// raised.
+const initialEVEVersionForKubeUpgrade = "17.12.0"
+
 // TestUpgradeSuite runs TestEVEUpgrade across multiple hypervisor combinations,
-// then TestThreeNodesUpgrade and TestDeviceAddressesAcrossUpgrade.
+// then TestThreeNodesUpgrade, TestDeviceAddressesAcrossUpgrade, then the
+// kube component upgrade tests for a single node and a three-node cluster.
 func TestUpgradeSuite(test *testing.T) {
 	evetest.Init(test)
 	defer evetest.Close()
@@ -87,6 +98,12 @@ func TestUpgradeSuite(test *testing.T) {
 		},
 		evetest.TestCase{
 			Test: TestDeviceAddressesAcrossUpgrade,
+		},
+		evetest.TestCase{
+			Test: TestKubeComponentsUpgradeSingleNode,
+		},
+		evetest.TestCase{
+			Test: TestKubeComponentsUpgradeCluster,
 		},
 	)
 }

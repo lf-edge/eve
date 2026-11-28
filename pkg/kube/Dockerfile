@@ -108,7 +108,7 @@ COPY kubevirt-operator.yaml /etc
 COPY kubevirt-features.yaml /etc
 
 # Longhorn config
-COPY lh-cfg-v1.9.1.yaml /etc/
+COPY lh-cfg-v1.13.0.yaml /etc/
 COPY iscsid.conf /etc/iscsi/
 COPY longhorn-generate-support-bundle.sh /usr/bin/
 COPY longhorn-snapshot-overhead.sh /usr/bin/

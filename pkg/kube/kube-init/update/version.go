@@ -21,7 +21,10 @@ import (
 // CheckClusterComponents short-circuits when applied >= KubeVersion
 // (i.e. node already at target, or EVE was downgraded — downgrades
 // are unsupported, see addresses upstream a67d55ce9).
-const KubeVersion = 3
+//
+// Raising it also means revisiting initialEVEVersionForKubeUpgrade in
+// evetest/tests/upgrade/testsuite_test.go.
+const KubeVersion = 5
 
 // VersionGet returns the last applied KubeVersion as a string, or
 // "0" if the marker file is missing or unreadable.
@@ -80,18 +83,6 @@ func updateFailed() bool {
 	}
 	return status.Status == types.CompStatusFailed &&
 		status.DestinationKubeUpdateVersion == uint32(KubeVersion)
-}
-
-// k3sStatusParked reports whether the cached status sits on a
-// completed k3s step, which is where a k3s update leaves it across
-// the reboot that follows. No cached status means nothing to advance.
-func k3sStatusParked() bool {
-	status, ok := kcus.Get()
-	if !ok {
-		return false
-	}
-	return status.Component == types.CompK3s &&
-		status.Status == types.CompStatusCompleted
 }
 
 // appliedVersionGEQ reports whether the persisted applied version

@@ -4,6 +4,7 @@
 package tiebreaker
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -11,6 +12,8 @@ import (
 	"github.com/lf-edge/eve/pkg/kube/kube-init/encconfig"
 	"github.com/lf-edge/eve/pkg/pillar/types"
 	uuid "github.com/satori/go.uuid"
+	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestStatusIsSelf(t *testing.T) {
@@ -144,5 +147,66 @@ func TestClusterNodeCountIsThree(t *testing.T) {
 	// Spot-check that downstream string formatting hasn't drifted.
 	if !strings.Contains(nodeSelectorPatch("a", "b"), `"a":"b"`) {
 		t.Errorf("nodeSelectorPatch shape changed")
+	}
+}
+
+func TestTieBreakerUnset(t *testing.T) {
+	cases := []struct {
+		name string
+		obj  map[string]interface{}
+		want bool
+	}{
+		{"no infra", map[string]interface{}{"spec": map[string]interface{}{}}, false},
+		{"other keys only", map[string]interface{}{"spec": map[string]interface{}{
+			"infra": map[string]interface{}{"nodeSelector": map[string]interface{}{
+				"kubernetes.io/os": "linux"}}}}, false},
+		{"tie-breaker true", map[string]interface{}{"spec": map[string]interface{}{
+			"infra": map[string]interface{}{"nodeSelector": map[string]interface{}{
+				tieBreakerNodeLabel: tieBreakerLabelSet}}}}, false},
+		{"tie-breaker false", map[string]interface{}{"spec": map[string]interface{}{
+			"infra": map[string]interface{}{"nodeSelector": map[string]interface{}{
+				"kubernetes.io/os": "linux", tieBreakerNodeLabel: tieBreakerLabelUnset}}}}, true},
+	}
+	for _, tc := range cases {
+		if got := tieBreakerUnset(tc.obj, "spec", "infra", "nodeSelector"); got != tc.want {
+			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestIsLonghornEngineImageDaemonSet covers which longhorn-system
+// DaemonSets the re-apply after a Longhorn upgrade leaves alone.
+func TestIsLonghornEngineImageDaemonSet(t *testing.T) {
+	cases := []struct {
+		name   string
+		labels map[string]string
+		want   bool
+	}{
+		{"longhorn-manager", map[string]string{"app": "longhorn-manager"}, false},
+		{"longhorn-csi-plugin", nil, false},
+		{"engine-image-ei-0b2d1ad5", nil, true},
+		{"renamed", map[string]string{"longhorn.io/component": "engine-image"}, true},
+		{"other", map[string]string{"longhorn.io/component": "instance-manager"}, false},
+	}
+	for _, c := range cases {
+		ds := &appsv1.DaemonSet{ObjectMeta: metav1.ObjectMeta{
+			Name: c.name, Labels: c.labels,
+		}}
+		if got := isLonghornEngineImageDaemonSet(ds); got != c.want {
+			t.Errorf("isLonghornEngineImageDaemonSet(%s, %v) = %v, want %v",
+				c.name, c.labels, got, c.want)
+		}
+	}
+}
+
+// TestLonghornConfigReapplySkipsWithoutTieBreaker pins that a
+// cluster with no tie-breaker configured is left untouched, without
+// any API call.
+func TestLonghornConfigReapplySkipsWithoutTieBreaker(t *testing.T) {
+	encconfig.ResetForTest()
+	t.Cleanup(encconfig.ResetForTest)
+	applied, err := LonghornConfigReapply(context.Background())
+	if err != nil || applied {
+		t.Errorf("LonghornConfigReapply = (%v, %v), want (false, nil)", applied, err)
 	}
 }

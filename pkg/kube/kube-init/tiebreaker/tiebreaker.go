@@ -22,6 +22,10 @@
 //
 // ConfigApply is the entry the FSM calls; everything else is the
 // implementation detail of a single phase.
+//
+// ConfigApply runs once per cluster. A Longhorn upgrade undoes part
+// of what it set, so the component update pass calls
+// LonghornConfigReapply afterwards.
 package tiebreaker
 
 import (
@@ -29,16 +33,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/lf-edge/eve/pkg/kube/kube-init/encconfig"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubeclient"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/kubectlx"
 	"github.com/lf-edge/eve/pkg/kube/kube-init/state"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 )
@@ -52,6 +59,17 @@ const (
 	// tie-breaker configuration phase succeeds. Used by StatusGet to
 	// detect "already done".
 	tieBreakerStatusLabel = "tie-breaker-config-applied=1"
+
+	// cdiCRName and cdiOperatorDeployment name the CDI CR and the
+	// Deployment its manifest installs.
+	cdiCRName             = "cdi"
+	cdiOperatorDeployment = "cdi-operator"
+
+	// Longhorn names an engine-image DaemonSet after its engine
+	// image and labels it as that component.
+	longhornComponentLabel      = "longhorn.io/component"
+	longhornEngineImageLabel    = "engine-image"
+	longhornEngineImageDSPrefix = "engine-image-"
 
 	// clusterNodeCount is the size of an EVE-K HA cluster. Three
 	// nodes: two workers and one tie-breaker.
@@ -116,12 +134,17 @@ func StatusSet(ctx context.Context) error {
 // StatusGet reports whether the status label has been applied to
 // every node in the cluster (exactly clusterNodeCount nodes).
 func StatusGet(ctx context.Context) bool {
+	applied, err := statusGet(ctx)
+	return err == nil && applied
+}
+
+func statusGet(ctx context.Context) (bool, error) {
 	list, err := kubeclient.Default().Clientset.CoreV1().Nodes().
 		List(ctx, metav1.ListOptions{LabelSelector: "tie-breaker-config-applied=1"})
 	if err != nil {
-		return false
+		return false, err
 	}
-	return len(list.Items) == clusterNodeCount
+	return len(list.Items) == clusterNodeCount, nil
 }
 
 // NodeCountIsCluster reports whether the cluster currently has the
@@ -229,7 +252,7 @@ func kubevirtConfig(ctx context.Context, replicas int) error {
 // tie-breaker (tie-breaker-node=false).
 func kubevirtTieBreakerConfigApply(ctx context.Context) error {
 	log.Printf("tiebreaker: patching kubevirt daemonsets with nodeSelector")
-	return patchDaemonSetsInNamespace(ctx, kubectlx.KubeVirtNamespace, 1)
+	return patchDaemonSetsInNamespace(ctx, kubectlx.KubeVirtNamespace, 1, nil)
 }
 
 // cdiConfig patches every Deployment in the cdi namespace with the
@@ -253,12 +276,87 @@ func cdiConfig(ctx context.Context) error {
 	return nil
 }
 
+// cdiInfraConfig sets the tie-breaker nodeSelector in the CDI CR's
+// spec.infra, which the CDI operator applies to the Deployments it
+// manages and keeps across upgrades. A missing CR means CDI is not
+// installed.
+func cdiInfraConfig(ctx context.Context) error {
+	cdis := kubeclient.Default().Dynamic.Resource(kubectlx.CDIGVR)
+	cr, err := cdis.Get(ctx, cdiCRName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get cdi: %w", err)
+	}
+	if tieBreakerUnset(cr.Object, "spec", "infra", "nodeSelector") {
+		return nil
+	}
+	patch := fmt.Sprintf(`{"spec":{"infra":{"nodeSelector":{"%s":"%s"}}}}`,
+		tieBreakerNodeLabel, tieBreakerLabelUnset)
+	if _, err := cdis.Patch(ctx, cdiCRName, types.MergePatchType,
+		[]byte(patch), metav1.PatchOptions{}); err != nil {
+		return fmt.Errorf("patch cdi infra nodeSelector: %w", err)
+	}
+	log.Printf("tiebreaker: set the cdi infra nodeSelector")
+	return nil
+}
+
+// cdiOperatorConfig sets the tie-breaker nodeSelector on the
+// cdi-operator Deployment, which comes from the CDI manifest rather
+// than the operator. A server-side apply of a new manifest replaces
+// its nodeSelector as a whole.
+func cdiOperatorConfig(ctx context.Context) error {
+	deps := kubeclient.Default().Clientset.AppsV1().Deployments(kubectlx.CDINamespace)
+	dep, err := deps.Get(ctx, cdiOperatorDeployment, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get %s: %w", cdiOperatorDeployment, err)
+	}
+	if dep.Spec.Template.Spec.NodeSelector[tieBreakerNodeLabel] == tieBreakerLabelUnset {
+		return nil
+	}
+	if _, err := deps.Patch(ctx, cdiOperatorDeployment, types.MergePatchType,
+		[]byte(nodeSelectorPatch(tieBreakerNodeLabel, tieBreakerLabelUnset)),
+		metav1.PatchOptions{}); err != nil {
+		return fmt.Errorf("patch %s nodeSelector: %w", cdiOperatorDeployment, err)
+	}
+	log.Printf("tiebreaker: set the %s nodeSelector", cdiOperatorDeployment)
+	return nil
+}
+
+// WorkloadConfigReconcile restores the CDI tie-breaker nodeSelectors
+// that a component upgrade can drop. It writes only what is missing
+// and does nothing until ConfigApply has completed, or on a node
+// without a kube client.
+func WorkloadConfigReconcile(ctx context.Context) error {
+	if !kubeclient.HasDefault() || !ConfigIsSet() || !StatusGet(ctx) {
+		return nil
+	}
+	if err := cdiInfraConfig(ctx); err != nil {
+		return err
+	}
+	return cdiOperatorConfig(ctx)
+}
+
+// tieBreakerUnset reports whether the string map at fields in obj
+// already keeps pods off the tie-breaker.
+func tieBreakerUnset(obj map[string]interface{}, fields ...string) bool {
+	sel, _, _ := unstructured.NestedStringMap(obj, fields...)
+	return sel[tieBreakerNodeLabel] == tieBreakerLabelUnset
+}
+
 // patchDaemonSetsInNamespace applies the tie-breaker nodeSelector
 // merge-patch to every DaemonSet in the given namespace, retrying
 // each patch up to maxRetries times. The retry count matters for
 // longhorn-system where longhorn-manager occasionally races us
 // during initial install; kubevirt namespace usage passes 1.
-func patchDaemonSetsInNamespace(ctx context.Context, ns string, maxRetries int) error {
+// DaemonSets for which skip returns true are left alone; a nil skip
+// patches them all.
+func patchDaemonSetsInNamespace(ctx context.Context, ns string, maxRetries int,
+	skip func(*appsv1.DaemonSet) bool) error {
 	if maxRetries < 1 {
 		maxRetries = 1
 	}
@@ -269,7 +367,12 @@ func patchDaemonSetsInNamespace(ctx context.Context, ns string, maxRetries int) 
 		return fmt.Errorf("list daemonsets in %s: %w", ns, err)
 	}
 	patch := nodeSelectorPatch(tieBreakerNodeLabel, tieBreakerLabelUnset)
-	for _, ds := range list.Items {
+	for i := range list.Items {
+		ds := &list.Items[i]
+		if skip != nil && skip(ds) {
+			log.Printf("tiebreaker: leaving %s daemonset %s unpatched", ns, ds.Name)
+			continue
+		}
 		var lastErr error
 		for i := 0; i < maxRetries; i++ {
 			_, lastErr = dsClient.Patch(ctx, ds.Name,
@@ -365,7 +468,9 @@ func longhornJSONPatch(ctx context.Context, nodeName, path string, value bool) e
 // `replicas` and patches every longhorn-system DaemonSet with the
 // tie-breaker nodeSelector. DaemonSet patches retry 5x because
 // longhorn-manager occasionally races us during initial install.
-func longhornRescale(ctx context.Context, replicas int) error {
+// skip is passed on to patchDaemonSetsInNamespace.
+func longhornRescale(ctx context.Context, replicas int,
+	skip func(*appsv1.DaemonSet) bool) error {
 	log.Printf("tiebreaker: rescaling longhorn components to %d replicas", replicas)
 	kc := kubeclient.Default()
 
@@ -380,7 +485,47 @@ func longhornRescale(ctx context.Context, replicas int) error {
 		}
 	}
 
-	return patchDaemonSetsInNamespace(ctx, kubectlx.LonghornNamespace, 5)
+	return patchDaemonSetsInNamespace(ctx, kubectlx.LonghornNamespace, 5, skip)
+}
+
+// isLonghornEngineImageDaemonSet reports whether ds is one of
+// Longhorn's engine-image DaemonSets.
+func isLonghornEngineImageDaemonSet(ds *appsv1.DaemonSet) bool {
+	return ds.Labels[longhornComponentLabel] == longhornEngineImageLabel ||
+		strings.HasPrefix(ds.Name, longhornEngineImageDSPrefix)
+}
+
+// LonghornConfigReapply puts back the part of the tie-breaker
+// configuration that a Longhorn upgrade undoes. Longhorn recreates
+// its CSI plugin DaemonSet, which drops the nodeSelector, and its
+// CSI sidecar Deployments, which returns them to three replicas.
+// Scheduling on the tie-breaker's Longhorn node is a field of the
+// Longhorn node object and survives, so no replica lands there
+// either way.
+//
+// The engine-image DaemonSets are left alone: changing their pod
+// template restarts the pods, and with volumes attached that can
+// leave the engine image unavailable. The cost is an engine-image
+// pod on the tie-breaker for the new engine image.
+//
+// It works through the API, so any node can call it. Returns false
+// when there is nothing to put back: no tie-breaker is configured,
+// or ConfigApply has not completed for this cluster yet and will
+// set all of this itself.
+func LonghornConfigReapply(ctx context.Context) (bool, error) {
+	if !ConfigIsSet() {
+		return false, nil
+	}
+	if applied, err := statusGet(ctx); err != nil {
+		return false, fmt.Errorf("list tie-breaker nodes: %w", err)
+	} else if !applied {
+		return false, nil
+	}
+	log.Printf("tiebreaker: re-applying longhorn configuration")
+	if err := longhornRescale(ctx, 2, isLonghornEngineImageDaemonSet); err != nil {
+		return false, fmt.Errorf("longhornRescale: %w", err)
+	}
+	return true, nil
 }
 
 // ConfigApply is the entry point. Returns nil and logs the reason
@@ -440,8 +585,9 @@ func ConfigApply(ctx context.Context, selfUUID string) error {
 		{"kubevirtConfig", func() error { return kubevirtConfig(ctx, 2) }},
 		{"kubevirtTieBreakerConfigApply", func() error { return kubevirtTieBreakerConfigApply(ctx) }},
 		{"cdiConfig", func() error { return cdiConfig(ctx) }},
+		{"cdiInfraConfig", func() error { return cdiInfraConfig(ctx) }},
 		{"longhornNodeSetSched", func() error { return longhornNodeSetSched(ctx, tieName, false) }},
-		{"longhornRescale", func() error { return longhornRescale(ctx, 2) }},
+		{"longhornRescale", func() error { return longhornRescale(ctx, 2, nil) }},
 	} {
 		if err := step.fn(); err != nil {
 			return fmt.Errorf("%s: %w", step.name, err)

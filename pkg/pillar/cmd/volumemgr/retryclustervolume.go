@@ -80,6 +80,12 @@ func clusterStorageReady(ctx *volumemgrContext) bool {
 		clusterStorageReadyCache = false
 		return false
 	}
+	// Likewise ahead of the cache: while kube-init is upgrading the kube
+	// components, Longhorn and CDI can look ready between two steps.
+	if !ctx.kubeComponentsGate.Ready() {
+		clusterStorageReadyCache = false
+		return false
+	}
 	if clusterStorageReadyCache {
 		return true
 	}

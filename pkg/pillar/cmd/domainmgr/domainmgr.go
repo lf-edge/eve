@@ -801,8 +801,13 @@ func Run(ps *pubsub.PubSub, loggerArg *logrus.Logger, logArg *base.LogObject, ar
 		if runtime.GOARCH != "amd64" {
 			waitForKubevirtFlag = false
 		}
+		componentsGate, gateErr := kubeapi.NewKubeComponentsGate(ps, agentName)
+		if gateErr != nil {
+			log.Fatal(gateErr)
+		}
 		kubeOpts := kubeapi.WaitForKubernetesOptions{
 			WaitForKubevirt: waitForKubevirtFlag,
+			ComponentsGate:  componentsGate,
 		}
 		for {
 			err = kubeapi.WaitForKubernetes(agentName, ps, stillRunning, domainCtx.nodeName, kubeOpts)

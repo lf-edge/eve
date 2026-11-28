@@ -85,6 +85,28 @@ type KubeInitStatus struct {
 	// a state completes cleanly.
 	LastError string
 
+	// The three fields below describe the component update pass of
+	// this boot. pillar subscribes to them through its own copy of
+	// this struct, types.KubeInitStatus in pkg/pillar/types; the two
+	// are coupled by field name only (pubsub is JSON), so a rename
+	// here must be made there too.
+
+	// ComponentsReady goes true when the daemon reaches RUNNING with
+	// the component update pass over or not needed, and stays true
+	// for the life of the daemon. It is the signal pillar waits for
+	// before it trusts the state of the cluster components.
+	ComponentsReady bool
+
+	// UpdateState is none, in_progress, completed, failed or deferred.
+	// A failed pass is not retried by this build and leaves
+	// ComponentsReady false. A deferred one stopped before changing
+	// anything and is run again later.
+	UpdateState string
+
+	// UpdateError says why the pass failed or was deferred, empty
+	// otherwise.
+	UpdateError string
+
 	// UpdatedAt timestamps this snapshot, so a consumer can tell a
 	// stale publication from a live one.
 	UpdatedAt time.Time
