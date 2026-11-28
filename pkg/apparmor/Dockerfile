@@ -16,7 +16,7 @@ ARG BUILD_PKGS_BASE="linux-headers musl-dev musl-utils git gcc g++ \
 # Headers and libraries of the target that libapparmor and the parser build
 # against.
 ARG TARGET_DEV_PKGS="musl-dev musl-libintl libgcc linux-headers"
-ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:2e8bb7ac88e47c8dd32369167d2fab3528e282a3
+ARG EVE_ALPINE_IMAGE=lfedge/eve-alpine:85db6941fadf6125be98ddb7bfebbe2455ae7228
 ARG APPARMOR_VERSION=4.1.3
 
 # The base the parser runs on.
