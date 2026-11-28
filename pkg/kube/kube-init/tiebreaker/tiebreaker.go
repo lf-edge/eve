@@ -39,6 +39,7 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 )
@@ -52,6 +53,11 @@ const (
 	// tie-breaker configuration phase succeeds. Used by StatusGet to
 	// detect "already done".
 	tieBreakerStatusLabel = "tie-breaker-config-applied=1"
+
+	// cdiCRName and cdiOperatorDeployment name the CDI CR and the
+	// Deployment its manifest installs.
+	cdiCRName             = "cdi"
+	cdiOperatorDeployment = "cdi-operator"
 
 	// clusterNodeCount is the size of an EVE-K HA cluster. Three
 	// nodes: two workers and one tie-breaker.
@@ -253,6 +259,78 @@ func cdiConfig(ctx context.Context) error {
 	return nil
 }
 
+// cdiInfraConfig sets the tie-breaker nodeSelector in the CDI CR's
+// spec.infra, which the CDI operator applies to the Deployments it
+// manages and keeps across upgrades. A missing CR means CDI is not
+// installed.
+func cdiInfraConfig(ctx context.Context) error {
+	cdis := kubeclient.Default().Dynamic.Resource(kubectlx.CDIGVR)
+	cr, err := cdis.Get(ctx, cdiCRName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get cdi: %w", err)
+	}
+	if tieBreakerUnset(cr.Object, "spec", "infra", "nodeSelector") {
+		return nil
+	}
+	patch := fmt.Sprintf(`{"spec":{"infra":{"nodeSelector":{"%s":"%s"}}}}`,
+		tieBreakerNodeLabel, tieBreakerLabelUnset)
+	if _, err := cdis.Patch(ctx, cdiCRName, types.MergePatchType,
+		[]byte(patch), metav1.PatchOptions{}); err != nil {
+		return fmt.Errorf("patch cdi infra nodeSelector: %w", err)
+	}
+	log.Printf("tiebreaker: set the cdi infra nodeSelector")
+	return nil
+}
+
+// cdiOperatorConfig sets the tie-breaker nodeSelector on the
+// cdi-operator Deployment, which comes from the CDI manifest rather
+// than the operator. A server-side apply of a new manifest replaces
+// its nodeSelector as a whole.
+func cdiOperatorConfig(ctx context.Context) error {
+	deps := kubeclient.Default().Clientset.AppsV1().Deployments(kubectlx.CDINamespace)
+	dep, err := deps.Get(ctx, cdiOperatorDeployment, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get %s: %w", cdiOperatorDeployment, err)
+	}
+	if dep.Spec.Template.Spec.NodeSelector[tieBreakerNodeLabel] == tieBreakerLabelUnset {
+		return nil
+	}
+	if _, err := deps.Patch(ctx, cdiOperatorDeployment, types.MergePatchType,
+		[]byte(nodeSelectorPatch(tieBreakerNodeLabel, tieBreakerLabelUnset)),
+		metav1.PatchOptions{}); err != nil {
+		return fmt.Errorf("patch %s nodeSelector: %w", cdiOperatorDeployment, err)
+	}
+	log.Printf("tiebreaker: set the %s nodeSelector", cdiOperatorDeployment)
+	return nil
+}
+
+// WorkloadConfigReconcile restores the CDI tie-breaker nodeSelectors
+// that a component upgrade can drop. It writes only what is missing
+// and does nothing until ConfigApply has completed, or on a node
+// without a kube client.
+func WorkloadConfigReconcile(ctx context.Context) error {
+	if !kubeclient.HasDefault() || !ConfigIsSet() || !StatusGet(ctx) {
+		return nil
+	}
+	if err := cdiInfraConfig(ctx); err != nil {
+		return err
+	}
+	return cdiOperatorConfig(ctx)
+}
+
+// tieBreakerUnset reports whether the string map at fields in obj
+// already keeps pods off the tie-breaker.
+func tieBreakerUnset(obj map[string]interface{}, fields ...string) bool {
+	sel, _, _ := unstructured.NestedStringMap(obj, fields...)
+	return sel[tieBreakerNodeLabel] == tieBreakerLabelUnset
+}
+
 // patchDaemonSetsInNamespace applies the tie-breaker nodeSelector
 // merge-patch to every DaemonSet in the given namespace, retrying
 // each patch up to maxRetries times. The retry count matters for
@@ -440,6 +518,7 @@ func ConfigApply(ctx context.Context, selfUUID string) error {
 		{"kubevirtConfig", func() error { return kubevirtConfig(ctx, 2) }},
 		{"kubevirtTieBreakerConfigApply", func() error { return kubevirtTieBreakerConfigApply(ctx) }},
 		{"cdiConfig", func() error { return cdiConfig(ctx) }},
+		{"cdiInfraConfig", func() error { return cdiInfraConfig(ctx) }},
 		{"longhornNodeSetSched", func() error { return longhornNodeSetSched(ctx, tieName, false) }},
 		{"longhornRescale", func() error { return longhornRescale(ctx, 2) }},
 	} {
