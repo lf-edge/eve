@@ -7,7 +7,7 @@
 # symbol table and DWARF sections: with them runc is 17 MB that cost 7 MB
 # in the compressed rootfs.
 
-FROM lfedge/eve-alpine:2e8bb7ac88e47c8dd32369167d2fab3528e282a3 AS build
+FROM lfedge/eve-alpine:85db6941fadf6125be98ddb7bfebbe2455ae7228 AS build
 ENV BUILD_PKGS="bash gcc git libc-dev libseccomp-dev libseccomp-static linux-headers make"
 RUN eve-alpine-deploy.sh
 

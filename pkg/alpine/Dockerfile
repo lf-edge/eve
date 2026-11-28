@@ -3,7 +3,7 @@
 #
 # DON'T FORGET TO UPDATE THE HASH WHEN SOMETHING CHANGES!
 # please see https://github.com/lf-edge/eve/blob/master/docs/BUILD.md#how-to-update-eve-alpine-package
-FROM lfedge/eve-alpine:8c9af5568049068f10bc630065793c15d52fa931 AS cache-build
+FROM lfedge/eve-alpine:2e8bb7ac88e47c8dd32369167d2fab3528e282a3 AS cache-build
 
 ARG ALPINE_VERSION=3.22
 # this is only needed once, when this package
@@ -43,7 +43,7 @@ done
 RUN cp /mirror/${ALPINE_VERSION}/rootfs/etc/apk/repositories /etc/apk
 RUN apk update
 
-FROM lfedge/eve-alpine-base:77cc1495c875b7468dbf4123210abf86a1ffb852-ed0b52e43 AS compactor
+FROM lfedge/eve-alpine-base:77cc1495c875b7468dbf4123210abf86a1ffb852 AS compactor
 ARG TARGETARCH
 ARG GO_VERSION=1.26.11
 

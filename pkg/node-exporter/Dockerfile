@@ -8,7 +8,7 @@
 FROM prom/node-exporter:v1.13.1@sha256:7296504d4ada44b7d7ab4431e27e9f9900d8488f8d55842f4b12ae2704e16dfe AS upstream
 
 # the release binary ships its symbol tables: 21 MB, 14.5 MB stripped
-FROM lfedge/eve-alpine:2e8bb7ac88e47c8dd32369167d2fab3528e282a3 AS strip
+FROM lfedge/eve-alpine:85db6941fadf6125be98ddb7bfebbe2455ae7228 AS strip
 ENV BUILD_PKGS="binutils"
 RUN eve-alpine-deploy.sh
 COPY --from=upstream /bin/node_exporter /node_exporter
